@@ -1,0 +1,731 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Alamut · Act II · Money Lands Where It’s Safe</title>
+  <!--
+    Phase 33 prototype · Direction B · Act II
+    Single-file HTML demonstrating the scroll-driven money-particle flow.
+
+    What to look at:
+      - Scroll-pinned scene: as you scroll, the choreography advances. Scroll
+        position drives the particles, the labels, and the escrow ring's fill.
+      - Three labelled "stages": brand wallet (left) → escrow (center) →
+        creator wallet (right). Acts II + IV in the same canvas — Act II
+        moves brand → escrow, Act IV releases escrow → creator.
+      - Particles flow along bezier paths between nodes. Intentional staging
+        — not all particles depart at once, they wave.
+      - Persona toggle changes the FIRST node we look at: creator persona
+        starts focused on the right side ("the money landing in your wallet"),
+        brand persona starts focused on the left ("the money leaving yours").
+      - The ring around escrow fills as more particles arrive. Visual proof.
+      - On `prefers-reduced-motion`, the animation is replaced with a clean
+        static composition showing the final state.
+
+    Open in any modern browser. Scroll through the section to see it animate.
+    The pinned section is `.act-stage` — release scroll to leave it.
+
+    What's NOT in this file:
+      - The other acts (this is just Act II)
+      - React/motion library equivalents (this is canvas + scroll observer)
+      - Full text content; this is pure visual demo
+  -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..600;1,9..144,300..600&family=Inter:wght@300;400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:           oklch(0.10 0.01 50);
+      --bg-deep:      oklch(0.06 0.005 50);
+      --ink:          oklch(0.97 0.005 50);
+      --ink-muted:    oklch(0.74 0.01 50);
+      --ink-quiet:    oklch(0.45 0.01 50);
+      --accent:       oklch(0.78 0.15 60);
+      --accent-glow:  oklch(0.72 0.20 50);
+      --accent-soft:  oklch(0.40 0.10 60);
+      --rule:         oklch(0.20 0.01 50);
+
+      /* The two-sided palette — used to tint specific nodes regardless of
+         which persona is currently active. */
+      --brand-tint:    oklch(0.66 0.14 240);   /* cobalt */
+      --creator-tint:  oklch(0.78 0.15 60);    /* ember */
+      --escrow-tint:   oklch(0.78 0.06 80);    /* warm neutral, the safe space */
+
+      --serif: 'Fraunces', Georgia, serif;
+      --sans:  'Inter', -apple-system, system-ui, sans-serif;
+      --mono:  'JetBrains Mono', ui-monospace, monospace;
+    }
+    html[data-persona="brand"] {
+      --bg:           oklch(0.10 0.01 240);
+      --bg-deep:      oklch(0.06 0.005 240);
+      --ink:          oklch(0.97 0.005 240);
+      --ink-muted:    oklch(0.74 0.01 240);
+      --ink-quiet:    oklch(0.45 0.01 240);
+      --accent:       oklch(0.72 0.14 240);
+      --accent-glow:  oklch(0.66 0.18 235);
+      --accent-soft:  oklch(0.40 0.10 240);
+      --rule:         oklch(0.20 0.01 240);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    html, body {
+      background: var(--bg-deep);
+      color: var(--ink);
+      font-family: var(--sans);
+      -webkit-font-smoothing: antialiased;
+      transition: background 1.2s cubic-bezier(0.22, 0.36, 0.24, 1.0);
+    }
+    body {
+      overflow-x: hidden;
+      min-height: 100vh;
+    }
+
+    /* Persona toggle — sticky just like the real page would have. */
+    .persona-toggle {
+      position: fixed;
+      top: 24px;
+      right: 50%;
+      transform: translateX(50%);
+      z-index: 30;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px;
+      background: color-mix(in oklab, var(--bg) 90%, var(--ink) 4%);
+      border: 1px solid var(--rule);
+      border-radius: 999px;
+      backdrop-filter: blur(20px) saturate(140%);
+      -webkit-backdrop-filter: blur(20px) saturate(140%);
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    .persona-toggle button {
+      background: transparent;
+      border: 0;
+      padding: 8px 18px;
+      color: var(--ink-quiet);
+      cursor: pointer;
+      border-radius: 999px;
+      transition: color 0.3s, background 0.3s;
+      font: inherit;
+    }
+    .persona-toggle button.active {
+      background: var(--accent);
+      color: oklch(0.18 0.01 50);
+    }
+
+    /* The pinned-scroll wrapper. Total scroll length determines how long
+       the choreography runs. ~3 viewports gives enough breathing room
+       without feeling like you're stuck. */
+    .act-pin {
+      position: relative;
+      height: 320vh;
+    }
+    .act-stage {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Atmospheric backdrop — same idiom as Act 1 but the second light source
+       is muted so the scene doesn't compete with the canvas. */
+    .act-stage::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(
+        ellipse 1100px 800px at 50% 60%,
+        color-mix(in oklab, var(--accent-glow) 18%, transparent) 0%,
+        transparent 60%
+      );
+      z-index: 0;
+    }
+    .act-stage::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 2;
+      opacity: 0.05;
+      mix-blend-mode: overlay;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 240 240' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.92' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.6 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    /* ===== THE STAGE LAYOUT =====
+       Three nodes arranged horizontally. Each has a label below and a
+       "balance" number that animates as particles arrive. */
+
+    .act-act-num {
+      position: absolute;
+      top: 32px; left: 50%; transform: translateX(-50%);
+      z-index: 5;
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.4em;
+      color: var(--ink-quiet);
+    }
+    .act-act-num em {
+      font-style: normal;
+      color: var(--accent);
+    }
+
+    .act-h-wrap {
+      position: relative;
+      z-index: 5;
+      text-align: center;
+      padding: 80px 48px 0;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .act-h {
+      font-family: var(--serif);
+      font-weight: 300;
+      font-style: italic;
+      font-size: clamp(40px, 6vw, 88px);
+      line-height: 1.0;
+      letter-spacing: -0.03em;
+      color: var(--ink);
+    }
+    .act-h .accent {
+      color: var(--accent);
+    }
+    .act-sub {
+      font-family: var(--sans);
+      font-size: 15px;
+      line-height: 1.55;
+      color: var(--ink-muted);
+      max-width: 56ch;
+      margin: 18px auto 0;
+    }
+
+    .canvas-wrap {
+      position: relative;
+      z-index: 3;
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    canvas#flow {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* The labels + balances are positioned absolutely over the canvas. */
+    .nodes {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 4;
+    }
+    .node {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      width: 240px;
+    }
+    .node-label {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--ink-quiet);
+      margin-bottom: 8px;
+    }
+    .node-name {
+      font-family: var(--serif);
+      font-style: italic;
+      font-size: 22px;
+      letter-spacing: -0.01em;
+      color: var(--ink);
+      margin-bottom: 6px;
+    }
+    .node-balance {
+      font-family: var(--serif);
+      font-size: 36px;
+      font-weight: 400;
+      line-height: 1;
+      letter-spacing: -0.025em;
+      color: var(--ink);
+      font-variant-numeric: tabular-nums;
+      transition: color 0.6s;
+    }
+    .node-balance.is-active {
+      color: var(--accent);
+    }
+    .node[data-node="brand"]   .node-name { color: oklch(0.85 0.10 240); }
+    .node[data-node="creator"] .node-name { color: oklch(0.85 0.10 60); }
+    .node[data-node="escrow"]  .node-name { color: oklch(0.92 0.04 80); }
+
+    /* Stage progress strip — sits at the bottom of the stage and shows
+       the deal's lifecycle. Hairline + caption. */
+    .progress {
+      position: absolute;
+      left: 0; right: 0; bottom: 56px;
+      z-index: 5;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      pointer-events: none;
+    }
+    .progress-rail {
+      width: min(720px, 80vw);
+      height: 1px;
+      background: var(--rule);
+      position: relative;
+    }
+    .progress-rail::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      width: var(--p, 0%);
+      background: var(--accent);
+      transition: width 0.18s linear;
+      box-shadow: 0 0 12px var(--accent-glow);
+    }
+    .progress-rail::after {
+      /* The "playhead" — a small dot at the leading edge. */
+      content: "";
+      position: absolute;
+      left: var(--p, 0%);
+      top: 50%;
+      width: 9px; height: 9px;
+      border-radius: 50%;
+      background: var(--accent);
+      transform: translate(-50%, -50%);
+      box-shadow: 0 0 16px var(--accent-glow);
+      transition: left 0.18s linear;
+    }
+    .progress-caption {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--ink-quiet);
+    }
+    .progress-caption strong {
+      color: var(--accent);
+      font-weight: 500;
+      transition: color 0.4s;
+    }
+
+    /* Pre-stage spacer + post-stage. So the prototype reads like a real
+       page section with content above and below. */
+    .pre {
+      min-height: 60vh;
+      display: grid;
+      place-items: center;
+      padding: 0 48px;
+      text-align: center;
+      color: var(--ink-quiet);
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+    }
+    .pre::after {
+      content: "↓";
+      display: block;
+      margin-top: 24px;
+      font-size: 24px;
+      animation: float 2.4s ease-in-out infinite;
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0); opacity: 0.5; }
+      50%      { transform: translateY(8px); opacity: 1; }
+    }
+
+    .post {
+      min-height: 60vh;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      padding: 80px 48px;
+    }
+    .post-h {
+      font-family: var(--serif);
+      font-style: italic;
+      font-size: clamp(28px, 4vw, 56px);
+      line-height: 1.05;
+      letter-spacing: -0.02em;
+      color: var(--ink);
+      max-width: 26ch;
+    }
+    .post-h em {
+      color: var(--accent);
+      font-style: italic;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .act-pin { height: auto; }
+      .act-stage { position: relative; height: auto; min-height: 100vh; }
+    }
+    @media (max-width: 720px) {
+      .act-h { font-size: clamp(32px, 8vw, 56px); }
+      .node { width: 130px; }
+      .node-name { font-size: 16px; }
+      .node-balance { font-size: 24px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="persona-toggle" role="tablist" aria-label="Choose your view">
+  <button data-persona="creator" class="active" aria-selected="true">Creator</button>
+  <button data-persona="brand" aria-selected="false">Brand</button>
+</div>
+
+<div class="pre">scroll · the deal continues</div>
+
+<section class="act-pin">
+  <div class="act-stage" id="actStage">
+    <div class="act-act-num">— Act <em>II</em> —</div>
+
+    <div class="act-h-wrap">
+      <h2 class="act-h">
+        Money lands <span class="accent">where it’s safe.</span>
+      </h2>
+      <p class="act-sub">
+        The instant the offer is accepted, funds move from the brand’s wallet
+        into a sealed escrow. Visible to both sides. Releasable by neither alone.
+      </p>
+    </div>
+
+    <div class="canvas-wrap">
+      <canvas id="flow" aria-hidden="true"></canvas>
+    </div>
+
+    <!-- Node labels overlaid on the canvas. Coordinates set by JS so they
+         track the canvas's three node positions exactly. -->
+    <div class="nodes" id="nodes">
+      <div class="node" data-node="brand" id="nodeBrand">
+        <div class="node-label">Brand wallet</div>
+        <div class="node-name">Aesop</div>
+        <div class="node-balance" id="balBrand">$1,500</div>
+      </div>
+      <div class="node" data-node="escrow" id="nodeEscrow">
+        <div class="node-label">Held in escrow</div>
+        <div class="node-name">Alamut</div>
+        <div class="node-balance" id="balEscrow">$0</div>
+      </div>
+      <div class="node" data-node="creator" id="nodeCreator">
+        <div class="node-label">Creator wallet</div>
+        <div class="node-name">Sarah Chen</div>
+        <div class="node-balance" id="balCreator">$0</div>
+      </div>
+    </div>
+
+    <div class="progress">
+      <div class="progress-rail" id="progRail" style="--p: 0%;"></div>
+      <div class="progress-caption" id="progCaption">
+        Stage · <strong>Offer accepted</strong>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="post">
+  <h3 class="post-h">
+    Next: <em>the work begins</em>. Scroll up to replay, or down for Act III.
+  </h3>
+</div>
+
+<script>
+  /* =====================================================================
+     ACT II MONEY FLOW
+     -----------------------------------------------------------------------
+     Architecture:
+       - Three "nodes" — brand (left), escrow (center), creator (right).
+       - A `progress` value 0..1 is driven by the scroll position relative
+         to the .act-pin container.
+       - At progress=0, all $1,500 is in brand wallet. At progress=0.55,
+         it's all in escrow (Act II target). At progress=1.0, it's all in
+         creator wallet (Act IV preview — the release).
+       - Particles emit from the source node, follow a quadratic-bezier curve
+         to the destination, and disappear on arrival. The number of in-
+         flight particles scales with how much money is currently moving.
+     ===================================================================== */
+
+  (function () {
+    const canvas = document.getElementById('flow');
+    const ctx = canvas.getContext('2d');
+    const stage = document.getElementById('actStage');
+    const pin = stage.parentElement;
+    const balBrand   = document.getElementById('balBrand');
+    const balEscrow  = document.getElementById('balEscrow');
+    const balCreator = document.getElementById('balCreator');
+    const progRail   = document.getElementById('progRail');
+    const progCap    = document.getElementById('progCaption');
+    const nodeBrand  = document.getElementById('nodeBrand');
+    const nodeEscrow = document.getElementById('nodeEscrow');
+    const nodeCreator= document.getElementById('nodeCreator');
+
+    const TOTAL = 1500;          // $ in this deal
+    let progress = 0;            // 0..1 driven by scroll
+    let dpr = 1;
+    let w = 0, h = 0;
+    let particles = [];          // in-flight particles
+    let lastEmit = { brand: 0, escrow: 0 };
+    let raf = 0;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    /* Node positions in canvas-local coordinates.
+       Computed each resize so they scale with viewport. */
+    let nodes = { brand: {x:0, y:0}, escrow: {x:0, y:0}, creator: {x:0, y:0} };
+
+    function resize() {
+      const wrap = canvas.parentElement;
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      w = wrap.clientWidth;
+      h = wrap.clientHeight;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      canvas.style.width = w + 'px';
+      canvas.style.height = h + 'px';
+      ctx.setTransform(1, 0, 0, 1, 0, 0); // reset
+      ctx.scale(dpr, dpr);
+      // Three nodes spread across canvas, all at vertical center.
+      nodes.brand   = { x: w * 0.18, y: h * 0.50 };
+      nodes.escrow  = { x: w * 0.50, y: h * 0.50 };
+      nodes.creator = { x: w * 0.82, y: h * 0.50 };
+      // Position the labels over the canvas at the matching points but
+      // offset down so they sit BELOW the node circles.
+      const offsetY = 90; // px below the node center
+      const place = (el, n) => {
+        const r = wrap.getBoundingClientRect();
+        // We're using `position: absolute` on .node within .nodes (which
+        // is also absolute over the canvas wrap). Translate to that wrap.
+        el.style.left = (n.x) + 'px';
+        el.style.top  = (n.y + offsetY) + 'px';
+      };
+      place(nodeBrand,   nodes.brand);
+      place(nodeEscrow,  nodes.escrow);
+      place(nodeCreator, nodes.creator);
+    }
+
+    /* Read the live accent color from CSS so canvas tints follow the
+       persona swap. */
+    function readVar(name) {
+      return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    }
+
+    /* Emit a particle from `src` toward `dst`. The control point of the
+       bezier is offset upward so particles arc gently — feels like
+       money rising and settling, not sliding flat. */
+    function spawn(src, dst, tint) {
+      const arcUp = (Math.random() * 0.4 + 0.4) * (h * 0.18);
+      const ctrl = {
+        x: (src.x + dst.x) / 2 + (Math.random() - 0.5) * 40,
+        y: (src.y + dst.y) / 2 - arcUp,
+      };
+      particles.push({
+        src, dst, ctrl,
+        t: 0,
+        // Travel duration in ms — varied per particle so they spread out
+        // and don't arrive in a clump.
+        dur: 1400 + Math.random() * 900,
+        size: 2.4 + Math.random() * 1.6,
+        tint,
+      });
+    }
+
+    function tick(now) {
+      ctx.clearRect(0, 0, w, h);
+
+      /* Draw the three "nodes" as glowing rings. The escrow ring fills
+         based on how full it currently is, providing a passive proof. */
+      const escrowFill = computeEscrow(progress);
+      drawNode(nodes.brand,   '#brand',   { ringColor: 'oklch(0.66 0.14 240)', glow: 'oklch(0.50 0.18 240)' });
+      drawNode(nodes.escrow,  '#escrow',  { ringColor: 'oklch(0.78 0.06 80)',  glow: readVar('--accent-glow'), fill: escrowFill / TOTAL });
+      drawNode(nodes.creator, '#creator', { ringColor: 'oklch(0.78 0.15 60)',  glow: 'oklch(0.50 0.18 60)' });
+
+      /* Decide which particles to emit based on the current progress.
+         Phase 1 (0..0.55): brand → escrow.
+         Phase 2 (0.55..1):  escrow → creator. */
+      const dt = now - (tick._last || now);
+      tick._last = now;
+
+      if (!reduced) {
+        if (progress < 0.55) {
+          // Emit rate scales with how active the transfer is. Peak at ~0.30.
+          const intensity = Math.sin((progress / 0.55) * Math.PI);
+          const period = 60 - intensity * 50;
+          if (now - lastEmit.brand > period) {
+            spawn(nodes.brand, nodes.escrow, 'oklch(0.66 0.14 240)');
+            lastEmit.brand = now;
+          }
+        } else {
+          const phase2 = (progress - 0.55) / 0.45;
+          const intensity = Math.sin(phase2 * Math.PI);
+          const period = 60 - intensity * 50;
+          if (now - lastEmit.escrow > period) {
+            spawn(nodes.escrow, nodes.creator, 'oklch(0.78 0.15 60)');
+            lastEmit.escrow = now;
+          }
+        }
+      }
+
+      /* Update + draw particles */
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.t += dt;
+        const u = Math.min(1, p.t / p.dur);
+        const ease = u * u * (3 - 2 * u); // smoothstep
+        const x = (1-ease)*(1-ease)*p.src.x + 2*(1-ease)*ease*p.ctrl.x + ease*ease*p.dst.x;
+        const y = (1-ease)*(1-ease)*p.src.y + 2*(1-ease)*ease*p.ctrl.y + ease*ease*p.dst.y;
+        const trailAlpha = 1 - u;
+        ctx.beginPath();
+        ctx.arc(x, y, p.size, 0, Math.PI * 2);
+        ctx.fillStyle = p.tint;
+        ctx.globalAlpha = 0.85 * trailAlpha;
+        ctx.fill();
+        // Glow blur via a second larger pass with low alpha
+        ctx.beginPath();
+        ctx.arc(x, y, p.size * 3.5, 0, Math.PI * 2);
+        ctx.fillStyle = p.tint;
+        ctx.globalAlpha = 0.18 * trailAlpha;
+        ctx.fill();
+        if (u >= 1) particles.splice(i, 1);
+      }
+      ctx.globalAlpha = 1;
+
+      raf = requestAnimationFrame(tick);
+    }
+
+    /* The escrow node has a fill ring showing its current balance.
+       At progress=0.55 it's at 100% (the offer's full amount). After 0.55
+       it begins to release back out. */
+    function computeEscrow(p) {
+      if (p < 0.55) return Math.round(TOTAL * (p / 0.55));
+      const phase2 = (p - 0.55) / 0.45;
+      return Math.round(TOTAL * (1 - phase2));
+    }
+    function computeBrand(p)   { return Math.round(TOTAL * (1 - Math.min(p / 0.55, 1))); }
+    function computeCreator(p) { return p > 0.55 ? Math.round(TOTAL * ((p - 0.55) / 0.45)) : 0; }
+
+    function drawNode(n, _tag, opts) {
+      const r = Math.min(72, w * 0.06);
+      const fill = opts.fill ?? 0;
+      // Outer glow
+      const grd = ctx.createRadialGradient(n.x, n.y, r * 0.5, n.x, n.y, r * 3);
+      grd.addColorStop(0, opts.glow);
+      grd.addColorStop(1, 'transparent');
+      ctx.globalAlpha = 0.5;
+      ctx.fillStyle = grd;
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, r * 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      // Ring (full circle, dim)
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+      ctx.strokeStyle = opts.ringColor;
+      ctx.lineWidth = 1.5;
+      ctx.globalAlpha = 0.32;
+      ctx.stroke();
+
+      // Filled arc — bright. fillFraction maps to arc sweep.
+      if (fill > 0) {
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, r, -Math.PI / 2, -Math.PI / 2 + fill * Math.PI * 2);
+        ctx.strokeStyle = opts.ringColor;
+        ctx.lineWidth = 3;
+        ctx.globalAlpha = 1;
+        ctx.stroke();
+      }
+
+      // Inner dot
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, 4, 0, Math.PI * 2);
+      ctx.fillStyle = opts.ringColor;
+      ctx.globalAlpha = 0.85;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    /* Drive `progress` from scroll position relative to the .act-pin
+       container. */
+    function updateProgress() {
+      const r = pin.getBoundingClientRect();
+      const total = pin.offsetHeight - window.innerHeight;
+      const scrolled = -r.top;
+      progress = Math.max(0, Math.min(1, scrolled / total));
+
+      const eBal = computeEscrow(progress);
+      const bBal = computeBrand(progress);
+      const cBal = computeCreator(progress);
+      balBrand.textContent   = '$' + bBal.toLocaleString();
+      balEscrow.textContent  = '$' + eBal.toLocaleString();
+      balCreator.textContent = '$' + cBal.toLocaleString();
+
+      balBrand.classList.toggle('is-active',   bBal > 0 && progress < 0.55);
+      balEscrow.classList.toggle('is-active',  eBal > 0);
+      balCreator.classList.toggle('is-active', cBal > 0);
+
+      progRail.style.setProperty('--p', (progress * 100).toFixed(1) + '%');
+
+      const stage = progress < 0.30 ? 'Offer accepted'
+        : progress < 0.55 ? 'Funds entering escrow'
+        : progress < 0.85 ? 'Work approved · funds releasing'
+        : 'Cleared to creator wallet';
+      progCap.innerHTML = 'Stage · <strong>' + stage + '</strong>';
+    }
+
+    function start() {
+      resize();
+      updateProgress();
+      window.addEventListener('resize', () => { resize(); updateProgress(); });
+      window.addEventListener('scroll', updateProgress, { passive: true });
+
+      if (reduced) {
+        // Render one static frame at the "money in escrow" target
+        // — the most legible final state for someone who can't watch
+        // the choreography.
+        progress = 0.55;
+        updateProgress();
+        tick(performance.now());
+        cancelAnimationFrame(raf);
+        return;
+      }
+
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(tick);
+    }
+
+    start();
+  })();
+
+  /* Persona toggle (same as Act 1) */
+  (function () {
+    const buttons = document.querySelectorAll('.persona-toggle button');
+    function setPersona(p) {
+      document.documentElement.dataset.persona = p;
+      buttons.forEach((b) => {
+        const on = b.dataset.persona === p;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+    }
+    buttons.forEach((b) => b.addEventListener('click', () => setPersona(b.dataset.persona)));
+    document.addEventListener('keydown', (e) => {
+      if (e.target.matches('input, textarea')) return;
+      if (e.key === 'c' || e.key === 'C') setPersona('creator');
+      if (e.key === 'b' || e.key === 'B') setPersona('brand');
+    });
+    setPersona('creator');
+  })();
+</script>
+
+</body>
+</html>

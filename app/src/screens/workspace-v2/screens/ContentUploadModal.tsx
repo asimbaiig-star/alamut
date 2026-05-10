@@ -1,0 +1,193 @@
+// ContentUploadModal.tsx — creator submits a draft for review
+//
+// Two-step flow: drag-and-drop (or click-to-upload) + caption editor
+// with Spark pre-flight checks → success state. Wired in CollabDetail.
+
+import { useState } from 'react';
+import { Icon } from '../lib';
+import type { V2Campaign, V2Collab } from '../data';
+import { v2SubmitContent } from '../v2CampaignActions';
+
+interface Props {
+  collab: V2Collab;
+  campaign: V2Campaign;
+  /** P1d §1.5 — FK into `db.deliverables`. The submission this modal
+   *  creates attaches to this deliverable via `Submission.deliverableId`.
+   *  Pre-P1d this was a numeric `slotIndex`; now it's the stable id. */
+  deliverableId: string;
+  /** Human label for the deliverable (e.g. "Story 2 · Instagram"). */
+  deliverableLabel?: string;
+  /** When true, this is a resubmission after a revision request. */
+  isResubmit?: boolean;
+  onClose: () => void;
+}
+
+export function ContentUploadModal({ collab, campaign, deliverableId, deliverableLabel, isResubmit, onClose }: Props) {
+  const [step, setStep] = useState<0 | 1>(0);
+  const [caption, setCaption] = useState('');
+  const [file, setFile] = useState<{ name: string; size: string } | null>(null);
+
+  // Brand-safe pre-flight check primitives — synthesized for the demo.
+  // Real implementation would parse the uploaded media + caption to set
+  // these flags. For now, derive everything from the caption text.
+  const hasHashtag = /#\w+/i.test(caption);
+  const hasAdDisclosure = /#ad\b|#sponsored\b|#paid\b/i.test(caption);
+
+  void collab; // reserved for analytics / submission posting once wired
+
+  return (
+    <div className="v2-modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
+      <div
+        className="v2-card v2-upload-modal"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header className="v2-upload-modal-head">
+          <h2 style={{
+            fontFamily: 'var(--v2-font-display)',
+            fontSize: 22,
+            fontWeight: 500,
+            margin: '0 0 4px',
+            letterSpacing: '-0.02em',
+          }}>
+            {isResubmit ? 'Resubmit content' : 'Submit content for review'}
+          </h2>
+          <div className="v2-muted" style={{ fontSize: 13 }}>
+            {campaign.brand} · {campaign.name}
+            {deliverableLabel && (
+              <>
+                {' · '}
+                <strong style={{ color: 'var(--v2-ink)' }}>{deliverableLabel}</strong>
+              </>
+            )}
+          </div>
+        </header>
+
+        <div className="v2-upload-modal-body">
+          {step === 0 && (
+            <>
+              <div className="v2-eyebrow" style={{ marginBottom: 8 }}>Upload your draft</div>
+              <button
+                type="button"
+                className={`v2-upload-dropzone ${file ? 'is-loaded' : ''}`}
+                onClick={() => setFile({ name: 'draft_v1.mp4', size: '24 MB' })}
+              >
+                {file ? (
+                  <>
+                    <div style={{ fontSize: 28, marginBottom: 8, color: 'var(--v2-moss)' }}>{Icon.check}</div>
+                    <div style={{ fontWeight: 600 }}>{file.name}</div>
+                    <div className="v2-muted" style={{ fontSize: 12 }}>{file.size}</div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 28, marginBottom: 8 }}>{Icon.plus}</div>
+                    <div style={{ fontWeight: 600, marginBottom: 4 }}>Drop file or click to upload</div>
+                    <div className="v2-muted" style={{ fontSize: 12 }}>MP4, MOV up to 200MB</div>
+                  </>
+                )}
+              </button>
+
+              <div className="v2-eyebrow" style={{ marginTop: 20, marginBottom: 8 }}>Caption</div>
+              <textarea
+                className="v2-input"
+                rows={5}
+                value={caption}
+                onChange={(e) => setCaption(e.target.value)}
+                placeholder="Eid is finally here ✨ Wearing the new Sapphire lawn... #SapphireEid26 #ad"
+              />
+              <div className="v2-muted" style={{ fontSize: 11, marginTop: 6 }}>
+                {caption.length} chars · Spark recommends 60–120 words for Reels
+              </div>
+
+              <div className="v2-spark-preflight">
+                <div
+                  className="v2-eyebrow"
+                  style={{ color: 'var(--v2-accent)', marginBottom: 6 }}
+                >
+                  <span style={{ marginRight: 4 }}>{Icon.spark}</span>
+                  Spark pre-flight checks
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5 }}>
+                  <CheckRow ok label="Ratio detected: 9:16 (Reel-ready)" />
+                  <CheckRow ok={hasHashtag} warn={!hasHashtag} label="Campaign hashtag" />
+                  <CheckRow ok={hasAdDisclosure} warn={!hasAdDisclosure} label="#ad disclosure (FTC + Pakistan PCA)" />
+                </div>
+              </div>
+            </>
+          )}
+
+          {step === 1 && (
+            <div style={{ textAlign: 'center', padding: '32px 0' }}>
+              <div style={{
+                width: 72,
+                height: 72,
+                borderRadius: 999,
+                background: 'var(--v2-moss-soft)',
+                color: 'var(--v2-moss)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 16px',
+                fontSize: 32,
+              }}>{Icon.check}</div>
+              <h3 style={{
+                fontFamily: 'var(--v2-font-display)',
+                fontSize: 22,
+                fontWeight: 500,
+                margin: '0 0 6px',
+              }}>
+                {deliverableLabel ? `${deliverableLabel} submitted` : 'Submitted'} to {campaign.brand}
+              </h3>
+              <p style={{ margin: 0, color: 'var(--v2-ink-2)' }}>
+                You'll be notified when the brand reviews.
+                <br />
+                {collab.deliverables.filter((d) => d.status === 'pending').length > 1
+                  ? `${collab.deliverables.filter((d) => d.status === 'pending').length - 1} more deliverable${collab.deliverables.filter((d) => d.status === 'pending').length - 1 === 1 ? '' : 's'} still pending.`
+                  : 'Most brands respond within 24 hours.'}
+              </p>
+            </div>
+          )}
+        </div>
+
+        <footer className="v2-upload-modal-foot">
+          {step === 0 ? (
+            <div className="v2-row" style={{ gap: 8 }}>
+              <button className="v2-btn v2-btn-outline" type="button" style={{ flex: 1 }} onClick={onClose}>
+                Cancel
+              </button>
+              <button
+                className="v2-btn v2-btn-primary"
+                type="button"
+                style={{ flex: 2 }}
+                disabled={!file}
+                onClick={() => {
+                  if (file) {
+                    v2SubmitContent(collab.campaignId, collab.creatorId, caption, file.name, deliverableId);
+                  }
+                  setStep(1);
+                }}
+              >
+                Submit for review
+              </button>
+            </div>
+          ) : (
+            <button className="v2-btn v2-btn-primary" type="button" style={{ width: '100%' }} onClick={onClose}>
+              Got it
+            </button>
+          )}
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+function CheckRow({ ok, warn, label }: { ok?: boolean; warn?: boolean; label: string }) {
+  const color = ok ? 'var(--v2-moss)' : warn ? 'var(--v2-gold)' : 'var(--v2-accent)';
+  return (
+    <div className="v2-row" style={{ gap: 8, fontSize: 13 }}>
+      <span style={{ color, display: 'flex', flexShrink: 0 }}>
+        {ok ? Icon.check : '⚠'}
+      </span>
+      <span>{label}</span>
+    </div>
+  );
+}

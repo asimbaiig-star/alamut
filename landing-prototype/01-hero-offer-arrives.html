@@ -1,0 +1,922 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Alamut · Act 1 · The Offer Arrives</title>
+  <!--
+    Phase 33 prototype · Direction B (Cinematic scroll narrative)
+    Single-file HTML demonstrating the hero scene.
+
+    What to look at:
+      - Atmospheric depth: dark background, warm ember light source bottom-right,
+        cold cobalt light source top-left. The two-sided marketplace lit literally.
+      - Typographic confidence: Fraunces at clamp(64px, 9.5vw, 168px), italic.
+      - Notification card sliding in 700ms after first paint — the inciting moment.
+      - Persona toggle morphs the entire palette + the notification's POV.
+      - Drifting particles in canvas — money + attention drifting in the air.
+      - Almost no UI chrome. The page IS the scene.
+
+    What's NOT in this file (will exist in the React build):
+      - Scroll-driven choreography between acts
+      - The reduced-motion fallback path (here: `prefers-reduced-motion` only kills
+        the particle animation; in React it'll cleanly degrade to a static composition)
+      - Persona-toggle audio cue / haptic
+      - Real photography (here: pure typography + atmospherics)
+
+    Open in any modern browser. Press [c] for creator persona, [b] for brand.
+  -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..600;1,9..144,300..600&family=Inter:wght@300;400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    /* ===== TOKENS ===== */
+    :root {
+      /* Persona palette — defaults to "creator" warm ember.
+         JS swaps these on persona change for the cobalt set. */
+      --bg:           oklch(0.10 0.01 50);     /* near-black with warmth */
+      --bg-deep:      oklch(0.06 0.005 50);    /* the void around the scene */
+      --ink:          oklch(0.97 0.005 50);    /* page text */
+      --ink-muted:    oklch(0.74 0.01 50);     /* secondary copy */
+      --ink-quiet:    oklch(0.45 0.01 50);     /* tertiary, footnotes */
+      --accent:       oklch(0.78 0.15 60);     /* warm ember — creator side */
+      --accent-glow:  oklch(0.72 0.20 50);     /* glow halo */
+      --accent-soft:  oklch(0.40 0.10 60);     /* shadow tint */
+      --rule:         oklch(0.20 0.01 50);     /* hairlines */
+
+      --serif: 'Fraunces', Georgia, serif;
+      --sans:  'Inter', -apple-system, system-ui, sans-serif;
+      --mono:  'JetBrains Mono', ui-monospace, monospace;
+    }
+    html[data-persona="brand"] {
+      --bg:           oklch(0.10 0.01 240);    /* near-black with cool */
+      --bg-deep:      oklch(0.06 0.005 240);
+      --ink:          oklch(0.97 0.005 240);
+      --ink-muted:    oklch(0.74 0.01 240);
+      --ink-quiet:    oklch(0.45 0.01 240);
+      --accent:       oklch(0.72 0.14 240);    /* cold cobalt */
+      --accent-glow:  oklch(0.66 0.18 235);
+      --accent-soft:  oklch(0.40 0.10 240);
+      --rule:         oklch(0.20 0.01 240);
+    }
+
+    /* ===== RESET / BASE ===== */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      background: var(--bg-deep);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 16px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      transition: background 1.2s cubic-bezier(0.22, 0.36, 0.24, 1.0);
+    }
+    body { overflow-x: hidden; }
+
+    /* ===== STAGE ===== */
+    .stage {
+      position: relative;
+      min-height: 100vh;
+      isolation: isolate;
+      overflow: hidden;
+    }
+
+    /* Atmospheric light sources — two radial gradients, the "two sides" of the
+       marketplace literally lighting the scene. They breathe (very subtle). */
+    .stage::before,
+    .stage::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      transition: background 1.2s cubic-bezier(0.22, 0.36, 0.24, 1.0);
+    }
+    .stage::before {
+      /* Primary accent light — bottom-right warm ember (creator) or
+         top-left cold cobalt (brand). */
+      background: radial-gradient(
+        ellipse 1100px 800px at 78% 78%,
+        color-mix(in oklab, var(--accent-glow) 32%, transparent) 0%,
+        color-mix(in oklab, var(--accent-glow) 8%, transparent) 35%,
+        transparent 65%
+      );
+      animation: breathe 11s ease-in-out infinite;
+    }
+    .stage::after {
+      /* Secondary atmospheric — opposite corner of the primary so depth reads
+         from BOTH sides. Subtler. */
+      background: radial-gradient(
+        ellipse 700px 500px at 18% 22%,
+        color-mix(in oklab, var(--bg) 30%, oklch(0.30 0.02 240)) 0%,
+        transparent 55%
+      );
+      mix-blend-mode: screen;
+    }
+    html[data-persona="brand"] .stage::before {
+      background: radial-gradient(
+        ellipse 1100px 800px at 18% 22%,
+        color-mix(in oklab, var(--accent-glow) 32%, transparent) 0%,
+        color-mix(in oklab, var(--accent-glow) 8%, transparent) 35%,
+        transparent 65%
+      );
+    }
+    html[data-persona="brand"] .stage::after {
+      background: radial-gradient(
+        ellipse 700px 500px at 78% 78%,
+        color-mix(in oklab, var(--bg) 30%, oklch(0.30 0.02 60)) 0%,
+        transparent 55%
+      );
+    }
+
+    @keyframes breathe {
+      0%, 100% { opacity: 0.9; transform: scale(1); }
+      50%      { opacity: 1.0; transform: scale(1.04); }
+    }
+
+    /* The particle canvas sits behind everything but on top of the gradients. */
+    canvas#particles {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* Film-grain overlay — barely-there noise that kills the "AI gradient" look. */
+    .grain {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 2;
+      opacity: 0.06;
+      mix-blend-mode: overlay;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 240 240' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.92' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.6 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    /* ===== TOPNAV ===== */
+    .topnav {
+      position: relative;
+      z-index: 10;
+      display: grid;
+      grid-template-columns: max-content 1fr max-content;
+      align-items: center;
+      gap: 32px;
+      padding: 28px 48px;
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--ink-quiet);
+    }
+    .topnav-logo {
+      color: var(--ink);
+      letter-spacing: 0.32em;
+      font-weight: 500;
+    }
+    .topnav-meta {
+      text-align: center;
+    }
+    .topnav-meta em {
+      color: var(--accent);
+      font-style: normal;
+    }
+    .topnav-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--ink);
+      text-decoration: none;
+      padding: 8px 14px;
+      border: 1px solid var(--rule);
+      border-radius: 999px;
+      transition: border-color 0.3s, background 0.3s;
+    }
+    .topnav-cta:hover {
+      border-color: var(--accent);
+      background: color-mix(in oklab, var(--accent) 10%, transparent);
+    }
+
+    /* ===== HERO ===== */
+    .hero {
+      position: relative;
+      z-index: 5;
+      padding: 96px 48px 0;
+      max-width: 1480px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 72px;
+    }
+    @media (min-width: 1100px) {
+      .hero {
+        grid-template-columns: 1.4fr 1fr;
+        gap: 64px;
+        align-items: end;
+      }
+    }
+
+    /* Hero copy block */
+    .hero-eyebrow {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 28px;
+      opacity: 0;
+      animation: rise 1.2s 0.2s cubic-bezier(0.22, 0.36, 0.24, 1.0) forwards;
+    }
+    .hero-eyebrow::before {
+      content: "";
+      display: inline-block;
+      width: 28px;
+      height: 1px;
+      background: var(--accent);
+      margin-right: 14px;
+      vertical-align: middle;
+    }
+
+    .hero-h {
+      font-family: var(--serif);
+      font-weight: 300;
+      font-style: italic;
+      font-variation-settings: "opsz" 144;
+      font-size: clamp(56px, 9.5vw, 168px);
+      line-height: 0.92;
+      letter-spacing: -0.035em;
+      color: var(--ink);
+      margin-bottom: 32px;
+    }
+    .hero-h .word {
+      display: inline-block;
+      opacity: 0;
+      transform: translateY(18px);
+      animation: rise 1.4s cubic-bezier(0.22, 0.36, 0.24, 1.0) forwards;
+    }
+    /* Stagger each word's entrance — like words being thought, not displayed. */
+    .hero-h .word:nth-child(1) { animation-delay: 0.30s; }
+    .hero-h .word:nth-child(2) { animation-delay: 0.42s; }
+    .hero-h .word:nth-child(3) { animation-delay: 0.54s; }
+    .hero-h .word:nth-child(4) { animation-delay: 0.66s; }
+    .hero-h .word:nth-child(5) { animation-delay: 0.78s; }
+    .hero-h .word:nth-child(6) { animation-delay: 0.90s; }
+    .hero-h .word:nth-child(7) { animation-delay: 1.02s; }
+    .hero-h .word:nth-child(8) { animation-delay: 1.14s; }
+    .hero-h .accent {
+      color: var(--accent);
+      font-style: italic;
+      position: relative;
+    }
+    /* Subtle underline drawn under the accent word — only after it lands. */
+    .hero-h .accent::after {
+      content: "";
+      position: absolute;
+      left: 0; right: 8%;
+      bottom: 0.06em;
+      height: 1px;
+      background: currentColor;
+      opacity: 0;
+      animation: draw-underline 0.9s 1.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      transform-origin: left center;
+      transform: scaleX(0);
+    }
+
+    .hero-lede {
+      font-family: var(--sans);
+      font-size: clamp(15px, 1.2vw, 18px);
+      line-height: 1.55;
+      color: var(--ink-muted);
+      max-width: 48ch;
+      margin-bottom: 40px;
+      opacity: 0;
+      animation: rise 1.2s 1.4s cubic-bezier(0.22, 0.36, 0.24, 1.0) forwards;
+    }
+
+    /* Hero CTA */
+    .hero-cta {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      opacity: 0;
+      animation: rise 1.2s 1.6s cubic-bezier(0.22, 0.36, 0.24, 1.0) forwards;
+    }
+    .btn {
+      font-family: var(--sans);
+      font-weight: 500;
+      font-size: 14px;
+      letter-spacing: 0.01em;
+      padding: 14px 24px;
+      border-radius: 999px;
+      border: 0;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      transition: transform 0.25s, box-shadow 0.25s, background 0.25s;
+    }
+    .btn-solid {
+      background: var(--ink);
+      color: var(--bg);
+      box-shadow: 0 8px 32px -8px var(--accent-soft);
+    }
+    .btn-solid:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 16px 48px -8px var(--accent-glow);
+    }
+    .btn-ghost {
+      background: transparent;
+      color: var(--ink-muted);
+      padding: 14px 0;
+    }
+    .btn-ghost:hover {
+      color: var(--ink);
+    }
+
+    /* ===== NOTIFICATION (the dramatic moment) ===== */
+    .notif-stage {
+      position: relative;
+      min-height: 460px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding-bottom: 72px;
+    }
+    .notif {
+      position: relative;
+      width: 100%;
+      max-width: 440px;
+      padding: 22px 22px 24px;
+      background: color-mix(in oklab, var(--bg) 92%, var(--ink) 4%);
+      border: 1px solid var(--rule);
+      border-radius: 18px;
+      box-shadow:
+        0 20px 60px -20px color-mix(in oklab, var(--accent) 50%, transparent),
+        0 4px 12px -4px rgba(0,0,0,0.4),
+        inset 0 1px 0 0 color-mix(in oklab, var(--ink) 8%, transparent);
+      transform: translateY(40px);
+      opacity: 0;
+      animation: notif-arrive 1.6s 1.8s cubic-bezier(0.22, 0.6, 0.24, 1.0) forwards;
+    }
+    .notif::before {
+      /* The tell-tale "new notification" glow ring — pulses once, then settles. */
+      content: "";
+      position: absolute;
+      inset: -1px;
+      border-radius: 18px;
+      padding: 1px;
+      background: linear-gradient(
+        135deg,
+        var(--accent) 0%,
+        transparent 40%,
+        transparent 60%,
+        var(--accent) 100%
+      );
+      -webkit-mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor;
+              mask-composite: exclude;
+      opacity: 0;
+      animation: ring-pulse 2.4s 2.0s ease-out forwards;
+    }
+    .notif-head {
+      display: grid;
+      grid-template-columns: 32px 1fr max-content;
+      gap: 12px;
+      align-items: center;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--rule);
+      margin-bottom: 14px;
+    }
+    .notif-mark {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: var(--accent);
+      color: var(--bg);
+      display: grid;
+      place-items: center;
+      font-family: var(--serif);
+      font-size: 18px;
+      font-style: italic;
+      font-weight: 500;
+    }
+    .notif-from {
+      font-size: 13px;
+      color: var(--ink);
+      font-weight: 500;
+    }
+    .notif-from-sub {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--ink-quiet);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+    .notif-time {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--ink-quiet);
+      letter-spacing: 0.1em;
+    }
+    .notif-body {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .notif-line-1 {
+      font-family: var(--serif);
+      font-style: italic;
+      font-size: 22px;
+      line-height: 1.2;
+      color: var(--ink);
+      letter-spacing: -0.005em;
+    }
+    .notif-amount {
+      font-family: var(--serif);
+      font-weight: 400;
+      font-style: normal;
+      font-size: 38px;
+      line-height: 1;
+      color: var(--ink);
+      letter-spacing: -0.025em;
+      margin-top: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+    .notif-amount sup {
+      font-size: 0.5em;
+      vertical-align: top;
+      color: var(--ink-quiet);
+      font-style: italic;
+      margin-left: 8px;
+    }
+    .notif-msg {
+      font-size: 13px;
+      line-height: 1.55;
+      color: var(--ink-muted);
+      margin-top: 10px;
+      padding-top: 14px;
+      border-top: 1px solid var(--rule);
+    }
+    .notif-msg::before {
+      content: "“";
+      font-family: var(--serif);
+      font-style: italic;
+      font-size: 28px;
+      line-height: 0.5;
+      color: var(--accent);
+      margin-right: 4px;
+      vertical-align: -2px;
+    }
+    .notif-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 18px;
+    }
+    .notif-btn {
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-family: var(--sans);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid var(--rule);
+      background: transparent;
+      color: var(--ink);
+      transition: background 0.2s, border-color 0.2s;
+    }
+    .notif-btn:hover { background: color-mix(in oklab, var(--ink) 6%, transparent); }
+    .notif-btn-primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: oklch(0.18 0.01 50);
+    }
+    .notif-btn-primary:hover {
+      background: color-mix(in oklab, var(--accent) 80%, var(--ink));
+    }
+
+    /* Brand-side notification body changes copy. */
+    html[data-persona="brand"] .notif-from-creator { display: none; }
+    html[data-persona="creator"] .notif-from-brand { display: none; }
+
+    /* ===== PERSONA TOGGLE ===== */
+    .persona-toggle {
+      position: fixed;
+      top: 24px;
+      right: 50%;
+      transform: translateX(50%);
+      z-index: 20;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px;
+      background: color-mix(in oklab, var(--bg) 90%, var(--ink) 4%);
+      border: 1px solid var(--rule);
+      border-radius: 999px;
+      backdrop-filter: blur(20px) saturate(140%);
+      -webkit-backdrop-filter: blur(20px) saturate(140%);
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    .persona-toggle button {
+      background: transparent;
+      border: 0;
+      padding: 8px 18px;
+      color: var(--ink-quiet);
+      cursor: pointer;
+      border-radius: 999px;
+      transition: color 0.3s, background 0.3s;
+      font: inherit;
+    }
+    .persona-toggle button.active {
+      background: var(--accent);
+      color: oklch(0.18 0.01 50);
+    }
+
+    /* ===== SCROLL HINT ===== */
+    .scroll-hint {
+      position: absolute;
+      bottom: 36px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 5;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--ink-quiet);
+      opacity: 0;
+      animation: rise 1.2s 3.0s cubic-bezier(0.22, 0.36, 0.24, 1.0) forwards;
+    }
+    .scroll-hint::after {
+      content: "";
+      width: 1px;
+      height: 36px;
+      background: linear-gradient(to bottom, currentColor, transparent);
+      animation: scroll-hint 2.4s 3.6s ease-in-out infinite;
+      transform-origin: top;
+    }
+    @keyframes scroll-hint {
+      0%, 100% { transform: scaleY(1); opacity: 0.4; }
+      50%      { transform: scaleY(1.4); opacity: 1; }
+    }
+
+    /* ===== TEASE — ACT 2 PEEK ===== */
+    .tease {
+      position: relative;
+      z-index: 5;
+      padding: 200px 48px 120px;
+      max-width: 980px;
+      margin: 0 auto;
+      text-align: center;
+    }
+    .tease-num {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.4em;
+      color: var(--ink-quiet);
+      margin-bottom: 28px;
+    }
+    .tease-h {
+      font-family: var(--serif);
+      font-weight: 300;
+      font-style: italic;
+      font-size: clamp(38px, 5vw, 72px);
+      letter-spacing: -0.025em;
+      line-height: 1.05;
+      color: var(--ink);
+      margin-bottom: 24px;
+    }
+    .tease-sub {
+      font-family: var(--sans);
+      font-size: 16px;
+      line-height: 1.55;
+      color: var(--ink-muted);
+      max-width: 60ch;
+      margin: 0 auto;
+    }
+
+    /* ===== ANIMATIONS ===== */
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(14px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes notif-arrive {
+      0%   { opacity: 0; transform: translateY(60px) rotateX(20deg); }
+      55%  { opacity: 1; transform: translateY(-8px) rotateX(-2deg); }
+      100% { opacity: 1; transform: translateY(0) rotateX(0deg); }
+    }
+    @keyframes ring-pulse {
+      0%   { opacity: 0; }
+      30%  { opacity: 1; }
+      100% { opacity: 0.5; }
+    }
+    @keyframes draw-underline {
+      to { transform: scaleX(1); opacity: 0.7; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+      .hero-h .word, .hero-eyebrow, .hero-lede, .hero-cta, .notif, .scroll-hint {
+        opacity: 1 !important;
+        transform: none !important;
+      }
+    }
+
+    /* Mobile: simplify dramatically. The cinematic concept needs different
+       framing on small screens; the React build will have a proper mobile
+       redesign. Here we just make sure it doesn't break. */
+    @media (max-width: 640px) {
+      .topnav { padding: 20px 24px; gap: 16px; }
+      .topnav-meta { display: none; }
+      .hero { padding: 80px 24px 0; gap: 56px; }
+      .hero-h { font-size: clamp(44px, 11vw, 72px); }
+      .notif-stage { min-height: 360px; padding-bottom: 48px; }
+      .notif { max-width: 100%; }
+      .tease { padding: 120px 24px 80px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Persona toggle: keyboard `c` / `b` shortcuts work too -->
+<div class="persona-toggle" role="tablist" aria-label="Choose your view">
+  <button data-persona="creator" class="active" aria-selected="true">Creator</button>
+  <button data-persona="brand" aria-selected="false">Brand</button>
+</div>
+
+<section class="stage">
+  <canvas id="particles" aria-hidden="true"></canvas>
+  <div class="grain" aria-hidden="true"></div>
+
+  <nav class="topnav" aria-label="Primary">
+    <span class="topnav-logo">ALAMUT</span>
+    <span class="topnav-meta">Issue 04 · <em>Spring 2026</em> · Karachi · Lahore · Dubai</span>
+    <a class="topnav-cta" href="#">Sign in →</a>
+  </nav>
+
+  <div class="hero">
+    <div class="hero-copy">
+      <div class="hero-eyebrow">Act i — The offer arrives</div>
+
+      <h1 class="hero-h">
+        <!--
+          Words split for stagger. The accent word ("paid" / "shipped") is
+          coloured with the accent and gently underlined. Persona toggle
+          swaps the visible variant.
+        -->
+        <span class="hero-creator">
+          <span class="word">Get</span>
+          <span class="word accent">paid</span>
+          <span class="word">for</span>
+          <span class="word">your</span>
+          <span class="word">work,</span>
+          <span class="word">without</span>
+          <span class="word">the</span>
+          <span class="word">chase.</span>
+        </span>
+        <span class="hero-brand" hidden>
+          <span class="word">Brief</span>
+          <span class="word">in</span>
+          <span class="word">five.</span>
+          <span class="word">Pay</span>
+          <span class="word">only</span>
+          <span class="word accent">when</span>
+          <span class="word">it</span>
+          <span class="word">works.</span>
+        </span>
+      </h1>
+
+      <p class="hero-lede">
+        <span class="hero-creator">
+          A brand sends an offer. We hold the money the second you accept.
+          You make the work. They release. No DMs. No invoices. No left-on-read.
+        </span>
+        <span class="hero-brand" hidden>
+          Post a brief in five minutes. Real creators apply within the hour.
+          Escrow holds your money until they deliver. Track every result.
+        </span>
+      </p>
+
+      <div class="hero-cta">
+        <button class="btn btn-solid">
+          <span class="hero-creator">Sign up free · 2 minutes</span>
+          <span class="hero-brand" hidden>Start a campaign</span>
+          <span aria-hidden="true">→</span>
+        </button>
+        <a href="#tease" class="btn btn-ghost">
+          See how a deal works <span aria-hidden="true">→</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- The notification card. The dramatic centerpiece. -->
+    <div class="notif-stage">
+      <div class="notif" role="article" aria-label="Incoming offer">
+        <div class="notif-head">
+          <div class="notif-mark">A</div>
+          <div>
+            <div class="notif-from">
+              <span class="notif-from-creator">Aesop · Spring Renewal</span>
+              <span class="notif-from-brand">Sarah Chen · 480k IG · Lahore</span>
+            </div>
+            <div class="notif-from-sub">
+              <span class="notif-from-creator">Beauty · Global · 2m ago</span>
+              <span class="notif-from-brand">Pro · Verified · 4m ago</span>
+            </div>
+          </div>
+          <div class="notif-time">2m</div>
+        </div>
+        <div class="notif-body">
+          <div class="notif-line-1">
+            <span class="notif-from-creator">An offer for you.</span>
+            <span class="notif-from-brand">Application received.</span>
+          </div>
+          <div class="notif-amount">
+            $1,500<sup>USD</sup>
+          </div>
+          <div class="notif-msg">
+            <span class="notif-from-creator">Loved your last 3 reels — minimal palette,
+              soft light. We held the money in escrow already. Yours when you accept.</span>
+            <span class="notif-from-brand">"I make minimal-palette, soft-light beauty
+              content. Three samples below. Available next 14 days."</span>
+          </div>
+          <div class="notif-actions">
+            <button class="notif-btn">
+              <span class="notif-from-creator">Counter</span>
+              <span class="notif-from-brand">Decline</span>
+            </button>
+            <button class="notif-btn notif-btn-primary">
+              <span class="notif-from-creator">Accept · Funds release on delivery</span>
+              <span class="notif-from-brand">Shortlist</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="scroll-hint">scroll · the deal continues</div>
+</section>
+
+<section class="tease" id="tease">
+  <div class="tease-num">— act ii —</div>
+  <h2 class="tease-h">Money lands where it’s safe.</h2>
+  <p class="tease-sub">
+    The instant the offer is accepted, the brand’s funds move from their
+    wallet into a sealed escrow. Visible to both sides, releasable by neither
+    alone. <em>This screen is a tease — the full Act II is the next prototype.</em>
+  </p>
+</section>
+
+<script>
+  /* =====================================================================
+     PARTICLES — subtle drifting motes, atmospheric only. NOT money flow
+     (that's Act 2). Here they're just "the air around the scene."
+     Density tuned for a subtle living feel; ~30-50 particles depending
+     on viewport.
+     ===================================================================== */
+  (function () {
+    const c = document.getElementById('particles');
+    const ctx = c.getContext('2d');
+    let w = 0, h = 0, dpr = 1;
+    let particles = [];
+    let raf = 0;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    function readAccent() {
+      // Read the live accent value from CSS so the canvas tracks the
+      // persona swap without requiring a manual update path.
+      const c = getComputedStyle(document.documentElement)
+        .getPropertyValue('--accent-glow')
+        .trim();
+      return c || 'rgba(255, 200, 130, 0.7)';
+    }
+
+    function resize() {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      w = c.clientWidth;
+      h = c.clientHeight;
+      c.width = w * dpr;
+      c.height = h * dpr;
+      ctx.scale(dpr, dpr);
+    }
+
+    function init() {
+      const count = Math.min(60, Math.floor((w * h) / 28000));
+      particles = [];
+      for (let i = 0; i < count; i++) {
+        particles.push({
+          x: Math.random() * w,
+          y: Math.random() * h,
+          /* Slow drift, mostly upward like dust in light beams. */
+          vx: (Math.random() - 0.5) * 0.18,
+          vy: -Math.random() * 0.32 - 0.05,
+          r: Math.random() * 1.6 + 0.4,
+          a: Math.random() * 0.5 + 0.15,
+          /* Phase offset for a per-particle breath cycle. */
+          ph: Math.random() * Math.PI * 2,
+        });
+      }
+    }
+
+    function tick(t) {
+      ctx.clearRect(0, 0, w, h);
+      const accent = readAccent();
+      for (const p of particles) {
+        p.x += p.vx;
+        p.y += p.vy;
+        // Wrap
+        if (p.y < -10) { p.y = h + 10; p.x = Math.random() * w; }
+        if (p.x < -10) p.x = w + 10;
+        if (p.x > w + 10) p.x = -10;
+
+        const breath = 0.5 + 0.5 * Math.sin(t * 0.0008 + p.ph);
+        const alpha = p.a * (0.5 + 0.5 * breath);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        // CSS color-mix isn't available in canvas, so we use the accent
+        // value with a manual alpha. accent comes from oklch(...) — we
+        // just accept it as-is and rely on globalAlpha.
+        ctx.fillStyle = accent;
+        ctx.globalAlpha = alpha;
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      raf = requestAnimationFrame(tick);
+    }
+
+    function start() {
+      resize();
+      init();
+      if (reduced) {
+        // One static frame, then halt — gives a snapshot of the atmospherics
+        // without continuous motion.
+        const accent = readAccent();
+        for (const p of particles) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+          ctx.fillStyle = accent;
+          ctx.globalAlpha = p.a;
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+        return;
+      }
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(tick);
+    }
+
+    window.addEventListener('resize', () => { resize(); init(); });
+    start();
+  })();
+
+  /* =====================================================================
+     PERSONA TOGGLE — swaps the data-persona attribute on <html> which
+     drives the whole palette via CSS custom-properties cascade. Also
+     swaps the .hero-creator / .hero-brand variants in the headline,
+     lede, CTA, and notification.
+     ===================================================================== */
+  (function () {
+    const buttons = document.querySelectorAll('.persona-toggle button');
+
+    function setPersona(p) {
+      document.documentElement.dataset.persona = p;
+      buttons.forEach((b) => {
+        const on = b.dataset.persona === p;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      document.querySelectorAll('.hero-creator, .hero-brand, .notif-from-creator, .notif-from-brand').forEach((el) => {
+        const isCreator = el.classList.contains('hero-creator') || el.classList.contains('notif-from-creator');
+        el.hidden = (p === 'creator') ? !isCreator : isCreator;
+      });
+    }
+
+    buttons.forEach((b) => b.addEventListener('click', () => setPersona(b.dataset.persona)));
+
+    document.addEventListener('keydown', (e) => {
+      if (e.target.matches('input, textarea')) return;
+      if (e.key === 'c' || e.key === 'C') setPersona('creator');
+      if (e.key === 'b' || e.key === 'B') setPersona('brand');
+    });
+
+    // Default: creator
+    setPersona('creator');
+  })();
+</script>
+
+</body>
+</html>

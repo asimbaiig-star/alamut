@@ -1,0 +1,448 @@
+/* === Workspace shell === */
+.shell {
+  display: grid;
+  grid-template-columns: var(--side-w) 1fr;
+  min-height: 100vh;
+}
+.side {
+  background: var(--tile-surface);
+  border-right: 1px solid var(--tile-border);
+  /* Inset highlight on the right edge gives the sidebar a "raised" feel against
+     the atmospheric canvas without a full shadow box that would visually compete. */
+  box-shadow:
+    inset -1px 0 0 var(--tile-highlight),
+    8px 0 24px -16px color-mix(in oklab, var(--ink) 18%, transparent);
+  padding: 24px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  /* Hide the sidebar's own scrollbar — content fits in viewport in 99% of cases,
+     and when it doesn't the user can still scroll via wheel/trackpad. The page-level
+     scrollbar on the right stays as the only visible one. */
+  scrollbar-width: none;
+}
+.side::-webkit-scrollbar { width: 0; height: 0; display: none; }
+.side-logo { padding: 0 6px 8px; }
+.side-role-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  padding: 3px;
+  gap: 2px;
+}
+.side-role-switch button {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  padding: 7px 8px;
+  border-radius: 3px;
+  color: var(--ink-60);
+  transition: background 0.15s, color 0.15s;
+}
+.side-role-switch button.is-on {
+  background: var(--ink);
+  color: var(--paper);
+}
+.side-section { display: flex; flex-direction: column; gap: 4px; }
+.side-section-h {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-40);
+  padding: 8px 10px 6px;
+}
+.side-nav { display: flex; flex-direction: column; gap: 1px; }
+.side-nav-item {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 9px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  color: var(--ink-80);
+  text-align: left;
+  transition: background 0.12s, color 0.12s;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  width: 100%;
+}
+.side-nav-item:hover { background: color-mix(in oklab, var(--ink) 6%, transparent); color: var(--ink); }
+.side-nav-item.is-on { background: var(--ink); color: var(--paper); }
+.side-nav-icon { display: inline-flex; align-items: center; justify-content: center; }
+.side-nav-badge {
+  font-family: var(--mono);
+  font-size: 10px;
+  background: var(--accent);
+  color: var(--paper);
+  padding: 2px 6px;
+  border-radius: 999px;
+  letter-spacing: 0.04em;
+}
+.side-nav-item.is-on .side-nav-badge { background: var(--paper); color: var(--ink); }
+
+.side-foot {
+  margin-top: auto;
+  display: grid;
+  grid-template-columns: 36px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.side-foot-img {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--ink) 12%, var(--surface));
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--serif); font-size: 16px; color: var(--ink);
+  overflow: hidden;
+}
+.side-foot-img img { width: 100%; height: 100%; object-fit: cover; }
+.side-foot-name { font-size: 13px; font-weight: 500; line-height: 1.2; }
+.side-foot-role {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--ink-60);
+  margin-top: 2px;
+}
+.side-foot-out {
+  /* WCAG 44x44 touch target. Visually still 16px icon, just inside a larger hit area. */
+  min-width: 44px; min-height: 44px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-sm);
+  color: var(--ink-60);
+  transition: background 0.12s, color 0.12s;
+}
+.side-foot-out:hover { background: color-mix(in oklab, var(--ink) 8%, transparent); color: var(--ink); }
+
+.main { padding: 0; min-width: 0; }
+
+/* === Page === */
+.page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 48px 48px 96px;
+}
+
+/* Compact density — global tightening for power-user view */
+body[data-density="compact"] .page                  { padding: 28px 32px 56px; }
+body[data-density="compact"] .page-head             { margin-bottom: 22px; padding-bottom: 16px; }
+body[data-density="compact"] .page-h1               { font-size: clamp(28px, 3.4vw, 38px); margin: 12px 0 8px; }
+body[data-density="compact"] .card-body             { padding: 14px 16px; }
+body[data-density="compact"] .card-h                { padding: 10px 16px; }
+body[data-density="compact"] .kpi-strip > div      { padding: 12px 16px; }
+body[data-density="compact"] .kpi-v                 { font-size: 22px; }
+body[data-density="compact"] .row-list > *         { padding: 10px 16px; gap: 10px; }
+body[data-density="compact"] .tbl th, body[data-density="compact"] .tbl td { padding: 8px 12px; }
+body[data-density="compact"] .dash-grid             { gap: 16px; }
+body[data-density="compact"] .dash-col              { gap: 16px; }
+body[data-density="compact"] .kanban-col            { min-height: 240px; }
+body[data-density="compact"] .kcard                 { padding: 8px 10px; gap: 4px; }
+body[data-density="compact"] .kcard-title           { font-size: 14px; }
+body[data-density="compact"] .applicant-row        { padding: 10px 14px; }
+.page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 32px;
+  margin-bottom: 28px;
+  padding: 22px 26px;
+  background: var(--tile-surface);
+  border: 1px solid var(--tile-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--tile-shadow);
+}
+.page-head-actions { display: flex; gap: 10px; align-items: center; }
+.page-h1 {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(36px, 4vw, 48px);
+  line-height: 1.02;
+  letter-spacing: -0.025em;
+  margin: 16px 0 12px;
+}
+.page-h1 em { font-style: italic; color: var(--accent); }
+.page-lede {
+  font-size: 15px;
+  color: var(--ink-80);
+  max-width: 60ch;
+  margin: 0;
+}
+
+/* Mobile nav toggle (hamburger). Hidden on desktop. */
+.mobile-nav-toggle {
+  display: none;
+  position: fixed;
+  top: 14px;
+  left: 14px;
+  z-index: 60;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  color: var(--ink);
+  cursor: pointer;
+  box-shadow: 0 4px 14px -8px color-mix(in oklab, var(--ink) 30%, transparent);
+}
+.mobile-nav-toggle:hover { background: var(--paper-2); }
+/* Hide the toggle while the sidebar drawer is open (it sits behind the drawer
+   anyway; explicitly hiding prevents focus-trap weirdness on mobile). */
+.shell.is-nav-open .mobile-nav-toggle { display: none; }
+.mobile-nav-backdrop {
+  display: none;
+}
+.side-mobile-close {
+  display: none;
+  min-width: 44px; min-height: 44px;
+  align-items: center; justify-content: center;
+  border-radius: var(--radius-sm);
+  color: var(--ink-60);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.side-mobile-close:hover { background: color-mix(in oklab, var(--ink) 8%, transparent); color: var(--ink); }
+
+@media (max-width: 900px) {
+  /* Single-column shell. Sidebar becomes an off-canvas drawer. */
+  .shell { grid-template-columns: 1fr; }
+  .side {
+    position: fixed;
+    top: 0; left: 0;
+    width: min(86vw, 320px);
+    height: 100dvh;
+    z-index: 80;
+    transform: translateX(-100%);
+    transition: transform 220ms cubic-bezier(.22,.8,.15,1);
+    box-shadow: 8px 0 32px -12px color-mix(in oklab, var(--ink) 40%, transparent);
+    overflow-y: auto;
+  }
+  .shell.is-nav-open .side { transform: translateX(0); }
+  .mobile-nav-toggle { display: inline-flex; }
+  .mobile-nav-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    background: color-mix(in oklab, var(--ink) 50%, transparent);
+    backdrop-filter: blur(2px);
+    animation: fade-in 200ms ease;
+  }
+  .side-mobile-close { display: inline-flex; }
+  /* Top padding clears the fixed mobile-nav-toggle (44px button + 14px top + 16px buffer). */
+  .page { padding: 74px 20px 64px; }
+  .page-head { flex-direction: column; align-items: stretch; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* === Auth screens === */
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+@media (max-width: 900px) { .auth-shell { grid-template-columns: 1fr; } }
+
+.auth-side {
+  padding: 56px 56px 40px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border-right: 1px solid var(--rule);
+}
+.auth-side.is-brand {
+  background: var(--paper-2);
+  border-right: none;
+}
+.auth-side h1 {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(34px, 3.4vw, 46px);
+  line-height: 1.04;
+  letter-spacing: -0.025em;
+  margin: 24px 0 18px;
+}
+.auth-side h1 em { color: var(--accent); }
+.auth-side p { color: var(--ink-80); max-width: 44ch; margin: 0; }
+.auth-bullets { list-style: none; padding: 0; margin: 28px 0 0; display: flex; flex-direction: column; gap: 10px; }
+.auth-bullets li {
+  display: grid;
+  grid-template-columns: 60px 1fr;
+  gap: 18px;
+  font-size: 14px;
+  color: var(--ink-80);
+  padding: 8px 0;
+  border-top: 1px solid var(--rule);
+}
+.auth-bullets-num { font-family: var(--mono); font-size: 10px; letter-spacing: 0.10em; color: var(--ink-40); text-transform: uppercase; padding-top: 2px; }
+.auth-foot { margin-top: 32px; display: flex; justify-content: space-between; align-items: center; }
+.auth-foot-small { font-family: var(--mono); font-size: 10px; letter-spacing: 0.10em; color: var(--ink-60); text-transform: uppercase; }
+.auth-cta-arrow {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.10em;
+  text-transform: uppercase; color: var(--ink); transition: color 0.15s;
+}
+.auth-side:hover .auth-cta-arrow { color: var(--accent); }
+
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 24px 0;
+}
+.auth-tab {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  margin-bottom: 24px;
+}
+.auth-tab button {
+  padding: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-60);
+  border-radius: var(--radius-sm);
+}
+.auth-tab button.is-on { background: var(--ink); color: var(--paper); }
+
+.auth-or {
+  display: flex; align-items: center; gap: 12px;
+  margin: 18px 0;
+  color: var(--ink-40);
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+}
+.auth-or::before, .auth-or::after { content: ""; flex: 1; height: 1px; background: var(--rule); }
+
+.auth-fields { display: flex; flex-direction: column; gap: 14px; }
+
+/* === Cover splash === */
+.cover {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+@media (max-width: 900px) { .cover { grid-template-columns: 1fr; min-height: auto; } }
+
+.cover-side {
+  padding: 64px 56px 48px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: background 0.2s;
+  min-height: 100vh;
+}
+.cover-side.is-brand { background: var(--paper-2); }
+.cover-side:hover { background: color-mix(in oklab, var(--accent) 4%, var(--paper)); }
+.cover-side.is-brand:hover { background: color-mix(in oklab, var(--accent) 4%, var(--paper-2)); }
+.cover-h {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(34px, 3.6vw, 50px);
+  line-height: 1.02;
+  letter-spacing: -0.025em;
+  margin: 0;
+}
+.cover-h em { color: var(--accent); }
+
+/* === Dashboard grids === */
+.dash-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+.dash-col { display: flex; flex-direction: column; gap: 24px; }
+@media (max-width: 1100px) { .dash-grid { grid-template-columns: 1fr; } }
+
+.kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+  border: 1px solid var(--tile-border);
+  border-top: 2px solid var(--ink);
+  background: var(--tile-surface);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--tile-shadow);
+}
+.kpi-strip > div {
+  padding: 18px 22px;
+  border-right: 1px solid var(--rule);
+}
+.kpi-strip > div:last-child { border-right: 0; }
+.kpi-k {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-60);
+  margin-bottom: 10px;
+}
+.kpi-v {
+  font-family: var(--serif);
+  font-size: 30px;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-weight: 500;
+}
+.kpi-v .u { font-size: 14px; color: var(--ink-60); margin-left: 3px; }
+.kpi-d { font-size: 12px; color: var(--ink-60); margin-top: 6px; }
+.kpi-d.up { color: var(--good); }
+.kpi-d.down { color: var(--bad); }
+@media (max-width: 800px) { .kpi-strip { grid-template-columns: 1fr 1fr; } }
+
+/* === Row list (used in dashboards) === */
+.row-list { display: flex; flex-direction: column; padding: 0; }
+.row-list > * {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 14px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--rule);
+  align-items: center;
+  text-align: left;
+}
+.row-list > *:first-child { border-top: 0; }
+.row-list .row-img {
+  width: 44px; height: 44px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: var(--paper-2);
+}
+.row-list .row-title { font-weight: 500; font-size: 14px; }
+.row-list .row-meta { font-size: 12px; color: var(--ink-60); margin-top: 2px; }
+.row-list .row-right { text-align: right; }
+.row-list .row-right-1 { font-family: var(--mono); font-size: 11px; color: var(--ink-80); text-transform: uppercase; letter-spacing: 0.06em; }
+.row-list .row-right-2 { font-size: 12px; color: var(--ink-60); margin-top: 3px; }
+
+/* === Form layouts === */
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 18px;
+}
+.form-grid .full { grid-column: 1 / -1; }
+@media (max-width: 700px) { .form-grid { grid-template-columns: 1fr; } }

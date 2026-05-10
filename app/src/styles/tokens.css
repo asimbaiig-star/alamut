@@ -1,0 +1,206 @@
+/* Design tokens — ported from prototype Alamut Editorial system */
+:root {
+  --paper: oklch(0.985 0.003 250);
+  --paper-2: oklch(0.965 0.004 250);
+  --ink: oklch(0.20 0.012 270);
+  --ink-80: oklch(0.34 0.010 270);
+  --ink-60: oklch(0.50 0.008 270);
+  --ink-40: oklch(0.70 0.006 270);
+  --rule: oklch(0.89 0.005 270);
+  --accent: oklch(0.58 0.12 40);
+  --accent-hover: oklch(0.50 0.13 40);
+  --surface: oklch(1 0 0);
+
+  /* Gem-tone semantic palette — each carries meaning instead of monotone accent.
+     `bg` variants are the soft chip background; the base is the foreground hue. */
+  --good: oklch(0.50 0.14 150);          /* emerald — success / approved / earned */
+  --good-bg: oklch(0.94 0.05 150);
+  --warn: oklch(0.60 0.16 75);           /* amber — pending / in review / waiting */
+  --warn-bg: oklch(0.94 0.07 75);
+  --bad:  oklch(0.55 0.19 25);           /* coral — error / declined / urgent */
+  --bad-bg:  oklch(0.94 0.06 25);
+  --info: oklch(0.55 0.14 240);          /* sky — info / neutral status */
+  --info-bg: oklch(0.94 0.04 240);
+  --premium: oklch(0.50 0.15 320);       /* plum — verified / gold tier / premium */
+  --premium-bg: oklch(0.94 0.06 320);
+
+  --serif: "Fraunces", "Times New Roman", serif;
+  --sans:  "Switzer", "Inter", -apple-system, system-ui, sans-serif;
+  --mono:  "JetBrains Mono", ui-monospace, Menlo, monospace;
+
+  --side-w: 248px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 12px;
+
+  /* === Atmospheric background ===
+     Three soft warm radial blobs over a base canvas. Sits behind every tile.
+     Subtle (~3-5% saturation), minimalist — it's atmosphere, not decoration. */
+  --bg-canvas: oklch(0.97 0.005 60);                 /* warm cream base, not pure white */
+  --bg-mesh-1: oklch(0.93 0.07 60  / 0.55);          /* peach orb top-left */
+  --bg-mesh-2: oklch(0.92 0.08 30  / 0.45);          /* coral orb mid-right */
+  --bg-mesh-3: oklch(0.93 0.06 145 / 0.40);          /* sage orb bottom-left */
+
+  /* === Tile elevation ===
+     Universal tile pattern: opaque surface, hairline border, soft warm shadow,
+     1px inset highlight on the top edge (the "raised paper" cue). */
+  --tile-surface: var(--surface);
+  --tile-border:  color-mix(in oklab, var(--ink) 7%, transparent);
+  --tile-highlight: color-mix(in oklab, white 70%, transparent);
+  --tile-shadow:
+    0 1px 0 var(--tile-highlight) inset,
+    0 1px 2px -1px color-mix(in oklab, var(--ink) 10%, transparent),
+    0 8px 24px -16px color-mix(in oklab, var(--ink) 28%, transparent);
+  --tile-shadow-hover:
+    0 1px 0 var(--tile-highlight) inset,
+    0 2px 4px -1px color-mix(in oklab, var(--ink) 12%, transparent),
+    0 16px 40px -20px color-mix(in oklab, var(--ink) 36%, transparent);
+}
+
+/* Accent variants — toggleable via data-accent on body */
+body[data-accent="terracotta"]  { --accent: oklch(0.58 0.12 40);  --accent-hover: oklch(0.50 0.13 40); }
+body[data-accent="ink"]         { --accent: oklch(0.18 0.01 60);  --accent-hover: oklch(0.30 0.01 60); }
+body[data-accent="olive"]       { --accent: oklch(0.55 0.08 120); --accent-hover: oklch(0.48 0.09 120); }
+body[data-accent="ultramarine"] { --accent: oklch(0.48 0.14 260); --accent-hover: oklch(0.40 0.15 260); }
+body[data-accent="ochre"]       { --accent: oklch(0.70 0.13 80);  --accent-hover: oklch(0.62 0.14 80); }
+
+/* === Dark theme === */
+body[data-theme="dark"] {
+  --paper:   oklch(0.18 0.010 270);
+  --paper-2: oklch(0.22 0.010 270);
+  --ink:     oklch(0.95 0.005 270);
+  --ink-80:  oklch(0.80 0.005 270);
+  --ink-60:  oklch(0.62 0.005 270);
+  --ink-40:  oklch(0.42 0.005 270);
+  --rule:    oklch(0.32 0.010 270);
+  --surface: oklch(0.23 0.010 270);
+
+  --good:    oklch(0.78 0.14 150);
+  --good-bg: oklch(0.30 0.07 150);
+  --warn:    oklch(0.82 0.15 75);
+  --warn-bg: oklch(0.32 0.08 75);
+  --bad:     oklch(0.78 0.17 25);
+  --bad-bg:  oklch(0.32 0.07 25);
+  --info:    oklch(0.78 0.13 240);
+  --info-bg: oklch(0.30 0.06 240);
+  --premium: oklch(0.78 0.14 320);
+  --premium-bg: oklch(0.32 0.07 320);
+
+  /* Dark atmosphere — deep ink with warm undertone, NOT pure black.
+     Mesh blobs tinted darker so they read as ambient depth, not glow. */
+  --bg-canvas: oklch(0.16 0.012 270);
+  --bg-mesh-1: oklch(0.28 0.07 60  / 0.45);
+  --bg-mesh-2: oklch(0.26 0.08 30  / 0.40);
+  --bg-mesh-3: oklch(0.28 0.06 145 / 0.30);
+
+  /* Dark tile — slightly lighter than the canvas so tiles "lift" off it.
+     Inset highlight is more subtle than light mode (paper-on-shadow vs paper-on-paper). */
+  --tile-surface: oklch(0.22 0.010 270);
+  --tile-border:  color-mix(in oklab, white 8%, transparent);
+  --tile-highlight: color-mix(in oklab, white 8%, transparent);
+  --tile-shadow:
+    0 1px 0 var(--tile-highlight) inset,
+    0 1px 2px -1px color-mix(in oklab, black 50%, transparent),
+    0 12px 28px -18px color-mix(in oklab, black 70%, transparent);
+  --tile-shadow-hover:
+    0 1px 0 var(--tile-highlight) inset,
+    0 2px 4px -1px color-mix(in oklab, black 55%, transparent),
+    0 20px 44px -22px color-mix(in oklab, black 75%, transparent);
+}
+
+/* Accent override on dark for terracotta — slightly brighter for legibility on dark surfaces */
+body[data-theme="dark"][data-accent="terracotta"] { --accent: oklch(0.70 0.14 40); --accent-hover: oklch(0.62 0.15 40); }
+body[data-theme="dark"][data-accent="ink"]         { --accent: oklch(0.85 0.005 60); --accent-hover: oklch(0.75 0.005 60); }
+body[data-theme="dark"][data-accent="olive"]       { --accent: oklch(0.72 0.10 120); --accent-hover: oklch(0.65 0.11 120); }
+body[data-theme="dark"][data-accent="ultramarine"] { --accent: oklch(0.68 0.16 260); --accent-hover: oklch(0.60 0.17 260); }
+body[data-theme="dark"][data-accent="ochre"]       { --accent: oklch(0.80 0.14 80); --accent-hover: oklch(0.72 0.15 80); }
+
+/* === Surface-mode tokens (Phase 50) =====================================
+   Two density modes — airy and dense — share all colors and fonts but
+   differ in spacing, type scale, max-widths, and card padding. The
+   default :root values are the DENSE mode (matches every existing
+   dashboard / data-table screen). Apply data-surface="airy" on a page
+   wrapper to opt into the airy pacing without changing the palette.
+
+   Why a separate mode and not a global change: dashboards (Today /
+   Discover / Inbox / Wallet) genuinely need information density;
+   marketing-adjacent surfaces (storefront / auth / onboarding /
+   settings) need calm. Surface mode is set per-route, not per-user. */
+
+:root {
+  /* Spacing scale — dense default. Each step is ~1.5× the previous. */
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+  --space-3xl: 64px;
+
+  /* Width caps — dense pages spread wider; airy narrows for readability. */
+  --max-w-text: 64ch;
+  --max-w-content: 1280px;
+  --max-w-narrow: 720px;
+
+  /* Section + card rhythm */
+  --section-py: 32px;
+  --section-px: 24px;
+  --card-pad: 18px;
+  --card-radius-airy: var(--radius-md);
+
+  /* Type scale — dense favors compact body, airy stretches headlines. */
+  --type-display: clamp(32px, 4vw, 56px);
+  --type-section: clamp(22px, 2vw, 32px);
+  --type-body: 14px;
+  --type-meta: 11px;
+  --line-tight: 1.1;
+  --line-body: 1.55;
+}
+
+[data-surface="airy"] {
+  --space-xs: 12px;
+  --space-sm: 16px;
+  --space-md: 24px;
+  --space-lg: 40px;
+  --space-xl: 64px;
+  --space-2xl: 96px;
+  --space-3xl: 128px;
+
+  --max-w-text: 56ch;
+  --max-w-content: 1100px;
+  --max-w-narrow: 640px;
+
+  --section-py: clamp(72px, 9vw, 128px);
+  --section-px: clamp(22px, 4vw, 48px);
+  --card-pad: clamp(28px, 3vw, 44px);
+  --card-radius-airy: var(--radius-lg);
+
+  --type-display: clamp(40px, 6vw, 88px);
+  --type-section: clamp(28px, 3.4vw, 48px);
+  --type-body: clamp(15px, 1.05vw, 17px);
+  --type-meta: 11px;
+  --line-tight: 1.05;
+  --line-body: 1.65;
+}
+
+/* === Motion tokens (Phase 49) ==========================================
+   Three canonical durations + two canonical easings. Every transition,
+   motion delay, and animate timing should pull from these. Replaces the
+   ad-hoc 0.3s / 0.4s / 0.6s / 0.7s / 0.85s sprawl across the codebase.
+
+   - fast    (140ms): hover, button state, accordion chevron, focus rings
+   - medium  (420ms): section reveals, card lifts, sticky-CTA fade-up
+   - slow    (720ms): hero entrance choreography only
+
+   - ease-out:    cubic-bezier(0.22, 0.36, 0.24, 1) — soft-out, editorial
+                  feel. Use for entrances and arrivals.
+   - ease-state:  cubic-bezier(0.4, 0, 0.2, 1) — Material's standard.
+                  Use for hover / state changes. */
+
+:root {
+  --motion-fast: 140ms;
+  --motion-medium: 420ms;
+  --motion-slow: 720ms;
+  --ease-out: cubic-bezier(0.22, 0.36, 0.24, 1);
+  --ease-state: cubic-bezier(0.4, 0, 0.2, 1);
+}

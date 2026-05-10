@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Alamut — Creator & Brand Workspace</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="alamut/styles.css?v=3" />
+  <link rel="stylesheet" href="alamut/v3/v3.css?v=1" />
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" src="alamut/data.jsx?v=2"></script>
+  <script type="text/babel" src="alamut/shared.jsx?v=2"></script>
+  <script type="text/babel" src="alamut/v3/v3-shared.jsx?v=1"></script>
+  <script type="text/babel" src="alamut/v3/v3-data.jsx?v=1"></script>
+  <script type="text/babel" src="alamut/v3/v3-shell.jsx?v=1"></script>
+  <script type="text/babel" src="alamut/v3/creator-dashboard.jsx?v=1"></script>
+  <script type="text/babel" src="alamut/v3/brand-dashboard.jsx?v=1"></script>
+  <script type="text/babel" src="alamut/v3/screens.jsx?v=1"></script>
+
+  <script type="text/babel">
+    const TWEAKS = /*EDITMODE-BEGIN*/{
+      "accent": "terracotta",
+      "density": "compact",
+      "display": "fraunces"
+    }/*EDITMODE-END*/;
+
+    function App() {
+      const [role, setRole] = React.useState(() => localStorage.getItem('alamut.v3.role') || '');
+      const [screen, setScreen] = React.useState(() => localStorage.getItem('alamut.v3.screen') || 'creator-home');
+      const [tweaks, setTweaks] = React.useState(TWEAKS);
+      const [tweaksOpen, setTweaksOpen] = React.useState(false);
+      const [tweaksAvailable, setTweaksAvailable] = React.useState(false);
+
+      const sessionUser = role === 'creator'
+        ? { name: ROSTER[0].name, handle: ROSTER[0].handle, portrait: ROSTER[0].portrait }
+        : { name: 'Aesop', brand: 'Aesop' };
+
+      // Apply tweaks
+      React.useEffect(() => {
+        document.body.setAttribute('data-accent', tweaks.accent);
+        document.body.setAttribute('data-density', tweaks.density);
+        document.body.setAttribute('data-display', tweaks.display);
+      }, [tweaks]);
+
+      // Persist
+      React.useEffect(() => {
+        if (role) localStorage.setItem('alamut.v3.role', role);
+      }, [role]);
+      React.useEffect(() => { localStorage.setItem('alamut.v3.screen', screen); }, [screen]);
+
+      // Tweaks host protocol — register listener BEFORE announcing availability
+      React.useEffect(() => {
+        const onMsg = (e) => {
+          if (e.data?.type === '__activate_edit_mode') setTweaksOpen(true);
+          else if (e.data?.type === '__deactivate_edit_mode') setTweaksOpen(false);
+        };
+        window.addEventListener('message', onMsg);
+        window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+        setTweaksAvailable(true);
+        return () => window.removeEventListener('message', onMsg);
+      }, []);
+
+      React.useEffect(() => {
+        if (!tweaksAvailable) return;
+        window.parent.postMessage({ type: '__edit_mode_set_keys', edits: tweaks }, '*');
+      }, [tweaks, tweaksAvailable]);
+
+      const onPickRole = (r) => {
+        setRole(r);
+        setScreen(r === 'creator' ? 'creator-home' : 'brand-home');
+      };
+
+      const onSwitchRole = (r) => {
+        setRole(r);
+        // jump to that role's dashboard
+        setScreen(r === 'creator' ? 'creator-home' : 'brand-home');
+        window.scrollTo(0, 0);
+      };
+
+      const onNavigate = (id) => {
+        setScreen(id);
+        window.scrollTo(0, 0);
+      };
+
+      // Cover splash
+      if (!role) {
+        return (
+          <React.Fragment>
+            <div data-screen-label="00 Cover">
+              <V3Cover onPickRole={onPickRole} />
+            </div>
+            <Tweaks open={tweaksOpen} setOpen={setTweaksOpen} state={tweaks} setState={setTweaks} />
+          </React.Fragment>
+        );
+      }
+
+      // Determine which screen to render
+      const renderScreen = () => {
+        switch (screen) {
+          // Creator screens
+          case 'creator-home':      return <CreatorDashboard user={ROSTER[0]} onNav={onNavigate} />;
+          case 'creator-discover':  return <CreatorDiscover onNav={onNavigate} />;
+          case 'creator-campaigns': return <CreatorCampaigns onNav={onNavigate} />;
+          case 'creator-content':   return <CreatorContent onNav={onNavigate} />;
+          case 'creator-inbox':     return <CreatorInbox />;
+          case 'creator-earnings':  return <CreatorEarnings />;
+          case 'creator-analytics': return <CreatorAnalytics />;
+          case 'creator-profile':   return <CreatorProfileEdit />;
+          // Brand screens
+          case 'brand-home':        return <BrandDashboard onNav={onNavigate} />;
+          case 'brand-campaigns':   return <BrandCampaigns onNav={onNavigate} />;
+          case 'brand-discover':    return <BrandDiscover onNav={onNavigate} />;
+          case 'brand-approvals':   return <BrandApprovals onNav={onNavigate} />;
+          case 'brand-inbox':       return <BrandInbox />;
+          case 'brand-wallet':      return <BrandWallet />;
+          case 'brand-analytics':   return <BrandAnalytics />;
+          case 'brand-profile':     return <BrandProfile />;
+          default: return <div className="v3-page"><Label>404</Label></div>;
+        }
+      };
+
+      const screenLabel = (() => {
+        const all = [...CREATOR_NAV, ...BRAND_NAV];
+        const found = all.find(n => n.id === screen);
+        return found ? `${role.toUpperCase()} · ${found.label}` : screen;
+      })();
+
+      return (
+        <React.Fragment>
+          <div className="v3-app" data-screen-label={screenLabel}>
+            <V3Sidebar role={role} setRole={onSwitchRole} screen={screen} onNavigate={onNavigate} sessionUser={sessionUser} />
+            <main className="v3-main">{renderScreen()}</main>
+          </div>
+          <Tweaks open={tweaksOpen} setOpen={setTweaksOpen} state={tweaks} setState={setTweaks} />
+        </React.Fragment>
+      );
+    }
+
+    function Tweaks({ open, setOpen, state, setState }) {
+      if (!open) return null;
+      const set = (k, v) => setState({ ...state, [k]: v });
+      const Chip = ({ k, v, label }) => (
+        <button className={state[k] === v ? 'on' : ''} onClick={() => set(k, v)}>{label}</button>
+      );
+      return (
+        <div className="tweaks">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h4>Tweaks</h4>
+            <button onClick={() => setOpen(false)} style={{ color: 'var(--ink-60)' }}><Icon.x /></button>
+          </div>
+          <div className="tweaks-row">
+            <label>Accent</label>
+            <div className="tweaks-chips">
+              <Chip k="accent" v="terracotta" label="Terracotta" />
+              <Chip k="accent" v="ink" label="Ink" />
+              <Chip k="accent" v="olive" label="Olive" />
+              <Chip k="accent" v="ultramarine" label="Ultramarine" />
+              <Chip k="accent" v="ochre" label="Ochre" />
+            </div>
+          </div>
+          <div className="tweaks-row">
+            <label>Display face</label>
+            <div className="tweaks-chips">
+              <Chip k="display" v="fraunces" label="Fraunces" />
+              <Chip k="display" v="inter" label="Inter" />
+            </div>
+          </div>
+          <div className="tweaks-row">
+            <label>Density</label>
+            <div className="tweaks-chips">
+              <Chip k="density" v="standard" label="Standard" />
+              <Chip k="density" v="compact" label="Compact" />
+            </div>
+          </div>
+          <button
+            onClick={() => { localStorage.removeItem('alamut.v3.role'); location.reload(); }}
+            style={{ fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '0.10em', textTransform: 'uppercase', color: 'var(--ink-60)', textAlign: 'left', padding: '8px 0', borderTop: '1px solid var(--rule)' }}>
+            ← Reset to cover splash
+          </button>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

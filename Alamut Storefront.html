@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Alamut — Storefront &amp; Booking</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #F6F1EA;
+    --surface: #FFFFFF;
+    --ink: #1A1A18;
+    --ink-80: rgba(26, 26, 24, 0.82);
+    --ink-60: rgba(26, 26, 24, 0.6);
+    --ink-40: rgba(26, 26, 24, 0.38);
+    --rule: rgba(26, 26, 24, 0.10);
+    --rule-strong: rgba(26, 26, 24, 0.18);
+    --accent: #C2553B;
+    --accent-soft: #F5E3DC;
+    --ok: #3B7D4F;
+    --ok-soft: #E0EDE2;
+    --sans: 'Inter', system-ui, sans-serif;
+    --serif: 'Fraunces', Georgia, serif;
+    --mono: 'JetBrains Mono', ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--paper); color: var(--ink); font-family: var(--sans); font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  button { font: inherit; color: inherit; border: 0; background: transparent; cursor: pointer; padding: 0; }
+  input, textarea, select { font: inherit; color: inherit; }
+  a { color: inherit; text-decoration: none; }
+
+  /* === Toolbar === */
+  .t-bar { display: flex; gap: 0; border-bottom: 1px solid var(--rule); background: var(--surface); position: sticky; top: 0; z-index: 50; }
+  .t-bar button { padding: 14px 20px; font-size: 13px; font-weight: 500; color: var(--ink-60); border-right: 1px solid var(--rule); transition: all 0.15s; }
+  .t-bar button:hover { color: var(--ink); background: var(--paper); }
+  .t-bar button.is-on { color: var(--ink); background: var(--paper); }
+  .t-bar button.is-on::after { content: ""; display: block; position: relative; height: 2px; background: var(--accent); margin: 14px -20px -14px; }
+  .t-brand { font-family: var(--serif); font-size: 16px; font-weight: 500; padding: 14px 24px; color: var(--ink); letter-spacing: -0.01em; flex: 0 0 auto; border-right: 1px solid var(--rule); }
+  .t-brand em { font-style: italic; font-weight: 400; color: var(--ink-60); font-size: 12px; font-family: var(--sans); margin-left: 8px; }
+  .t-spacer { flex: 1; border-right: 1px solid var(--rule); }
+  .t-right { padding: 8px 16px; display: flex; gap: 8px; align-items: center; }
+
+  .page { min-height: calc(100vh - 50px); }
+
+  /* === STOREFRONT === */
+  .sf { max-width: 1040px; margin: 0 auto; padding: 40px 32px 80px; }
+
+  .sf-head {
+    display: grid; grid-template-columns: 140px 1fr auto; gap: 32px; align-items: start;
+    padding-bottom: 32px; border-bottom: 1px solid var(--rule);
+  }
+  @media (max-width: 700px) { .sf-head { grid-template-columns: 80px 1fr; gap: 20px; } .sf-head-actions { grid-column: 1 / -1; } }
+  .sf-portrait {
+    width: 140px; height: 140px; border-radius: 50%; object-fit: cover;
+    border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--rule);
+  }
+  @media (max-width: 700px) { .sf-portrait { width: 80px; height: 80px; } }
+  .sf-id-name { font-family: var(--serif); font-size: 36px; font-weight: 500; letter-spacing: -0.02em; line-height: 1; margin: 4px 0 8px; }
+  .sf-id-handle { font-family: var(--mono); font-size: 12px; color: var(--ink-60); letter-spacing: 0.02em; }
+  .sf-id-tagline { font-size: 17px; color: var(--ink-80); margin-top: 14px; line-height: 1.5; max-width: 52ch; }
+  .sf-id-meta { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 16px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; color: var(--ink-60); }
+  .sf-id-meta span::before { content: "·"; margin: 0 12px 0 0; color: var(--ink-40); }
+  .sf-id-meta span:first-child::before { display: none; margin: 0; }
+  .sf-id-meta strong { color: var(--ink); font-weight: 500; text-transform: none; letter-spacing: 0; font-family: var(--sans); font-size: 13px; margin-right: 4px; }
+
+  .sf-head-actions { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+  .sf-avail { display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; color: var(--ok); padding: 6px 10px; background: var(--ok-soft); border-radius: 2px; }
+  .sf-avail::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+
+  /* Channel grid */
+  .sf-section-title { font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-60); margin: 40px 0 16px; }
+  .sf-channels { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border: 1px solid var(--rule); background: var(--surface); }
+  @media (max-width: 800px) { .sf-channels { grid-template-columns: repeat(2, 1fr); } }
+  .sf-ch { padding: 20px; border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+  .sf-ch:nth-child(4n), .sf-channels > .sf-ch:last-child { border-right: 0; }
+  @media (max-width: 800px) { .sf-ch:nth-child(4n) { border-right: 1px solid var(--rule); } .sf-ch:nth-child(2n) { border-right: 0; } }
+  .sf-ch-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .sf-ch-ic { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-weight: 600; font-size: 11px; background: var(--paper); border-radius: 4px; }
+  .sf-ch-name { font-size: 13px; font-weight: 500; }
+  .sf-ch-live { margin-left: auto; font-family: var(--mono); font-size: 9px; letter-spacing: 0.1em; color: var(--ok); text-transform: uppercase; display: inline-flex; align-items: center; gap: 4px; }
+  .sf-ch-live::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--ok); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  .sf-ch-v { font-family: var(--serif); font-size: 26px; font-weight: 500; letter-spacing: -0.02em; line-height: 1; }
+  .sf-ch-l { font-family: var(--mono); font-size: 10px; color: var(--ink-60); letter-spacing: 0.08em; text-transform: uppercase; margin-top: 4px; }
+  .sf-ch-eng { font-size: 11px; color: var(--ink-60); margin-top: 10px; font-family: var(--mono); }
+  .sf-ch-eng strong { color: var(--ink); font-weight: 500; }
+
+  /* Products (packages) */
+  .sf-products { display: flex; flex-direction: column; gap: 12px; }
+  .sf-prod {
+    display: grid; grid-template-columns: 64px 1fr auto; gap: 20px; align-items: center;
+    padding: 20px; background: var(--surface); border: 1px solid var(--rule); transition: all 0.15s;
+    cursor: pointer;
+  }
+  .sf-prod:hover { border-color: var(--ink-40); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,0,0,0.04); }
+  .sf-prod-ic {
+    width: 64px; height: 64px; background: var(--paper); border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--serif); font-size: 20px; font-weight: 500; color: var(--ink);
+  }
+  .sf-prod-body { min-width: 0; }
+  .sf-prod-top { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+  .sf-prod-title { font-family: var(--serif); font-size: 19px; font-weight: 500; letter-spacing: -0.01em; }
+  .sf-prod-badge { font-family: var(--mono); font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; padding: 3px 7px; background: var(--paper); color: var(--ink-60); border-radius: 2px; }
+  .sf-prod-badge.is-hot { background: var(--accent-soft); color: var(--accent); }
+  .sf-prod-desc { font-size: 13px; color: var(--ink-60); line-height: 1.5; }
+  .sf-prod-meta { display: flex; gap: 12px; margin-top: 8px; font-family: var(--mono); font-size: 11px; color: var(--ink-60); letter-spacing: 0.05em; }
+  .sf-prod-price { text-align: right; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+  .sf-prod-price-v { font-family: var(--serif); font-size: 24px; font-weight: 500; letter-spacing: -0.02em; }
+  .sf-prod-price-l { font-family: var(--mono); font-size: 10px; color: var(--ink-60); text-transform: uppercase; letter-spacing: 0.08em; }
+
+  .sf-work { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
+  @media (max-width: 700px) { .sf-work { grid-template-columns: repeat(2, 1fr); } }
+  .sf-work div { aspect-ratio: 1; background: var(--surface); overflow: hidden; }
+  .sf-work img { width: 100%; height: 100%; object-fit: cover; filter: saturate(0.95); }
+
+  .sf-clients { display: flex; gap: 8px; flex-wrap: wrap; }
+  .sf-client { padding: 8px 14px; border: 1px solid var(--rule); background: var(--surface); font-family: var(--serif); font-size: 14px; letter-spacing: -0.01em; }
+
+  .sf-test { padding: 24px; background: var(--surface); border: 1px solid var(--rule); border-left: 2px solid var(--accent); }
+  .sf-test-q { font-family: var(--serif); font-size: 18px; line-height: 1.45; font-weight: 400; font-style: italic; color: var(--ink); max-width: 60ch; }
+  .sf-test-a { font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; color: var(--ink-60); margin-top: 16px; text-transform: uppercase; }
+
+  /* Share link bar */
+  .sf-share { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: var(--surface); border: 1px solid var(--rule); border-radius: 2px; margin-top: 24px; }
+  .sf-share-url { font-family: var(--mono); font-size: 12px; color: var(--ink-80); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sf-share-url em { color: var(--accent); font-style: normal; }
+  .sf-share button { font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-60); padding: 4px 8px; border: 1px solid var(--rule); border-radius: 2px; }
+  .sf-share button:hover { border-color: var(--ink); color: var(--ink); }
+
+  /* === BOOKING FLOW === */
+  .bk { max-width: 960px; margin: 0 auto; padding: 32px; }
+  .bk-head { display: flex; align-items: center; justify-content: space-between; padding-bottom: 24px; border-bottom: 1px solid var(--rule); margin-bottom: 40px; flex-wrap: wrap; gap: 16px; }
+  .bk-crumb { font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; color: var(--ink-60); }
+  .bk-crumb em { color: var(--ink); font-style: normal; }
+  .bk-steps { display: flex; gap: 0; background: var(--surface); border: 1px solid var(--rule); border-radius: 2px; overflow: hidden; }
+  .bk-step { padding: 10px 16px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; color: var(--ink-40); border-right: 1px solid var(--rule); display: flex; align-items: center; gap: 8px; }
+  .bk-step:last-child { border-right: 0; }
+  .bk-step-n { width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--ink-40); display: flex; align-items: center; justify-content: center; font-size: 10px; }
+  .bk-step.is-done { color: var(--ink-60); }
+  .bk-step.is-done .bk-step-n { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+  .bk-step.is-current { color: var(--ink); background: var(--paper); }
+  .bk-step.is-current .bk-step-n { background: var(--accent); color: var(--surface); border-color: var(--accent); }
+
+  .bk-grid { display: grid; grid-template-columns: 1fr 340px; gap: 40px; }
+  @media (max-width: 900px) { .bk-grid { grid-template-columns: 1fr; } }
+
+  .bk-stage { background: var(--surface); border: 1px solid var(--rule); padding: 36px; }
+  .bk-stage h2 { font-family: var(--serif); font-size: 32px; font-weight: 500; letter-spacing: -0.02em; margin: 0 0 8px; }
+  .bk-stage h2 em { font-style: italic; font-weight: 400; color: var(--ink-80); }
+  .bk-stage p.lede { font-size: 15px; color: var(--ink-60); margin: 0 0 28px; max-width: 52ch; line-height: 1.55; }
+
+  /* Calendar */
+  .bk-cal { border: 1px solid var(--rule); border-radius: 2px; overflow: hidden; }
+  .bk-cal-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; background: var(--paper); border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: 12px; letter-spacing: 0.05em; color: var(--ink); }
+  .bk-cal-head button { font-family: var(--mono); font-size: 14px; color: var(--ink-60); padding: 0 8px; }
+  .bk-cal-head button:hover { color: var(--ink); }
+  .bk-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
+  .bk-cal-dh { padding: 10px 0; text-align: center; font-family: var(--mono); font-size: 9px; letter-spacing: 0.1em; color: var(--ink-40); text-transform: uppercase; border-bottom: 1px solid var(--rule); }
+  .bk-cal-d { aspect-ratio: 1.1; border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule); display: flex; align-items: center; justify-content: center; font-size: 13px; color: var(--ink-80); cursor: pointer; position: relative; transition: background 0.15s; }
+  .bk-cal-d:nth-child(7n) { border-right: 0; }
+  .bk-cal-d:hover { background: var(--paper); }
+  .bk-cal-d.is-empty { cursor: default; color: var(--ink-40); }
+  .bk-cal-d.is-empty:hover { background: transparent; }
+  .bk-cal-d.has-slot::after { content: ""; position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%); width: 4px; height: 4px; border-radius: 50%; background: var(--ok); }
+  .bk-cal-d.is-sel { background: var(--ink); color: var(--surface); }
+  .bk-cal-d.is-sel::after { background: var(--accent); }
+  .bk-cal-d.is-full { color: var(--ink-40); cursor: not-allowed; text-decoration: line-through; }
+  .bk-cal-d.is-full:hover { background: transparent; }
+
+  .bk-slots { display: flex; flex-direction: column; gap: 8px; margin-top: 24px; }
+  .bk-slot { display: grid; grid-template-columns: auto 1fr auto; gap: 16px; align-items: center; padding: 14px 18px; border: 1px solid var(--rule); cursor: pointer; transition: all 0.15s; background: var(--surface); }
+  .bk-slot:hover { border-color: var(--ink-40); }
+  .bk-slot.is-sel { border-color: var(--accent); background: var(--accent-soft); }
+  .bk-slot-d { font-family: var(--serif); font-size: 17px; font-weight: 500; letter-spacing: -0.01em; }
+  .bk-slot-sub { font-family: var(--mono); font-size: 10px; color: var(--ink-60); letter-spacing: 0.06em; margin-top: 2px; text-transform: uppercase; }
+  .bk-slot-tag { font-family: var(--mono); font-size: 10px; color: var(--ink-60); letter-spacing: 0.06em; text-transform: uppercase; }
+
+  /* Form */
+  .bk-form { display: flex; flex-direction: column; gap: 24px; }
+  .bk-field { display: flex; flex-direction: column; gap: 8px; }
+  .bk-field label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-60); }
+  .bk-field input, .bk-field textarea, .bk-field select {
+    font-family: var(--sans); font-size: 14px; color: var(--ink);
+    background: var(--surface); border: 1px solid var(--rule); border-radius: 2px;
+    padding: 10px 12px; outline: 0; transition: border-color 0.15s;
+  }
+  .bk-field input:focus, .bk-field textarea:focus, .bk-field select:focus { border-color: var(--accent); }
+  .bk-field textarea { resize: vertical; min-height: 100px; line-height: 1.5; }
+
+  /* Summary sidebar */
+  .bk-side { position: sticky; top: 72px; align-self: start; }
+  .bk-sum { background: var(--surface); border: 1px solid var(--rule); padding: 24px; }
+  .bk-sum-who { display: grid; grid-template-columns: 44px 1fr; gap: 12px; align-items: center; padding-bottom: 16px; border-bottom: 1px solid var(--rule); margin-bottom: 16px; }
+  .bk-sum-who img { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; }
+  .bk-sum-who-n { font-family: var(--serif); font-size: 16px; font-weight: 500; letter-spacing: -0.01em; }
+  .bk-sum-who-h { font-family: var(--mono); font-size: 11px; color: var(--ink-60); }
+  .bk-sum-prod { margin-bottom: 20px; }
+  .bk-sum-title { font-family: var(--serif); font-size: 20px; font-weight: 500; letter-spacing: -0.02em; line-height: 1.2; }
+  .bk-sum-sub { font-size: 13px; color: var(--ink-60); margin-top: 4px; line-height: 1.45; }
+  .bk-sum-rows { display: flex; flex-direction: column; gap: 0; margin: 16px 0; border-top: 1px solid var(--rule); }
+  .bk-sum-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--rule); font-size: 13px; }
+  .bk-sum-row span:first-child { color: var(--ink-60); font-family: var(--mono); font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; }
+  .bk-sum-row span:last-child { color: var(--ink); font-weight: 500; text-align: right; }
+  .bk-sum-row.is-total span:first-child { color: var(--ink); font-family: var(--sans); text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 500; }
+  .bk-sum-row.is-total span:last-child { font-family: var(--serif); font-size: 22px; font-weight: 500; letter-spacing: -0.02em; }
+  .bk-sum-note { font-size: 12px; color: var(--ink-60); line-height: 1.5; padding-top: 14px; border-top: 1px solid var(--rule); margin-top: 8px; }
+
+  .bk-actions { display: flex; justify-content: space-between; gap: 12px; margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--rule); }
+
+  /* Buttons */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 18px; height: 40px; border-radius: 2px; font-size: 13px; font-weight: 500; letter-spacing: -0.005em; transition: all 0.15s; cursor: pointer; }
+  .btn-solid { background: var(--ink); color: var(--paper); }
+  .btn-solid:hover { background: var(--accent); }
+  .btn-outline { background: var(--surface); color: var(--ink); border: 1px solid var(--ink); }
+  .btn-outline:hover { background: var(--paper); }
+  .btn-ghost { background: transparent; color: var(--ink-60); }
+  .btn-ghost:hover { color: var(--ink); }
+  .btn-lg { height: 48px; padding: 0 24px; font-size: 14px; }
+  .btn-sm { height: 32px; padding: 0 12px; font-size: 12px; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-block { width: 100%; }
+
+  /* Payment method cards */
+  .bk-pays { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  @media (max-width: 600px) { .bk-pays { grid-template-columns: 1fr; } }
+  .bk-pay { display: flex; flex-direction: column; gap: 6px; padding: 16px; border: 1px solid var(--rule); cursor: pointer; transition: all 0.15s; background: var(--surface); }
+  .bk-pay:hover { border-color: var(--ink-40); }
+  .bk-pay.is-sel { border-color: var(--accent); background: var(--accent-soft); }
+  .bk-pay-ic { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-weight: 600; font-size: 10px; background: var(--paper); border-radius: 4px; margin-bottom: 4px; }
+  .bk-pay.is-sel .bk-pay-ic { background: var(--surface); }
+  .bk-pay-t { font-family: var(--serif); font-size: 16px; font-weight: 500; letter-spacing: -0.01em; }
+  .bk-pay-d { font-family: var(--mono); font-size: 10px; color: var(--ink-60); letter-spacing: 0.05em; text-transform: uppercase; }
+
+  /* Success */
+  .bk-success { text-align: center; padding: 40px 24px; }
+  .bk-success-tick { width: 56px; height: 56px; margin: 0 auto 20px; background: var(--ok-soft); color: var(--ok); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 600; }
+  .bk-success h2 { margin-bottom: 12px; }
+  .bk-success-ref { font-family: var(--mono); font-size: 12px; color: var(--ink-60); letter-spacing: 0.1em; margin: 24px 0; padding: 10px 16px; background: var(--paper); display: inline-block; border-radius: 2px; }
+  .bk-success-next { text-align: left; max-width: 440px; margin: 32px auto 0; }
+  .bk-success-next-h { font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-60); margin-bottom: 12px; }
+  .bk-success-next ol { margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.7; color: var(--ink-80); }
+
+  /* Utility */
+  .icon-sq { width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; font-family: var(--mono); font-weight: 600; font-size: 10px; background: var(--paper); border-radius: 3px; flex-shrink: 0; }
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel">
+const CREATOR = {
+  id: 'ayaan',
+  name: 'Ayaan Patel',
+  handle: 'ayaankitchen',
+  tagline: 'Modern South Asian cooking, at home. Self-taught, slow-paced, never in a rush.',
+  city: 'Karachi',
+  country: 'Pakistan',
+  responseHrs: 4,
+  responseRate: 96,
+  portrait: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=600&h=600&fit=crop',
+  channels: [
+    { kind: 'IG', name: 'Instagram', handle: '@ayaankitchen', followers: '142K', eng: '6.8%', live: true },
+    { kind: 'YT', name: 'YouTube', handle: 'Ayaan Patel', followers: '38.2K', eng: '11.4%', live: true },
+    { kind: 'NL', name: 'Newsletter', handle: 'Table of Two', followers: '18.4K', eng: '62% open', live: true },
+    { kind: 'TT', name: 'TikTok', handle: '@ayaankitchen', followers: '96K', eng: '8.1%', live: false },
+  ],
+  products: [
+    { id: 'reel', title: 'Instagram Reel', desc: 'Dedicated 30–60s recipe Reel, featured on grid. Includes caption, 1 round of revisions, Stories re-share.', price: 1800, turnaround: '10 days', badge: 'Most booked', hot: true, icon: 'IG' },
+    { id: 'yt-integration', title: 'YouTube Integration', desc: '60–90s brand integration inside a full recipe video. Mid-roll placement, scripted with creator, voiceover approval included.', price: 4200, turnaround: '18 days', badge: null, hot: false, icon: 'YT' },
+    { id: 'newsletter', title: 'Newsletter Feature', desc: 'Dedicated section inside the weekly newsletter. 200–300 words, one photo, one link. No shared sends.', price: 900, turnaround: '7 days', badge: null, hot: false, icon: 'NL' },
+    { id: 'bundle', title: 'Reel + Newsletter bundle', desc: 'A Reel on Instagram paired with a feature in the next newsletter. 15% off buying individually.', price: 2300, turnaround: '14 days', badge: 'Bundle', hot: false, icon: '★' },
+  ],
+  work: [
+    'https://images.unsplash.com/photo-1565958011703-44f9829ba187?w=600&h=600&fit=crop',
+    'https://images.unsplash.com/photo-1567337710282-00832b415979?w=600&h=600&fit=crop',
+    'https://images.unsplash.com/photo-1473093295043-cdd812d0e601?w=600&h=600&fit=crop',
+    'https://images.unsplash.com/photo-1542838132-92c53300491e?w=600&h=600&fit=crop',
+  ],
+  clients: ['Habibi Coffee', 'Khaadi', 'Tapal Tea', 'Foodpanda', 'Generation'],
+  testimonial: {
+    q: "Ayaan is the rare creator who actually pushes back on a brief. The Reel we booked outperformed our TVC on a fraction of the budget, and the feedback cycle was the shortest we've had.",
+    a: 'Amna Shah · Brand lead, Habibi Coffee Roasters',
+  },
+};
+
+function ChannelIcon({ kind }) {
+  const map = { IG: '◎', YT: '▶', NL: '✉', TT: '♫' };
+  return <span className="sf-ch-ic">{map[kind] || kind}</span>;
+}
+
+function Storefront({ onBook }) {
+  return (
+    <div className="sf">
+      <div className="sf-head">
+        <img className="sf-portrait" src={CREATOR.portrait} alt={CREATOR.name} />
+        <div>
+          <div style={{fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '0.12em', color: 'var(--ink-60)', textTransform: 'uppercase'}}>alamut.co/{CREATOR.handle}</div>
+          <h1 className="sf-id-name">{CREATOR.name}</h1>
+          <div className="sf-id-tagline">{CREATOR.tagline}</div>
+          <div className="sf-id-meta">
+            <span><strong>{CREATOR.city},</strong> {CREATOR.country}</span>
+            <span>Responds in ~{CREATOR.responseHrs}h</span>
+            <span>{CREATOR.responseRate}% response rate</span>
+          </div>
+        </div>
+        <div className="sf-head-actions">
+          <span className="sf-avail">Available for Q3 briefs</span>
+          <button className="btn btn-outline btn-sm">Share storefront</button>
+        </div>
+      </div>
+
+      <div className="sf-section-title">Channels · live stats</div>
+      <div className="sf-channels">
+        {CREATOR.channels.map((ch) => (
+          <div key={ch.kind} className="sf-ch">
+            <div className="sf-ch-head">
+              <ChannelIcon kind={ch.kind} />
+              <span className="sf-ch-name">{ch.name}</span>
+              {ch.live && <span className="sf-ch-live">Live</span>}
+            </div>
+            <div className="sf-ch-v">{ch.followers}</div>
+            <div className="sf-ch-l">{ch.handle}</div>
+            <div className="sf-ch-eng">Engagement <strong>{ch.eng}</strong></div>
+          </div>
+        ))}
+      </div>
+
+      <div className="sf-section-title">Book a collaboration</div>
+      <div className="sf-products">
+        {CREATOR.products.map((p) => (
+          <div key={p.id} className="sf-prod" onClick={() => onBook(p)}>
+            <div className="sf-prod-ic">{p.icon}</div>
+            <div className="sf-prod-body">
+              <div className="sf-prod-top">
+                <div className="sf-prod-title">{p.title}</div>
+                {p.badge && <span className={'sf-prod-badge' + (p.hot ? ' is-hot' : '')}>{p.badge}</span>}
+              </div>
+              <div className="sf-prod-desc">{p.desc}</div>
+              <div className="sf-prod-meta">
+                <span>Turnaround · {p.turnaround}</span>
+                <span>·</span>
+                <span>1 revision included</span>
+              </div>
+            </div>
+            <div className="sf-prod-price">
+              <div className="sf-prod-price-v">${p.price.toLocaleString()}</div>
+              <div className="sf-prod-price-l">Starting</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="sf-section-title">Recent work</div>
+      <div className="sf-work">
+        {CREATOR.work.map((src, i) => <div key={i}><img src={src} alt="" /></div>)}
+      </div>
+
+      <div className="sf-section-title">Previously booked by</div>
+      <div className="sf-clients">
+        {CREATOR.clients.map((c) => <span key={c} className="sf-client">{c}</span>)}
+      </div>
+
+      <div className="sf-section-title">What brands say</div>
+      <div className="sf-test">
+        <div className="sf-test-q">"{CREATOR.testimonial.q}"</div>
+        <div className="sf-test-a">{CREATOR.testimonial.a}</div>
+      </div>
+
+      <div className="sf-share">
+        <span className="icon-sq">∞</span>
+        <div className="sf-share-url"><em>alamut.co/</em>{CREATOR.handle}</div>
+        <button>Copy</button>
+        <button>Instagram</button>
+        <button>Email signature</button>
+      </div>
+    </div>
+  );
+}
+
+// === Booking Flow ===
+const SLOTS = [
+  { date: 'Thu, Jul 02', time: 'Posts Jul 03–05', tag: 'Open', full: false },
+  { date: 'Mon, Jul 14', time: 'Posts Jul 15–17', tag: 'Open', full: false },
+  { date: 'Thu, Jul 24', time: 'Posts Jul 25–27', tag: '1 left', full: false },
+  { date: 'Mon, Aug 04', time: 'Posts Aug 05–07', tag: 'Full', full: true },
+];
+
+function BookingFlow({ product, onBack, onDone }) {
+  const [step, setStep] = React.useState(0);
+  const [slot, setSlot] = React.useState(null);
+  const [form, setForm] = React.useState({ brand: '', email: '', goal: '', url: '', budget: product.price });
+  const [pay, setPay] = React.useState('card');
+  const fee = Math.round(product.price * 0.05);
+  const total = product.price + fee;
+
+  const steps = ['Slot', 'Brief', 'Pay', 'Done'];
+
+  const canNext = () => {
+    if (step === 0) return !!slot;
+    if (step === 1) return form.brand && form.email && form.goal;
+    if (step === 2) return !!pay;
+    return true;
+  };
+
+  const next = () => {
+    if (step === 2) {
+      setStep(3);
+      return;
+    }
+    setStep(Math.min(3, step + 1));
+  };
+
+  return (
+    <div className="bk">
+      <div className="bk-head">
+        <div className="bk-crumb">
+          <button onClick={onBack} style={{color: 'inherit'}}>← alamut.co/{CREATOR.handle}</button>
+          <span style={{margin: '0 10px'}}>/</span>
+          <em>Book · {product.title}</em>
+        </div>
+        <div className="bk-steps">
+          {steps.map((s, i) => (
+            <div key={s} className={'bk-step' + (i === step ? ' is-current' : '') + (i < step ? ' is-done' : '')}>
+              <span className="bk-step-n">{i < step ? '✓' : (i + 1)}</span>
+              <span>{s}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="bk-grid">
+        <div className="bk-stage">
+          {step === 0 && <SlotPicker slot={slot} setSlot={setSlot} />}
+          {step === 1 && <BriefForm form={form} setForm={setForm} product={product} />}
+          {step === 2 && <PayStep pay={pay} setPay={setPay} total={total} />}
+          {step === 3 && <Success product={product} slot={slot} form={form} />}
+
+          {step < 3 && (
+            <div className="bk-actions">
+              <button className="btn btn-ghost" onClick={() => step === 0 ? onBack() : setStep(step - 1)}>← Back</button>
+              <button className="btn btn-solid btn-lg" disabled={!canNext()} onClick={next}>
+                {step === 2 ? `Pay $${total.toLocaleString()}` : 'Continue →'}
+              </button>
+            </div>
+          )}
+          {step === 3 && (
+            <div className="bk-actions" style={{justifyContent: 'center'}}>
+              <button className="btn btn-outline" onClick={onDone}>View booking in inbox</button>
+              <button className="btn btn-solid" onClick={onBack}>Back to storefront</button>
+            </div>
+          )}
+        </div>
+
+        <aside className="bk-side">
+          <div className="bk-sum">
+            <div className="bk-sum-who">
+              <img src={CREATOR.portrait} alt="" />
+              <div>
+                <div className="bk-sum-who-n">{CREATOR.name}</div>
+                <div className="bk-sum-who-h">@{CREATOR.handle}</div>
+              </div>
+            </div>
+            <div className="bk-sum-prod">
+              <div className="bk-sum-title">{product.title}</div>
+              <div className="bk-sum-sub">{product.desc}</div>
+            </div>
+            <div className="bk-sum-rows">
+              <div className="bk-sum-row"><span>Slot</span><span>{slot ? slot.date : '—'}</span></div>
+              <div className="bk-sum-row"><span>Turnaround</span><span>{product.turnaround}</span></div>
+              <div className="bk-sum-row"><span>Package</span><span>${product.price.toLocaleString()}</span></div>
+              <div className="bk-sum-row"><span>Platform fee · 5%</span><span>${fee.toLocaleString()}</span></div>
+              <div className="bk-sum-row is-total"><span>You pay today</span><span>${total.toLocaleString()}</span></div>
+            </div>
+            <div className="bk-sum-note">
+              Funds are held in escrow and released to <strong style={{color: 'var(--ink)'}}>{CREATOR.name.split(' ')[0]}</strong> 14 days after content goes live. Full refund if the booking is cancelled.
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function Calendar({ onPick }) {
+  // July 2026 calendar with open slots highlighted
+  const [month, setMonth] = React.useState('July 2026');
+  const daysInJuly = 31;
+  const firstDay = 3; // Wed for Jul 1 2026
+  const openDays = [2, 14, 24];
+  const fullDays = [4];
+  const [sel, setSel] = React.useState(null);
+
+  const pick = (d) => {
+    if (fullDays.includes(d)) return;
+    setSel(d);
+    onPick && onPick(d);
+  };
+
+  const cells = [];
+  for (let i = 0; i < firstDay; i++) cells.push(<div key={'e' + i} className="bk-cal-d is-empty"></div>);
+  for (let d = 1; d <= daysInJuly; d++) {
+    const cls = ['bk-cal-d'];
+    if (openDays.includes(d)) cls.push('has-slot');
+    if (fullDays.includes(d)) cls.push('is-full');
+    if (sel === d) cls.push('is-sel');
+    cells.push(<div key={d} className={cls.join(' ')} onClick={() => pick(d)}>{d}</div>);
+  }
+
+  return (
+    <div className="bk-cal">
+      <div className="bk-cal-head">
+        <button>←</button>
+        <span>{month}</span>
+        <button>→</button>
+      </div>
+      <div className="bk-cal-grid">
+        {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((d) => <div key={d} className="bk-cal-dh">{d}</div>)}
+        {cells}
+      </div>
+    </div>
+  );
+}
+
+function SlotPicker({ slot, setSlot }) {
+  return (
+    <>
+      <h2>Pick a <em>slot.</em></h2>
+      <p className="lede">Ayaan posts 2× a week. Green dots mark open posting windows. If nothing fits, submit a request anyway — he often opens extra slots for campaigns he's excited about.</p>
+      <Calendar />
+      <div className="bk-slots">
+        {SLOTS.map((s) => (
+          <div key={s.date} className={'bk-slot' + (slot?.date === s.date ? ' is-sel' : '') + (s.full ? ' is-empty' : '')}
+            onClick={() => !s.full && setSlot(s)}
+            style={s.full ? {opacity: 0.4, cursor: 'not-allowed'} : {}}>
+            <div>
+              <div className="bk-slot-d">{s.date}</div>
+              <div className="bk-slot-sub">{s.time}</div>
+            </div>
+            <div></div>
+            <div className="bk-slot-tag" style={s.tag === 'Full' ? {color: 'var(--ink-40)'} : s.tag === '1 left' ? {color: 'var(--accent)'} : {}}>
+              {s.tag}
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function BriefForm({ form, setForm, product }) {
+  const on = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  return (
+    <>
+      <h2>Tell Ayaan <em>about the work.</em></h2>
+      <p className="lede">He reviews every request personally. A short, specific brief gets a faster yes.</p>
+      <div className="bk-form">
+        <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20}}>
+          <div className="bk-field">
+            <label>Brand or company</label>
+            <input value={form.brand} onChange={on('brand')} placeholder="Habibi Coffee Roasters" />
+          </div>
+          <div className="bk-field">
+            <label>Your email</label>
+            <input value={form.email} onChange={on('email')} placeholder="amna@habibi.co" />
+          </div>
+        </div>
+        <div className="bk-field">
+          <label>What's the campaign about?</label>
+          <textarea value={form.goal} onChange={on('goal')} placeholder="Soft-launching our Eid gift box to a younger Karachi audience. Looking for warm, documentary-style storytelling. No discount codes." />
+        </div>
+        <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20}}>
+          <div className="bk-field">
+            <label>Product / landing URL</label>
+            <input value={form.url} onChange={on('url')} placeholder="habibi.co/eid" />
+          </div>
+          <div className="bk-field">
+            <label>Deliverable</label>
+            <input value={product.title} disabled style={{opacity: 0.7}} />
+          </div>
+        </div>
+        <div className="bk-field">
+          <label>Anything else?</label>
+          <textarea placeholder="Reference aesthetics, do's and don'ts, approval chain, NDA requirements." style={{minHeight: 70}} />
+        </div>
+      </div>
+    </>
+  );
+}
+
+function PayStep({ pay, setPay, total }) {
+  return (
+    <>
+      <h2>Pay to <em>hold the slot.</em></h2>
+      <p className="lede">Funds are held in escrow. We only release them to Ayaan 14 days after content is live. You can cancel any time before content is approved for a full refund.</p>
+      <div className="bk-pays">
+        {[
+          { k: 'card', ic: '▭', t: 'Card', d: 'Visa, Mastercard, Amex' },
+          { k: 'bank', ic: '≡', t: 'Bank transfer', d: 'ACH, SEPA, local' },
+          { k: 'invoice', ic: '§', t: 'Invoice', d: 'Net-30, PO accepted' },
+        ].map((p) => (
+          <div key={p.k} className={'bk-pay' + (pay === p.k ? ' is-sel' : '')} onClick={() => setPay(p.k)}>
+            <div className="bk-pay-ic">{p.ic}</div>
+            <div className="bk-pay-t">{p.t}</div>
+            <div className="bk-pay-d">{p.d}</div>
+          </div>
+        ))}
+      </div>
+      {pay === 'card' && (
+        <div style={{marginTop: 24, display: 'grid', gap: 16}}>
+          <div className="bk-field"><label>Card number</label><input placeholder="1234 1234 1234 1234" /></div>
+          <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16}}>
+            <div className="bk-field"><label>Expiry</label><input placeholder="MM / YY" /></div>
+            <div className="bk-field"><label>CVC</label><input placeholder="123" /></div>
+            <div className="bk-field"><label>ZIP / Postal</label><input placeholder="75500" /></div>
+          </div>
+        </div>
+      )}
+      {pay === 'bank' && <div style={{marginTop: 20, padding: 16, background: 'var(--paper)', fontSize: 13, color: 'var(--ink-60)'}}>Wire instructions are sent to your email after you click "Pay". The booking is confirmed once funds arrive (1–2 business days).</div>}
+      {pay === 'invoice' && <div style={{marginTop: 20, padding: 16, background: 'var(--paper)', fontSize: 13, color: 'var(--ink-60)'}}>Net-30 invoicing is available for verified teams. We'll email an invoice with your PO details; the slot is held for 48h pending approval.</div>}
+    </>
+  );
+}
+
+function Success({ product, slot, form }) {
+  const ref = 'AL-' + Math.floor(100000 + Math.random() * 900000);
+  return (
+    <div className="bk-success">
+      <div className="bk-success-tick">✓</div>
+      <h2>Slot held. <em>You're good.</em></h2>
+      <p className="lede" style={{margin: '0 auto', maxWidth: '44ch'}}>
+        Ayaan has been notified. You'll hear back within {CREATOR.responseHrs} hours — he responds to {CREATOR.responseRate}% of briefs.
+      </p>
+      <div className="bk-success-ref">REF · {ref}</div>
+      <div className="bk-success-next">
+        <div className="bk-success-next-h">What happens next</div>
+        <ol>
+          <li>Ayaan reviews your brief and either accepts, counter-proposes, or declines.</li>
+          <li>Once accepted, you share creative assets and approve the outline.</li>
+          <li>Content goes live on <strong>{slot?.date}</strong>. You get a performance report 7 days after.</li>
+          <li>Payment releases to Ayaan 14 days post-publish.</li>
+        </ol>
+      </div>
+    </div>
+  );
+}
+
+// === App shell with view switcher ===
+function App() {
+  const [view, setView] = React.useState(() => localStorage.getItem('alamut-sf.view') || 'storefront');
+  const [booking, setBooking] = React.useState(null);
+
+  React.useEffect(() => { localStorage.setItem('alamut-sf.view', view); }, [view]);
+
+  const startBooking = (product) => {
+    setBooking(product);
+    setView('booking');
+    window.scrollTo(0, 0);
+  };
+
+  return (
+    <>
+      <div className="t-bar">
+        <div className="t-brand">Alamut <em>· storefront &amp; booking</em></div>
+        <button className={view === 'storefront' ? 'is-on' : ''} onClick={() => { setView('storefront'); setBooking(null); }}>Storefront</button>
+        <button className={view === 'booking' ? 'is-on' : ''} onClick={() => booking ? setView('booking') : startBooking(CREATOR.products[0])}>Booking flow</button>
+        <div className="t-spacer"></div>
+        <div className="t-right">
+          <a className="btn btn-ghost btn-sm" href="Alamut Roster Redesign.html">← All screens</a>
+        </div>
+      </div>
+
+      {view === 'storefront' && (
+        <div className="page" data-screen-label="10 Creator Storefront">
+          <Storefront onBook={startBooking} />
+        </div>
+      )}
+      {view === 'booking' && booking && (
+        <div className="page" data-screen-label={`11 Booking \u2013 ${booking.title}`}>
+          <BookingFlow product={booking} onBack={() => { setView('storefront'); setBooking(null); }} onDone={() => { setView('storefront'); setBooking(null); }} />
+        </div>
+      )}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('app')).render(<App />);
+</script>
+
+</body>
+</html>

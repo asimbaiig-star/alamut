@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Alamut — Roster</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="alamut/styles.css?v=3" />
+  <link rel="stylesheet" href="alamut/marketplace.css?v=1" />
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" src="alamut/data.jsx?v=2"></script>
+  <script type="text/babel" src="alamut/campaigns-data.jsx?v=2"></script>
+  <script type="text/babel" src="alamut/shared.jsx?v=2"></script>
+  <script type="text/babel" src="alamut/shortlist.jsx?v=2"></script>
+  <script type="text/babel" src="alamut/brief.jsx?v=2"></script>
+  <script type="text/babel" src="alamut/apply.jsx?v=2"></script>
+  <script type="text/babel" src="alamut/dashboard.jsx?v=2"></script>
+  <script type="text/babel" src="alamut/studio.jsx?v=2"></script>
+  <script type="text/babel" src="alamut/campaigns.jsx?v=2"></script>
+  <script type="text/babel" src="alamut/landing.jsx?v=3"></script>
+  <script type="text/babel" src="alamut/roster.jsx?v=3"></script>
+  <script type="text/babel" src="alamut/profile.jsx?v=2"></script>
+  <script type="text/babel" src="alamut/marketplace.jsx?v=1"></script>
+
+  <script type="text/babel">
+    const TWEAKS = /*EDITMODE-BEGIN*/{
+      "accent": "terracotta",
+      "density": "compact",
+      "display": "fraunces"
+    }/*EDITMODE-END*/;
+
+    function Tweaks({ open, setOpen, state, setState }) {
+      if (!open) return null;
+      const set = (k, v) => setState({ ...state, [k]: v });
+      const Chip = ({ k, v, label }) => (
+        <button className={state[k] === v ? 'on' : ''} onClick={() => set(k, v)}>{label}</button>
+      );
+      return (
+        <div className="tweaks" data-screen-label="tweaks">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h4>Tweaks</h4>
+            <button onClick={() => setOpen(false)} style={{ color: 'var(--ink-60)' }}><Icon.x /></button>
+          </div>
+          <div className="tweaks-row">
+            <label>Accent</label>
+            <div className="tweaks-chips">
+              <Chip k="accent" v="terracotta" label="Terracotta" />
+              <Chip k="accent" v="ink" label="Ink" />
+              <Chip k="accent" v="olive" label="Olive" />
+              <Chip k="accent" v="ultramarine" label="Ultramarine" />
+              <Chip k="accent" v="ochre" label="Ochre" />
+            </div>
+          </div>
+          <div className="tweaks-row">
+            <label>Display face</label>
+            <div className="tweaks-chips">
+              <Chip k="display" v="fraunces" label="Fraunces (serif)" />
+              <Chip k="display" v="inter" label="Inter (sans)" />
+            </div>
+          </div>
+          <div className="tweaks-row">
+            <label>Card density</label>
+            <div className="tweaks-chips">
+              <Chip k="density" v="standard" label="Standard" />
+              <Chip k="density" v="compact" label="Compact" />
+            </div>
+          </div>
+          <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-60)', letterSpacing: '0.1em' }}>
+            Toggle with · in the corner
+          </div>
+        </div>
+      );
+    }
+
+    function App() {
+      const [screen, setScreen] = React.useState(() => localStorage.getItem('alamut.screen') || 'landing');
+      const [creator, setCreator] = React.useState(() => {
+        const id = localStorage.getItem('alamut.creator');
+        return id ? ROSTER.find((r) => r.id === id) || null : null;
+      });
+      const [campaign, setCampaign] = React.useState(null);
+      const [tweaksOpen, setTweaksOpen] = React.useState(false);
+      const [tweaks, setTweaks] = React.useState(TWEAKS);
+      const [tweaksAvailable, setTweaksAvailable] = React.useState(false);
+
+      // Apply tweaks to body
+      React.useEffect(() => {
+        document.body.setAttribute('data-accent', tweaks.accent);
+        document.body.setAttribute('data-density', tweaks.density);
+        document.body.setAttribute('data-display', tweaks.display);
+      }, [tweaks]);
+
+      // Persist screen/creator
+      React.useEffect(() => { localStorage.setItem('alamut.screen', screen); }, [screen]);
+      React.useEffect(() => {
+        if (creator) localStorage.setItem('alamut.creator', creator.id);
+        else localStorage.removeItem('alamut.creator');
+      }, [creator]);
+
+      // Tweaks host protocol
+      React.useEffect(() => {
+        const onMsg = (e) => {
+          if (e.data?.type === '__activate_edit_mode') setTweaksOpen(true);
+          else if (e.data?.type === '__deactivate_edit_mode') setTweaksOpen(false);
+        };
+        window.addEventListener('message', onMsg);
+        window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+        setTweaksAvailable(true);
+        return () => window.removeEventListener('message', onMsg);
+      }, []);
+
+      // Persist tweaks
+      React.useEffect(() => {
+        if (!tweaksAvailable) return;
+        window.parent.postMessage({ type: '__edit_mode_set_keys', edits: tweaks }, '*');
+      }, [tweaks, tweaksAvailable]);
+
+      const openCreator = (c) => {
+        setCreator(c);
+        setScreen('profile');
+        window.scrollTo(0, 0);
+      };
+      const backToRoster = () => {
+        setCreator(null);
+        setScreen('roster');
+        window.scrollTo(0, 0);
+      };
+
+      return (
+        <React.Fragment>
+          <Topbar screen={screen === 'profile' ? 'roster' : screen} onNavigate={(id) => { setScreen(id); setCreator(null); }} />
+          {screen === 'landing' && (
+            <div data-screen-label="01 Landing">
+              <LandingScreen onOpenRoster={() => setScreen('roster')} onOpenCreator={openCreator} onOpenApply={() => setScreen('apply')} />
+            </div>
+          )}
+          {screen === 'roster' && (
+            <div data-screen-label="02 Talent">
+              <RosterScreen onOpenCreator={openCreator} />
+            </div>
+          )}
+          {screen === 'profile' && creator && (
+            <div data-screen-label={`03 Profile – ${creator.name}`}>
+              <ProfileScreen creator={creator} onBack={backToRoster} onOpenCreator={(c) => { setCreator(c); window.scrollTo(0, 0); }} />
+            </div>
+          )}
+          {screen === 'brief' && (
+            <div data-screen-label="04 Brief">
+              <BriefScreen onHome={() => setScreen('landing')} onOpenRoster={() => setScreen('roster')} />
+            </div>
+          )}
+          {screen === 'apply' && (
+            <div data-screen-label="05 Apply">
+              <ApplyScreen onHome={() => setScreen('landing')} onDash={() => setScreen('dashboard')} />
+            </div>
+          )}
+          {screen === 'dashboard' && (
+            <div data-screen-label="06 Creator Dashboard">
+              <CreatorDashboard onHome={() => setScreen('landing')} onRoster={() => setScreen('roster')} />
+            </div>
+          )}
+          {screen === 'campaigns' && !campaign && (
+            <div data-screen-label="07 Campaigns">
+              <CampaignsScreen
+                onOpenCampaign={(c) => { setCampaign(c); setScreen('campaign'); }}
+                onOpenBrief={() => setScreen('brief')}
+              />
+            </div>
+          )}
+          {screen === 'campaign' && campaign && (
+            <div data-screen-label={`08 Campaign – ${campaign.title}`}>
+              <CampaignDetail
+                campaign={campaign}
+                onBack={() => { setCampaign(null); setScreen('campaigns'); }}
+                onOpenCreator={openCreator}
+              />
+            </div>
+          )}
+          {screen === 'studio' && (
+            <div data-screen-label="09 Studio">
+              <StudioScreen />
+            </div>
+          )}
+          {screen === 'discover' && !campaign && (
+            <div data-screen-label="10 Discover · Live Campaigns">
+              <DiscoverScreen onOpenCampaign={(c) => { setCampaign(c); setScreen('discover-detail'); }} />
+            </div>
+          )}
+          {screen === 'discover-detail' && campaign && (
+            <div data-screen-label={`11 Apply · ${campaign.title}`}>
+              <CampaignDetailDiscover campaign={campaign} onBack={() => { setCampaign(null); setScreen('discover'); }} />
+            </div>
+          )}
+          {screen === 'storefront' && (
+            <div data-screen-label="12 Storefront Editor">
+              <StorefrontEditor onBack={() => setScreen('landing')} />
+            </div>
+          )}
+          {screen === 'inbox' && (
+            <div data-screen-label="13 Inbox · Deal Pipeline">
+              <InboxScreen />
+            </div>
+          )}
+          {screen === 'wallet' && (
+            <div data-screen-label="14 Wallet · Brand Payments">
+              <WalletScreen />
+            </div>
+          )}
+          {screen === 'ai-match' && (
+            <div data-screen-label="15 AI Match Concierge">
+              <AIMatchScreen onClose={() => setScreen('landing')} />
+            </div>
+          )}
+          {screen === 'live-stats' && (
+            <div data-screen-label="16 Live Stats Connections">
+              <LiveStatsScreen onBack={() => setScreen('storefront')} />
+            </div>
+          )}
+          {(screen === 'journal') && (
+            <div style={{ maxWidth: 1440, margin: '0 auto', padding: '96px 48px' }} data-screen-label={screen}>
+              <Label num={screen.toUpperCase()}>Coming next</Label>
+              <h1 className="a-display" style={{ marginTop: 28 }}>
+                This section is <em>not part</em><br />of the current redesign.
+              </h1>
+              <p className="a-lede" style={{ marginTop: 24 }}>
+                The Journal — Alamut's editorial — is next on our roadmap.
+                Think long-form creator interviews, campaign post-mortems, and the occasional opinion piece.
+              </p>
+              <div style={{ marginTop: 32 }}>
+                <Btn variant="ghost" onClick={() => setScreen('landing')} icon={<Icon.arrow s={14} />}>Back to home</Btn>
+              </div>
+            </div>
+          )}
+          <Tweaks open={tweaksOpen} setOpen={setTweaksOpen} state={tweaks} setState={setTweaks} />
+          <ShortlistDrawer
+            onOpenBrief={() => { setScreen('brief'); window.scrollTo(0, 0); }}
+            onOpenCreator={openCreator}
+          />
+        </React.Fragment>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(
+      <ShortlistProvider><App /></ShortlistProvider>
+    );
+  </script>
+</body>
+</html>

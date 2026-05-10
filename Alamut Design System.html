@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Alamut — Design System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="alamut/styles.css?v=2" />
+<style>
+  /* Design-system doc — editorial, uses the same tokens as the product */
+  body { background: var(--paper); color: var(--ink); font-family: var(--sans); }
+  .ds { max-width: 1280px; margin: 0 auto; padding: 72px 48px 160px; }
+  @media (max-width: 800px) { .ds { padding: 48px 24px 120px; } }
+  .ds-hero { padding-bottom: 56px; border-bottom: 1px solid var(--rule); margin-bottom: 72px; }
+  .ds-hero h1 { font-family: var(--serif); font-weight: 400; font-size: clamp(52px, 7vw, 96px); line-height: 0.98; letter-spacing: -0.035em; margin: 24px 0; text-wrap: balance; }
+  .ds-hero h1 em { font-style: italic; font-weight: 300; }
+  .ds-hero-meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; margin-top: 48px; }
+  @media (max-width: 700px) { .ds-hero-meta { grid-template-columns: repeat(2, 1fr); } }
+  .ds-hero-meta div { font-family: var(--mono); font-size: 11px; letter-spacing: 0.10em; text-transform: uppercase; color: var(--ink-60); line-height: 1.6; }
+  .ds-hero-meta strong { display: block; font-family: var(--serif); font-size: 22px; font-weight: 500; letter-spacing: -0.01em; text-transform: none; color: var(--ink); margin-bottom: 4px; }
+
+  .ds-section { margin-bottom: 96px; }
+  .ds-section-head { display: grid; grid-template-columns: 160px 1fr; gap: 48px; margin-bottom: 40px; }
+  @media (max-width: 700px) { .ds-section-head { grid-template-columns: 1fr; gap: 16px; } }
+  .ds-section-head h2 { font-family: var(--serif); font-weight: 400; font-size: clamp(32px, 4vw, 48px); letter-spacing: -0.025em; line-height: 1; margin: 0; }
+  .ds-section-head h2 em { font-style: italic; font-weight: 300; }
+  .ds-section-head p { font-size: 16px; line-height: 1.6; color: var(--ink-80); max-width: 56ch; margin: 16px 0 0; text-wrap: pretty; }
+
+  /* Type scale */
+  .ds-type { display: flex; flex-direction: column; gap: 0; }
+  .ds-type-row { display: grid; grid-template-columns: 120px 1fr; gap: 32px; align-items: baseline; padding: 32px 0; border-bottom: 1px solid var(--rule); }
+  @media (max-width: 700px) { .ds-type-row { grid-template-columns: 1fr; gap: 12px; } }
+  .ds-type-meta { font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-60); line-height: 1.6; }
+  .ds-type-meta span { display: block; color: var(--ink); font-size: 12px; margin-bottom: 6px; }
+
+  /* Colors */
+  .ds-colors { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; border-top: 1px solid var(--rule); border-left: 1px solid var(--rule); }
+  @media (max-width: 900px) { .ds-colors { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 500px) { .ds-colors { grid-template-columns: repeat(2, 1fr); } }
+  .ds-swatch { border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule); aspect-ratio: 1; padding: 16px; display: flex; flex-direction: column; justify-content: space-between; position: relative; }
+  .ds-swatch-name { font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 500; }
+  .ds-swatch-hex { font-family: var(--mono); font-size: 10px; letter-spacing: 0.05em; opacity: 0.8; }
+  .ds-swatch.light { color: var(--ink); }
+  .ds-swatch.dark { color: var(--paper); }
+
+  /* Spacing */
+  .ds-space { display: flex; flex-direction: column; gap: 0; }
+  .ds-space-row { display: grid; grid-template-columns: 80px 80px 1fr; gap: 24px; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--rule); }
+  .ds-space-name { font-family: var(--mono); font-size: 11px; letter-spacing: 0.10em; text-transform: uppercase; color: var(--ink); }
+  .ds-space-val { font-family: var(--mono); font-size: 11px; color: var(--ink-60); }
+  .ds-space-viz { height: 12px; background: var(--ink); }
+
+  /* Components */
+  .ds-comp { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; }
+  @media (max-width: 800px) { .ds-comp { grid-template-columns: 1fr; } }
+  .ds-comp-card { padding: 40px; border: 1px solid var(--rule); display: flex; flex-direction: column; gap: 24px; }
+  .ds-comp-label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-60); }
+  .ds-comp-demo { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; padding: 32px 0; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+  .ds-comp-note { font-size: 14px; color: var(--ink-80); line-height: 1.6; }
+
+  /* Principles */
+  .ds-princ { display: grid; grid-template-columns: repeat(2, 1fr); gap: 32px; }
+  @media (max-width: 700px) { .ds-princ { grid-template-columns: 1fr; } }
+  .ds-princ-card { padding: 32px; border: 1px solid var(--rule); }
+  .ds-princ-num { font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; color: var(--ink-60); }
+  .ds-princ-t { font-family: var(--serif); font-weight: 400; font-size: 28px; letter-spacing: -0.02em; line-height: 1.1; margin: 16px 0 12px; text-wrap: balance; }
+  .ds-princ-t em { font-style: italic; }
+  .ds-princ-d { font-size: 15px; line-height: 1.6; color: var(--ink-80); text-wrap: pretty; }
+
+  .ds-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+  .ds-back { font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-60); }
+  .ds-back:hover { color: var(--ink); }
+</style>
+</head>
+<body data-display="fraunces">
+
+<main class="ds">
+  <div class="ds-top">
+    <a href="Alamut Roster Redesign.html" class="ds-back">← Back to product</a>
+    <span class="ds-back">Design System · v1.0 · Spring 2026</span>
+  </div>
+
+  <header class="ds-hero">
+    <div style="font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-60);">
+      Alamut · Design System
+    </div>
+    <h1>A system for <em>a small agency</em><br />doing careful work.</h1>
+    <p style="font-size: 18px; line-height: 1.6; color: var(--ink-80); max-width: 60ch; text-wrap: pretty;">
+      Alamut represents storytellers. The product should feel the same way — editorial, unhurried, confident in white space.
+      This is the system the redesign is built on.
+    </p>
+    <div class="ds-hero-meta">
+      <div><strong>1 family</strong>Fraunces, serif display</div>
+      <div><strong>1 mono</strong>JetBrains, for metadata</div>
+      <div><strong>6 colors</strong>neutral scale + 1 accent</div>
+      <div><strong>9 components</strong>fully scoped, reusable</div>
+    </div>
+  </header>
+
+  <!-- PRINCIPLES -->
+  <section class="ds-section">
+    <div class="ds-section-head">
+      <div style="font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-60);">Nº 01 / Principles</div>
+      <div>
+        <h2>Four rules we<br /><em>don't break.</em></h2>
+        <p>Every component, every screen, every decision sits inside these four constraints.</p>
+      </div>
+    </div>
+    <div class="ds-princ">
+      <div class="ds-princ-card">
+        <div class="ds-princ-num">Nº 01</div>
+        <div class="ds-princ-t">Editorial <em>over</em> dashboard.</div>
+        <div class="ds-princ-d">When in doubt, lay the screen out like a magazine page. Wide white space. One idea per section. Serif for weight, mono for the label.</div>
+      </div>
+      <div class="ds-princ-card">
+        <div class="ds-princ-num">Nº 02</div>
+        <div class="ds-princ-t">A creator is <em>a person,</em> not a metric.</div>
+        <div class="ds-princ-d">Portraits come before numbers. Names come before follower counts. The reach figure is the last thing on the card, not the first.</div>
+      </div>
+      <div class="ds-princ-card">
+        <div class="ds-princ-num">Nº 03</div>
+        <div class="ds-princ-t">Color is <em>earned,</em> not decorative.</div>
+        <div class="ds-princ-d">One accent (terracotta), used sparingly to mark calls-to-action, current state, and results. Everything else is ink on paper.</div>
+      </div>
+      <div class="ds-princ-card">
+        <div class="ds-princ-num">Nº 04</div>
+        <div class="ds-princ-t">No filler. <em>Ever.</em></div>
+        <div class="ds-princ-d">If a section feels empty, that's a design problem to solve with layout — not by inventing content. One thousand no's for every yes.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TYPE -->
+  <section class="ds-section">
+    <div class="ds-section-head">
+      <div style="font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-60);">Nº 02 / Typography</div>
+      <div>
+        <h2>Fraunces &amp;<br /><em>JetBrains Mono.</em></h2>
+        <p>One display family for warmth, one mono for structure. No secondary sans — keep the system tight.</p>
+      </div>
+    </div>
+    <div class="ds-type">
+      <div class="ds-type-row">
+        <div class="ds-type-meta"><span>Display / XL</span>96px · Fraunces 400<br />-0.035em · 0.98 leading</div>
+        <div style="font-family: var(--serif); font-weight: 400; font-size: 72px; letter-spacing: -0.035em; line-height: 1;">Storytellers, <em style="font-style: italic; font-weight: 300;">represented.</em></div>
+      </div>
+      <div class="ds-type-row">
+        <div class="ds-type-meta"><span>Display / L</span>48px · Fraunces 400<br />-0.025em · 1.0 leading</div>
+        <div style="font-family: var(--serif); font-weight: 400; font-size: 44px; letter-spacing: -0.025em; line-height: 1;">Our creators are <em style="font-style: italic;">cooks.</em></div>
+      </div>
+      <div class="ds-type-row">
+        <div class="ds-type-meta"><span>Heading / M</span>28px · Fraunces 500<br />-0.02em · 1.15 leading</div>
+        <div style="font-family: var(--serif); font-weight: 500; font-size: 28px; letter-spacing: -0.02em;">On this campaign</div>
+      </div>
+      <div class="ds-type-row">
+        <div class="ds-type-meta"><span>Body / Lede</span>20px · sans 400<br />1.55 leading · pretty</div>
+        <div style="font-size: 20px; line-height: 1.55; text-wrap: pretty; max-width: 52ch;">Alamut represents twelve creators across six disciplines. Each partnership is negotiated end-to-end by our team.</div>
+      </div>
+      <div class="ds-type-row">
+        <div class="ds-type-meta"><span>Body / Default</span>15px · sans 400<br />1.6 leading</div>
+        <div style="font-size: 15px; line-height: 1.6; max-width: 56ch;">Brands work with one point of contact. Creators keep 85% of campaign value. No commission on sponsorship renewals after the first year.</div>
+      </div>
+      <div class="ds-type-row">
+        <div class="ds-type-meta"><span>Label / Mono</span>10px · JetBrains 500<br />0.14em tracking · UPPERCASE</div>
+        <div style="font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;">Nº 03 / Roster — Spring 2026</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- COLOR -->
+  <section class="ds-section">
+    <div class="ds-section-head">
+      <div style="font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-60);">Nº 03 / Color</div>
+      <div>
+        <h2>Ink on paper,<br /><em>terracotta on top.</em></h2>
+        <p>Neutrals do the heavy lifting. The accent is a warm terracotta — visible, but never shouting.</p>
+      </div>
+    </div>
+    <div class="ds-colors">
+      <div class="ds-swatch light" style="background: #F6F1EA;"><div class="ds-swatch-name">Paper</div><div class="ds-swatch-hex">#F6F1EA</div></div>
+      <div class="ds-swatch light" style="background: #EDE5D9;"><div class="ds-swatch-name">Paper Deep</div><div class="ds-swatch-hex">#EDE5D9</div></div>
+      <div class="ds-swatch light" style="background: #D9CDB8;"><div class="ds-swatch-name">Rule</div><div class="ds-swatch-hex">#D9CDB8</div></div>
+      <div class="ds-swatch dark" style="background: #2B2A27;"><div class="ds-swatch-name">Ink</div><div class="ds-swatch-hex">#2B2A27</div></div>
+      <div class="ds-swatch dark" style="background: #C2553B;"><div class="ds-swatch-name">Accent</div><div class="ds-swatch-hex">#C2553B</div></div>
+    </div>
+    <div style="margin-top: 32px; font-size: 14px; line-height: 1.6; color: var(--ink-80); max-width: 56ch;">
+      <strong style="font-family: var(--serif); font-size: 17px; display: block; margin-bottom: 8px;">Where accent is allowed.</strong>
+      Primary buttons · active nav link · current-state indicators · result numbers on campaign detail · validation success. Never: borders, backgrounds, text blocks.
+    </div>
+  </section>
+
+  <!-- SPACING -->
+  <section class="ds-section">
+    <div class="ds-section-head">
+      <div style="font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-60);">Nº 04 / Spacing</div>
+      <div>
+        <h2>A 4-point grid<br /><em>and nothing else.</em></h2>
+        <p>Every margin, gap, and padding value is a multiple of 4. It keeps the rhythm quiet.</p>
+      </div>
+    </div>
+    <div class="ds-space">
+      <div class="ds-space-row"><div class="ds-space-name">S · 8</div><div class="ds-space-val">0.5rem</div><div class="ds-space-viz" style="width: 8px;"></div></div>
+      <div class="ds-space-row"><div class="ds-space-name">M · 16</div><div class="ds-space-val">1rem</div><div class="ds-space-viz" style="width: 16px;"></div></div>
+      <div class="ds-space-row"><div class="ds-space-name">L · 24</div><div class="ds-space-val">1.5rem</div><div class="ds-space-viz" style="width: 24px;"></div></div>
+      <div class="ds-space-row"><div class="ds-space-name">XL · 32</div><div class="ds-space-val">2rem</div><div class="ds-space-viz" style="width: 32px;"></div></div>
+      <div class="ds-space-row"><div class="ds-space-name">2XL · 48</div><div class="ds-space-val">3rem</div><div class="ds-space-viz" style="width: 48px;"></div></div>
+      <div class="ds-space-row"><div class="ds-space-name">3XL · 72</div><div class="ds-space-val">4.5rem</div><div class="ds-space-viz" style="width: 72px;"></div></div>
+      <div class="ds-space-row"><div class="ds-space-name">4XL · 96</div><div class="ds-space-val">6rem</div><div class="ds-space-viz" style="width: 96px;"></div></div>
+    </div>
+  </section>
+
+  <!-- COMPONENTS -->
+  <section class="ds-section">
+    <div class="ds-section-head">
+      <div style="font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-60);">Nº 05 / Components</div>
+      <div>
+        <h2>Nine components,<br /><em>no variants.</em></h2>
+        <p>Every component earns its place. Variants are features — added only when the UI needs a meaningful distinction.</p>
+      </div>
+    </div>
+    <div class="ds-comp">
+      <div class="ds-comp-card">
+        <div class="ds-comp-label">Button / three variants</div>
+        <div class="ds-comp-demo">
+          <button class="a-btn a-btn-solid a-btn-md">Open a campaign</button>
+          <button class="a-btn a-btn-outline a-btn-md">Request intro</button>
+          <button class="a-btn a-btn-ghost a-btn-md">View brief</button>
+        </div>
+        <div class="ds-comp-note">Solid — primary action. Outline — secondary. Ghost — tertiary / inline.</div>
+      </div>
+      <div class="ds-comp-card">
+        <div class="ds-comp-label">Label / numbered caption</div>
+        <div class="ds-comp-demo" style="flex-direction: column; align-items: flex-start; gap: 16px;">
+          <div class="a-label"><span class="a-label-num">Nº 02 / TALENT</span><span>Represented creators, Spring 2026</span></div>
+          <div class="a-label"><span>Available for Q3 briefs</span></div>
+        </div>
+        <div class="ds-comp-note">Mono, uppercase, 10–11px. Used as section eyebrows throughout.</div>
+      </div>
+      <div class="ds-comp-card">
+        <div class="ds-comp-label">KPI / numeric display</div>
+        <div class="ds-comp-demo" style="gap: 32px;">
+          <div class="a-kpi"><div class="a-kpi-value">2.4M</div><div class="a-kpi-label">Reach</div></div>
+          <div class="a-kpi"><div class="a-kpi-value">7.2<span class="a-kpi-unit">%</span></div><div class="a-kpi-label">Engagement</div></div>
+          <div class="a-kpi"><div class="a-kpi-value">85<span class="a-kpi-unit">%</span></div><div class="a-kpi-label">Creator take</div></div>
+        </div>
+        <div class="ds-comp-note">Serif number, mono caption. Accent color reserved for results pages only.</div>
+      </div>
+      <div class="ds-comp-card">
+        <div class="ds-comp-label">Pill / metadata</div>
+        <div class="ds-comp-demo">
+          <span class="a-pill">Food</span>
+          <span class="a-pill">Lahore</span>
+          <span class="a-pill">Available Q3</span>
+          <span class="a-pill a-pill-muted">3 Reels · 2 feed</span>
+        </div>
+        <div class="ds-comp-note">Low-contrast, rectangular. Never rounded — we don't do pills-as-pills.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- VOICE -->
+  <section class="ds-section">
+    <div class="ds-section-head">
+      <div style="font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-60);">Nº 06 / Voice</div>
+      <div>
+        <h2>Write like<br /><em>a thoughtful friend.</em></h2>
+        <p>Sentences have subjects. Numbers are written out when they're small. Em-dashes are allowed — sparingly.</p>
+      </div>
+    </div>
+    <div class="ds-princ">
+      <div class="ds-princ-card">
+        <div class="ds-princ-num">Do</div>
+        <div class="ds-princ-t">"Alamut represents <em>twelve</em> creators."</div>
+        <div class="ds-princ-d">Human numbers. Clear subject. No hedging.</div>
+      </div>
+      <div class="ds-princ-card" style="opacity: 0.6;">
+        <div class="ds-princ-num">Don't</div>
+        <div class="ds-princ-t">"We work with <em>12+</em> top-tier creators to drive ROI."</div>
+        <div class="ds-princ-d">Vague quantifier. Agency cliché. Metric-first framing.</div>
+      </div>
+    </div>
+  </section>
+
+  <footer style="border-top: 1px solid var(--rule); padding-top: 48px; margin-top: 96px; display: flex; justify-content: space-between; font-family: var(--mono); font-size: 11px; letter-spacing: 0.10em; text-transform: uppercase; color: var(--ink-60);">
+    <span>Alamut · Design System</span>
+    <span>Maintained by the design team · v1.0</span>
+  </footer>
+</main>
+
+</body>
+</html>

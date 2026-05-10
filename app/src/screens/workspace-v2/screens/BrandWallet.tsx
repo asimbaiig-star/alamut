@@ -1,0 +1,353 @@
+// BrandWallet.tsx — v2 brand-side wallet
+//
+// Mirrors the Claude Design handoff (Wallet in brand-comms.jsx):
+// hero balance card (gradient ink→accent), ledger table, payment-
+// methods sidebar, this-month rollup, top-up modal.
+
+import { useState } from 'react';
+import { fmtUSD, fmtUSDfull, Icon, Topbar } from '../lib';
+import { useV2BrandWallet, useV2CurrentBrand } from '../v2Hooks';
+import { pushToast } from '@/lib/utils/toast';
+import { useCapability } from '@/lib/permissions';
+
+interface Props {
+  onRoute: (r: string) => void;
+}
+
+export function BrandWallet({ onRoute }: Props) {
+  const [showTopup, setShowTopup] = useState(false);
+  const W = useV2BrandWallet();
+  const brand = useV2CurrentBrand();
+  // P5 gating — admin + finance hold `wallet.topup`. Ops + viewer see
+  // the buttons but can't activate them. The button stays visible so
+  // the user knows top-up exists; the disabled state + tooltip explains
+  // why their role can't run it.
+  const canTopup = useCapability('wallet.topup');
+  void onRoute;
+
+  return (
+    <>
+      <Topbar
+        title="Wallet"
+        crumb={`${brand?.name ?? 'Brand'} · USD account`}
+        actions={
+          <>
+            <button
+              className="v2-btn v2-btn-outline"
+              type="button"
+              onClick={() => {
+                pushToast('Statement export will be available next release · use browser print for now', 'default');
+                window.print();
+              }}
+            >
+              Download statement
+            </button>
+            <button
+              className="v2-btn v2-btn-accent"
+              type="button"
+              onClick={() => setShowTopup(true)}
+              disabled={!canTopup}
+              title={!canTopup ? 'Top-up requires admin or finance role' : undefined}
+            >
+              {Icon.plus}<span>{canTopup ? 'Top up' : 'Admin/finance only'}</span>
+            </button>
+          </>
+        }
+      />
+      <div className="v2-content">
+        {/* Hero balance card */}
+        <div className="v2-wallet-hero">
+          <div className="v2-wallet-hero-glow" aria-hidden="true" />
+          <div className="v2-eyebrow" style={{ color: 'rgba(251,247,238,0.6)', marginBottom: 12 }}>
+            Available balance
+          </div>
+          <div className="v2-wallet-hero-amount v2-tabular">
+            {fmtUSDfull(W.available)}
+          </div>
+          <div className="v2-row v2-wallet-hero-stats">
+            <div>
+              <div className="v2-wallet-hero-stat-label">In escrow</div>
+              <div className="v2-wallet-hero-stat-value v2-tabular">{fmtUSD(W.reserved)}</div>
+            </div>
+            <div>
+              <div className="v2-wallet-hero-stat-label">In flight</div>
+              <div className="v2-wallet-hero-stat-value v2-tabular">{fmtUSD(W.inFlight)}</div>
+            </div>
+            <span className="v2-spacer" />
+            <button
+              className="v2-btn"
+              type="button"
+              style={{ background: 'var(--v2-paper)', color: 'var(--v2-ink)' }}
+              onClick={() => setShowTopup(true)}
+              disabled={!canTopup}
+              title={!canTopup ? 'Top-up requires admin or finance role' : undefined}
+            >
+              {Icon.plus}<span>{canTopup ? 'Top up wallet' : 'Admin/finance only'}</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="v2-wallet-grid">
+          {/* Ledger */}
+          <div className="v2-card" style={{ overflow: 'hidden' }}>
+            <div
+              className="v2-card-pad"
+              style={{ borderBottom: '1px solid var(--v2-line)' }}
+            >
+              <div className="v2-row" style={{ justifyContent: 'space-between' }}>
+                <h3 className="v2-section-title" style={{ fontSize: 22, margin: 0 }}>
+                  Recent activity
+                </h3>
+                <button
+                  className="v2-btn v2-btn-sm v2-btn-ghost"
+                  type="button"
+                  onClick={() => pushToast('Type filter coming soon — for now, scroll the full ledger', 'default')}
+                >
+                  {Icon.filter} All types
+                </button>
+              </div>
+            </div>
+            <table className="v2-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Description</th>
+                  <th>Status</th>
+                  <th style={{ textAlign: 'right' }}>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {W.ledger.map((l, i) => {
+                  const isPositive = l.amount > 0;
+                  const dotColor = isPositive
+                    ? 'var(--v2-moss)'
+                    : l.type === 'tax'
+                      ? 'var(--v2-gold)'
+                      : l.type === 'fee'
+                        ? 'var(--v2-ink-3)'
+                        : 'var(--v2-accent)';
+                  return (
+                    <tr key={i}>
+                      <td className="v2-muted" style={{ fontSize: 12.5 }}>{l.date}</td>
+                      <td>
+                        <div className="v2-row" style={{ gap: 8 }}>
+                          <span style={{
+                            width: 4, height: 4, borderRadius: 2,
+                            background: dotColor,
+                          }} />
+                          <span style={{ fontSize: 13.5 }}>{l.desc}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <span className="v2-muted" style={{ fontSize: 12 }}>{l.status}</span>
+                      </td>
+                      <td
+                        className="v2-tabular"
+                        style={{
+                          textAlign: 'right',
+                          fontWeight: 550,
+                          color: isPositive ? 'var(--v2-moss)' : 'var(--v2-ink)',
+                        }}
+                      >
+                        {isPositive ? '+' : ''}{fmtUSD(l.amount).replace('$', '$')}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Sidebar */}
+          <div>
+            <div className="v2-card v2-card-pad" style={{ marginBottom: 16 }}>
+              <div className="v2-eyebrow" style={{ marginBottom: 12 }}>Top-up methods</div>
+              <PaymentMethod name="Wire transfer" sub="Chase ••• 4291" color="#1B3D88" />
+              <PaymentMethod name="ACH" sub="Bank ••• 8830" color="#00B14F" />
+              <PaymentMethod name="JazzCash" sub="0345 ••• 4291" color="#F7941D" />
+              <PaymentMethod name="Card on file" sub="Visa ending 4242" color="#635BFF" last />
+            </div>
+
+            <div className="v2-card v2-card-pad">
+              <div className="v2-eyebrow" style={{ marginBottom: 8 }}>This month</div>
+              <SidebarRow label="Top-ups" value={fmtUSD(23_000)} />
+              <SidebarRow label="Released to creators" value={fmtUSD(8_400)} />
+              <SidebarRow label="Platform fees" value={fmtUSD(890)} muted />
+              <SidebarRow label="Withholding tax" value={fmtUSD(445)} muted />
+              <hr style={{ height: 1, background: 'var(--v2-line)', margin: '14px 0', border: 'none' }} />
+              <button
+                className="v2-btn v2-btn-outline"
+                type="button"
+                style={{ width: '100%', justifyContent: 'center' }}
+                onClick={() => pushToast('Tax report export coming soon · all data is in the ledger above', 'default')}
+              >
+                Download tax report
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {showTopup && <TopupModal onClose={() => setShowTopup(false)} />}
+    </>
+  );
+}
+
+function SidebarRow({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
+  return (
+    <div className="v2-row" style={{ justifyContent: 'space-between', marginBottom: 4, fontSize: 13 }}>
+      <span className={muted ? 'v2-muted' : ''}>{label}</span>
+      <span className={`v2-tabular ${muted ? 'v2-muted' : ''}`}>{value}</span>
+    </div>
+  );
+}
+
+function PaymentMethod({ name, sub, color, last }: {
+  name: string; sub: string; color: string; last?: boolean;
+}) {
+  return (
+    <div
+      className="v2-row"
+      style={{
+        padding: '8px 0',
+        borderBottom: last ? 'none' : '1px solid var(--v2-line)',
+        gap: 10,
+      }}
+    >
+      <div
+        style={{
+          width: 32, height: 32, borderRadius: 8,
+          background: color, color: 'white',
+          display: 'grid', placeItems: 'center',
+          fontWeight: 700, fontSize: 11,
+        }}
+      >{name.slice(0, 2).toUpperCase()}</div>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 13, fontWeight: 550 }}>{name}</div>
+        <div className="v2-muted" style={{ fontSize: 11 }}>{sub}</div>
+      </div>
+    </div>
+  );
+}
+
+function TopupModal({ onClose }: { onClose: () => void }) {
+  const [method, setMethod] = useState('wire');
+  const [amount, setAmount] = useState(5000);
+  // Modal opens through gated entry buttons in the parent, so the
+  // submit gate is mostly defense-in-depth (e.g. role changes mid-
+  // session). Same `wallet.topup` capability for consistency.
+  const canTopup = useCapability('wallet.topup');
+
+  return (
+    <div className="v2-modal-overlay" onClick={onClose}>
+      <div
+        className="v2-card v2-card-pad-lg v2-modal"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 style={{
+          fontFamily: 'var(--v2-font-display)',
+          fontSize: 26,
+          fontWeight: 500,
+          margin: '0 0 16px',
+          letterSpacing: '-0.02em',
+          color: 'var(--v2-ink)',
+        }}>Top up wallet</h2>
+
+        <label className="v2-eyebrow" style={{ display: 'block', marginBottom: 6 }}>
+          Amount
+        </label>
+        <div style={{ position: 'relative', marginBottom: 16 }}>
+          <span style={{
+            position: 'absolute',
+            left: 14,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            color: 'var(--v2-ink-3)',
+          }}>$</span>
+          <input
+            type="number"
+            value={amount}
+            onChange={(e) => setAmount(parseInt(e.target.value || '0'))}
+            className="v2-input"
+            style={{
+              paddingLeft: 28,
+              fontSize: 22,
+              fontWeight: 500,
+              padding: '14px 14px 14px 28px',
+            }}
+          />
+        </div>
+        <div className="v2-row" style={{ gap: 6, marginBottom: 20, flexWrap: 'wrap' }}>
+          {[1000, 5000, 10000, 25000].map((n) => (
+            <button
+              key={n}
+              type="button"
+              className="v2-btn v2-btn-sm v2-btn-outline"
+              onClick={() => setAmount(n)}
+            >+ {fmtUSD(n)}</button>
+          ))}
+        </div>
+
+        <label className="v2-eyebrow" style={{ display: 'block', marginBottom: 6 }}>
+          Pay with
+        </label>
+        <div className="v2-col" style={{ gap: 8, marginBottom: 20 }}>
+          {[
+            ['wire',     'Wire transfer',   'T+1 settlement · 0% fee',     '#1B3D88'],
+            ['ach',      'ACH (US bank)',   '2–3 business days · 0% fee',  '#00B14F'],
+            ['jazzcash', 'JazzCash',        'Instant · 0% fee · PK',       '#F7941D'],
+            ['card',     'Debit / Credit',  'Instant · 1.5% fee',          '#635BFF'],
+          ].map(([id, label, sub, color]) => {
+            const isOn = method === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setMethod(id as string)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: '12px 14px',
+                  border: `1px solid ${isOn ? 'var(--v2-ink)' : 'var(--v2-line)'}`,
+                  borderRadius: 'var(--v2-r-md)',
+                  background: isOn ? 'var(--v2-bg-2)' : 'var(--v2-paper)',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  fontFamily: 'inherit',
+                }}
+              >
+                <div style={{
+                  width: 32, height: 32, borderRadius: 8,
+                  background: color as string, color: 'white',
+                  display: 'grid', placeItems: 'center',
+                  fontWeight: 700, fontSize: 11,
+                }}>{(label as string).slice(0, 2).toUpperCase()}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600 }}>{label}</div>
+                  <div className="v2-muted" style={{ fontSize: 11.5 }}>{sub}</div>
+                </div>
+                {isOn && (
+                  <span style={{ color: 'var(--v2-ink)', display: 'flex' }}>{Icon.check}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="v2-row" style={{ justifyContent: 'flex-end', gap: 8 }}>
+          <button className="v2-btn v2-btn-ghost" type="button" onClick={onClose}>Cancel</button>
+          <button
+            className="v2-btn v2-btn-primary"
+            type="button"
+            onClick={onClose}
+            disabled={!canTopup}
+            title={!canTopup ? 'Top-up requires admin or finance role' : undefined}
+          >
+            {canTopup ? `Top up ${fmtUSDfull(amount)}` : 'Admin/finance only'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

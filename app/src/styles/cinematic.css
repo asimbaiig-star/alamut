@@ -1,0 +1,3387 @@
+/* =====================================================================
+   Phase 34 · Cinematic landing palette + scene system
+   -----------------------------------------------------------------------
+   Direction B (cinematic scroll narrative). Dark background with
+   atmospheric two-sided lighting that morphs between creator (warm
+   ember bottom-right) and brand (cool cobalt top-left) personas.
+
+   The palette is driven by `[data-persona="creator|brand"]` on the
+   root cinematic wrapper. CSS custom-property cascade does the rest —
+   any descendant referring to `var(--bg)` / `var(--accent)` /
+   `var(--accent-glow)` etc. tracks the swap automatically with a long
+   ease so the transition reads as deliberate, not jarring.
+
+   This file ONLY contains tokens + scene primitives. Per-act content
+   styling lives alongside each Act component.
+   ===================================================================== */
+
+/* ===== Palette tokens ===== */
+
+.cinematic {
+  /* Default = creator (warm ember). */
+  --cn-bg:           oklch(0.10 0.01 50);
+  --cn-bg-deep:      oklch(0.06 0.005 50);
+  --cn-ink:          oklch(0.97 0.005 50);
+  --cn-ink-muted:    oklch(0.74 0.01 50);
+  /* Phase 42 contrast bump: ink-quiet lifted from 0.45 → 0.62 so
+     small mono-meta labels (eyebrows, captions, scene numbers)
+     comfortably pass WCAG AA against the dark backdrop. */
+  --cn-ink-quiet:    oklch(0.62 0.01 50);
+  /* Phase 42 contrast bump: ink-faint lifted from 0.30 → 0.50 — the
+     old value was failing AA for all caption-sized text. */
+  --cn-ink-faint:    oklch(0.50 0.01 50);
+  --cn-rule:         oklch(0.22 0.01 50);
+  --cn-rule-strong:  oklch(0.40 0.01 50);
+
+  --cn-accent:       oklch(0.78 0.15 60);
+  --cn-accent-soft:  oklch(0.40 0.10 60);
+  --cn-accent-glow:  oklch(0.72 0.20 50);
+
+  /* Two-sided palette — used to tint specific nodes regardless of
+     which persona is currently active. Money particles use these. */
+  --cn-brand-tint:    oklch(0.72 0.14 240);
+  --cn-creator-tint:  oklch(0.78 0.15 60);
+  --cn-escrow-tint:   oklch(0.78 0.06 80);
+
+  --cn-serif: 'Fraunces', Georgia, serif;
+  --cn-sans:  'Inter', -apple-system, system-ui, sans-serif;
+  --cn-mono:  'JetBrains Mono', ui-monospace, monospace;
+
+  /* Editorial easing — the slow-start, settle curve we used in Phase 32.
+     Reads as "considered" rather than "snappy". */
+  --cn-ease: cubic-bezier(0.22, 0.36, 0.24, 1.0);
+
+  /* Long palette transition — explicitly slow so persona swap is
+     felt, not glitched-past. */
+  transition:
+    background-color 1.2s var(--cn-ease),
+    color 1.2s var(--cn-ease);
+}
+
+.cinematic[data-persona="brand"] {
+  --cn-bg:           oklch(0.10 0.01 240);
+  --cn-bg-deep:      oklch(0.06 0.005 240);
+  --cn-ink:          oklch(0.97 0.005 240);
+  --cn-ink-muted:    oklch(0.74 0.01 240);
+  /* Phase 42 contrast bump — match creator-side lifts. */
+  --cn-ink-quiet:    oklch(0.62 0.01 240);
+  --cn-ink-faint:    oklch(0.50 0.01 240);
+  --cn-rule:         oklch(0.22 0.01 240);
+  --cn-rule-strong:  oklch(0.40 0.01 240);
+
+  --cn-accent:       oklch(0.72 0.14 240);
+  --cn-accent-soft:  oklch(0.40 0.10 240);
+  --cn-accent-glow:  oklch(0.66 0.18 235);
+}
+
+/* ===== Cinematic root ===== */
+
+.cinematic {
+  position: relative;
+  background: var(--cn-bg-deep);
+  color: var(--cn-ink);
+  font-family: var(--cn-sans);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  overflow-x: clip;
+  /* The whole landing scrolls under the persona toggle + top nav, which
+     stay fixed via their own positioning. */
+}
+.cinematic * { box-sizing: border-box; }
+/* Phase 35d fix: scope `color: inherit` to non-button anchors so the
+   solid CTA's intentional color (var(--cn-bg)) wins. Without the
+   :not(.cn-btn) escape, the more-specific `.cinematic a` rule beat
+   `.cn-btn-solid` and rendered white text on a white pill. */
+.cinematic a:not(.cn-btn) { color: inherit; }
+
+/* ===== Atmospheric backdrop ===== */
+/* Two radial gradients = the two-sided lighting. They sit fixed behind
+   everything and breathe gently (5% scale) over an 11s cycle. The
+   primary light source position swaps with the persona — bottom-right
+   for creator (warm), top-left for brand (cool). */
+
+.cn-backdrop {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+.cn-backdrop::before,
+.cn-backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transition: background 1.4s var(--cn-ease);
+}
+.cn-backdrop::before {
+  background: radial-gradient(
+    ellipse 1100px 800px at 78% 78%,
+    color-mix(in oklab, var(--cn-accent-glow) 32%, transparent) 0%,
+    color-mix(in oklab, var(--cn-accent-glow) 8%, transparent) 35%,
+    transparent 65%
+  );
+  animation: cn-breathe 11s ease-in-out infinite;
+}
+.cn-backdrop::after {
+  /* Cool counter-light — opposite corner of the primary so depth reads
+     from BOTH sides. Subtle. */
+  background: radial-gradient(
+    ellipse 700px 500px at 18% 22%,
+    color-mix(in oklab, var(--cn-bg) 30%, oklch(0.30 0.02 240)) 0%,
+    transparent 55%
+  );
+  mix-blend-mode: screen;
+}
+.cinematic[data-persona="brand"] .cn-backdrop::before {
+  background: radial-gradient(
+    ellipse 1100px 800px at 18% 22%,
+    color-mix(in oklab, var(--cn-accent-glow) 32%, transparent) 0%,
+    color-mix(in oklab, var(--cn-accent-glow) 8%, transparent) 35%,
+    transparent 65%
+  );
+}
+.cinematic[data-persona="brand"] .cn-backdrop::after {
+  background: radial-gradient(
+    ellipse 700px 500px at 78% 78%,
+    color-mix(in oklab, var(--cn-bg) 30%, oklch(0.30 0.02 60)) 0%,
+    transparent 55%
+  );
+}
+
+@keyframes cn-breathe {
+  0%, 100% { opacity: 0.9; transform: scale(1); }
+  50%      { opacity: 1.0; transform: scale(1.04); }
+}
+
+/* Film-grain overlay — barely-there noise that kills the "AI gradient"
+   feel. Static SVG, no GPU cost. */
+.cn-grain {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.06;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 240 240' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.92' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.6 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Drift motes canvas — fixed-position behind content, above gradients. */
+.cn-motes {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ===== Top nav ===== */
+
+.cn-topnav {
+  position: relative;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: max-content 1fr max-content;
+  align-items: center;
+  gap: 32px;
+  padding: 28px 48px;
+  font-family: var(--cn-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--cn-ink-quiet);
+}
+.cn-topnav-logo {
+  color: var(--cn-ink);
+  letter-spacing: 0.32em;
+  font-weight: 500;
+  text-decoration: none;
+}
+/* Phase 48 — section anchor links replacing the old magazine meta strip. */
+.cn-topnav-links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+}
+.cn-topnav-links a {
+  color: var(--cn-ink-muted);
+  text-decoration: none;
+  letter-spacing: 0.18em;
+  font-size: 11px;
+  text-transform: uppercase;
+  font-family: var(--cn-mono);
+  transition: color 0.25s;
+  position: relative;
+  padding: 4px 0;
+}
+.cn-topnav-links a:hover {
+  color: var(--cn-ink);
+}
+.cn-topnav-links a:hover::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  height: 1px;
+  background: var(--cn-accent);
+}
+.cn-topnav-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.cn-topnav-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--cn-ink);
+  text-decoration: none;
+  padding: 8px 14px;
+  border: 1px solid var(--cn-rule);
+  border-radius: 999px;
+  transition: border-color 0.3s, background 0.3s, color 0.3s;
+  font-family: var(--cn-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  background: transparent;
+  cursor: pointer;
+}
+.cn-topnav-cta:hover {
+  border-color: var(--cn-accent);
+  background: color-mix(in oklab, var(--cn-accent) 10%, transparent);
+}
+
+@media (max-width: 720px) {
+  .cn-topnav { padding: 20px 22px; gap: 16px; grid-template-columns: max-content 1fr max-content; }
+  .cn-topnav-links { display: none; }
+}
+
+/* ===== Persona toggle (cinematic styling) ===== */
+
+.cn-persona-toggle {
+  position: fixed;
+  top: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  background: color-mix(in oklab, var(--cn-bg) 90%, var(--cn-ink) 4%);
+  border: 1px solid var(--cn-rule);
+  border-radius: 999px;
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  font-family: var(--cn-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.cn-persona-toggle button {
+  background: transparent;
+  border: 0;
+  padding: 8px 18px;
+  color: var(--cn-ink-quiet);
+  cursor: pointer;
+  border-radius: 999px;
+  transition: color 0.3s, background 0.3s;
+  font: inherit;
+}
+.cn-persona-toggle button.is-active {
+  background: var(--cn-accent);
+  color: oklch(0.18 0.01 50);
+}
+.cn-persona-toggle button:focus-visible {
+  outline: 2px solid var(--cn-accent);
+  outline-offset: 3px;
+}
+
+/* ===== Scene primitive ===== */
+/* A scene is a scroll-pinned section. The OUTER wrapper has a tall
+   height (multi-viewport) which provides the scroll length. The INNER
+   stage is `position: sticky; top: 0; height: 100vh` — it stays
+   visible while the user scrolls through the outer wrapper.
+
+   The motion library's `useScroll({ target, offset })` reads the
+   outer wrapper's progress through the viewport and returns a
+   MotionValue 0..1. Children read that progress to choreograph.
+
+   On reduced-motion, the outer wrapper height collapses to auto and
+   the sticky positioning drops — sections render normally stacked. */
+
+.cn-scene {
+  position: relative;
+  /* The scene's scroll length is set per-instance via inline style
+     (e.g. `--cn-scene-length: 3` for 3 viewports of scroll). */
+  height: calc(var(--cn-scene-length, 2) * 100vh);
+}
+.cn-scene-stage {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  width: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Phase 39: when CinematicScene determines we should bypass the
+   scroll-pin choreography (reduced-motion preference OR mobile
+   viewport), it adds `.cn-scene-static`. This collapses the wrapper
+   to natural flow, drops sticky positioning, and lets the act render
+   inline with progress=1 (end state, all content visible). */
+.cn-scene.cn-scene-static {
+  height: auto;
+}
+.cn-scene.cn-scene-static .cn-scene-stage {
+  position: relative;
+  height: auto;
+  min-height: 100vh;
+  /* Cards positioned absolutely at the cluster destination get
+     awkward when the stage isn't sticky. The per-act mobile CSS
+     handles that re-layout below. */
+}
+.cn-scene-content {
+  position: relative;
+  z-index: 5;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Scene number eyebrow — sits at the top of every scene. */
+.cn-scene-num {
+  font-family: var(--cn-mono);
+  font-size: 11px;
+  letter-spacing: 0.4em;
+  color: var(--cn-ink-quiet);
+  text-transform: uppercase;
+  text-align: center;
+  padding-top: 88px;
+}
+.cn-scene-num em {
+  font-style: normal;
+  color: var(--cn-accent);
+}
+
+/* ===== Phase 38 polish layer ===== */
+
+/* Cinematic-themed selection — when the user highlights text, the
+   accent colour does the lighting, not the OS default blue. Small but
+   sells the cinematic mode. */
+.cinematic ::selection {
+  background: color-mix(in oklab, var(--cn-accent) 35%, transparent);
+  color: var(--cn-ink);
+}
+
+/* Smooth scroll for any in-page anchor jumps (TOC links). */
+html:has(.cinematic) {
+  scroll-behavior: smooth;
+}
+
+/* Dark scrollbar to match the cinematic palette. Webkit only. */
+.cinematic ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.cinematic ::-webkit-scrollbar-track {
+  background: var(--cn-bg-deep);
+}
+.cinematic ::-webkit-scrollbar-thumb {
+  background: var(--cn-rule-strong);
+  border-radius: 999px;
+  border: 2px solid var(--cn-bg-deep);
+}
+.cinematic ::-webkit-scrollbar-thumb:hover {
+  background: var(--cn-ink-quiet);
+}
+
+/* Focus-visible rings — accent-coloured, generous offset for the
+   magazine voice. Applied to every interactive element. */
+.cinematic button:focus-visible,
+.cinematic a:focus-visible,
+.cinematic [role="radio"]:focus-visible {
+  outline: 2px solid var(--cn-accent);
+  outline-offset: 3px;
+  border-radius: 999px;
+}
+
+/* Cross-act handoff: a tiny "breath" between consecutive scenes.
+   Without this, scenes butt directly against each other and the
+   transition reads as harsh. The handoff is a 1px hairline +
+   24px of breathing room, atmospheric backdrop continues underneath. */
+.cn-scene + .cn-scene::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 64px;
+  height: 1px;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    var(--cn-rule) 50%,
+    transparent 100%);
+  z-index: 8;
+  pointer-events: none;
+}
+
+/* Refined card hover — every cinematic card uses the same gentle
+   lift + accent border on hover (Phase 38 unified treatment). */
+.cn-discovery-item.is-fit .cn-discovery-item-tile,
+.cn-receipts-panel,
+.cn-multi-platform,
+.cn-multi-dashboard,
+.cn-coda-voice,
+.cn-coda-faq-item {
+  transition:
+    border-color 0.3s var(--cn-ease),
+    box-shadow 0.3s var(--cn-ease),
+    transform 0.3s var(--cn-ease);
+}
+
+/* Act III · Phase 38 fix moved below to land AFTER the Act III base
+   rules — see line ~1486. Source order matters; same-specificity
+   later wins. */
+
+/* Hero TOC links: hover sweep underline replaces the dashed border. */
+.cn-hero-toc-list a {
+  position: relative;
+}
+.cn-hero-toc-list a::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  width: 0;
+  height: 1px;
+  background: var(--cn-accent);
+  transition: width 0.4s var(--cn-ease);
+}
+.cn-hero-toc-list a:hover::after {
+  width: 100%;
+}
+
+/* Final CTA section: emphasize with subtle accent-glow ring around
+   the primary button on hover. */
+.cn-coda-cta-final .cn-btn-solid {
+  box-shadow: 0 12px 36px -12px var(--cn-accent-soft);
+}
+.cn-coda-cta-final .cn-btn-solid:hover {
+  box-shadow:
+    0 16px 48px -12px var(--cn-accent-glow),
+    0 0 0 4px color-mix(in oklab, var(--cn-accent) 18%, transparent);
+}
+
+/* Subtle persona-toggle press feedback. */
+.cn-persona-toggle button:active {
+  transform: scale(0.96);
+}
+.cn-persona-toggle button {
+  transition: color 0.3s, background 0.3s, transform 0.12s;
+}
+
+/* Scroll snap-to-act (gentle) — helps the cinematic acts land at
+   a clean entry point as the user scrolls. Uses `proximity` not
+   `mandatory` so the scroll never feels hijacked.
+   Phase 39: only on desktop where the cinematic scroll-pin is
+   actually active. On mobile (acts stack naturally) or for
+   reduced-motion users, snap-points just feel jumpy. */
+@media (min-width: 721px) and (prefers-reduced-motion: no-preference) {
+  .cinematic {
+    scroll-snap-type: y proximity;
+  }
+  .cn-scene:not(.cn-scene-static) {
+    scroll-snap-align: start;
+    scroll-snap-stop: normal;
+  }
+}
+
+/* ===== Reduced-motion fallback ===== */
+
+@media (prefers-reduced-motion: reduce) {
+  .cinematic, .cinematic * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+  .cn-scene {
+    height: auto !important;
+  }
+  .cn-scene-stage {
+    position: relative !important;
+    height: auto !important;
+    min-height: 100vh;
+  }
+  .cn-backdrop::before { animation: none; }
+}
+
+/* ===== Footer (Phase 48 · refresh) =====
+   Four-column structured footer: brand block + three link columns.
+   Quiet horizontal rule at top, copyright row at bottom. Collapses to
+   single-column on mobile. */
+
+.cn-footer {
+  position: relative;
+  z-index: 10;
+  border-top: 1px solid var(--cn-rule);
+  /* Tightened from 80px → 48px top padding so the footer meets the
+     final CTA with intent rather than 80px of empty cream. */
+  padding: 48px clamp(22px, 4vw, 48px) 28px;
+  background: color-mix(in oklab, var(--cn-bg) 96%, var(--cn-ink) 2%);
+}
+.cn-footer-cols {
+  max-width: 1280px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 0.6fr));
+  gap: clamp(28px, 4vw, 64px);
+  align-items: start;
+}
+.cn-footer-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.cn-footer-col-brand {
+  gap: 18px;
+  max-width: 38ch;
+}
+.cn-footer-logo {
+  font-family: var(--cn-mono);
+  font-size: 13px;
+  color: var(--cn-ink);
+  letter-spacing: 0.32em;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+.cn-footer-tag {
+  font-family: var(--cn-sans);
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--cn-ink-muted);
+  max-width: 38ch;
+}
+.cn-footer-cities {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  font-family: var(--cn-mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--cn-ink-quiet);
+}
+.cn-footer-col-h {
+  font-family: var(--cn-mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--cn-ink-quiet);
+  margin-bottom: 4px;
+}
+.cn-footer-links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cn-footer-links a {
+  font-family: var(--cn-sans);
+  font-size: 14px;
+  color: var(--cn-ink-muted);
+  text-decoration: none;
+  transition: color 0.2s;
+  letter-spacing: -0.005em;
+}
+.cn-footer-links a:hover { color: var(--cn-ink); }
+
+.cn-footer-bottom {
+  max-width: 1280px;
+  margin: 56px auto 0;
+  padding-top: 24px;
+  border-top: 1px solid var(--cn-rule);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
+  flex-wrap: wrap;
+  font-family: var(--cn-mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--cn-ink-quiet);
+}
+.cn-footer-bottom-meta {
+  color: var(--cn-ink-faint);
+}
+
+@media (max-width: 880px) {
+  .cn-footer-cols {
+    grid-template-columns: 1fr 1fr;
+    gap: 32px 24px;
+  }
+  .cn-footer-col-brand {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 540px) {
+  .cn-footer {
+    padding: 56px 22px 28px;
+  }
+  .cn-footer-cols {
+    grid-template-columns: 1fr;
+  }
+  .cn-footer-bottom {
+    margin-top: 36px;
+    padding-top: 20px;
+  }
+}
+
+/* ===== Type utilities used across acts ===== */
+
+.cn-h-eyebrow {
+  font-family: var(--cn-mono);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--cn-accent);
+}
+.cn-h-eyebrow::before {
+  content: "";
+  display: inline-block;
+  width: 28px;
+  height: 1px;
+  background: var(--cn-accent);
+  margin-right: 14px;
+  vertical-align: middle;
+}
+
+.cn-h-display {
+  font-family: var(--cn-serif);
+  font-weight: 300;
+  font-style: italic;
+  font-variation-settings: "opsz" 144;
+  font-size: clamp(56px, 9.5vw, 168px);
+  line-height: 0.92;
+  letter-spacing: -0.035em;
+  color: var(--cn-ink);
+}
+.cn-h-display .accent {
+  color: var(--cn-accent);
+  font-style: italic;
+  /* Phase 45b: anchor for the pen-stroke underline below. */
+  position: relative;
+  display: inline-block;
+}
+/* Phase 45b — pen-stroke underline on the headline accent word. The
+   underline draws from left to right after the word-stagger entrance
+   has landed (~1.4s in). It's the editorial flourish you'd see in a
+   magazine masthead — confident, hand-drawn, NOT a generic CSS underline.
+   The slight downward arc + tapered ends are achieved with an SVG
+   data URI so the line feels inked rather than ruled. */
+.cn-h-display .accent::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -0.04em;
+  height: 0.10em;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 8' preserveAspectRatio='none'><path d='M 1 4 Q 25 7 50 5 T 99 4' fill='none' stroke='currentColor' stroke-width='1.6' stroke-linecap='round'/></svg>");
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  /* Re-tint the SVG via mask trick — inline SVG can't read currentColor
+     when used as background-image, so we layer a mask over the accent
+     color. Fallback: the SVG's hard-coded currentColor still inherits. */
+  color: inherit;
+  transform: scaleX(0);
+  transform-origin: left center;
+  opacity: 0.85;
+  animation: cn-accent-underline 0.75s cubic-bezier(0.22, 0.36, 0.24, 1) 1.4s forwards;
+  pointer-events: none;
+}
+@keyframes cn-accent-underline {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cn-h-display .accent::after {
+    animation: none;
+    transform: scaleX(1);
+  }
+}
+@media (max-width: 720px) {
+  .cn-h-display { font-size: clamp(44px, 11vw, 72px); }
+}
+
+/* Phase 51 — bolder section headings, replicated from the hero.
+   Was: italic 300 — read as quiet/literary across every section.
+   Now: upright Fraunces 500 with display optical size, tighter
+   letter-spacing and line-height. Accent words stay italic to give
+   each headline a focal point. */
+.cn-h-section {
+  font-family: var(--cn-serif);
+  font-weight: 500;
+  font-style: normal;
+  font-variation-settings: "opsz" 144;
+  font-size: clamp(36px, 5.4vw, 76px);
+  line-height: 0.95;
+  letter-spacing: -0.034em;
+  color: var(--cn-ink);
+}
+.cn-h-section .accent {
+  display: inline;
+  position: static;
+  color: var(--cn-accent);
+  font-style: italic;
+  font-weight: 400;
+}
+.cn-h-section .accent::after { content: none; }
+
+.cn-lede {
+  font-family: var(--cn-sans);
+  font-size: clamp(15px, 1.2vw, 18px);
+  line-height: 1.55;
+  color: var(--cn-ink-muted);
+  max-width: 56ch;
+}
+
+/* CTA buttons — cinematic-mode primary, ghost, mono-meta. */
+
+.cn-btn {
+  font-family: var(--cn-sans);
+  font-weight: 500;
+  font-size: 14px;
+  letter-spacing: 0.01em;
+  padding: 14px 24px;
+  border-radius: 999px;
+  border: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  transition: transform 0.25s, box-shadow 0.25s, background 0.25s, color 0.25s;
+  text-decoration: none;
+}
+.cn-btn-solid {
+  background: var(--cn-ink);
+  color: var(--cn-bg);
+  box-shadow: 0 8px 32px -8px var(--cn-accent-soft);
+}
+.cn-btn-solid:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 48px -8px var(--cn-accent-glow);
+}
+.cn-btn-ghost {
+  background: transparent;
+  color: var(--cn-ink-muted);
+  padding: 14px 0;
+}
+.cn-btn-ghost:hover { color: var(--cn-ink); }
+
+/* ===== Act placeholder (Phase 34, retires once Acts ship) ===== */
+
+.cn-act-placeholder {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.cn-act-placeholder-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0 48px;
+  text-align: center;
+  gap: 18px;
+}
+.cn-act-placeholder-sub {
+  font-family: var(--cn-sans);
+  font-size: clamp(14px, 1vw, 17px);
+  line-height: 1.55;
+  color: var(--cn-ink-muted);
+  max-width: 56ch;
+  margin: 0;
+}
+.cn-act-placeholder-foot {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 56px;
+}
+.cn-act-placeholder-rail {
+  width: min(720px, 80vw);
+  height: 1px;
+  background: var(--cn-rule);
+  position: relative;
+  overflow: hidden;
+}
+.cn-act-placeholder-rail-fill {
+  position: absolute;
+  inset: 0;
+  background: var(--cn-accent);
+  box-shadow: 0 0 12px var(--cn-accent-glow);
+  transform-origin: left center;
+}
+.cn-act-placeholder-caption {
+  font-family: var(--cn-mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--cn-ink-faint);
+}
+
+/* ===== Hero scene (Phase 47 — full rewrite) =====
+   Two-column split: a quiet narrative pulled from a real seed campaign
+   on the left, three actual product cards on the right. No abstract
+   typography, no kicker, no stat strip, no table-of-contents. The
+   right column shows the *product*, not a mood. */
+
+.cn-hero {
+  position: relative;
+  z-index: 5;
+  padding: 88px 48px 64px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.cn-hero-inner {
+  width: 100%;
+  max-width: 1240px;
+  margin: 0 auto;
+}
+.cn-hero-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: clamp(32px, 4vw, 72px);
+  align-items: center;
+}
+
+/* ----- LEFT column · narrative ----- */
+
+.cn-hero-narrative {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  /* No max-width here — the column is constrained by the parent grid
+     track (~580px). Setting a `ch`-based max-width here computes
+     against the container's body font (~16px) and crushes the column
+     to ~260px. The narrative-h paragraph takes its own measure below. */
+}
+.cn-hero-narrative .cn-h-eyebrow {
+  align-self: flex-start;
+}
+/* Three short narrative lines stacked. Each line reads like a sentence
+   in a New Yorker lede. The lead (subject) is ink-strong; the body
+   inherits down a step. No headline tagline above — the story IS the
+   headline. */
+.cn-hero-narrative-h {
+  font-family: var(--cn-serif);
+  font-weight: 300;
+  font-style: italic;
+  font-variation-settings: "opsz" 144;
+  /* Tightened upper bound: at 1280px viewport this lands at ~44px,
+     which fits the longest narrative line ("Khaadi cleared $955 on
+     Mon, Mar 2.") on one row at the column's ~580px width. The earlier
+     64px upper bound forced ugly mid-date breaks. */
+  font-size: clamp(30px, 3.4vw, 52px);
+  line-height: 1.08;
+  letter-spacing: -0.022em;
+  color: var(--cn-ink);
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.22em;
+}
+.cn-narrative-line {
+  display: block;
+  /* Browsers: prefer breaking at clause boundaries over filling each
+     line edge-to-edge. Avoids "Mon, / Feb 9" widow-style breaks. */
+  text-wrap: balance;
+}
+.cn-narrative-lead {
+  font-style: normal;
+  font-weight: 400;
+  color: var(--cn-ink);
+}
+.cn-narrative-body {
+  color: var(--cn-ink-muted);
+}
+.cn-narrative-body em {
+  font-style: italic;
+  color: var(--cn-accent);
+  font-weight: 400;
+}
+.cn-narrative-body strong {
+  font-style: normal;
+  font-weight: 400;
+  color: var(--cn-ink);
+  font-variant-numeric: tabular-nums;
+}
+.cn-narrative-when {
+  font-style: normal;
+  color: var(--cn-ink-quiet);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.82em;
+  font-weight: 400;
+  letter-spacing: -0.005em;
+}
+.cn-hero-narrative-closing {
+  font-family: var(--cn-sans);
+  font-size: clamp(15px, 1.05vw, 17px);
+  line-height: 1.55;
+  color: var(--cn-ink-muted);
+  margin: 0;
+  max-width: 44ch;  /* ~44 chars at the closing paragraph's own ~16px font */
+}
+.cn-hero-narrative-closing strong {
+  color: var(--cn-ink);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ----- RIGHT column · three product cards stacked ----- */
+
+.cn-hero-cards {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: stretch;
+  justify-content: center;
+  /* Slight horizontal offsets to make the stack feel like a layered
+     deck rather than a column of bricks. Applied via per-card classes. */
+  padding: 18px 0;
+}
+.cn-hero-cards-glow {
+  position: absolute;
+  inset: -10% -8%;
+  background:
+    radial-gradient(60% 50% at 70% 30%, color-mix(in oklab, var(--cn-accent) 22%, transparent), transparent 70%),
+    radial-gradient(50% 40% at 30% 80%, color-mix(in oklab, var(--cn-accent) 10%, transparent), transparent 70%);
+  filter: blur(40px);
+  opacity: 0.6;
+  pointer-events: none;
+  z-index: 0;
+}
+.cn-hero-card-wrap {
+  position: relative;
+  z-index: 1;
+}
+.cn-hero-card-0 { transform: translateX(-2%); }
+.cn-hero-card-1 { transform: translateX(2%); }
+.cn-hero-card-2 { transform: translateX(-1%); }
+
+/* The product card — mirrors the look of cards inside the actual app.
+   Dark surface, hairline border, soft shadow, real type hierarchy. */
+.cn-pcard {
+  background: color-mix(in oklab, var(--cn-bg) 88%, var(--cn-ink) 6%);
+  border: 1px solid color-mix(in oklab, var(--cn-rule) 80%, transparent);
+  border-radius: 14px;
+  padding: 16px 18px;
+  box-shadow:
+    0 1px 0 0 color-mix(in oklab, var(--cn-ink) 6%, transparent) inset,
+    0 24px 48px -28px rgba(0, 0, 0, 0.55),
+    0 6px 14px -8px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cn-pcard-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+}
+.cn-pcard-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--cn-accent) 22%, var(--cn-bg));
+  border: 1px solid color-mix(in oklab, var(--cn-accent) 35%, transparent);
+  color: var(--cn-ink);
+  font-family: var(--cn-serif);
+  font-style: italic;
+  font-size: 16px;
+  display: grid;
+  place-items: center;
+  font-feature-settings: "ss01";
+}
+.cn-pcard-mark-money {
+  background: color-mix(in oklab, var(--cn-accent) 32%, var(--cn-bg));
+  font-style: normal;
+  font-weight: 500;
+}
+.cn-pcard-portrait {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid color-mix(in oklab, var(--cn-rule) 80%, transparent);
+  background: var(--cn-rule);
+}
+.cn-pcard-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.cn-pcard-meta-strong {
+  font-family: var(--cn-sans);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--cn-ink);
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cn-pcard-meta-faint {
+  font-family: var(--cn-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--cn-ink-quiet);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cn-pcard-tag {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--cn-ink) 6%, transparent);
+  border: 1px solid var(--cn-rule);
+  color: var(--cn-ink-muted);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+.cn-pcard-tag-good {
+  background: color-mix(in oklab, var(--cn-accent) 18%, transparent);
+  border-color: color-mix(in oklab, var(--cn-accent) 40%, transparent);
+  color: var(--cn-accent);
+}
+.cn-pcard-title {
+  font-family: var(--cn-serif);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 22px;
+  letter-spacing: -0.012em;
+  color: var(--cn-ink);
+  margin: 4px 0 2px;
+  line-height: 1.15;
+}
+.cn-pcard-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in oklab, var(--cn-rule) 70%, transparent);
+}
+.cn-pcard-row-k {
+  font-family: var(--cn-mono);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--cn-ink-quiet);
+  margin-bottom: 4px;
+}
+.cn-pcard-row-v {
+  font-family: var(--cn-sans);
+  font-size: 13px;
+  color: var(--cn-ink);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.005em;
+}
+.cn-pcard-prose {
+  font-family: var(--cn-sans);
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--cn-ink-muted);
+  margin: 2px 0 0;
+}
+.cn-pcard-prose strong {
+  color: var(--cn-ink);
+  font-weight: 500;
+}
+.cn-pcard-amount {
+  font-family: var(--cn-serif);
+  font-weight: 300;
+  font-style: normal;
+  font-variation-settings: "opsz" 144;
+  font-size: 38px;
+  letter-spacing: -0.022em;
+  color: var(--cn-accent);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.0;
+  margin: 6px 0 0;
+}
+.cn-pcard-amount-out {
+  color: var(--cn-ink);
+}
+.cn-pcard-foot {
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--cn-ink-quiet);
+  margin-top: 4px;
+}
+
+/* ----- Foot · CTA + meta line ----- */
+
+.cn-hero-foot {
+  margin-top: clamp(36px, 5vw, 64px);
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  flex-wrap: wrap;
+  padding-top: 24px;
+  border-top: 1px solid var(--cn-rule);
+}
+.cn-hero-foot-meta {
+  font-family: var(--cn-mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--cn-ink-quiet);
+}
+
+/* ----- Mobile · stack columns; cards become a horizontal-scroll strip
+   on phones so a finger swipe shows the same three moments without
+   hijacking the whole viewport. ----- */
+
+@media (max-width: 880px) {
+  .cn-hero {
+    padding: 76px 22px 56px;
+    min-height: auto;
+  }
+  .cn-hero-split {
+    grid-template-columns: 1fr;
+    gap: 36px;
+  }
+  .cn-hero-narrative {
+    max-width: none;
+  }
+  .cn-hero-narrative-h {
+    font-size: clamp(28px, 7vw, 44px);
+  }
+  .cn-hero-cards {
+    gap: 12px;
+  }
+  .cn-hero-card-0,
+  .cn-hero-card-1,
+  .cn-hero-card-2 {
+    transform: none;
+  }
+  .cn-pcard-amount { font-size: 30px; }
+  .cn-pcard-row { grid-template-columns: 1fr 1fr; }
+  .cn-pcard-row > div:nth-child(3) { grid-column: 1 / -1; }
+}
+@media (max-width: 540px) {
+  .cn-hero-foot { gap: 14px; }
+  .cn-hero-foot-meta { font-size: 10px; letter-spacing: 0.12em; }
+}
+
+/* ===== Act I · Discovery (Phase 35c) ===== */
+/* The "constellation narrows to fit" scene. Header sits at the top,
+   constellation items are absolutely positioned inside cn-discovery-field
+   (which fills the full stage), summary callout sits at the bottom. */
+
+.cn-discovery {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+.cn-discovery-header {
+  position: relative;
+  z-index: 5;
+  padding: 88px 48px 0;
+  max-width: 880px;
+  margin: 0 auto;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+.cn-discovery-header .cn-h-eyebrow {
+  /* Override the default left-flowing dash. Centered on this scene. */
+}
+.cn-discovery-h {
+  margin: 0;
+  max-width: 18ch;
+}
+.cn-discovery-sub {
+  text-align: center;
+  margin: 0 auto;
+  max-width: 56ch;
+}
+
+/* The field — covers the full stage. Items are absolutely positioned
+   children with `left` / `top` as percentages so they reflow on resize. */
+.cn-discovery-field {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+/* Single constellation item. Sits at left/top from motion.style; we
+   subtract its own size via translate(-50%, -50%) so the percentages
+   refer to the item's CENTER rather than its top-left corner. */
+.cn-discovery-item {
+  position: absolute;
+  width: clamp(72px, 9vw, 132px);
+  aspect-ratio: 1;
+  transform-origin: center center;
+  /* The translate centers the item on its left/top coords. */
+  --item-translate: translate(-50%, -50%);
+}
+.cn-discovery-item-tile {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--cn-bg);
+  border: 1px solid var(--cn-rule);
+  box-shadow: 0 18px 36px -18px rgba(0, 0, 0, 0.6);
+  /* Inherits the parent transform (scale/rotate/translate from motion).
+     We compose with the centering translate via a local transform. */
+  transform: var(--item-translate);
+  transition: border-color 0.4s ease;
+}
+.cn-discovery-item-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  filter: saturate(0.9) brightness(0.92);
+}
+.cn-discovery-item.is-fit .cn-discovery-item-tile {
+  border-color: var(--cn-accent);
+  box-shadow:
+    0 22px 48px -16px var(--cn-accent-soft),
+    0 0 0 1px color-mix(in oklab, var(--cn-accent) 24%, transparent),
+    0 0 32px -4px var(--cn-accent-glow);
+}
+.cn-discovery-item.is-fit .cn-discovery-item-tile img {
+  filter: saturate(1.0) brightness(1.0);
+}
+
+/* Detail caption — only on fits, only after cluster lands. Floats
+   below the tile center. */
+.cn-discovery-item-caption {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 10px);
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 200px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  pointer-events: none;
+}
+.cn-discovery-item-name {
+  font-family: var(--cn-serif);
+  font-style: italic;
+  font-size: 14px;
+  letter-spacing: -0.005em;
+  color: var(--cn-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+.cn-discovery-item-sub {
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--cn-ink-quiet);
+  white-space: nowrap;
+}
+
+/* Summary callout — appears at the very end. */
+.cn-discovery-summary {
+  position: relative;
+  z-index: 5;
+  margin-top: auto;
+  padding: 0 48px 64px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.cn-discovery-summary-line {
+  font-family: var(--cn-serif);
+  font-weight: 400;
+  font-style: italic;
+  font-size: clamp(20px, 2.4vw, 32px);
+  letter-spacing: -0.015em;
+  color: var(--cn-ink);
+  max-width: 32ch;
+}
+
+@media (max-width: 720px) {
+  .cn-discovery-header {
+    padding: 72px 22px 0;
+    gap: 14px;
+  }
+  .cn-discovery-summary {
+    padding: 0 22px 48px;
+  }
+  .cn-discovery-item {
+    width: clamp(56px, 16vw, 96px);
+  }
+}
+
+/* ===== Act II · Workflow (Phase 36a) ===== */
+/* Horizontal rail with 7 stages. As scroll progresses, a playhead
+   glides along the rail and the closest stage activates — its dot
+   brightens, its detail card fades up below. */
+
+.cn-workflow {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.cn-workflow-header {
+  padding: 88px 48px 0;
+  max-width: 880px;
+  margin: 0 auto;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+.cn-workflow-h {
+  margin: 0;
+  max-width: 22ch;
+}
+.cn-workflow-sub {
+  text-align: center;
+  margin: 0 auto;
+  max-width: 60ch;
+}
+
+.cn-workflow-rail-wrap {
+  flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 80px;
+  min-height: 0;
+}
+
+/* The rail itself — hairline + fill + playhead, with 7 nodes
+   absolutely positioned along it. */
+.cn-workflow-rail {
+  position: relative;
+  height: 80px;
+  margin-bottom: 32px;
+}
+.cn-workflow-rail-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 36px;     /* dot center is at 36px */
+  height: 1px;
+  background: var(--cn-rule);
+}
+.cn-workflow-rail-fill {
+  position: absolute;
+  left: 0;
+  top: 36px;
+  height: 1px;
+  background: var(--cn-accent);
+  box-shadow: 0 0 12px var(--cn-accent-glow);
+  /* width set by inline style */
+}
+.cn-workflow-rail-playhead {
+  position: absolute;
+  top: 36px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--cn-accent);
+  box-shadow: 0 0 16px var(--cn-accent-glow), 0 0 0 4px color-mix(in oklab, var(--cn-accent-glow) 24%, transparent);
+  transform: translate(-50%, -50%);
+  /* left set by inline style */
+}
+
+.cn-workflow-node {
+  position: absolute;
+  top: 0;
+  /* left set inline (% of rail width) */
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  pointer-events: none;
+}
+.cn-workflow-node-dot {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--cn-bg) 80%, var(--cn-rule));
+  border: 1px solid var(--cn-rule);
+  display: grid;
+  place-items: center;
+  color: var(--cn-accent);
+  margin-top: 8px;
+  transition: border-color 0.4s, background 0.4s;
+}
+.cn-workflow-node-dot svg {
+  width: 22px;
+  height: 22px;
+}
+.cn-workflow-node-label {
+  font-family: var(--cn-mono);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--cn-ink-quiet);
+  white-space: nowrap;
+}
+
+/* Cards container — sits below the rail. Each card absolutely
+   positioned at its stage's pos%; only the active card is visible. */
+.cn-workflow-cards {
+  position: relative;
+  height: 200px;
+  margin-top: 8px;
+}
+.cn-workflow-card {
+  position: absolute;
+  top: 0;
+  /* left set inline */
+  transform: translateX(-50%);
+  width: clamp(240px, 28vw, 340px);
+  padding: 22px 24px;
+  background: color-mix(in oklab, var(--cn-bg) 90%, var(--cn-ink) 4%);
+  border: 1px solid var(--cn-rule);
+  border-radius: 14px;
+  box-shadow: 0 24px 48px -16px rgba(0,0,0,0.45),
+              0 0 0 1px color-mix(in oklab, var(--cn-accent) 18%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+.cn-workflow-card-eyebrow {
+  font-family: var(--cn-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--cn-ink-quiet);
+}
+.cn-workflow-card-eyebrow strong {
+  color: var(--cn-accent);
+  font-weight: 500;
+}
+.cn-workflow-card-title {
+  /* Phase 41: workflow card titles are data ("12 creators applied",
+     "$967 offered") — drop italic, use upright Fraunces. */
+  font-family: var(--cn-serif);
+  font-style: normal;
+  font-weight: 400;
+  font-size: 22px;
+  letter-spacing: -0.012em;
+  color: var(--cn-ink);
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+.cn-workflow-card-line {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--cn-ink-muted);
+}
+.cn-workflow-card-meta {
+  font-family: var(--cn-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--cn-ink-quiet);
+  border-top: 1px solid var(--cn-rule);
+  padding-top: 10px;
+  margin-top: auto;
+}
+.cn-workflow-card-meta strong {
+  /* Phase 41: emphasis spans inside workflow meta were italic; drop
+     to match the new "data is upright" rule. */
+  color: var(--cn-ink);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  font-family: var(--cn-serif);
+  font-style: normal;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cn-workflow-summary {
+  text-align: center;
+  padding: 24px 48px 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.cn-workflow-summary-line {
+  font-family: var(--cn-serif);
+  font-weight: 400;
+  font-style: italic;
+  font-size: clamp(18px, 2vw, 26px);
+  letter-spacing: -0.012em;
+  color: var(--cn-ink);
+  max-width: 56ch;
+}
+
+@media (max-width: 880px) {
+  .cn-workflow-rail-wrap { padding: 0 22px; }
+  .cn-workflow-card {
+    width: min(320px, 86vw);
+    padding: 16px 18px;
+  }
+  .cn-workflow-cards { height: 220px; }
+  .cn-workflow-node-label {
+    /* On mobile labels can collide. Show only every other if needed,
+       handled via :nth-child below for the seven we have. */
+    font-size: 8px;
+    letter-spacing: 0.14em;
+  }
+  /* Hide alternating labels at narrow widths so the rail stays legible. */
+  .cn-workflow-node:nth-child(2n+3) .cn-workflow-node-label { display: none; }
+  .cn-workflow-node-dot { width: 44px; height: 44px; }
+  .cn-workflow-node-dot svg { width: 18px; height: 18px; }
+}
+
+/* ===== Act III · Multi-platform (Phase 36b) ===== */
+/* Five platform tiles fan across the top of the stage. SVG curves
+   draw from each tile down to a central dashboard tile. */
+
+.cn-multi {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.cn-multi-header {
+  padding: 88px 48px 0;
+  max-width: 880px;
+  margin: 0 auto;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+.cn-multi-h {
+  margin: 0;
+  max-width: 22ch;
+}
+.cn-multi-sub {
+  text-align: center;
+  margin: 0 auto;
+  max-width: 60ch;
+}
+
+/* Stage container — the canvas the tiles + traces + dashboard sit on. */
+.cn-multi-stage {
+  flex: 1;
+  position: relative;
+  margin-top: 32px;
+  min-height: 0;
+}
+
+/* Platform tiles row — each tile absolutely positioned at its arcPos. */
+.cn-multi-platforms {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.cn-multi-platform {
+  position: absolute;
+  top: 0;
+  /* left set inline */
+  transform: translateX(-50%);
+  width: clamp(120px, 14vw, 180px);
+  padding: 18px 16px 14px;
+  background: color-mix(in oklab, var(--cn-bg) 92%, var(--cn-ink) 4%);
+  border: 1px solid var(--cn-rule);
+  border-radius: 12px;
+  box-shadow: 0 16px 32px -16px rgba(0,0,0,0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  /* Per-platform hue applied via CSS custom property set inline */
+}
+.cn-multi-platform-rule {
+  position: absolute;
+  top: 0; left: 12px; right: 12px;
+  height: 2px;
+  border-radius: 1px;
+  background: oklch(0.70 0.14 var(--platform-hue, 60));
+  box-shadow: 0 0 12px oklch(0.70 0.14 var(--platform-hue, 60) / 0.6);
+}
+/* Platform tile head — portrait thumbnail beside platform name. The
+   portrait is the top creator on this platform (by reach). Adds a
+   human anchor to a tile that would otherwise be pure typography,
+   and earns its keep by being literally the person behind the number
+   below. */
+.cn-multi-platform-head {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cn-multi-platform-head-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.cn-multi-platform-portrait {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid color-mix(in oklab, var(--cn-rule) 80%, transparent);
+  box-shadow:
+    0 0 0 2px color-mix(in oklab, var(--cn-bg) 70%, transparent),
+    0 0 12px oklch(0.70 0.14 var(--platform-hue, 60) / 0.25);
+  background: var(--cn-rule);
+}
+.cn-multi-platform-name {
+  font-family: var(--cn-serif);
+  font-style: italic;
+  font-size: 18px;
+  letter-spacing: -0.005em;
+  color: var(--cn-ink);
+  line-height: 1.05;
+}
+.cn-multi-platform-meta {
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--cn-ink-quiet);
+}
+.cn-multi-platform-top {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--cn-rule);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cn-multi-platform-top-name {
+  font-size: 12px;
+  color: var(--cn-ink);
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cn-multi-platform-top-reach {
+  font-family: var(--cn-mono);
+  font-size: 10px;
+  color: oklch(0.70 0.14 var(--platform-hue, 60));
+  letter-spacing: 0.06em;
+}
+
+/* SVG traces fill the stage and draw from platforms toward dashboard. */
+.cn-multi-traces {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Center dashboard tile. */
+.cn-multi-dashboard {
+  position: absolute;
+  left: 50%;
+  bottom: 12%;
+  transform: translateX(-50%);
+  width: clamp(280px, 36vw, 420px);
+  padding: 22px 26px;
+  background: color-mix(in oklab, var(--cn-bg) 90%, var(--cn-ink) 5%);
+  border: 1px solid var(--cn-accent);
+  border-radius: 16px;
+  box-shadow:
+    0 24px 56px -16px var(--cn-accent-soft),
+    0 0 0 1px color-mix(in oklab, var(--cn-accent) 22%, transparent),
+    0 0 32px -8px var(--cn-accent-glow);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 3;
+}
+.cn-multi-dashboard-eyebrow {
+  font-family: var(--cn-mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--cn-accent);
+}
+.cn-multi-dashboard-figure {
+  /* Phase 41: dashboard figure (28.0M combined reach) is data — upright. */
+  font-family: var(--cn-serif);
+  font-style: normal;
+  font-weight: 300;
+  font-size: clamp(28px, 3.6vw, 44px);
+  line-height: 1;
+  letter-spacing: -0.022em;
+  color: var(--cn-ink);
+  font-variant-numeric: tabular-nums;
+}
+.cn-multi-dashboard-figure-unit {
+  display: block;
+  font-family: var(--cn-mono);
+  font-style: normal;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--cn-ink-quiet);
+  margin-top: 4px;
+}
+.cn-multi-dashboard-meta {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--cn-rule);
+}
+.cn-multi-dashboard-meta > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  text-align: center;
+}
+.cn-multi-dashboard-num {
+  /* Phase 41: dashboard meta numbers (81, 115, 5) — upright. */
+  font-family: var(--cn-serif);
+  font-size: 18px;
+  font-style: normal;
+  font-weight: 400;
+  color: var(--cn-ink);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.cn-multi-dashboard-lbl {
+  font-size: 8px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--cn-ink-quiet);
+  line-height: 1.3;
+}
+
+/* Summary row at the bottom. */
+.cn-multi-summary {
+  text-align: center;
+  padding: 24px 48px 56px;
+}
+.cn-multi-summary-line {
+  font-family: var(--cn-serif);
+  font-weight: 400;
+  font-style: italic;
+  font-size: clamp(18px, 2vw, 26px);
+  letter-spacing: -0.012em;
+  color: var(--cn-ink);
+}
+
+@media (max-width: 880px) {
+  .cn-multi-platform {
+    width: clamp(96px, 22vw, 140px);
+    padding: 14px 12px 10px;
+  }
+  .cn-multi-platform-head { gap: 8px; margin-top: 6px; }
+  .cn-multi-platform-portrait { width: 28px; height: 28px; }
+  .cn-multi-platform-name { font-size: 15px; }
+  .cn-multi-platform-meta { font-size: 8px; }
+  .cn-multi-platform-top-name { font-size: 11px; }
+  .cn-multi-platform-top-reach { font-size: 9px; }
+  .cn-multi-dashboard {
+    width: min(86vw, 360px);
+    padding: 18px 20px;
+  }
+  .cn-multi-dashboard-meta {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .cn-multi-dashboard-meta > div:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Mobile-narrow: hide every other platform tile so the row doesn't
+   collide. The visual story still works with 3 platforms shown. */
+@media (max-width: 560px) {
+  .cn-multi-platform:nth-child(2),
+  .cn-multi-platform:nth-child(4) {
+    display: none;
+  }
+}
+
+/* Phase 38/39 Act III mobile column-stack — replaces the cinematic
+   stacked-layout (platforms top + dashboard center-bottom + SVG
+   traces between) with a clean grid + dashboard below. Lives AFTER
+   the Act III base rules so it wins on source order. */
+@media (max-width: 720px) {
+  .cn-multi-stage {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    padding: 0 22px;
+  }
+  .cn-multi-platforms {
+    position: relative;
+    inset: auto;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .cn-multi-platform {
+    position: relative;
+    top: auto;
+    left: auto !important;
+    bottom: auto;
+    right: auto;
+    transform: none !important;
+    width: auto;
+  }
+  .cn-multi-traces {
+    display: none;  /* curves don't make sense in a stacked layout */
+  }
+  .cn-multi-dashboard {
+    position: relative;
+    left: auto;
+    bottom: auto;
+    transform: none;
+    width: 100%;
+    margin: 0 auto;
+  }
+}
+
+/* ===== Act IV · Receipts (Phase 37a) ===== */
+/* Three panels (Performance · Reputation · Money) arranged in a row.
+   Each panel has a big number, a label line, optional star row, and
+   a detail caption. Panels stagger in left→right; big numbers
+   spring up after their panel chrome lands. */
+
+.cn-receipts {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.cn-receipts-header {
+  padding: 88px 48px 0;
+  max-width: 880px;
+  margin: 0 auto;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+.cn-receipts-h {
+  margin: 0;
+  max-width: 22ch;
+}
+.cn-receipts-sub {
+  text-align: center;
+  margin: 0 auto;
+  max-width: 60ch;
+}
+
+.cn-receipts-panels {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  padding: 56px 48px 0;
+  align-items: stretch;
+  max-width: 1280px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.cn-receipts-panel {
+  background: color-mix(in oklab, var(--cn-bg) 90%, var(--cn-ink) 5%);
+  border: 1px solid var(--cn-rule);
+  border-radius: 18px;
+  padding: 28px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 24px 56px -24px rgba(0, 0, 0, 0.45);
+  position: relative;
+  overflow: hidden;
+}
+.cn-receipts-panel::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--cn-accent);
+  opacity: 0.6;
+}
+
+.cn-receipts-panel-eyebrow {
+  font-family: var(--cn-mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--cn-accent);
+}
+
+.cn-receipts-panel-big {
+  /* Phase 41: the big receipts numbers (16.1×, 4.41, $373,715) are
+     the page's most authoritative figures. Drop italic for upright
+     Fraunces light — reads as confident data, not ornament. */
+  font-family: var(--cn-serif);
+  font-style: normal;
+  font-weight: 300;
+  font-size: clamp(40px, 5.4vw, 72px);
+  line-height: 1;
+  letter-spacing: -0.028em;
+  color: var(--cn-ink);
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.cn-receipts-panel-unit {
+  font-family: var(--cn-mono);
+  font-style: normal;
+  font-size: 0.32em;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--cn-ink-quiet);
+}
+
+.cn-receipts-panel-line {
+  font-family: var(--cn-serif);
+  font-size: 16px;
+  line-height: 1.4;
+  color: var(--cn-ink-muted);
+}
+.cn-receipts-panel-line strong {
+  color: var(--cn-ink);
+  font-weight: 500;
+  font-style: italic;
+}
+
+.cn-receipts-stars {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.cn-receipts-panel-detail {
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid var(--cn-rule);
+  font-family: var(--cn-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--cn-ink-quiet);
+  line-height: 1.5;
+}
+
+.cn-receipts-summary {
+  text-align: center;
+  padding: 32px 48px 56px;
+}
+.cn-receipts-summary-line {
+  font-family: var(--cn-serif);
+  font-weight: 400;
+  font-style: italic;
+  font-size: clamp(20px, 2.4vw, 32px);
+  letter-spacing: -0.012em;
+  color: var(--cn-ink);
+  max-width: 56ch;
+}
+
+@media (max-width: 880px) {
+  .cn-receipts-panels {
+    grid-template-columns: 1fr;
+    padding: 32px 22px 0;
+    gap: 16px;
+  }
+  .cn-receipts-panel {
+    padding: 22px 20px;
+  }
+}
+
+/* ===== Coda (Phase 37b) — voices · brand strip · FAQ · final CTA ===== */
+/* Comes after Act IV. Not pinned. Returns to a normal scroll rhythm
+   so the conversion path doesn't feel theatrical after the cinematic
+   acts. */
+
+.cn-coda-wrap {
+  position: relative;
+  z-index: 5;
+}
+.cn-coda-section {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 96px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  align-items: center;
+  text-align: center;
+}
+.cn-coda-section + .cn-coda-section {
+  border-top: 1px solid var(--cn-rule);
+}
+.cn-coda-section .cn-h-eyebrow {
+  align-self: center;
+}
+.cn-coda-section .cn-h-section {
+  margin: 0;
+  max-width: 22ch;
+}
+.cn-coda-section .cn-lede {
+  text-align: center;
+  margin: 0 auto;
+  max-width: 56ch;
+}
+
+/* ---- Voices grid ---- */
+.cn-coda-voices-grid {
+  width: 100%;
+  margin-top: 28px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 22px;
+  text-align: left;
+}
+.cn-coda-voice {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 28px 26px;
+  background: color-mix(in oklab, var(--cn-bg) 92%, var(--cn-ink) 4%);
+  border: 1px solid var(--cn-rule);
+  border-radius: 18px;
+  margin: 0;
+  box-shadow: 0 24px 48px -24px rgba(0, 0, 0, 0.4);
+}
+.cn-coda-voice blockquote {
+  font-family: var(--cn-serif);
+  font-style: italic;
+  font-size: 16px;
+  line-height: 1.5;
+  letter-spacing: -0.005em;
+  color: var(--cn-ink);
+  margin: 0;
+  padding: 0;
+  position: relative;
+}
+.cn-coda-voice blockquote::before {
+  content: "\201C";
+  font-size: 36px;
+  line-height: 0.5;
+  color: var(--cn-accent);
+  vertical-align: -0.1em;
+  margin-right: 4px;
+  font-style: italic;
+}
+.cn-coda-voice figcaption {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  align-items: center;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--cn-rule);
+}
+.cn-coda-voice figcaption img {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--cn-rule);
+}
+.cn-coda-voice-name {
+  font-family: var(--cn-serif);
+  font-size: 14px;
+  font-style: italic;
+  color: var(--cn-ink);
+  letter-spacing: -0.005em;
+}
+.cn-coda-voice-meta {
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--cn-ink-quiet);
+  margin-top: 2px;
+}
+
+/* ---- Brand strip ---- */
+.cn-coda-brand-strip {
+  position: relative;
+  width: 100%;
+  margin-top: 28px;
+  overflow: hidden;
+  padding: 24px 0;
+  background: color-mix(in oklab, var(--cn-ink) 1.5%, var(--cn-bg));
+  border: 1px solid var(--cn-rule);
+  border-radius: 14px;
+}
+.cn-coda-brand-track {
+  display: flex;
+  gap: 56px;
+  width: max-content;
+  animation: cn-coda-scroll 60s linear infinite;
+  will-change: transform;
+}
+.cn-coda-brand-cell {
+  font-family: var(--cn-serif);
+  font-style: italic;
+  font-size: clamp(22px, 2.3vw, 30px);
+  letter-spacing: -0.015em;
+  color: var(--cn-ink-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+  padding: 0 8px;
+  transition: color 0.2s;
+}
+.cn-coda-brand-strip:hover .cn-coda-brand-track {
+  animation-play-state: paused;
+}
+.cn-coda-brand-strip:hover .cn-coda-brand-cell {
+  color: var(--cn-ink);
+}
+.cn-coda-brand-fade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 80px;
+  pointer-events: none;
+  z-index: 2;
+}
+.cn-coda-brand-fade-l {
+  left: 0;
+  background: linear-gradient(to right,
+    color-mix(in oklab, var(--cn-ink) 1.5%, var(--cn-bg)) 0%,
+    transparent 100%);
+}
+.cn-coda-brand-fade-r {
+  right: 0;
+  background: linear-gradient(to left,
+    color-mix(in oklab, var(--cn-ink) 1.5%, var(--cn-bg)) 0%,
+    transparent 100%);
+}
+@keyframes cn-coda-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+/* ---- FAQ ---- */
+.cn-coda-faq-list {
+  width: 100%;
+  margin-top: 24px;
+  max-width: 760px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cn-coda-faq-item {
+  border: 1px solid var(--cn-rule);
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--cn-bg) 93%, var(--cn-ink) 3%);
+  overflow: hidden;
+}
+.cn-coda-faq-q {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 18px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  cursor: pointer;
+  font-family: var(--cn-serif);
+  font-style: italic;
+  font-size: 17px;
+  letter-spacing: -0.005em;
+  color: var(--cn-ink);
+  text-align: left;
+  transition: background 0.15s;
+}
+.cn-coda-faq-q:hover {
+  background: color-mix(in oklab, var(--cn-ink) 3%, transparent);
+}
+.cn-coda-faq-icon {
+  font-family: var(--cn-mono);
+  font-size: 22px;
+  font-style: normal;
+  color: var(--cn-accent);
+  font-weight: 300;
+  flex-shrink: 0;
+}
+.cn-coda-faq-a {
+  padding: 4px 20px 20px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--cn-ink-muted);
+}
+
+/* ---- Final CTA ---- */
+.cn-coda-cta-final {
+  padding-bottom: 96px;
+}
+.cn-coda-cta-buttons {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+@media (max-width: 720px) {
+  .cn-coda-section {
+    padding: 64px 22px;
+  }
+  .cn-coda-voices-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .cn-coda-voice {
+    padding: 22px 20px;
+  }
+  .cn-coda-brand-track { gap: 36px; }
+  .cn-coda-brand-fade { width: 40px; }
+  .cn-coda-faq-q { font-size: 15px; padding: 16px 18px; }
+}
+
+/* =============================================================
+   ===== Phase 48 · Landing V2 (content-first rewrite) =====
+   ============================================================= */
+/* Seven sections, no scroll-pinning. All scoped under `.lp-` prefix
+   so they don't collide with the older `.cn-` cinematic styles still
+   referenced by PersonaPalette / nav / footer. Vertical rhythm and
+   typography tokens come from the cinematic.css palette above. */
+
+/* ----- Section-level rhythm + reveal -----
+   Phase 51 — tightened from clamp(72px, 9vw, 128px) so sections feel
+   denser and the page reads faster. Was generating ~256px of vertical
+   space between adjacent sections (128 + 128). Now ~144px (72 + 72)
+   at desktop, which still breathes but doesn't feel cavernous. */
+.lp-section {
+  position: relative;
+  z-index: 5;
+  padding: clamp(56px, 6vw, 88px) clamp(22px, 4vw, 56px);
+  max-width: 1280px;
+  margin: 0 auto;
+}
+.lp-section-head {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 60ch;
+  /* Phase 51 — tightened from clamp(40px, 5vw, 72px) to bring the
+     section content closer to its heading. Pairs with the tighter
+     section padding above. */
+  margin: 0 0 clamp(28px, 3vw, 48px);
+}
+.lp-section-head .cn-h-section {
+  margin: 4px 0 0;
+}
+.lp-section-head .cn-lede {
+  margin: 0;
+}
+
+/* ----- Section 1 · Hero ----- */
+/* Override the older .cn-h-display .accent rule (inline-block + pen-stroke
+   underline pseudo) for the new landing's hero + final CTA headlines.
+   The new sections want accent words to flow inline like normal text so
+   trailing punctuation doesn't widow onto the next line. */
+.lp-hero-h .accent,
+.lp-final-h .accent {
+  display: inline;
+  position: static;
+}
+.lp-hero-h .accent::after,
+.lp-final-h .accent::after {
+  content: none;
+}
+.lp-hero {
+  position: relative;
+  z-index: 5;
+  /* Was: clamp(96px, 11vw, 144px) top — 230px+ of dead space below the
+     topnav. Reduced and unpinned from viewport height so the hero
+     breathes naturally instead of force-stretching. */
+  padding: clamp(36px, 4.4vw, 72px) clamp(22px, 4vw, 56px) clamp(56px, 6vw, 88px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* contain the kinetic gradient blob below */
+}
+/* Kinetic backdrop — one large drifting accent-color blob behind the
+   hero text. Adds visual energy without the gimmicky scroll-pinned
+   theatrics we cut. Slow drift (~24s) so it never feels frenetic.
+   prefers-reduced-motion stops it cold. */
+.lp-hero::before {
+  content: "";
+  position: absolute;
+  top: -10%;
+  left: -10%;
+  width: 70%;
+  height: 80%;
+  background: radial-gradient(
+    closest-side,
+    color-mix(in oklab, var(--cn-accent) 55%, transparent) 0%,
+    color-mix(in oklab, var(--cn-accent) 18%, transparent) 35%,
+    transparent 70%
+  );
+  filter: blur(48px);
+  z-index: 0;
+  pointer-events: none;
+  animation: lp-hero-drift 24s ease-in-out infinite alternate;
+  will-change: transform;
+}
+.lp-hero::after {
+  content: "";
+  position: absolute;
+  top: 20%;
+  right: -15%;
+  width: 55%;
+  height: 70%;
+  background: radial-gradient(
+    closest-side,
+    color-mix(in oklab, var(--cn-accent) 35%, transparent) 0%,
+    transparent 70%
+  );
+  filter: blur(64px);
+  z-index: 0;
+  pointer-events: none;
+  animation: lp-hero-drift-2 32s ease-in-out infinite alternate;
+  will-change: transform;
+}
+@keyframes lp-hero-drift {
+  0%   { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(8%, 6%) scale(1.12); }
+}
+@keyframes lp-hero-drift-2 {
+  0%   { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(-10%, -8%) scale(1.08); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-hero::before,
+  .lp-hero::after { animation: none; }
+}
+
+.lp-hero-inner {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  position: relative;
+  z-index: 1;
+}
+/* Two-column split on desktop: narrative left, anchor card right.
+   Single-column on tablet/mobile (anchor card hidden under 880px so the
+   hero stays narrative-led on small screens). */
+.lp-hero-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  gap: clamp(40px, 5vw, 72px);
+  align-items: center;
+}
+.lp-hero-text {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+/* Phase 51 — bolder headline treatment.
+   Was: italic, weight 300, clamp(56px, 9.5vw, 168px) — read as quiet/
+   literary. Now: upright Fraunces 500 with display optical size, tighter
+   letter-spacing, tighter line-height. The accent word stays italic so
+   the eye still has a focal point. Net effect: confident magazine cover
+   instead of literary novella. */
+.lp-hero-h {
+  margin: 0;
+  max-width: 14ch;
+  font-family: var(--cn-serif);
+  font-weight: 500;
+  font-style: normal;
+  font-variation-settings: "opsz" 144;
+  font-size: clamp(48px, 8.5vw, 132px);
+  line-height: 0.92;
+  letter-spacing: -0.038em;
+  color: var(--cn-ink);
+}
+.lp-hero-h .accent {
+  /* Override the global .cn-h-display .accent inline-block + ::after.
+     We want the accent word to flow inline AND keep its italic. */
+  display: inline;
+  position: static;
+  font-style: italic;
+  font-weight: 400;
+  color: var(--cn-accent);
+}
+.lp-hero-h .accent::after { content: none; }
+.lp-hero-sub {
+  max-width: 50ch;
+  margin: 8px 0 0;
+  font-size: clamp(15px, 1.05vw, 17px);
+}
+.lp-hero-cta {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  margin-top: 18px;
+  flex-wrap: wrap;
+}
+.lp-hero-trust {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid var(--cn-rule);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--cn-ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+/* Phase 49.8 — count-up numerals on the trust line. Tabular nums so
+   digits don't jiggle laterally as they climb. Slightly brighter ink
+   than the surrounding mono caps to draw the eye. */
+.lp-hero-trust-num {
+  color: var(--cn-ink);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "lnum";
+}
+
+/* ----- Hero anchor card (right column on desktop) -----
+   A real recently-paid deal pulled from seed. Subtle by design:
+   thin border, modest shadow, shows enough product UI to anchor
+   the abstract claim above without competing for attention. */
+.lp-hero-anchor {
+  background: color-mix(in oklab, var(--cn-bg) 86%, var(--cn-ink) 6%);
+  border: 1px solid color-mix(in oklab, var(--cn-rule) 80%, transparent);
+  border-radius: 16px;
+  padding: clamp(24px, 2.4vw, 32px);
+  box-shadow:
+    0 1px 0 0 color-mix(in oklab, var(--cn-ink) 6%, transparent) inset,
+    0 32px 64px -36px rgba(0, 0, 0, 0.55),
+    0 8px 18px -10px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  position: relative;
+}
+.lp-hero-anchor-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  padding: 6px 12px 6px 10px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--cn-accent) 16%, transparent);
+  border: 1px solid color-mix(in oklab, var(--cn-accent) 35%, transparent);
+  color: var(--cn-accent);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+.lp-hero-anchor-pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--cn-accent);
+  box-shadow: 0 0 0 0 color-mix(in oklab, var(--cn-accent) 60%, transparent);
+  animation: lp-pulse 2.4s ease-in-out infinite;
+  flex-shrink: 0;
+}
+@keyframes lp-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--cn-accent) 60%, transparent); }
+  50%      { box-shadow: 0 0 0 8px color-mix(in oklab, var(--cn-accent) 0%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-hero-anchor-pulse { animation: none; }
+}
+.lp-hero-anchor-head {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 14px;
+}
+.lp-hero-anchor-mark {
+  width: 44px;
+  height: 44px;
+  border-radius: 11px;
+  background: color-mix(in oklab, var(--cn-accent) 26%, var(--cn-bg));
+  border: 1px solid color-mix(in oklab, var(--cn-accent) 40%, transparent);
+  color: var(--cn-ink);
+  font-family: var(--cn-serif);
+  font-style: italic;
+  font-weight: 300;
+  font-size: 22px;
+  display: grid;
+  place-items: center;
+  letter-spacing: -0.02em;
+}
+/* Portrait variant for the creator-side anchor card. Same footprint
+   as the brand-side letter mark above, just rounded to a circle. */
+.lp-hero-anchor-portrait {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid color-mix(in oklab, var(--cn-accent) 40%, var(--cn-rule));
+  background: var(--cn-rule);
+}
+.lp-hero-anchor-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.lp-hero-anchor-brand {
+  font-family: var(--cn-sans);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--cn-ink);
+  letter-spacing: -0.005em;
+}
+.lp-hero-anchor-cmp {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--cn-ink-quiet);
+  text-transform: uppercase;
+}
+.lp-hero-anchor-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid color-mix(in oklab, var(--cn-rule) 70%, transparent);
+}
+.lp-hero-anchor-k {
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--cn-ink-quiet);
+  margin-bottom: 6px;
+}
+.lp-hero-anchor-v {
+  font-family: var(--cn-serif);
+  font-style: italic;
+  font-weight: 300;
+  font-size: clamp(22px, 2vw, 28px);
+  letter-spacing: -0.018em;
+  color: var(--cn-ink);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.0;
+}
+.lp-hero-anchor-v-money {
+  font-style: normal;
+  color: var(--cn-accent);
+  font-feature-settings: "lnum";
+}
+.lp-hero-anchor-foot {
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--cn-ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ----- Section 2 · TrustStrip ----- */
+.lp-trust {
+  position: relative;
+  z-index: 5;
+  padding: clamp(48px, 6vw, 80px) clamp(22px, 4vw, 56px);
+  max-width: 1280px;
+  margin: 0 auto;
+  border-top: 1px solid var(--cn-rule);
+  border-bottom: 1px solid var(--cn-rule);
+  background: color-mix(in oklab, var(--cn-bg) 92%, var(--cn-ink) 4%);
+  /* Reveal */
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.7s ease, transform 0.7s ease;
+}
+.lp-trust.is-visible { opacity: 1; transform: none; }
+.lp-trust-lead {
+  text-align: center;
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--cn-ink-quiet);
+  margin-bottom: 24px;
+}
+.lp-trust-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: clamp(20px, 3vw, 44px) clamp(28px, 4vw, 60px);
+  padding: 8px 0 16px;
+}
+.lp-trust-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+  transition: color 0.3s;
+  cursor: default;
+  color: var(--cn-ink-muted);
+}
+.lp-trust-mark:hover { color: var(--cn-ink); }
+.lp-trust-mark:hover .lp-trust-mark-badge {
+  border-color: color-mix(in oklab, var(--cn-accent) 50%, var(--cn-rule));
+  color: var(--cn-accent);
+}
+.lp-trust-mark-badge {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--cn-rule);
+  font-family: var(--cn-serif);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 14px;
+  color: var(--cn-ink-quiet);
+  transition: border-color 0.3s, color 0.3s;
+  background: color-mix(in oklab, var(--cn-bg) 92%, var(--cn-ink) 4%);
+}
+.lp-trust-mark-name {
+  font-family: var(--cn-serif);
+  font-style: italic;
+  font-weight: 300;
+  font-size: clamp(17px, 1.5vw, 24px);
+  letter-spacing: -0.012em;
+  line-height: 1;
+}
+.lp-trust-foot {
+  text-align: center;
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--cn-ink-faint);
+  margin-top: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ----- Section 3 · HowItWorks -----
+   Phase 56g — removed the opacity:0 default. The `useReveal` hook that
+   toggled `.is-visible` was dropped in the Phase 54 rebuild, so the
+   sections were stuck at opacity 0 forever (rendering as empty
+   space). The new components have their own motion-react reveals. */
+.lp-how {
+  /* no scroll-reveal defaults — visible by default */
+}
+.lp-how.is-visible { opacity: 1; transform: none; }
+.lp-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1px;
+  background: var(--cn-rule);
+  border: 1px solid var(--cn-rule);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.lp-step {
+  background: color-mix(in oklab, var(--cn-bg) 90%, var(--cn-ink) 4%);
+  padding: clamp(24px, 2.6vw, 36px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 220px;
+}
+.lp-step-n {
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--cn-accent);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+.lp-step-verb {
+  font-family: var(--cn-serif);
+  font-style: normal;
+  font-weight: 500;
+  font-variation-settings: "opsz" 144;
+  font-size: clamp(28px, 2.8vw, 40px);
+  line-height: 0.96;
+  letter-spacing: -0.028em;
+  color: var(--cn-ink);
+  margin: 4px 0 6px;
+}
+.lp-step-body {
+  font-family: var(--cn-sans);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--cn-ink-muted);
+  margin: 0;
+}
+/* Step chip — small product-UI preview at the bottom of each step
+   card. Reads as: "[icon] KEY value" with the key in mono-caps and
+   the value in tabular sans. Subtle, not the focus of the step. */
+.lp-step-chip {
+  margin-top: auto;
+  padding-top: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: var(--cn-ink-muted);
+  border-top: 1px dashed color-mix(in oklab, var(--cn-rule) 60%, transparent);
+}
+.lp-step-chip-icon {
+  flex: 0 0 auto;
+  color: var(--cn-accent);
+  opacity: 0.85;
+}
+.lp-step-chip-k {
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--cn-ink-quiet);
+}
+.lp-step-chip-v {
+  font-family: var(--cn-sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--cn-ink);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.005em;
+}
+
+/* ----- Section 4 · WhyAlamut ----- */
+.lp-why {
+  /* Phase 56g — opacity:0 reveal default removed; useReveal hook gone. */
+}
+.lp-why.is-visible { opacity: 1; transform: none; }
+.lp-why-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(20px, 2.2vw, 28px);
+}
+.lp-why-card {
+  background: color-mix(in oklab, var(--cn-bg) 90%, var(--cn-ink) 4%);
+  border: 1px solid var(--cn-rule);
+  border-radius: 14px;
+  padding: clamp(24px, 2.6vw, 36px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: relative;
+  /* Phase 49 — hover lift (uses motion tokens) */
+  transition: transform var(--motion-fast) var(--ease-state),
+              border-color var(--motion-fast) var(--ease-state),
+              box-shadow var(--motion-fast) var(--ease-state);
+}
+.lp-why-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in oklab, var(--cn-accent) 40%, var(--cn-rule));
+  box-shadow: 0 12px 28px -16px color-mix(in oklab, var(--cn-ink) 30%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-why-card,
+  .lp-why-card:hover { transform: none; transition: none; }
+}
+.lp-why-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 24px;
+  right: 24px;
+  height: 2px;
+  background: linear-gradient(
+    to right,
+    var(--cn-accent) 0%,
+    color-mix(in oklab, var(--cn-accent) 60%, transparent) 60%,
+    transparent 100%
+  );
+  opacity: 0.7;
+}
+.lp-why-card-glyph {
+  color: var(--cn-accent);
+  opacity: 0.9;
+  margin-bottom: 4px;
+}
+.lp-why-card-title {
+  font-family: var(--cn-serif);
+  font-style: normal;
+  font-weight: 500;
+  font-variation-settings: "opsz" 144;
+  font-size: clamp(22px, 2.2vw, 30px);
+  letter-spacing: -0.025em;
+  line-height: 1.06;
+  color: var(--cn-ink);
+  margin: 4px 0;
+}
+.lp-why-card-body {
+  font-family: var(--cn-sans);
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--cn-ink-muted);
+  margin: 0;
+}
+
+/* ----- Section 5 · RealVoices ----- */
+.lp-voices {
+  /* Phase 56g — opacity:0 reveal default removed; useReveal hook gone. */
+}
+.lp-voices.is-visible { opacity: 1; transform: none; }
+.lp-voices-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(24px, 3vw, 40px);
+}
+.lp-voice {
+  margin: 0;
+  background: color-mix(in oklab, var(--cn-bg) 88%, var(--cn-ink) 5%);
+  border: 1px solid var(--cn-rule);
+  border-radius: 16px;
+  padding: clamp(28px, 3vw, 44px);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  box-shadow:
+    0 1px 0 0 color-mix(in oklab, var(--cn-ink) 6%, transparent) inset,
+    0 24px 56px -32px rgba(0, 0, 0, 0.5);
+  /* Phase 49 — hover lift */
+  transition: transform var(--motion-fast) var(--ease-state),
+              border-color var(--motion-fast) var(--ease-state),
+              box-shadow var(--motion-fast) var(--ease-state);
+}
+.lp-voice:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in oklab, var(--cn-accent) 40%, var(--cn-rule));
+  box-shadow:
+    0 1px 0 0 color-mix(in oklab, var(--cn-ink) 6%, transparent) inset,
+    0 32px 64px -32px rgba(0, 0, 0, 0.6),
+    0 12px 24px -12px rgba(0, 0, 0, 0.5);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-voice,
+  .lp-voice:hover { transform: none; transition: none; }
+}
+.lp-voice-portrait {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid color-mix(in oklab, var(--cn-rule) 80%, transparent);
+  background: var(--cn-rule);
+}
+.lp-voice-quote {
+  font-family: var(--cn-serif);
+  /* Italic stays — these ARE quoted speech, italic is the correct
+     typographic register for direct quotation. Weight bumped from 300
+     to 400 for more confidence; size + spacing tightened to match the
+     rest of the page's bolder treatment. */
+  font-style: italic;
+  font-weight: 400;
+  font-variation-settings: "opsz" 144;
+  font-size: clamp(20px, 1.85vw, 28px);
+  line-height: 1.32;
+  letter-spacing: -0.018em;
+  color: var(--cn-ink);
+  margin: 0;
+}
+.lp-voice-cap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 14px;
+  border-top: 1px solid var(--cn-rule);
+}
+.lp-voice-cap-name {
+  font-family: var(--cn-sans);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--cn-ink);
+  letter-spacing: -0.005em;
+}
+.lp-voice-cap-sub {
+  font-family: var(--cn-sans);
+  font-size: 13px;
+  color: var(--cn-ink-muted);
+}
+.lp-voice-cap-deal {
+  margin-top: 6px;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--cn-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ----- Section 6 · Pricing ----- */
+.lp-pricing {
+  /* Phase 56g — opacity:0 reveal default removed; useReveal hook gone. */
+}
+.lp-pricing.is-visible { opacity: 1; transform: none; }
+.lp-pricing-card {
+  background: color-mix(in oklab, var(--cn-bg) 88%, var(--cn-ink) 5%);
+  border: 1px solid var(--cn-rule);
+  border-radius: 16px;
+  padding: clamp(32px, 4vw, 56px);
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 760px;
+  position: relative;
+  /* Phase 49 — hover lift */
+  transition: transform var(--motion-fast) var(--ease-state),
+              border-color var(--motion-fast) var(--ease-state),
+              box-shadow var(--motion-fast) var(--ease-state);
+}
+.lp-pricing-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in oklab, var(--cn-accent) 40%, var(--cn-rule));
+  box-shadow: 0 16px 32px -16px color-mix(in oklab, var(--cn-ink) 30%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-pricing-card,
+  .lp-pricing-card:hover { transform: none; transition: none; }
+}
+.lp-pricing-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 32px;
+  width: 80px;
+  height: 2px;
+  background: var(--cn-accent);
+  border-radius: 1px;
+}
+.lp-pricing-body {
+  font-family: var(--cn-sans);
+  font-size: clamp(15px, 1.05vw, 17px);
+  line-height: 1.6;
+  color: var(--cn-ink-muted);
+  margin: 0;
+  max-width: 56ch;
+}
+.lp-pricing-bullets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.lp-pricing-bullets li {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  font-family: var(--cn-sans);
+  font-size: 14.5px;
+  color: var(--cn-ink);
+  font-variant-numeric: tabular-nums;
+}
+.lp-pricing-bullet-mark {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  background: color-mix(in oklab, var(--cn-accent) 22%, transparent);
+  color: var(--cn-accent);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  align-self: center;
+}
+.lp-pricing-card .cn-btn {
+  align-self: flex-start;
+}
+
+/* ----- Section 7 · FAQ ----- */
+.lp-faq {
+  /* Phase 56g — opacity:0 reveal default removed; useReveal hook gone.
+     This is the bug that caused both BrandFAQ and CreatorFAQ to render
+     as invisible empty space (DOM present, opacity 0, no .is-visible
+     class ever applied because the new components don't use useReveal). */
+}
+.lp-faq.is-visible { /* legacy hook retained as no-op for backwards compat */ }
+.lp-faq-list {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--cn-rule);
+  border-bottom: 1px solid var(--cn-rule);
+}
+.lp-faq-item {
+  border-bottom: 1px solid var(--cn-rule);
+}
+.lp-faq-item:last-child {
+  border-bottom: none;
+}
+.lp-faq-q {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 22px 4px;
+  cursor: pointer;
+  list-style: none;
+  /* Native disclosure marker — replaced by our SVG glyph below. */
+}
+.lp-faq-q::-webkit-details-marker { display: none; }
+.lp-faq-q::marker { content: ''; }
+.lp-faq-q-text {
+  font-family: var(--cn-serif);
+  font-style: normal;
+  font-weight: 500;
+  font-variation-settings: "opsz" 144;
+  font-size: clamp(18px, 1.7vw, 24px);
+  line-height: 1.25;
+  letter-spacing: -0.018em;
+  color: var(--cn-ink);
+  flex: 1 1 auto;
+  text-wrap: balance;
+}
+.lp-faq-q-glyph {
+  flex: 0 0 auto;
+  color: var(--cn-ink-quiet);
+  transition: transform 0.3s ease, color 0.3s ease;
+}
+.lp-faq-item[open] > .lp-faq-q .lp-faq-q-glyph {
+  transform: rotate(180deg);
+  color: var(--cn-accent);
+}
+.lp-faq-item[open] > .lp-faq-q .lp-faq-q-text {
+  color: var(--cn-accent);
+}
+.lp-faq-q:hover .lp-faq-q-text {
+  color: var(--cn-accent);
+}
+/* Phase 49 — grid-rows trick for animating <details> open/close.
+   Wrap collapses from 0fr → 1fr on [open] state. The inner .lp-faq-a
+   uses overflow:hidden so the height transition reads cleanly. Modern
+   browsers (Chrome 117+, Safari 17+, FF 121+); older browsers fall
+   back to instant open which is the same as before, no regression. */
+.lp-faq-a-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--motion-medium) var(--ease-out);
+}
+.lp-faq-item[open] > .lp-faq-a-wrap {
+  grid-template-rows: 1fr;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-faq-a-wrap { transition: none; }
+}
+.lp-faq-a {
+  font-family: var(--cn-sans);
+  font-size: clamp(14px, 1vw, 16px);
+  line-height: 1.65;
+  color: var(--cn-ink-muted);
+  padding: 4px 4px 22px;
+  max-width: 70ch;
+  overflow: hidden;
+  min-height: 0;
+}
+@media (max-width: 540px) {
+  .lp-faq-q { padding: 18px 4px; gap: 16px; }
+  .lp-faq-a { padding: 4px 4px 18px; }
+}
+
+/* ----- Sticky CTA -----
+   A small floating bar that appears in the bottom-right after the
+   hero leaves the viewport. Dismissible. Persona-aware copy. Plain
+   CSS transition tied to data-show so React state changes drive a
+   reliable fade-up regardless of motion-library behavior. */
+.lp-sticky {
+  position: fixed;
+  bottom: clamp(16px, 2vw, 28px);
+  right: clamp(16px, 2vw, 28px);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  background: color-mix(in oklab, var(--cn-bg) 92%, var(--cn-ink) 6%);
+  border: 1px solid color-mix(in oklab, var(--cn-rule) 90%, transparent);
+  border-radius: 999px;
+  box-shadow:
+    0 1px 0 0 color-mix(in oklab, var(--cn-ink) 8%, transparent) inset,
+    0 24px 56px -28px rgba(0, 0, 0, 0.6),
+    0 8px 18px -10px rgba(0, 0, 0, 0.5);
+  max-width: calc(100vw - 32px);
+  /* Hidden state — fades up from below when data-show flips. */
+  opacity: 0;
+  transform: translateY(32px);
+  transition: opacity 0.4s ease, transform 0.4s ease;
+  pointer-events: none;
+}
+.lp-sticky.is-show {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.lp-sticky.is-reduced {
+  transition: none;
+}
+.lp-sticky-text {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.lp-sticky-pulse {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--cn-accent);
+  box-shadow: 0 0 0 0 color-mix(in oklab, var(--cn-accent) 60%, transparent);
+  animation: lp-pulse 2.4s ease-in-out infinite;
+}
+.lp-sticky-msg {
+  font-family: var(--cn-sans);
+  font-size: 13px;
+  color: var(--cn-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.005em;
+  font-style: italic;
+}
+.lp-sticky-cta {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--cn-ink);
+  color: var(--cn-bg);
+  font-family: var(--cn-sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  text-decoration: none;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  transition: background 0.25s, color 0.25s;
+}
+.lp-sticky-cta:hover {
+  background: var(--cn-accent);
+  color: var(--cn-bg);
+}
+.lp-sticky-close {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--cn-rule);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--cn-ink-muted);
+  cursor: pointer;
+  transition: color 0.25s, border-color 0.25s;
+}
+.lp-sticky-close:hover {
+  color: var(--cn-ink);
+  border-color: var(--cn-ink-muted);
+}
+@media (max-width: 600px) {
+  .lp-sticky {
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    border-radius: 14px;
+    padding: 10px 12px;
+  }
+  .lp-sticky-msg { font-size: 12px; }
+  .lp-sticky-cta { padding: 7px 11px; font-size: 12px; }
+  .lp-sticky-close { width: 26px; height: 26px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-sticky-pulse { animation: none; }
+}
+
+/* ----- Section 8 · FinalCTA ----- */
+.lp-final {
+  /* Phase 56g — opacity:0 / transform reveal defaults removed; the
+     useReveal hook that flipped .is-visible was dropped in Phase 54.
+     Without that toggle, the FinalCTA was rendering invisibly the
+     entire time — that's the "empty space at the bottom" bug. */
+  text-align: center;
+  /* Tightened from clamp(72, 8vw, 112) to clamp(48, 5vw, 72) so the
+     closing CTA section matches the new tighter section-padding
+     rhythm. The previous 112px max generated ~112px of dead air on
+     either side at 1440px+ widths. */
+  padding: clamp(48px, 5vw, 72px) clamp(22px, 4vw, 56px);
+  position: relative;
+  overflow: hidden;
+}
+.lp-final::before {
+  content: "";
+  position: absolute;
+  top: -20%;
+  left: 50%;
+  width: 80%;
+  height: 120%;
+  transform: translateX(-50%);
+  background: radial-gradient(
+    closest-side,
+    color-mix(in oklab, var(--cn-accent) 32%, transparent) 0%,
+    color-mix(in oklab, var(--cn-accent) 10%, transparent) 45%,
+    transparent 75%
+  );
+  filter: blur(56px);
+  z-index: 0;
+  pointer-events: none;
+  animation: lp-final-drift 28s ease-in-out infinite alternate;
+  will-change: transform;
+}
+@keyframes lp-final-drift {
+  0%   { transform: translate(-50%, 0) scale(1); }
+  100% { transform: translate(-46%, -4%) scale(1.08); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-final::before { animation: none; }
+}
+.lp-final.is-visible { opacity: 1; transform: none; }
+.lp-final-inner {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  align-items: center;
+  position: relative;
+  z-index: 1;
+}
+.lp-final-h {
+  margin: 0;
+  /* Phase 51 — match the hero's bolder treatment. Was: italic 300
+     (inherited from .cn-h-display); now: upright Fraunces 500 with
+     display optical size + tighter spacing. Accent words stay italic. */
+  font-family: var(--cn-serif);
+  font-weight: 500;
+  font-style: normal;
+  font-variation-settings: "opsz" 144;
+  font-size: clamp(40px, 6.2vw, 92px);
+  line-height: 0.94;
+  letter-spacing: -0.034em;
+  color: var(--cn-ink);
+  text-wrap: balance;
+}
+.lp-final-h .accent {
+  display: inline;
+  position: static;
+  color: var(--cn-accent);
+  font-style: italic;
+  font-weight: 400;
+}
+.lp-final-h .accent::after { content: none; }
+.lp-final-body {
+  margin: 8px auto 0;
+  max-width: 56ch;
+  text-align: center;
+}
+.lp-final-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+/* ----- Mobile ----- */
+@media (max-width: 880px) {
+  .lp-hero {
+    padding: 84px 22px 56px;
+    min-height: auto;
+  }
+  .lp-hero-split {
+    grid-template-columns: 1fr;
+  }
+  .lp-hero-anchor { display: none; }
+  .lp-hero-h {
+    font-size: clamp(40px, 11vw, 64px);
+    max-width: none;
+  }
+  .lp-section {
+    padding: 64px 22px;
+  }
+  .lp-section-head {
+    margin-bottom: 32px;
+  }
+  .lp-trust {
+    padding: 40px 22px;
+  }
+  .lp-trust-row {
+    gap: 16px 28px;
+  }
+  .lp-trust-mark { font-size: 16px; }
+
+  .lp-steps {
+    grid-template-columns: 1fr;
+  }
+  .lp-step {
+    min-height: 0;
+  }
+
+  .lp-why-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lp-voices-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lp-pricing-card { padding: 28px 24px; }
+  .lp-final-h {
+    font-size: clamp(32px, 9vw, 48px);
+  }
+}
+@media (max-width: 540px) {
+  .lp-hero-cta { gap: 12px; }
+  .lp-hero-trust { font-size: 10px; letter-spacing: 0.14em; }
+  .lp-final-cta { gap: 12px; }
+  .lp-voice { padding: 22px; }
+  .lp-voice-quote { font-size: 18px; }
+}
+

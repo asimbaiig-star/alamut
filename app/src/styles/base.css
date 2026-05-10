@@ -1,0 +1,247 @@
+* { box-sizing: border-box; }
+
+/* Phase 49 — smooth scroll for in-page anchors (cn-topnav-links, footer
+   anchor links, CTA secondary "see how it works ↓" links, etc.). Honors
+   prefers-reduced-motion via the override below. */
+html {
+  scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "ss01" 1, "cv02" 1, "cv11" 1;
+  position: relative;
+}
+
+/* Atmospheric canvas — three soft warm radial blobs over a base color, fixed
+   so the page scrolls over a stable atmosphere. Tiles sit *above* this layer
+   with their own opaque surfaces, so text contrast is never compromised. */
+body {
+  background:
+    radial-gradient(ellipse 800px 600px at 10% -10%,  var(--bg-mesh-1) 0%, transparent 60%),
+    radial-gradient(ellipse 700px 600px at 95% 30%,   var(--bg-mesh-2) 0%, transparent 65%),
+    radial-gradient(ellipse 900px 700px at 30% 110%,  var(--bg-mesh-3) 0%, transparent 65%),
+    var(--bg-canvas);
+  background-attachment: fixed;
+}
+
+/* Atmosphere · paper-grain overlay (skill: "create atmosphere and depth rather than defaulting to solid colors").
+   Fixed-position SVG noise at ~4% opacity. Does not affect contrast or interactivity. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.045;
+  background-image: url("data:image/svg+xml;utf8,%3Csvg viewBox='0 0 240 240' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.6 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 240px 240px;
+  mix-blend-mode: multiply;
+}
+body[data-theme="dark"]::before {
+  opacity: 0.08;
+  mix-blend-mode: screen;
+}
+
+/* Tells the browser our preferred theme so native widgets (date pickers, select dropdowns, scrollbars)
+   render with matching contrast. */
+body                       { color-scheme: light; }
+body[data-theme="dark"]    { color-scheme: dark; }
+
+img, svg { display: block; max-width: 100%; }
+button { font-family: inherit; cursor: pointer; border: 0; background: none; color: inherit; padding: 0; }
+em { font-style: italic; }
+a { color: inherit; text-decoration: none; }
+input, textarea, select { font-family: inherit; font-size: inherit; color: inherit; }
+
+/* All text-y inputs share the same skin so they adapt cleanly to dark mode.
+   :where() keeps specificity at 0 so utility overrides still win. */
+input:where(:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="image"])),
+textarea, select {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  outline: none;
+  width: 100%;
+  transition: border-color 0.15s, background 0.15s;
+}
+input::placeholder, textarea::placeholder { color: var(--ink-40); }
+input:focus, textarea:focus, select:focus { border-color: var(--ink); }
+textarea { resize: vertical; min-height: 90px; }
+
+/* Let native select keep its OS arrow — color-scheme on body makes the OS render
+   it in matching theme (dark arrow on dark bg, light on light). Cleaner than overriding. */
+
+/* Page heads */
+.label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-60);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.label-num { color: var(--ink-40); font-weight: 500; }
+
+/* Editorial kicker rule · trailing hairline (magazine convention).
+   The label gets a thin line that fades, signalling "this is a section header". */
+.label::after {
+  content: "";
+  display: inline-block;
+  width: 56px;
+  height: 1px;
+  background: linear-gradient(90deg, var(--rule), transparent);
+  margin-left: 4px;
+  align-self: center;
+}
+
+.display {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(40px, 5vw, 64px);
+  line-height: 1.0;
+  letter-spacing: -0.035em;
+  margin: 18px 0 14px;
+  color: var(--ink);
+}
+
+/* Editorial drop-cap utility — apply to long-form blocks (briefs, bios). */
+.dropcap::first-letter {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: 4.4em;
+  line-height: 0.85;
+  float: left;
+  padding: 6px 12px 0 0;
+  color: var(--accent);
+}
+.display em { font-style: italic; color: var(--accent); }
+
+.lede {
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--ink-80);
+  max-width: 62ch;
+  text-wrap: pretty;
+}
+
+.rule { height: 1px; background: var(--rule); width: 100%; }
+
+.mono-meta {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-60);
+}
+
+/* === Editorial page-entrance orchestration ===
+   Per the frontend-design skill: "one well-orchestrated page load with staggered reveals
+   creates more delight than scattered micro-interactions." Each major page block
+   rises and fades in with a small sequential delay. Total stagger ~360ms.
+   Applied via `backwards` fill-mode so the initial state is hidden until the animation runs. */
+@keyframes editorial-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+.page > .page-head           { animation: editorial-rise 520ms 0ms    cubic-bezier(.22, .8, .15, 1) backwards; }
+.page > .kpi-strip           { animation: editorial-rise 520ms 80ms   cubic-bezier(.22, .8, .15, 1) backwards; }
+.page > .toolbar             { animation: editorial-rise 520ms 120ms  cubic-bezier(.22, .8, .15, 1) backwards; }
+.page > .dash-grid           { animation: editorial-rise 520ms 180ms  cubic-bezier(.22, .8, .15, 1) backwards; }
+.page > .creator-grid        { animation: editorial-rise 520ms 220ms  cubic-bezier(.22, .8, .15, 1) backwards; }
+.page > .kanban              { animation: editorial-rise 520ms 220ms  cubic-bezier(.22, .8, .15, 1) backwards; }
+.page > .card                { animation: editorial-rise 520ms 240ms  cubic-bezier(.22, .8, .15, 1) backwards; }
+
+/* Drawer slide-in */
+@keyframes drawer-slide {
+  from { transform: translateX(20px); opacity: 0; }
+  to   { transform: none; opacity: 1; }
+}
+.drawer { animation: drawer-slide 280ms cubic-bezier(.22, .8, .15, 1) backwards; }
+
+/* Modal fade + small scale */
+@keyframes modal-pop {
+  from { opacity: 0; transform: scale(0.985) translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+.modal { animation: modal-pop 200ms cubic-bezier(.22, .8, .15, 1) backwards; }
+
+/* Hover lift on creator cards in Discover rails — subtle.
+   Transition is declared in screens.css to win the cascade over the base creator-card rule. */
+.creator-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px -16px color-mix(in oklab, var(--ink) 30%, transparent);
+}
+
+/* Primary button arrow slide on hover */
+.btn-solid:hover svg:last-child,
+.btn-ghost:hover svg:last-child {
+  transform: translateX(2px);
+  transition: transform 0.18s cubic-bezier(.22,.8,.15,1);
+}
+
+/* Honour the user's reduced-motion preference. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ================ Accessibility · keyboard focus indicator ================
+   :focus-visible only fires on keyboard navigation (not mouse clicks),
+   so the editorial aesthetic stays clean for pointer users while keyboard
+   users get a clear visible target. Outline uses the accent so it matches
+   the brand. */
+:focus { outline: none; }
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+/* Inputs/textareas/selects: shift the ring inside the field so it doesn't
+   visually push the layout. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline-offset: 0;
+  outline-width: 2px;
+  outline-color: var(--accent);
+  border-color: var(--accent);
+}
+/* Invalid + focused: keep the red error indicator dominant.
+   Without this, the accent ring hides the field's invalid state mid-edit. */
+input[aria-invalid="true"]:focus-visible,
+textarea[aria-invalid="true"]:focus-visible,
+select[aria-invalid="true"]:focus-visible {
+  outline-color: var(--bad);
+  border-color: var(--bad);
+}
+/* For radio/checkbox keep the standard outset ring. */
+input[type="checkbox"]:focus-visible,
+input[type="radio"]:focus-visible {
+  outline-offset: 2px;
+}
+/* Tabs/cards used as buttons: same treatment as solid buttons. */
+.tab:focus-visible,
+.kcard:focus-visible,
+.creator-card:focus-visible {
+  outline-offset: 2px;
+}

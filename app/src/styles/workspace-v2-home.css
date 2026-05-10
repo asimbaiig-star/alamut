@@ -1,0 +1,577 @@
+/* =====================================================================
+   Phase A.10c — Reimagined Home (BrandHome + CreatorHome)
+   - Spark composer (dark gradient hero)
+   - Action Inbox / Today list (urgent dots, ranked rows)
+   - Pacing strip (5 mini stats + timeline bar)
+   - Outcome cards (3-up "this week's wins")
+   - Creator of the week (gradient banner + why-this-match)
+   - Cultural calendar (day-countdown tiles)
+   - Earnings hero (moss gradient + sparkline + mini stats)
+   - Brief matches (compact rows with match-score pills)
+   - Storefront pulse (3-up stats + brand viewers + Spark suggestion)
+   - Audience pulse (sparkline + city bars + best-time chip)
+   - Goals (earnings progress + tier + 3 achievements + streak)
+   - Tip of the day (gradient card with attribution)
+   ===================================================================== */
+
+/* Generic 2-up rows for home (responsive collapse on <1080) */
+[data-surface="v2"] .v2-home-hero {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 20px;
+  align-items: stretch;
+}
+[data-surface="v2"] .v2-home-row {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 20px;
+  align-items: stretch;
+}
+[data-surface="v2"] .v2-home-row[data-style="reverse"] {
+  grid-template-columns: 1.4fr 1fr;
+}
+@media (max-width: 1080px) {
+  [data-surface="v2"] .v2-home-hero,
+  [data-surface="v2"] .v2-home-row,
+  [data-surface="v2"] .v2-home-row[data-style="reverse"] {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- Spark composer (BrandHome hero left) ---------- */
+
+[data-surface="v2"] .v2-home-spark-card {
+  position: relative;
+  overflow: hidden;
+  padding: 24px;
+  border-radius: var(--v2-r-lg);
+  background: linear-gradient(135deg, var(--v2-ink) 0%, #2A2620 100%);
+  color: var(--v2-paper);
+  border: 1px solid transparent;
+}
+[data-surface="v2"] .v2-home-spark-glow {
+  position: absolute;
+  top: -40px;
+  right: -40px;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--v2-accent) 0%, transparent 70%);
+  opacity: 0.25;
+  filter: blur(20px);
+  pointer-events: none;
+}
+[data-surface="v2"] .v2-home-spark-input {
+  position: relative;
+  background: rgba(251,247,238,0.06);
+  border: 1px solid rgba(251,247,238,0.15);
+  border-radius: var(--v2-r-md);
+  padding: 12px;
+  margin-bottom: 12px;
+}
+[data-surface="v2"] .v2-home-spark-input textarea {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--v2-paper);
+  font-family: inherit;
+  font-size: 15px;
+  resize: none;
+  line-height: 1.45;
+}
+[data-surface="v2"] .v2-home-spark-input textarea::placeholder {
+  color: rgba(251,247,238,0.45);
+}
+[data-surface="v2"] .v2-home-spark-attach {
+  background: transparent;
+  color: rgba(251,247,238,0.5);
+  border: none;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+[data-surface="v2"] .v2-home-spark-attach:hover {
+  color: rgba(251,247,238,0.85);
+}
+[data-surface="v2"] .v2-home-spark-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+}
+[data-surface="v2"] .v2-home-spark-suggestion {
+  background: rgba(251,247,238,0.04);
+  border: 1px solid rgba(251,247,238,0.1);
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: rgba(251,247,238,0.85);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+}
+[data-surface="v2"] .v2-home-spark-suggestion:hover {
+  background: rgba(251,247,238,0.1);
+  color: var(--v2-paper);
+}
+
+/* ---------- Action Inbox (BrandHome) / Today list (CreatorHome) ---------- */
+
+[data-surface="v2"] .v2-home-inbox {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+[data-surface="v2"] .v2-home-inbox-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--v2-line);
+  gap: 12px;
+}
+[data-surface="v2"] .v2-home-inbox-list {
+  flex: 1;
+  overflow-y: auto;
+}
+[data-surface="v2"] .v2-home-inbox-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 20px;
+  border: none;
+  border-bottom: 1px solid var(--v2-line);
+  background: var(--v2-paper);
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--v2-ink);
+  transition: background 0.12s;
+}
+[data-surface="v2"] .v2-home-inbox-row:last-child { border-bottom: none; }
+[data-surface="v2"] .v2-home-inbox-row:hover { background: var(--v2-bg-1); }
+[data-surface="v2"] .v2-home-inbox-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--v2-ink-3);
+  flex-shrink: 0;
+}
+[data-surface="v2"] .v2-home-inbox-dot.is-urgent { background: var(--v2-accent); }
+[data-surface="v2"] .v2-home-inbox-text {
+  font-size: 13.5px;
+  font-weight: 550;
+  margin-bottom: 1px;
+}
+[data-surface="v2"] .v2-home-inbox-action {
+  font-size: 12px;
+  color: var(--v2-ink-3);
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+[data-surface="v2"] .v2-home-inbox-row:hover .v2-home-inbox-action { color: var(--v2-accent); }
+
+/* Today list specific (creator) — slightly different row layout */
+[data-surface="v2"] .v2-home-today-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 14px 20px;
+  border: none;
+  border-bottom: 1px solid var(--v2-line);
+  background: var(--v2-paper);
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--v2-ink);
+  transition: background 0.12s;
+}
+[data-surface="v2"] .v2-home-today-row:last-child { border-bottom: none; }
+[data-surface="v2"] .v2-home-today-row:hover { background: var(--v2-bg-1); }
+[data-surface="v2"] .v2-home-today-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--v2-bg);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--v2-ink-2);
+}
+[data-surface="v2"] .v2-home-today-icon.is-urgent {
+  background: var(--v2-accent-soft);
+  color: var(--v2-accent);
+}
+
+/* ---------- Pacing strip (BrandHome) ---------- */
+
+[data-surface="v2"] .v2-home-pacing-stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 12px;
+}
+@media (max-width: 880px) {
+  [data-surface="v2"] .v2-home-pacing-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+[data-surface="v2"] .v2-home-pacing-stat {
+  min-width: 0;
+}
+[data-surface="v2"] .v2-home-pacing-bar {
+  height: 8px;
+  background: var(--v2-bg-2);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+[data-surface="v2"] .v2-home-pacing-bar > div {
+  height: 100%;
+  background: var(--v2-accent);
+  transition: width 0.3s ease;
+}
+
+/* ---------- Outcome cards (BrandHome wins) ---------- */
+
+[data-surface="v2"] .v2-home-outcome-card {
+  position: relative;
+  cursor: pointer;
+  background: var(--v2-paper);
+  border: 1px solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  padding: 18px;
+  text-align: left;
+  font-family: inherit;
+  color: inherit;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+[data-surface="v2"] .v2-home-outcome-card:hover {
+  border-color: var(--v2-accent);
+  box-shadow: var(--v2-shadow-sm);
+}
+
+/* ---------- Creator of the week (BrandHome discovery) ---------- */
+
+[data-surface="v2"] .v2-home-creator-card {
+  padding: 0;
+  overflow: hidden;
+}
+[data-surface="v2"] .v2-home-creator-banner {
+  height: 120px;
+  background: linear-gradient(135deg, var(--v2-moss) 0%, var(--v2-ink) 100%);
+  position: relative;
+  padding: 16px 20px;
+}
+[data-surface="v2"] .v2-home-creator-why {
+  padding: 12px 14px;
+  background: var(--v2-bg);
+  border-radius: var(--v2-r-md);
+  font-size: 13px;
+  margin-bottom: 14px;
+  border-left: 3px solid var(--v2-accent);
+  color: var(--v2-ink-2);
+  line-height: 1.5;
+}
+
+/* ---------- Cultural calendar (BrandHome) ---------- */
+
+[data-surface="v2"] .v2-home-calendar {
+  padding: 0;
+  overflow: hidden;
+}
+[data-surface="v2"] .v2-home-calendar-head {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--v2-line);
+}
+[data-surface="v2"] .v2-home-calendar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--v2-line);
+}
+[data-surface="v2"] .v2-home-calendar-row:last-child { border-bottom: none; }
+[data-surface="v2"] .v2-home-calendar-tile {
+  min-width: 60px;
+  padding: 6px 0;
+  text-align: center;
+  background: var(--v2-bg);
+  border-radius: 6px;
+}
+[data-surface="v2"] .v2-home-calendar-tile.is-soon {
+  background: var(--v2-accent-soft);
+}
+[data-surface="v2"] .v2-home-calendar-tile > div:first-child {
+  font-family: var(--v2-font-display);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--v2-ink);
+}
+[data-surface="v2"] .v2-home-calendar-tile.is-soon > div:first-child {
+  color: var(--v2-accent);
+}
+[data-surface="v2"] .v2-home-calendar-tile > div:last-child {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--v2-ink-3);
+  margin-top: 2px;
+}
+
+/* ---------- Earnings hero (CreatorHome) ---------- */
+
+[data-surface="v2"] .v2-home-earnings-hero {
+  padding: 0;
+  margin-bottom: 24px;
+  overflow: hidden;
+  background: linear-gradient(135deg, var(--v2-moss) 0%, #1F3527 100%);
+  color: var(--v2-paper);
+  border-color: transparent;
+  position: relative;
+}
+[data-surface="v2"] .v2-home-earnings-glow {
+  position: absolute;
+  top: -100px;
+  right: -100px;
+  width: 360px;
+  height: 360px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--v2-accent) 0%, transparent 70%);
+  opacity: 0.12;
+  filter: blur(30px);
+  pointer-events: none;
+}
+[data-surface="v2"] .v2-home-earnings-grid {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: 0;
+  align-items: stretch;
+  position: relative;
+}
+@media (max-width: 880px) {
+  [data-surface="v2"] .v2-home-earnings-grid { grid-template-columns: 1fr; }
+}
+[data-surface="v2"] .v2-home-earnings-amount {
+  font-family: var(--v2-font-display);
+  font-size: 52px;
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  white-space: nowrap;
+}
+@media (max-width: 600px) {
+  [data-surface="v2"] .v2-home-earnings-amount { font-size: 40px; }
+}
+[data-surface="v2"] .v2-home-earnings-delta {
+  padding: 3px 10px;
+  background: rgba(255,255,255,0.15);
+  border-radius: var(--v2-r-pill);
+  font-size: 12px;
+  font-weight: 600;
+}
+[data-surface="v2"] .v2-home-earnings-sub {
+  margin: 0 0 24px;
+  color: rgba(251,247,238,0.75);
+  font-size: 15px;
+}
+[data-surface="v2"] .v2-home-earnings-cta-primary {
+  background: var(--v2-paper);
+  color: var(--v2-ink);
+}
+[data-surface="v2"] .v2-home-earnings-cta-primary:hover {
+  background: rgba(251,247,238,0.9);
+}
+[data-surface="v2"] .v2-home-earnings-cta-secondary {
+  background: rgba(255,255,255,0.12);
+  color: var(--v2-paper);
+}
+[data-surface="v2"] .v2-home-earnings-cta-secondary:hover {
+  background: rgba(255,255,255,0.2);
+}
+[data-surface="v2"] .v2-home-earnings-stats {
+  gap: 24px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255,255,255,0.15);
+  flex-wrap: wrap;
+}
+[data-surface="v2"] .v2-home-earnings-sparkline-pane {
+  padding: 32px;
+  border-left: 1px solid rgba(255,255,255,0.12);
+}
+@media (max-width: 880px) {
+  [data-surface="v2"] .v2-home-earnings-sparkline-pane {
+    border-left: none;
+    border-top: 1px solid rgba(255,255,255,0.12);
+  }
+}
+
+[data-surface="v2"] .v2-home-mini-stat-light {
+  flex: 1;
+  min-width: 0;
+}
+[data-surface="v2"] .v2-home-mini-stat-light-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(251,247,238,0.55);
+  margin-bottom: 3px;
+}
+[data-surface="v2"] .v2-home-mini-stat-light-value {
+  font-family: var(--v2-font-display);
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--v2-paper);
+  white-space: nowrap;
+}
+[data-surface="v2"] .v2-home-mini-stat-light-sub {
+  font-size: 11px;
+  color: rgba(251,247,238,0.6);
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Brief matches (CreatorHome) ---------- */
+
+[data-surface="v2"] .v2-home-brief-match {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  background: var(--v2-paper);
+}
+[data-surface="v2"] .v2-home-brief-name {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+/* ---------- Storefront pulse ---------- */
+
+[data-surface="v2"] .v2-home-storefront-viewers {
+  padding: 12px;
+  background: var(--v2-bg);
+  border-radius: var(--v2-r-md);
+  margin-bottom: 12px;
+}
+[data-surface="v2"] .v2-home-viewer-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: white;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  border: 2px solid var(--v2-paper);
+  flex-shrink: 0;
+}
+[data-surface="v2"] .v2-home-storefront-suggestion {
+  padding: 12px;
+  background: var(--v2-accent-soft);
+  border-radius: var(--v2-r-md);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ---------- Audience pulse ---------- */
+
+[data-surface="v2"] .v2-home-best-time {
+  padding: 6px 10px;
+  background: var(--v2-moss-soft);
+  border-radius: 6px;
+  font-size: 11.5px;
+  color: var(--v2-moss);
+  font-weight: 600;
+  display: inline-block;
+}
+
+/* ---------- Goals + Tip ---------- */
+
+[data-surface="v2"] .v2-home-goal-card {
+  padding: 14px;
+  background: var(--v2-bg);
+  border-radius: var(--v2-r-md);
+  margin-bottom: 14px;
+}
+[data-surface="v2"] .v2-home-achievement {
+  padding: 10px;
+  text-align: center;
+  border: 1px solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  background: var(--v2-paper);
+}
+[data-surface="v2"] .v2-home-achievement.is-done {
+  border-color: var(--v2-moss);
+  background: var(--v2-moss-soft);
+}
+[data-surface="v2"] .v2-home-achievement-icon {
+  font-size: 18px;
+  margin-bottom: 4px;
+}
+[data-surface="v2"] .v2-home-achievement-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--v2-ink-3);
+}
+[data-surface="v2"] .v2-home-achievement.is-done .v2-home-achievement-label {
+  color: var(--v2-moss);
+}
+[data-surface="v2"] .v2-home-streak {
+  padding: 12px;
+  background: var(--v2-moss-soft);
+  border-radius: var(--v2-r-md);
+  margin-top: 14px;
+  font-size: 13px;
+}
+
+[data-surface="v2"] .v2-home-tip {
+  padding: 0;
+  overflow: hidden;
+  background: linear-gradient(135deg, var(--v2-paper) 0%, var(--v2-accent-soft) 100%);
+}
+[data-surface="v2"] .v2-home-tip-foot {
+  padding: 12px 24px;
+  border-top: 1px solid var(--v2-line);
+  background: rgba(255,255,255,0.5);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Helper class — section title + sub used by both homes */
+[data-surface="v2"] .v2-section-title {
+  font-family: var(--v2-font-display);
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  margin: 0 0 4px;
+  color: var(--v2-ink);
+}
+[data-surface="v2"] .v2-section-sub {
+  margin: 0;
+  font-size: 13px;
+  color: var(--v2-ink-3);
+}

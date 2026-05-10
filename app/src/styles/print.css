@@ -1,0 +1,143 @@
+/* Print stylesheet — Phase 23 media-kit export.
+ *
+ * When `body.is-printing-mediakit` is set, the print stylesheet reformats
+ * the public storefront into a clean, paginated media kit. Brand asks
+ * "send me your media kit as PDF" → creator clicks the button → the
+ * browser print dialog opens with the page already laid out → they pick
+ * "Save as PDF" as the destination.
+ *
+ * No JS PDF library required (would have added 100KB+); the browser's
+ * native print engine renders the result.
+ *
+ * The `is-printing-mediakit` class is added before window.print() and
+ * removed shortly after, so the screen view never shows the print layout.
+ * The `@media print` block applies regardless of the class — but the
+ * class lets us also style the `@media print` differently for the
+ * storefront vs other surfaces (we don't want admin tables suddenly
+ * "printing" if a user hits Cmd+P on an admin page).
+ */
+
+@media print {
+  /* Universal: hide everything by default; the storefront opts in via
+     `body.is-printing-mediakit` which un-hides specific sections. */
+  body:not(.is-printing-mediakit) {
+    /* Plain Cmd+P on any non-mediakit page just prints what's visible
+       at default browser settings — don't fight the user there. */
+  }
+
+  body.is-printing-mediakit {
+    background: white !important;
+  }
+
+  /* Hide chrome, navigation, footer, marketing CTAs */
+  body.is-printing-mediakit .land-top,
+  body.is-printing-mediakit .land-foot,
+  body.is-printing-mediakit .toast-host,
+  body.is-printing-mediakit .land-hero-cta,
+  body.is-printing-mediakit .land-final,
+  body.is-printing-mediakit button,
+  body.is-printing-mediakit a[role="button"] {
+    display: none !important;
+  }
+
+  /* Reset background tints + dark-mode tokens to print cleanly */
+  body.is-printing-mediakit,
+  body.is-printing-mediakit * {
+    background: white !important;
+    color: #111 !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    border-color: #ddd !important;
+  }
+
+  /* Re-enable image backgrounds for portrait + work samples */
+  body.is-printing-mediakit img {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    max-width: 100% !important;
+    height: auto !important;
+    page-break-inside: avoid;
+  }
+
+  /* Section spacing — page breaks between major sections */
+  body.is-printing-mediakit .land-section {
+    padding: 18pt 24pt !important;
+    page-break-inside: avoid;
+    margin: 0 !important;
+    max-width: none !important;
+  }
+
+  /* Page break before the work section so the kit reads as a 2-pager */
+  body.is-printing-mediakit #work {
+    page-break-before: always;
+  }
+
+  /* Typography: keep editorial feel but smaller for print */
+  body.is-printing-mediakit h1 {
+    font-size: 28pt !important;
+    line-height: 1.1 !important;
+    margin: 12pt 0 6pt !important;
+  }
+  body.is-printing-mediakit h2 {
+    font-size: 18pt !important;
+    line-height: 1.2 !important;
+  }
+  body.is-printing-mediakit p,
+  body.is-printing-mediakit li,
+  body.is-printing-mediakit div {
+    font-size: 10pt !important;
+    line-height: 1.45 !important;
+  }
+  body.is-printing-mediakit .mono-meta {
+    font-size: 7pt !important;
+    letter-spacing: 0.04em !important;
+  }
+
+  /* Drop cap on print is too tall for body copy */
+  body.is-printing-mediakit .dropcap {
+    font-size: inherit !important;
+    font-weight: 500 !important;
+    margin: 0 !important;
+    float: none !important;
+  }
+
+  /* KPI strip — make the numbers actually visible */
+  body.is-printing-mediakit .kpi-strip {
+    display: grid !important;
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 12pt !important;
+    page-break-inside: avoid;
+  }
+  body.is-printing-mediakit .kpi-v {
+    font-size: 18pt !important;
+    font-weight: 500 !important;
+  }
+
+  /* Work grid — 3 columns on print */
+  body.is-printing-mediakit .pcr-work-grid {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 8pt !important;
+    page-break-inside: auto;
+  }
+
+  /* Print footer — every PDF should be sourceable back to the live storefront.
+     The component sets `data-print-url` on body before printing so the URL
+     appears in the printed footer. */
+  body.is-printing-mediakit::after {
+    content: "Live storefront: " attr(data-print-url);
+    display: block;
+    text-align: center;
+    font-size: 8pt;
+    color: #666 !important;
+    padding: 12pt;
+    border-top: 1pt solid #ccc !important;
+    page-break-before: avoid;
+  }
+
+  /* Page-level: A4 with sane margins */
+  @page {
+    size: A4;
+    margin: 14mm;
+  }
+}

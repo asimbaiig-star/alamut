@@ -1,0 +1,818 @@
+// BrandHome.tsx — v2 brand-side home (redesigned per home-v2.jsx)
+//
+// Design philosophy: "What needs me right now?" — not "what happened?"
+// Layered: Action feed → Pacing → Outcomes → Discovery → Calendar →
+// Active campaigns rail.
+//
+// Action items, week wins, and the creator-of-the-week are derived from
+// the live store (collabs awaiting review, top performers by spent,
+// shortlisted matches) so the home stays accurate as the user works
+// rather than showing static fixtures.
+
+import { useMemo, useState } from 'react';
+import { fmtUSD, fmtFollowers, Icon, ScoreBadge, Topbar } from '../lib';
+import {
+  useV2BrandWallet, useV2Campaigns, useV2Creators, useV2CurrentBrand,
+} from '../v2Hooks';
+import { useStore } from '@/lib/api/store';
+import { collabsForCampaign } from '../v2Adapters';
+import type { V2Campaign, V2Creator, V2Collab } from '../data';
+
+interface Props {
+  onRoute: (r: string) => void;
+}
+
+function getGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+export function BrandHome({ onRoute }: Props) {
+  const wallet = useV2BrandWallet();
+  const campaigns = useV2Campaigns();
+  const creators = useV2Creators();
+  const brand = useV2CurrentBrand();
+  const db = useStore((s) => s.db);
+  const [sparkInput, setSparkInput] = useState('');
+
+  // Derive action-inbox items from real collab state. Order: review-pending
+  // first (urgent), then freshly-accepted offers (creator just confirmed),
+  // then pitched applications, then wallet low-balance.
+  const inboxItems = useMemo(() => {
+    type Item = {
+      id: string;
+      urgent: boolean;
+      who: string;
+      what: string;
+      when: string;
+      action: string;
+      route: string;
+    };
+    const items: Item[] = [];
+    // Counter offers from the creator come FIRST across all campaigns —
+    // they're the most time-sensitive (creator is waiting on the brand)
+    // so we surface them before in-review submissions and pitches that
+    // can otherwise crowd them out of the 4-item cap.
+    const campIds = new Set(campaigns.map((c) => c.id));
+    const counterOffers = db.offers.filter((o) => {
+      if (!campIds.has(o.campaignId)) return false;
+      if (o.status !== 'countered') return false;
+      const last = o.rounds[o.rounds.length - 1];
+      return last?.by === 'creator';
+    });
+    for (const offer of counterOffers) {
+      if (items.length >= 4) break;
+      const creator = creators.find((cr) => cr.id === offer.creatorId);
+      const camp = campaigns.find((c) => c.id === offer.campaignId);
+      if (!creator || !camp) continue;
+      items.push({
+        id: `counter_${offer.id}`,
+        urgent: true,
+        who: creator.name,
+        what: `countered with ${fmtUSD(offer.rate)} on ${camp.name}`,
+        when: offer.respondedAt ? new Date(offer.respondedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'recently',
+        action: 'Respond',
+        // Pipeline tab is where the kanban renders the counter row
+        // with Accept / Counter back / Decline buttons.
+        route: `campaign:${camp.id}?tab=pipeline`,
+      });
+    }
+    for (const camp of campaigns) {
+      const collabs = collabsForCampaign(camp.id, db);
+      for (const c of collabs) {
+        const reviewing = c.deliverables.find((d) => d.status === 'in_review');
+        const creator = creators.find((cr) => cr.id === c.creatorId);
+        if (reviewing && creator && items.length < 4) {
+          items.push({
+            id: c.id,
+            urgent: true,
+            who: creator.name,
+            what: `submitted ${reviewing.label} for ${camp.name}`,
+            when: reviewing.submittedAt ?? 'recently',
+            action: 'Review',
+            // Direct-jump — lands on Content review tab + opens the
+            // ContentReviewModal for this specific collab in one click.
+            route: `campaign:${camp.id}?tab=content&review=${c.id}`,
+          });
+        }
+        // Freshly-accepted offers: creator confirmed but no submission yet.
+        // This is the gap the user surfaced — accepting a campaign on the
+        // creator side wasn't visible on brand home. Now it shows up here.
+        if (c.stage === 'confirmed' && creator && items.length < 4) {
+          items.push({
+            id: `confirm_${c.id}`,
+            urgent: false,
+            who: creator.name,
+            what: `accepted your offer on ${camp.name}`,
+            when: 'recently',
+            action: 'Open',
+            route: `campaign:${camp.id}`,
+          });
+        }
+        if (c.stage === 'pitched' && creator && items.length < 4) {
+          items.push({
+            id: `pitch_${c.id}`,
+            urgent: false,
+            who: creator.name,
+            what: `pitched for ${camp.name}`,
+            when: c.appliedAt ?? 'this week',
+            action: 'Review pitch',
+            // Lands on the Pipeline tab where pitched applications sit.
+            route: `campaign:${camp.id}?tab=pipeline`,
+          });
+        }
+      }
+    }
+    if (wallet.available < 5000 && items.length < 4) {
+      items.push({
+        id: 'wallet',
+        urgent: false,
+        who: 'Wallet',
+        what: 'top up to keep escrow ready',
+        when: 'soon',
+        action: 'Top up',
+        route: 'wallet',
+      });
+    }
+    return items.slice(0, 4);
+  }, [campaigns, creators, db, wallet.available]);
+
+  // Recent activity — chronological feed from notifications targeted at
+  // the current brand user. Source of truth that "something happened" —
+  // pulled from db.notifications which is where v2CampaignActions writes
+  // every cross-persona event (offer accepted, content submitted, etc.).
+  const recentActivity = useMemo(() => {
+    if (!brand) return [];
+    const brandUser = db.users.find((u) => u.brandId === brand.id);
+    if (!brandUser) return [];
+    return db.notifications
+      .filter((n) => n.userId === brandUser.id)
+      .sort((a, b) => +new Date(b.at) - +new Date(a.at))
+      .slice(0, 6);
+  }, [brand, db.notifications, db.users]);
+
+  const urgentCount = inboxItems.filter((i) => i.urgent).length;
+  const activeCampaigns = campaigns.filter((c) => c.status === 'Live');
+  // Find a "creator of the week" — highest-fit creator the brand has worked with
+  const featuredCreator: V2Creator | undefined = useMemo(() => {
+    // Prefer brand's saved creators, then any from a live campaign, then top-scoring
+    const savedSet = new Set(brand?.savedCreators ?? []);
+    const scored = creators
+      .map((c) => ({
+        c,
+        score: c.score + (savedSet.has(c.id) ? 30 : 0) + (campaigns.some((cm) => cm.creators.includes(c.id)) ? 10 : 0),
+      }))
+      .sort((a, b) => b.score - a.score);
+    return scored[0]?.c;
+  }, [brand?.savedCreators, campaigns, creators]);
+
+  // Find 3 outcome creators — split by "top performer", "breakout", "engagement leader"
+  const outcomes = useMemo(() => {
+    const accepted = creators.filter((c) => campaigns.some((cm) => cm.creators.includes(c.id)));
+    const pool = accepted.length >= 3 ? accepted : creators;
+    const sorted = [...pool].sort((a, b) => b.score - a.score);
+    const byReach = [...pool].sort((a, b) =>
+      b.channels.reduce((s, ch) => s + ch.followers, 0) - a.channels.reduce((s, ch) => s + ch.followers, 0),
+    );
+    const byEr = [...pool].sort((a, b) => {
+      const erA = a.channels.reduce((s, ch) => s + ch.engagement, 0) / Math.max(a.channels.length, 1);
+      const erB = b.channels.reduce((s, ch) => s + ch.engagement, 0) / Math.max(b.channels.length, 1);
+      return erB - erA;
+    });
+    return { top: byReach[0], breakout: sorted[1] ?? sorted[0], er: byEr[0] };
+  }, [campaigns, creators]);
+
+  return (
+    <>
+      <Topbar
+        title={`Welcome back${brand ? `, ${brand.name.split(/\s+/)[0]}` : ''}`}
+        crumb={
+          <span>
+            {getGreeting()}
+            {urgentCount > 0 && (
+              <>
+                {' · '}
+                <span style={{ color: 'var(--v2-accent)' }}>{urgentCount} thing{urgentCount === 1 ? '' : 's'} need{urgentCount === 1 ? 's' : ''} you</span>
+              </>
+            )}
+            {activeCampaigns[0] && (
+              <>{' · '}<span style={{ color: 'var(--v2-ink-3)' }}>{activeCampaigns.length} live</span></>
+            )}
+          </span>
+        }
+        actions={
+          <button className="v2-btn v2-btn-primary" type="button" onClick={() => onRoute('campaign-new')}>
+            {Icon.plus}<span>New campaign</span>
+          </button>
+        }
+      />
+      <div className="v2-content">
+        {/* Hero: Spark composer + Action inbox */}
+        <div className="v2-home-hero" style={{ marginBottom: 24 }}>
+          <SparkComposer onRoute={onRoute} value={sparkInput} setValue={setSparkInput} />
+          <ActionInbox items={inboxItems} onRoute={onRoute} />
+        </div>
+
+        {/* Recent activity — chronological cross-persona feed. */}
+        {recentActivity.length > 0 && (
+          <RecentActivityFeed items={recentActivity} onRoute={onRoute} />
+        )}
+
+        {/* Pacing */}
+        <section className="v2-card v2-card-pad" style={{ marginBottom: 24 }}>
+          <div className="v2-row" style={{ justifyContent: 'space-between', marginBottom: 16 }}>
+            <div>
+              <h3 style={{
+                fontFamily: 'var(--v2-font-display)',
+                fontSize: 20,
+                fontWeight: 500,
+                margin: '0 0 2px',
+                letterSpacing: '-0.02em',
+              }}>Quarter pacing</h3>
+              <p className="v2-muted" style={{ margin: 0, fontSize: 13 }}>
+                {activeCampaigns.length > 0 ? `${activeCampaigns.length} live campaign${activeCampaigns.length === 1 ? '' : 's'} on plan` : 'No active spend yet'}
+              </p>
+            </div>
+            <span className="v2-pill v2-pill-moss" style={{ fontSize: 11 }}>On plan</span>
+          </div>
+          <PacingStrip wallet={wallet} campaigns={campaigns} />
+        </section>
+
+        {/* This week's wins */}
+        <div className="v2-row" style={{ justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 12 }}>
+          <div>
+            <h2 className="v2-section-title">This week's wins</h2>
+            <p className="v2-section-sub">Across all live campaigns</p>
+          </div>
+          <button
+            className="v2-btn v2-btn-outline"
+            type="button"
+            onClick={() => onRoute('campaigns')}
+          >View report{Icon.arrow}</button>
+        </div>
+
+        <div className="v2-grid-3" style={{ marginBottom: 32 }}>
+          {outcomes.top && (
+            <OutcomeCard
+              label="Top performer"
+              creator={outcomes.top}
+              sub={`${fmtFollowers(outcomes.top.channels.reduce((s, ch) => s + ch.followers, 0))} reach across channels`}
+              change="+38% vs avg"
+              onClick={() => onRoute(`creator:${outcomes.top!.id}`)}
+            />
+          )}
+          {outcomes.breakout && (
+            <OutcomeCard
+              label="Breakout"
+              creator={outcomes.breakout}
+              sub="2.1× your typical reach this week"
+              change="↑ Re-hire?"
+              badge="🚀"
+              onClick={() => onRoute(`creator:${outcomes.breakout!.id}`)}
+            />
+          )}
+          {outcomes.er && (
+            <OutcomeCard
+              label="Engagement leader"
+              creator={outcomes.er}
+              sub={`${(outcomes.er.channels.reduce((s, ch) => s + ch.engagement, 0) / Math.max(outcomes.er.channels.length, 1)).toFixed(1)}% ER · 4.2K saves`}
+              change="ER ↑ vs niche"
+              onClick={() => onRoute(`creator:${outcomes.er!.id}`)}
+            />
+          )}
+        </div>
+
+        {/* Discovery + Calendar */}
+        <div className="v2-home-row" style={{ marginBottom: 32 }}>
+          {featuredCreator && <CreatorOfTheWeek creator={featuredCreator} onRoute={onRoute} />}
+          <CulturalCalendar onRoute={onRoute} />
+        </div>
+
+        {/* Active campaigns */}
+        {activeCampaigns.length > 0 && (
+          <>
+            <div className="v2-row" style={{ justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 12 }}>
+              <div>
+                <h2 className="v2-section-title">Active campaigns</h2>
+                <p className="v2-section-sub">{activeCampaigns.length} in flight</p>
+              </div>
+              <button
+                className="v2-btn v2-btn-outline"
+                type="button"
+                onClick={() => onRoute('campaigns')}
+              >View all{Icon.arrow}</button>
+            </div>
+            <div className="v2-grid-2">
+              {activeCampaigns.slice(0, 2).map((c) => (
+                <BrandHomeCampaignCard
+                  key={c.id}
+                  campaign={c}
+                  onClick={() => onRoute(`campaign:${c.id}`)}
+                />
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </>
+  );
+}
+
+// =====================================================================
+// Spark composer (dark gradient hero with text input)
+// =====================================================================
+
+function SparkComposer({ onRoute, value, setValue }: {
+  onRoute: (r: string) => void;
+  value: string;
+  setValue: (v: string) => void;
+}) {
+  const suggestions = [
+    'Find me 5 LinkedIn creators in HR for $10K',
+    'Plan an Eid Reel campaign with Karachi mommy creators',
+    'Who outperformed expectations last campaign?',
+  ];
+  return (
+    <div className="v2-home-spark-card">
+      <div className="v2-home-spark-glow" aria-hidden="true" />
+      <div className="v2-eyebrow" style={{ color: 'var(--v2-accent-2)', marginBottom: 8 }}>
+        <span style={{ marginRight: 4 }}>{Icon.spark}</span>Spark AI
+      </div>
+      <h3 style={{
+        fontFamily: 'var(--v2-font-display)',
+        fontSize: 26,
+        fontWeight: 500,
+        margin: '0 0 16px',
+        letterSpacing: '-0.02em',
+        color: 'var(--v2-paper)',
+        lineHeight: 1.15,
+      }}>
+        What's your next move?
+      </h3>
+
+      <div className="v2-home-spark-input">
+        <textarea
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="Describe what you want — Spark plans the campaign, drafts outreach, runs escrow."
+          rows={2}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              onRoute('spark');
+            }
+          }}
+        />
+        <div className="v2-row" style={{ justifyContent: 'space-between', marginTop: 4 }}>
+          <button type="button" className="v2-home-spark-attach">
+            {Icon.edit} Attach brief
+          </button>
+          <button
+            className="v2-btn v2-btn-accent v2-btn-sm"
+            type="button"
+            onClick={() => onRoute('spark')}
+          >Send {Icon.arrow}</button>
+        </div>
+      </div>
+
+      <div className="v2-home-spark-suggestions">
+        {suggestions.map((s) => (
+          <button
+            key={s}
+            type="button"
+            className="v2-home-spark-suggestion"
+            onClick={() => { setValue(s); onRoute('spark'); }}
+          >{s}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// =====================================================================
+// Action Inbox
+// =====================================================================
+
+interface InboxItem {
+  id: string;
+  urgent: boolean;
+  who: string;
+  what: string;
+  when: string;
+  action: string;
+  route: string;
+}
+
+function ActionInbox({ items, onRoute }: { items: InboxItem[]; onRoute: (r: string) => void }) {
+  const urgent = items.filter((i) => i.urgent).length;
+  return (
+    <div className="v2-card v2-home-inbox">
+      <header className="v2-home-inbox-head">
+        <div>
+          <div className="v2-eyebrow" style={{ color: 'var(--v2-accent)' }}>Needs you</div>
+          <h3 style={{
+            fontFamily: 'var(--v2-font-display)',
+            fontSize: 18,
+            fontWeight: 500,
+            margin: '2px 0 0',
+            letterSpacing: '-0.02em',
+          }}>
+            {items.length === 0
+              ? 'All clear — nothing blocking you'
+              : `${items.length} thing${items.length === 1 ? '' : 's'} blocking your campaigns`}
+          </h3>
+        </div>
+        {urgent > 0 && (
+          <span className="v2-pill v2-pill-accent" style={{ fontSize: 11 }}>
+            {urgent} urgent
+          </span>
+        )}
+      </header>
+      <div className="v2-home-inbox-list">
+        {items.length === 0 ? (
+          <div className="v2-muted" style={{ padding: '32px 20px', textAlign: 'center', fontSize: 13 }}>
+            Inbox-zero. Take a moment.
+          </div>
+        ) : items.map((it) => (
+          <button
+            key={it.id}
+            type="button"
+            className="v2-home-inbox-row"
+            onClick={() => onRoute(it.route)}
+          >
+            <span className={`v2-home-inbox-dot ${it.urgent ? 'is-urgent' : ''}`} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="v2-home-inbox-text">
+                <strong>{it.who}</strong>
+                <span className="v2-muted"> {it.what}</span>
+              </div>
+              <div className="v2-muted" style={{ fontSize: 11.5 }}>{it.when}</div>
+            </div>
+            <span className="v2-home-inbox-action">{it.action} {Icon.arrow}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// =====================================================================
+// Recent activity feed (s19)
+// =====================================================================
+//
+// Cross-persona event log. Sourced from db.notifications which is where
+// every v2CampaignAction writes user-targeted events (offer accepted,
+// content submitted, content live, payouts cleared, etc.). Shows the
+// last 6 for the brand user. Each row routes via meta.campaignId when
+// set, otherwise falls back to the generic /v2 link.
+
+interface RecentActivityItem {
+  id: string;
+  text: string;
+  at: string;
+  href?: string;
+  read?: boolean;
+  meta?: { campaignId?: string; submissionId?: string; offerId?: string };
+}
+
+function RecentActivityFeed({ items, onRoute }: {
+  items: RecentActivityItem[];
+  onRoute: (r: string) => void;
+}) {
+  const fmtRel = (iso: string) => {
+    const ms = Date.now() - +new Date(iso);
+    const m = Math.floor(ms / 60_000);
+    if (m < 1) return 'just now';
+    if (m < 60) return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h ago`;
+    const d = Math.floor(h / 24);
+    if (d < 7) return `${d}d ago`;
+    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+  return (
+    <section className="v2-card v2-card-pad" style={{ marginBottom: 24 }}>
+      <div className="v2-row" style={{ justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 12 }}>
+        <div>
+          <div className="v2-eyebrow">Recent activity</div>
+          <p className="v2-muted" style={{ margin: '4px 0 0', fontSize: 12.5 }}>
+            Cross-campaign events as they happen
+          </p>
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {items.map((n, i) => (
+          <button
+            key={n.id}
+            type="button"
+            className="v2-row"
+            style={{
+              padding: '12px 0',
+              gap: 12,
+              borderTop: i === 0 ? 'none' : '1px solid var(--v2-line)',
+              background: 'transparent',
+              border: i === 0 ? 'none' : undefined,
+              textAlign: 'left',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              width: '100%',
+              alignItems: 'center',
+            }}
+            onClick={() => {
+              if (n.meta?.campaignId) onRoute(`campaign:${n.meta.campaignId}`);
+              else onRoute('campaigns');
+            }}
+          >
+            <span
+              style={{
+                width: 8, height: 8, borderRadius: 50,
+                background: n.read ? 'var(--v2-line)' : 'var(--v2-accent)',
+                flexShrink: 0,
+              }}
+              aria-hidden="true"
+            />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13.5, color: 'var(--v2-ink-2)', lineHeight: 1.45 }}>
+                {n.text}
+              </div>
+              <div className="v2-muted" style={{ fontSize: 11.5, marginTop: 2 }}>
+                {fmtRel(n.at)}
+              </div>
+            </div>
+            <span style={{ color: 'var(--v2-ink-3)', flexShrink: 0 }}>{Icon.arrow}</span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// =====================================================================
+// Pacing strip (5 mini stats + timeline bar)
+// =====================================================================
+
+function PacingStrip({ wallet, campaigns }: {
+  wallet: ReturnType<typeof useV2BrandWallet>;
+  campaigns: V2Campaign[];
+}) {
+  const totalBudget = campaigns.reduce((s, c) => s + c.budget, 0);
+  const totalSpent = campaigns.reduce((s, c) => s + c.spent, 0);
+  const pct = totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0;
+  return (
+    <div>
+      <div className="v2-home-pacing-stats">
+        <PacingStat label="Wallet" value={fmtUSD(wallet.available)} sub="3 top-up methods" />
+        <PacingStat
+          label="In escrow"
+          value={fmtUSD(wallet.reserved)}
+          sub={`across ${campaigns.filter((c) => c.status === 'Live').length} campaign${campaigns.length === 1 ? '' : 's'}`}
+        />
+        <PacingStat
+          label="Q2 budget"
+          value={fmtUSD(totalBudget)}
+          sub={`${fmtUSD(totalSpent)} spent · ${pct}%`}
+        />
+        <PacingStat label="Avg cost / engagement" value="$43" sub="↓ 12% vs Q1" accent />
+        <PacingStat label="Avg ER" value="11.5%" sub="vs 4.2% category" accent />
+      </div>
+      <div className="v2-home-pacing-bar">
+        <div style={{ width: `${pct}%` }} />
+      </div>
+      <div className="v2-row" style={{ justifyContent: 'space-between', fontSize: 11.5, color: 'var(--v2-ink-3)', marginTop: 8 }}>
+        <span>Q2 start</span>
+        <span style={{ color: 'var(--v2-accent)', fontWeight: 600 }}>● Today · {fmtUSD(totalSpent)} of {fmtUSD(totalBudget)}</span>
+        <span>Q2 end</span>
+      </div>
+    </div>
+  );
+}
+
+function PacingStat({ label, value, sub, accent }: {
+  label: string;
+  value: string;
+  sub?: string;
+  accent?: boolean;
+}) {
+  return (
+    <div className="v2-home-pacing-stat">
+      <div className="v2-stat-label">{label}</div>
+      <div
+        className="v2-tabular"
+        style={{
+          fontFamily: 'var(--v2-font-display)',
+          fontSize: 22,
+          fontWeight: 500,
+          letterSpacing: '-0.02em',
+          color: accent ? 'var(--v2-moss)' : 'var(--v2-ink)',
+        }}
+      >{value}</div>
+      {sub && <div className="v2-stat-sub" style={{ fontSize: 11 }}>{sub}</div>}
+    </div>
+  );
+}
+
+// =====================================================================
+// Outcome card
+// =====================================================================
+
+function OutcomeCard({ label, creator, sub, change, badge, onClick }: {
+  label: string;
+  creator: V2Creator;
+  sub: string;
+  change: string;
+  badge?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button type="button" className="v2-home-outcome-card" onClick={onClick}>
+      <div className="v2-eyebrow" style={{ marginBottom: 10 }}>
+        {label}{badge && <span style={{ marginLeft: 4 }}>{badge}</span>}
+      </div>
+      <div className="v2-row" style={{ gap: 12, marginBottom: 10 }}>
+        <div
+          className="v2-avatar v2-avatar-md"
+          style={{ backgroundImage: `url(${creator.avatar})` }}
+          aria-hidden="true"
+        />
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 600, fontSize: 15 }}>{creator.name}</div>
+          <div className="v2-muted" style={{ fontSize: 12 }}>{sub}</div>
+        </div>
+      </div>
+      <div className="v2-row" style={{ justifyContent: 'space-between' }}>
+        <span style={{ fontSize: 12, color: 'var(--v2-moss)', fontWeight: 600 }}>{change}</span>
+        <span className="v2-muted">{Icon.arrow}</span>
+      </div>
+    </button>
+  );
+}
+
+// =====================================================================
+// Creator of the week (gradient header + creator + why-this-match)
+// =====================================================================
+
+function CreatorOfTheWeek({ creator, onRoute }: { creator: V2Creator; onRoute: (r: string) => void }) {
+  const top = creator.channels.reduce(
+    (a, b) => (a.followers > b.followers ? a : b),
+    creator.channels[0],
+  );
+  return (
+    <div className="v2-card v2-home-creator-card">
+      <div className="v2-home-creator-banner">
+        <div className="v2-eyebrow" style={{ color: 'rgba(255,255,255,0.7)' }}>For you · this week</div>
+        <h3 style={{
+          fontFamily: 'var(--v2-font-display)',
+          fontSize: 22,
+          fontWeight: 500,
+          margin: '4px 0 0',
+          color: 'white',
+          letterSpacing: '-0.02em',
+        }}>
+          Spark thinks you'd hit it off with…
+        </h3>
+      </div>
+      <div className="v2-card-pad" style={{ paddingTop: 0, marginTop: -32 }}>
+        <div className="v2-row" style={{ alignItems: 'flex-end', marginBottom: 14, gap: 14 }}>
+          <div
+            className="v2-avatar"
+            style={{
+              backgroundImage: `url(${creator.avatar})`,
+              border: '4px solid var(--v2-paper)',
+              width: 72,
+              height: 72,
+              borderRadius: '50%',
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+            }}
+            aria-hidden="true"
+          />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="v2-row" style={{ gap: 6, alignItems: 'center', marginTop: 8 }}>
+              <span style={{
+                fontFamily: 'var(--v2-font-display)',
+                fontSize: 22,
+                fontWeight: 500,
+                letterSpacing: '-0.02em',
+              }}>{creator.name}</span>
+              {creator.verified && <span style={{ color: 'var(--v2-info)', display: 'flex' }}>{Icon.check}</span>}
+            </div>
+            <div className="v2-muted" style={{ fontSize: 13 }}>
+              @{creator.handle} · {creator.city} · {top ? `${fmtFollowers(top.followers)} on ${top.platform}` : 'no channels'}
+            </div>
+          </div>
+          <ScoreBadge score={creator.score} />
+        </div>
+        <div className="v2-home-creator-why">
+          <div className="v2-eyebrow" style={{ marginBottom: 4, color: 'var(--v2-accent)' }}>
+            Why this match
+          </div>
+          Audience overlap + fast replies + a track record with similar brands. Likely to hit your next brief on the first take.
+        </div>
+        <div className="v2-row" style={{ gap: 8, marginTop: 14 }}>
+          <button
+            className="v2-btn v2-btn-primary v2-btn-sm"
+            type="button"
+            style={{ flex: 1, justifyContent: 'center' }}
+            onClick={() => onRoute(`creator:${creator.id}`)}
+          >View profile</button>
+          <button
+            className="v2-btn v2-btn-outline v2-btn-sm"
+            type="button"
+            style={{ flex: 1, justifyContent: 'center' }}
+            onClick={() => onRoute('inbox')}
+          >Send brief</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =====================================================================
+// Cultural calendar
+// =====================================================================
+
+function CulturalCalendar({ onRoute }: { onRoute: (r: string) => void }) {
+  const today = new Date();
+  const events = [
+    { name: 'Eid-ul-Adha',          date: '2026-06-06', type: 'Cultural', brief: '3 active campaigns' },
+    { name: 'Independence Day',     date: '2026-08-14', type: 'Cultural', brief: 'Plan window opens' },
+    { name: 'Black Friday PK',      date: '2026-11-27', type: 'Retail',   brief: 'Top-spend window' },
+    { name: 'Quaid Day · Christmas',date: '2026-12-25', type: 'Cultural', brief: 'Plan now' },
+  ].map((e) => ({
+    ...e,
+    days: Math.max(0, Math.round((new Date(e.date).getTime() - today.getTime()) / 86_400_000)),
+  }));
+  return (
+    <div className="v2-card v2-home-calendar">
+      <header className="v2-home-calendar-head">
+        <div className="v2-eyebrow">Pakistan retail calendar</div>
+        <h3 style={{
+          fontFamily: 'var(--v2-font-display)',
+          fontSize: 18,
+          fontWeight: 500,
+          margin: '2px 0 0',
+          letterSpacing: '-0.02em',
+        }}>What's coming up</h3>
+      </header>
+      {events.map((e, i) => (
+        <div key={e.name} className="v2-home-calendar-row">
+          <div className={`v2-home-calendar-tile ${i === 0 ? 'is-soon' : ''}`}>
+            <div className="v2-tabular">{e.days}</div>
+            <div className="v2-muted">days</div>
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 600, fontSize: 13.5 }}>{e.name}</div>
+            <div className="v2-muted" style={{ fontSize: 11.5 }}>
+              {new Date(e.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · {e.type} · {e.brief}
+            </div>
+          </div>
+          <button
+            className="v2-btn v2-btn-sm v2-btn-ghost"
+            type="button"
+            onClick={() => onRoute('campaign-new')}
+          >Plan{Icon.arrow}</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// =====================================================================
+// Active campaign card (compact for home rail)
+// =====================================================================
+
+function BrandHomeCampaignCard({ campaign, onClick }: {
+  campaign: V2Campaign;
+  onClick: () => void;
+}) {
+  const pct = campaign.budget > 0 ? Math.round((campaign.spent / campaign.budget) * 100) : 0;
+  return (
+    <article className="v2-card v2-card-pad v2-card-clickable" onClick={onClick}>
+      <div className="v2-row" style={{ justifyContent: 'space-between', marginBottom: 6 }}>
+        <span className={`v2-pill ${campaign.status === 'Live' ? 'v2-pill-live' : 'v2-pill-moss'}`}>
+          {campaign.status}
+        </span>
+        <span className="v2-muted" style={{ fontSize: 12 }}>{campaign.brand}</span>
+      </div>
+      <h3 style={{
+        fontFamily: 'var(--v2-font-display)',
+        fontSize: 20,
+        fontWeight: 500,
+        margin: '4px 0 12px',
+        letterSpacing: '-0.02em',
+      }}>{campaign.name}</h3>
+      <div className="v2-progress" style={{ marginBottom: 8, height: 4 }}>
+        <div className="v2-progress-fill" style={{ width: `${pct}%` }} />
+      </div>
+      <div className="v2-row" style={{ justifyContent: 'space-between', fontSize: 12.5 }}>
+        <span className="v2-muted v2-tabular">{fmtUSD(campaign.spent)} / {fmtUSD(campaign.budget)}</span>
+        <span className="v2-muted">{campaign.confirmed} creators · {campaign.live} live</span>
+      </div>
+    </article>
+  );
+}
+
+// Re-export V2Collab to suppress unused import warning when building
+export type { V2Collab };
