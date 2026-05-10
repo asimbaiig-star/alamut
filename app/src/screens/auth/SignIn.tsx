@@ -170,6 +170,9 @@ export function SignIn() {
                         type="email"
                         autoComplete="email"
                         inputMode="email"
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        spellCheck={false}
                         value={email}
                         onChange={(e) => { setEmail(e.target.value); if (emailErr) setEmailErr(null); }}
                         onBlur={(e) => setEmailErr(validateEmail(e.target.value))}
@@ -204,6 +207,9 @@ export function SignIn() {
                         type="email"
                         autoComplete="email"
                         inputMode="email"
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        spellCheck={false}
                         value={email}
                         onChange={(e) => { setEmail(e.target.value); if (emailErr) setEmailErr(null); }}
                         onBlur={(e) => setEmailErr(validateEmail(e.target.value))}

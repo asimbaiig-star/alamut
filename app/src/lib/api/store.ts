@@ -14,6 +14,51 @@ interface StoreState {
 
 const STORAGE_KEY = 'alamut.v1';
 
+// localStorage is unavailable or throws on write in some environments —
+// most notably iOS Safari Private Browsing (0-quota writes throw
+// QuotaExceededError) and embedded webviews with site-data restrictions.
+// When that happens, an unwrapped `setSession` write would propagate up
+// through `signIn`, get caught as a generic non-ApiError in the form
+// handler, and surface as "Sign in failed."
+//
+// `createSafeStorage` returns a Storage-shaped object that:
+//   1. Probes localStorage with a write-then-remove on first call.
+//   2. If the probe succeeds, returns a wrapped localStorage where every
+//      method swallows runtime errors so a single failed write never
+//      breaks the calling code path. Persistence still works.
+//   3. If the probe fails, returns an in-memory Storage shim. Sessions
+//      and store state work for the lifetime of the tab but won't
+//      survive a refresh — acceptable degraded experience for a demo.
+function createSafeStorage(): Storage {
+  let backing: Storage;
+  try {
+    const probe = '__alamut_storage_probe__';
+    localStorage.setItem(probe, '1');
+    localStorage.removeItem(probe);
+    backing = localStorage;
+  } catch {
+    const mem = new Map<string, string>();
+    return {
+      getItem: (k) => (mem.has(k) ? mem.get(k)! : null),
+      setItem: (k, v) => { mem.set(k, String(v)); },
+      removeItem: (k) => { mem.delete(k); },
+      clear: () => { mem.clear(); },
+      key: (i) => Array.from(mem.keys())[i] ?? null,
+      get length() { return mem.size; },
+    } as Storage;
+  }
+  return {
+    getItem: (k) => { try { return backing.getItem(k); } catch { return null; } },
+    setItem: (k, v) => { try { backing.setItem(k, v); } catch { /* quota / disabled — silently drop */ } },
+    removeItem: (k) => { try { backing.removeItem(k); } catch { /* ignore */ } },
+    clear: () => { try { backing.clear(); } catch { /* ignore */ } },
+    key: (i) => { try { return backing.key(i); } catch { return null; } },
+    get length() { try { return backing.length; } catch { return 0; } },
+  } as Storage;
+}
+
+const safeStorage = createSafeStorage();
+
 export const useStore = create<StoreState>()(
   persist(
     (set) => ({
@@ -28,7 +73,7 @@ export const useStore = create<StoreState>()(
     }),
     {
       name: STORAGE_KEY,
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => safeStorage),
       // 12 — Phase 48 added `testimonials[]` to Database. Old persisted
       // state from v11 doesn't include this field, so any code reading
       // db.testimonials crashes with "Cannot read properties of undefined
