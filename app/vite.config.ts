@@ -14,19 +14,24 @@ export default defineConfig({
     open: true,
   },
   build: {
-    // Phase 14 — split vendor libs into their own chunks so the initial
-    // app payload caches separately from React/Router and the lazy-loaded
-    // route chunks can stay small.
-    chunkSizeWarningLimit: 700,
+    // All third-party deps go into a single `vendor` chunk. We previously
+    // split React / Router / state into their own chunks for cache
+    // granularity, but that caused a production-only crash:
+    //   "Cannot read properties of undefined (reading 'createContext')"
+    // …emitted by libraries (e.g. `motion`) that call React.createContext
+    // at module-init time. With React in a sibling chunk, Rollup's
+    // generated import for React was being evaluated lazily / undefined
+    // by the time motion's init ran. Keeping React next to anything that
+    // needs it at init time prevents that ordering bug. Route-level
+    // chunks (Workspace.tsx, Wallet.tsx, etc.) are still split via the
+    // dynamic `import(...)` calls in router.tsx so the initial payload
+    // stays small.
+    chunkSizeWarningLimit: 800,
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (!id.includes('node_modules')) return undefined;
-          if (id.includes('react-dom') || id.includes('react/')) return 'vendor-react';
-          if (id.includes('react-router')) return 'vendor-router';
-          if (id.includes('zustand')) return 'vendor-state';
-          // Anything else from node_modules → general vendor bucket
-          return 'vendor';
+          if (id.includes('node_modules')) return 'vendor';
+          return undefined;
         },
       },
     },
