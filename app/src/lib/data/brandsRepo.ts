@@ -83,6 +83,45 @@ function toRowPatch(patch: Partial<Pick<Brand, EditableFields>>): Record<string,
   return out;
 }
 
+/** Insert a brand-new Brand row at signup time. The Brand type has no
+ *  `ownerEmail` field (it's a server-only RLS gate, not part of the
+ *  client model), so callers pass it as a separate parameter. After
+ *  insert, RLS lets the signed-in owner update + select normally. */
+export async function insertBrandInSupabase(
+  brand: Brand,
+  ownerEmail: string,
+): Promise<Brand> {
+  if (!isSupabaseConfigured()) throw new Error('Supabase not configured');
+  const sb = getSupabase();
+  const row = {
+    id: brand.id,
+    user_id: brand.userId,
+    owner_email: ownerEmail,
+    name: brand.name,
+    industry: brand.industry,
+    hq: brand.hq,
+    website: brand.website,
+    about: brand.about,
+    logo_mark: brand.logoMark ?? null,
+    logo_url: brand.logoUrl ?? null,
+    preferred_categories: brand.preferredCategories,
+    preferred_regions: brand.preferredRegions,
+    wallet_balance: brand.walletBalance,
+    escrow_held: brand.escrowHeld,
+    verified: brand.verified,
+    saved_creators: brand.savedCreators,
+    social_platforms: brand.socialPlatforms ?? null,
+  };
+  const { data, error } = await sb
+    .from('brands')
+    .insert(row)
+    .select(COLUMNS)
+    .single();
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error('Insert returned no row');
+  return toBrand(data as unknown as Row);
+}
+
 /** Fetch every brand row visible to the current session. With the
  *  public SELECT policy this returns the full table for both anon and
  *  authenticated callers. Used by the boot-time hydrate to overlay

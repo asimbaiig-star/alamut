@@ -60,8 +60,16 @@ interface SignUpInput {
   country?: string;
 }
 
+/** Deterministic User.id from email. Matches the synthesizer in
+ *  resolveUserFromSupabaseByEmail so a user who signs up on Device A
+ *  and signs in on Device B ends up with the same User.id both
+ *  places — Brand.userId / Creator.userId pointers stay valid. */
+function deterministicUserId(email: string): string {
+  const hash = email.split('').reduce((h, c) => ((h * 33 + c.charCodeAt(0)) >>> 0), 5381).toString(36);
+  return `u_x_${hash}`;
+}
+
 async function signUp(input: SignUpInput) {
-  await sleep(LATENCY);
   const email = input.email.trim().toLowerCase();
   if (!email || !input.password) throw new ApiError('invalid_input', 'Email and password are required.');
   if (input.password.length < 6) throw new ApiError('weak_password', 'Password must be at least 6 characters.');
@@ -71,8 +79,38 @@ async function signUp(input: SignUpInput) {
     throw new ApiError('email_taken', 'An account with that email already exists.');
   }
 
+  // Phase 1 — when Supabase is configured, create the auth.users row
+  // first. That's where the actual credential lives; the local User
+  // row exists only to carry role + brandId/creatorId pointers the
+  // rest of the app reads.
+  const supaConfigured = isSupabaseConfigured();
+  if (supaConfigured) {
+    const sb = getSupabase();
+    const { data: authData, error: authError } = await sb.auth.signUp({
+      email,
+      password: input.password,
+    });
+    if (authError) {
+      if (/already registered|already exists/i.test(authError.message)) {
+        throw new ApiError('email_taken', 'An account with that email already exists.');
+      }
+      if (/password/i.test(authError.message)) {
+        throw new ApiError('weak_password', authError.message);
+      }
+      throw new ApiError('invalid_input', authError.message);
+    }
+    // If email confirmation is enabled in the Supabase project, signUp
+    // returns user but no session. We treat that as a normal success —
+    // the SignIn screen will surface the "confirm your email" path.
+    void authData;
+  } else {
+    await sleep(LATENCY);
+  }
+
+  // Local mutation: create the Brand/Creator + User. User.id is
+  // derived from email so cross-device sign-in resolves to the same id.
+  const userId = deterministicUserId(email);
   const user = tx<User>((d) => {
-    const userId = id('u');
     let creatorId: string | undefined;
     let brandId: string | undefined;
     if (input.role === 'creator') {
@@ -89,8 +127,6 @@ async function signUp(input: SignUpInput) {
         rateCard: { post: '—', reel: '—', story: '—', longform: '—' },
         payout: { method: '', account: '', currency: 'USD' },
         walletBalance: 0, pendingBalance: 0, lifetimeEarnings: 0,
-        // P6 §5.6 — `profileCompletion` removed; computed on read via
-        // `lib/utils/profile-completion.ts`.
         verified: false,
         pressMentions: [], pastClients: [],
       };
@@ -109,13 +145,47 @@ async function signUp(input: SignUpInput) {
       d.brands.push(newBrand);
     }
     const u: User = {
-      id: userId, email, passwordHash: input.password, role: input.role,
+      id: userId, email, passwordHash: '', role: input.role,
       status: 'active', createdAt: nowISO(),
       creatorId, brandId,
     };
     d.users.push(u);
     return u;
   });
+
+  // Mirror the new Brand/Creator to Supabase so cross-device sign-in
+  // can resolve role + profile via owner_email. Fire-and-forget — the
+  // local tx() has already committed; if the mirror fails (network /
+  // RLS), local UX continues and a retry path can sync later.
+  if (supaConfigured) {
+    if (input.role === 'creator' && user.creatorId) {
+      const newCreator = useStore.getState().db.creators.find((c) => c.id === user.creatorId);
+      if (newCreator) {
+        void (async () => {
+          try {
+            const { insertCreatorInSupabase } = await import('@/lib/data/creatorsRepo');
+            await insertCreatorInSupabase(newCreator, email);
+          } catch (err) {
+            // eslint-disable-next-line no-console
+            console.warn('[creator signup mirror] failed:', err instanceof Error ? err.message : err);
+          }
+        })();
+      }
+    } else if (input.role === 'brand' && user.brandId) {
+      const newBrand = useStore.getState().db.brands.find((b) => b.id === user.brandId);
+      if (newBrand) {
+        void (async () => {
+          try {
+            const { insertBrandInSupabase } = await import('@/lib/data/brandsRepo');
+            await insertBrandInSupabase(newBrand, email);
+          } catch (err) {
+            // eslint-disable-next-line no-console
+            console.warn('[brand signup mirror] failed:', err instanceof Error ? err.message : err);
+          }
+        })();
+      }
+    }
+  }
 
   // Auto sign-in on signup
   useStore.getState().setSession({ userId: user.id, issuedAt: nowISO() });
@@ -142,12 +212,11 @@ async function resolveUserFromSupabaseByEmail(email: string): Promise<User | nul
   const creator = creatorRes.data;
   if (!brand && !creator) return null;
 
-  // Deterministic user id from email so a creator who signs in across
-  // devices ends up with the same User.id every time (no duplicates,
-  // no collab/notification re-attribution). djb2 hash is good enough
-  // for collision-resistance in a single-tenant demo.
-  const hash = email.split('').reduce((h, c) => ((h * 33 + c.charCodeAt(0)) >>> 0), 5381).toString(36);
-  const userId = `u_x_${hash}`;
+  // Deterministic user id from email — same helper signUp uses so the
+  // synthesized id matches the one that was originally written when
+  // the user signed up (on this or another device). Brand.userId /
+  // Creator.userId pointers stay valid across the boundary.
+  const userId = deterministicUserId(email);
   const now = nowISO();
 
   // Prefer creator when both happen to point at the same email (rare

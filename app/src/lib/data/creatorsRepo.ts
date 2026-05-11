@@ -140,6 +140,61 @@ function toUpdateRowPatch(patch: UpdatablePatch): Record<string, unknown> {
   return out;
 }
 
+/** Insert a brand-new Creator row at signup time. owner_email is the
+ *  RLS gate (auth.email() = owner_email) — callers pass it separately
+ *  because the Creator TS type doesn't carry it. */
+export async function insertCreatorInSupabase(
+  creator: Creator,
+  ownerEmail: string,
+): Promise<Creator> {
+  if (!isSupabaseConfigured()) throw new Error('Supabase not configured');
+  const sb = getSupabase();
+  const row = {
+    id: creator.id,
+    user_id: creator.userId,
+    owner_email: ownerEmail,
+    name: creator.name,
+    handle: creator.handle,
+    tagline: creator.tagline,
+    bio: creator.bio,
+    cover: creator.cover ?? null,
+    portrait: creator.portrait,
+    city: creator.city,
+    country: creator.country,
+    languages: creator.languages,
+    categories: creator.categories,
+    work: creator.work,
+    past_clients: creator.pastClients,
+    platforms: creator.platforms,
+    reach: creator.reach,
+    engagement: creator.engagement,
+    rating: creator.rating,
+    tier: creator.tier,
+    response_hrs: creator.responseHrs,
+    rate_card: creator.rateCard,
+    rate_cards: creator.rateCards ?? null,
+    payout: creator.payout,
+    wallet_balance: creator.walletBalance,
+    pending_balance: creator.pendingBalance,
+    lifetime_earnings: creator.lifetimeEarnings,
+    verified: creator.verified,
+    kyc_verified_at: null,
+    editors_pick: false,
+    press_mentions: creator.pressMentions,
+    availability: null,
+    featured_review_ids: [],
+    saved_briefs: [],
+  };
+  const { data, error } = await sb
+    .from('creators')
+    .insert(row)
+    .select(COLUMNS)
+    .single();
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error('Insert returned no row');
+  return toCreator(data as unknown as Row);
+}
+
 export async function fetchAllCreatorsFromSupabase(): Promise<Creator[]> {
   if (!isSupabaseConfigured()) return [];
   const sb = getSupabase();
