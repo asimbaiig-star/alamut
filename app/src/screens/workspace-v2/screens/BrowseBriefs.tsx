@@ -6,9 +6,10 @@
 // grid. Sidebar surfaces this as "Browse campaigns".
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { fmtUSD, Icon, Topbar } from '../lib';
+import { Icon, Topbar } from '../lib';
 import { type V2Campaign } from '../data';
 import { useV2AllCampaigns, useV2CurrentCreator } from '../v2Hooks';
+import { useStore } from '@/lib/api/store';
 
 interface Props {
   onRoute: (r: string) => void;
@@ -403,11 +404,10 @@ export function BrowseBriefs({ onRoute }: Props) {
         {briefs.length > 0 ? (
           <div className="v2-grid-2">
             {briefs.map((c) => (
-              <BriefCard
+              <CampaignTile
                 key={c.id}
                 campaign={c}
-                isInRoster={!!me && c.creators.includes(me.id)}
-                onApply={() => onRoute(`brief:${c.id}`)}
+                onOpen={() => onRoute(`brief:${c.id}`)}
               />
             ))}
           </div>
@@ -692,90 +692,288 @@ function ToggleChip({ label, active, onChange }: {
   );
 }
 
-function BriefCard({ campaign, isInRoster, onApply }: {
+// =====================================================================
+// CampaignTile — editorial brief card per Claude Design handoff
+// =====================================================================
+//
+// Replaces the older minimal BriefCard. Layout:
+//   1. Brand letterhead band  — deterministic brand colour + diagonal
+//      texture + brand mark + "Verified · pays in 3 days" meta on left,
+//      category + posted-N-days-ago on right.
+//   2. Title row              — display-serif title + 2-line brief blurb
+//      on the left, compact match-score card on the right with three
+//      fit reasons.
+//   3. Three-pillar data band — Per-creator price (with subtle gold
+//      wash to anchor the eye), Deliverables (icon + label per
+//      placement), Deadline (Nd left, urgent in red after ≤5d).
+//   4. Footer                  — seat-map dots showing filled/open
+//      spots + applicant avatar stack + applied count, then save chip
+//      and "View brief →" primary CTA.
+//
+// All data comes from V2Campaign + a small set of derived values:
+//   - matchPct, postedDays, applied → deterministic synthesised numbers
+//     keyed off campaign.id (idempotent across renders).
+//   - applicantCount → real count from db.applications.
+//   - applicantAvatars → first three creators on the campaign roster.
+//   - fitReasons → keyed off the campaign's category.
+
+// Brand colour palette — deterministic per-brand letterhead. Same six
+// values as the design's brandAccent() helper; the hash picks one and
+// stays consistent for that brand across the surface.
+const BRAND_PALETTE: { bg: string; ink: string }[] = [
+  { bg: '#2A3F6E', ink: '#FBF7EE' }, // navy
+  { bg: '#5C2A1E', ink: '#FBF7EE' }, // cocoa
+  { bg: '#1F3527', ink: '#FBF7EE' }, // moss
+  { bg: '#7A2B22', ink: '#FBF7EE' }, // brick
+  { bg: '#3E2F4A', ink: '#FBF7EE' }, // aubergine
+  { bg: '#1C1A15', ink: '#FBF7EE' }, // ink
+];
+function brandAccent(name: string): { bg: string; ink: string } {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
+  return BRAND_PALETTE[Math.abs(h) % BRAND_PALETTE.length];
+}
+
+// PKR amount formatter — lakh/crore notation per the design philosophy
+// (Pakistan-first product). The data layer carries USD-shaped numbers,
+// so we apply a notional USD→PKR factor at display time. 1 USD ≈ 280
+// PKR puts seed budgets into the lakh range the design renders against
+// ("Rs 4.6L" / "Rs 1.4L") without rewriting every USD-shaped value in
+// the store.
+const USD_TO_PKR = 280;
+function fmtPKR(usd: number): string {
+  const n = Math.round(usd * USD_TO_PKR);
+  if (n >= 10_000_000) return `Rs ${(n / 10_000_000).toFixed(n % 10_000_000 === 0 ? 0 : 1)}Cr`;
+  if (n >= 100_000)    return `Rs ${(n / 100_000).toFixed(n % 100_000 === 0 ? 0 : 1)}L`;
+  if (n >= 1000)       return `Rs ${Math.round(n / 1000)}K`;
+  return `Rs ${n.toLocaleString()}`;
+}
+
+// Pick a deliverable icon glyph from the placement string. Maps to the
+// platforms our launch action's parser recognises (Reel / Story /
+// Carousel / LinkedIn post / TikTok video / Newsletter / generic).
+function deliverableGlyph(placement: string): string {
+  const p = placement.toLowerCase();
+  if (p.includes('reel'))      return '▶';
+  if (p.includes('stor'))      return '○';
+  if (p.includes('linkedin'))  return '▦';
+  if (p.includes('post'))      return '▦';
+  if (p.includes('carousel'))  return '▤';
+  if (p.includes('tiktok') || p.includes('video')) return '▶';
+  if (p.includes('newsletter') || p.includes('article')) return '✎';
+  return '◆';
+}
+
+// Per-category fit reasons — synthesised. Each card surfaces three.
+// Returned in priority order; the design renders all three.
+function fitReasonsFor(category: string | undefined): string[] {
+  const c = (category ?? '').toLowerCase();
+  if (c.includes('fashion'))   return ['Fashion audience', 'Lahore 18–34 women', 'Mid-tier rate'];
+  if (c.includes('beauty'))    return ['Beauty audience', 'High craft signal', 'Mid-tier rate'];
+  if (c.includes('lifestyle')) return ['Lifestyle voice', 'City match', 'Aligned rate'];
+  if (c.includes('food'))      return ['Food vertical', 'High ER', 'Rate aligned'];
+  if (c.includes('tech'))      return ['Tech voice', 'B2C audience', 'Premium tier'];
+  if (c.includes('b2b') || c.includes('finance')) return ['LinkedIn voice', 'Karachi pros', 'Thought-leader tier'];
+  if (c.includes('wellness'))  return ['Wellness vertical', 'Mature audience', 'Calm-aesthetic match'];
+  return ['Niche fit', 'City match', 'Rate aligned'];
+}
+
+function CampaignTile({ campaign, onOpen }: {
   campaign: V2Campaign;
-  isInRoster: boolean;
-  onApply: () => void;
+  onOpen: () => void;
 }) {
+  const db = useStore((s) => s.db);
+  const accent = brandAccent(campaign.brand);
+  // Per-creator price; min divisor 4 so a tiny roster doesn't inflate.
+  const perCreator = Math.round(campaign.budget / Math.max(campaign.creators.length, 4));
+  // Days until deadline.
   const daysLeft = Math.max(
     0,
     Math.ceil((+new Date(campaign.deadline) - Date.now()) / 86_400_000),
   );
+  const urgent = daysLeft <= 5;
 
-  return (
-    <article className="v2-card v2-card-pad">
-      <div className="v2-row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
-        <span
-          className={`v2-pill ${campaign.status === 'Live' ? 'v2-pill-live' : 'v2-pill-draft'}`}
-        >
-          {campaign.status}
-        </span>
-        <span className="v2-muted" style={{ fontSize: 12 }}>{campaign.brand}</span>
-      </div>
+  // Match score — synthesised from the campaign id so it stays stable
+  // for a given campaign across renders. Range 88–97.
+  const matchPct = 88 + ((campaign.id.charCodeAt(0) || 0) % 10);
+  // Posted-days-ago — uses real createdAt if available, otherwise a
+  // small synthesised number (1–5d).
+  const postedDays = (() => {
+    if (!campaign.createdAt) return ((campaign.id.charCodeAt(0) || 0) % 5) + 1;
+    const d = Math.floor((Date.now() - +new Date(campaign.createdAt)) / 86_400_000);
+    return Math.max(1, d);
+  })();
 
-      <h3 style={{
-        fontFamily: 'var(--v2-font-display)',
-        fontSize: 22,
-        fontWeight: 500,
-        letterSpacing: '-0.022em',
-        margin: '4px 0 8px',
-        color: 'var(--v2-ink)',
-      }}>
-        {campaign.name}
-      </h3>
+  // Seat map — total spots from roster size + 2 buffer; filled = confirmed.
+  const totalSpots = Math.max(campaign.creators.length + 2, campaign.confirmed + 1);
+  const filledSpots = Math.min(campaign.confirmed, totalSpots);
 
-      <p className="v2-muted" style={{
-        fontSize: 13.5,
-        lineHeight: 1.5,
-        margin: '0 0 14px',
-        display: '-webkit-box',
-        WebkitLineClamp: 2,
-        WebkitBoxOrient: 'vertical',
-        overflow: 'hidden',
-      }}>
-        {campaign.brief}
-      </p>
+  // Real applicant count from store + synthesised baseline so freshly-
+  // seeded campaigns still show numbers.
+  const realAppCount = db.applications.filter((a) => a.campaignId === campaign.id).length;
+  const applied = realAppCount > 0
+    ? realAppCount
+    : Math.round(totalSpots * 1.8 + ((campaign.id.charCodeAt(1) || 0) % 5));
 
-      <div className="v2-row" style={{ gap: 14, fontSize: 12.5, marginBottom: 14, flexWrap: 'wrap' }}>
-        <Meta label="Placement" value={campaign.placement} />
-        <Meta label="Deadline" value={daysLeft > 0 ? `${daysLeft}d left` : 'Ended'} />
-        <Meta label="Budget" value={fmtUSD(campaign.budget)} accent />
-      </div>
+  // Avatars — pull from creators who have applied / been accepted on
+  // this campaign. Fall back to the brand's roster.
+  const applicantAvatars: string[] = (() => {
+    const appCreatorIds = db.applications
+      .filter((a) => a.campaignId === campaign.id)
+      .map((a) => a.creatorId)
+      .slice(0, 3);
+    const ids = appCreatorIds.length > 0
+      ? appCreatorIds
+      : campaign.creators.slice(0, 3);
+    return ids
+      .map((id) => db.creators.find((c) => c.id === id)?.portrait)
+      .filter((a): a is string => !!a);
+  })();
 
-      {isInRoster ? (
-        <div className="v2-row" style={{ justifyContent: 'space-between', paddingTop: 14, borderTop: '1px solid var(--v2-line)' }}>
-          <span className="v2-pill v2-pill-confirmed">
-            ✓ You're on this brief
-          </span>
-          <button className="v2-btn v2-btn-primary v2-btn-sm" type="button" onClick={onApply}>
-            Open thread {Icon.arrow}
-          </button>
-        </div>
-      ) : (
-        <div className="v2-row" style={{ justifyContent: 'space-between', paddingTop: 14, borderTop: '1px solid var(--v2-line)' }}>
-          <button className="v2-btn v2-btn-ghost v2-btn-sm" type="button" onClick={onApply}>
-            View brief
-          </button>
-          <button className="v2-btn v2-btn-accent v2-btn-sm" type="button" onClick={onApply}>
-            Apply {Icon.arrow}
-          </button>
-        </div>
-      )}
-    </article>
+  const seats = Array.from({ length: totalSpots }, (_, i) =>
+    i < filledSpots ? 'is-filled' : 'is-open',
   );
-}
 
-function Meta({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+  const placements = (campaign.placement ?? '').split(/\s*\+\s*/).filter(Boolean);
+  const fitReasons = fitReasonsFor(campaign.category);
+
+  // Deadline display: "22 May" (Pakistan-friendly DD MMM).
+  const deadlineStr = new Date(campaign.deadline).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+  });
+
   return (
-    <div>
-      <div
-        className="v2-muted"
-        style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}
-      >{label}</div>
-      <div
-        className={`v2-tabular ${accent ? 'v2-accent-text' : ''}`}
-        style={{ fontSize: 13.5, fontWeight: accent ? 600 : 500 }}
-      >{value}</div>
-    </div>
+    <article
+      className="v2-campaign-tile"
+      onClick={onOpen}
+      role="link"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } }}
+    >
+      {/* Brand letterhead band */}
+      <div className="v2-ct-band" style={{ background: accent.bg, color: accent.ink }}>
+        <span className="v2-ct-band-tex" aria-hidden="true" />
+        <div className="v2-row" style={{ gap: 11, alignItems: 'center', minWidth: 0, position: 'relative' }}>
+          <div className="v2-ct-mark" style={{ color: accent.bg, background: accent.ink }} aria-hidden="true">
+            {campaign.brand[0]}
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div className="v2-ct-brand">{campaign.brand}</div>
+            <div className="v2-ct-brand-meta">Verified · pays in 3 days</div>
+          </div>
+        </div>
+        <div className="v2-ct-band-right">
+          <div className="v2-ct-band-cat">{campaign.category ?? 'Lifestyle'}</div>
+          <div className="v2-ct-band-posted">Posted {postedDays}d ago</div>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div className="v2-ct-body">
+        {/* Title row with match-reason card */}
+        <div className="v2-ct-titlerow">
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <h3 className="v2-ct-title">{campaign.name}</h3>
+            <p className="v2-ct-blurb">{campaign.brief}</p>
+          </div>
+          <div className="v2-ct-match-card">
+            <div className="v2-ct-match-top">
+              <span className="v2-ct-match-pct v2-tabular">
+                {matchPct}
+                <span className="v2-ct-match-pct-pct">%</span>
+              </span>
+              <span className="v2-ct-match-label">match</span>
+            </div>
+            <ul className="v2-ct-match-reasons">
+              {fitReasons.map((r, i) => (
+                <li key={i}><span className="v2-ct-check">✓</span>{r}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        {/* Three-pillar data band */}
+        <div className="v2-ct-pillars">
+          <div className="v2-ct-pillar v2-ct-pillar-money">
+            <div className="v2-ct-pillar-label">Per creator</div>
+            <div className="v2-ct-money-val">
+              <span className="v2-ct-money-cur">Rs</span>
+              <span className="v2-tabular">{fmtPKR(perCreator).replace(/^Rs\s*/, '')}</span>
+            </div>
+            <div className="v2-ct-pillar-sub">● Escrow funded</div>
+          </div>
+          <div className="v2-ct-pillar">
+            <div className="v2-ct-pillar-label">Deliverables</div>
+            <div className="v2-ct-pillar-stack">
+              {placements.length === 0 ? (
+                <div className="v2-ct-pillar-row">
+                  <span className="v2-ct-deliv-mark">◆</span>
+                  <span>{campaign.placement || 'TBD'}</span>
+                </div>
+              ) : placements.map((p, i) => (
+                <div key={i} className="v2-ct-pillar-row">
+                  <span className="v2-ct-deliv-mark">{deliverableGlyph(p)}</span>
+                  <span>{p}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="v2-ct-pillar">
+            <div className="v2-ct-pillar-label">Deadline</div>
+            <div className={`v2-ct-deadline-val v2-tabular ${urgent ? 'is-urgent' : ''}`}>
+              {daysLeft}
+              <span className="v2-ct-deadline-unit">d</span>
+            </div>
+            <div className="v2-ct-pillar-sub">until {deadlineStr}</div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="v2-ct-foot">
+          <div className="v2-ct-spots">
+            <div className="v2-ct-seats">
+              {seats.map((s, i) => (
+                <span key={i} className={`v2-ct-seat ${s}`} aria-hidden="true" />
+              ))}
+              <span className="v2-ct-spots-text">
+                <strong>{filledSpots}</strong> of {totalSpots} filled
+              </span>
+            </div>
+            <div className="v2-ct-applicants">
+              <div className="v2-ct-avstack" aria-hidden="true">
+                {applicantAvatars.map((a, i) => (
+                  <span key={i} className="v2-ct-av" style={{ backgroundImage: `url(${a})` }} />
+                ))}
+              </div>
+              <span className="v2-ct-applicants-text">{applied} applied</span>
+            </div>
+          </div>
+          <div className="v2-row" style={{ gap: 6 }}>
+            <button
+              type="button"
+              className="v2-ct-save"
+              title="Save brief"
+              aria-label="Save brief"
+              onClick={(e) => { e.stopPropagation(); }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              className="v2-btn v2-btn-primary v2-btn-sm v2-ct-cta"
+              onClick={(e) => { e.stopPropagation(); onOpen(); }}
+            >
+              View brief <span className="v2-ct-cta-arrow">→</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom-right corner clip — editorial flourish */}
+      <span className="v2-ct-corner" aria-hidden="true" />
+    </article>
   );
 }
