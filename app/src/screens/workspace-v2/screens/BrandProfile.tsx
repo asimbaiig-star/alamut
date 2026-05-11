@@ -18,6 +18,10 @@ import { useV2CurrentBrand } from '../v2Hooks';
 import { v2UpdateBrand } from '../v2CampaignActions';
 import { useCapability } from '@/lib/permissions';
 import { pushToast } from '@/lib/utils/toast';
+// Phase 2 — Supabase Storage uploads when configured. Falls back to
+// inline base64 for the local-only dev setup.
+import { isSupabaseConfigured } from '@/lib/supabase';
+import { uploadBrandLogo, removeBrandLogo } from '@/lib/data/brandsRepo';
 
 // Downscale + encode an uploaded image to a data URL. Demo app has no
 // backend, so logos live inline in localStorage — 256×256 JPEG @ 0.85
@@ -118,11 +122,11 @@ export function BrandProfile({ onRoute }: Props) {
     !arraysEqual(categories, brand.preferredCategories ?? []) ||
     !arraysEqual(regions, brand.preferredRegions ?? []);
 
-  const onSave = () => {
+  const onSave = async () => {
     if (!canEdit || !dirty) return;
     setBusy(true);
     try {
-      v2UpdateBrand(brand.id, {
+      await v2UpdateBrand(brand.id, {
         name: name.trim() || brand.name,
         industry: industry.trim(),
         hq: hq.trim(),
@@ -154,10 +158,22 @@ export function BrandProfile({ onRoute }: Props) {
     setRegions(brand.preferredRegions ?? []);
   };
 
-  // File-picker handler. Validates the type, downscales to 256×256,
-  // and stores the base64 result in form state. The actual brand
-  // mutation only fires on Save so the user can preview + change
-  // their mind before persisting.
+  // File-picker handler. Two paths depending on backend availability:
+  //
+  //   - Supabase configured: downscale, then upload as a real Blob to
+  //     the `brand-logos` Storage bucket. The returned public URL is
+  //     what we store on the brand row, so the logoUrl column ends up
+  //     pointing at https://<project>.supabase.co/storage/v1/... not
+  //     an inline data: URL. Vastly smaller payload everywhere.
+  //
+  //   - Supabase NOT configured (dev / no env vars): keep the original
+  //     base64-in-localStorage behaviour so the app still works for
+  //     contributors who haven't set up a Supabase project.
+  //
+  // In both paths the upload happens inline on file-pick so the user
+  // sees the preview update immediately. The actual brand mutation
+  // still fires on Save — this isolates the network spend (one
+  // upload + one update) without polluting state otherwise.
   const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = ''; // allow re-uploading the same file later
@@ -172,16 +188,35 @@ export function BrandProfile({ onRoute }: Props) {
     }
     setLogoUploading(true);
     try {
-      const dataUrl = await downscaleToDataUrl(file);
-      setLogoUrl(dataUrl);
+      if (isSupabaseConfigured() && brand) {
+        // Downscale first so Storage doesn't have to host a 4 MB
+        // original. Convert the resulting data URL back into a Blob
+        // for the Storage upload (Supabase wants a Blob/File, not
+        // a base64 string).
+        const dataUrl = await downscaleToDataUrl(file);
+        const blob = await (await fetch(dataUrl)).blob();
+        const downscaled = new File([blob], file.name, { type: blob.type });
+        const publicUrl = await uploadBrandLogo(brand.id, downscaled);
+        setLogoUrl(publicUrl);
+      } else {
+        const dataUrl = await downscaleToDataUrl(file);
+        setLogoUrl(dataUrl);
+      }
     } catch (err) {
-      pushToast(err instanceof Error ? err.message : 'Could not read that image', 'bad');
+      pushToast(err instanceof Error ? err.message : 'Could not upload that image', 'bad');
     } finally {
       setLogoUploading(false);
     }
   };
 
-  const onRemoveLogo = () => setLogoUrl(undefined);
+  const onRemoveLogo = () => {
+    setLogoUrl(undefined);
+    // Best-effort cleanup of the Storage object. Idempotent — if the
+    // bucket has no matching file the API silently no-ops.
+    if (isSupabaseConfigured() && brand) {
+      void removeBrandLogo(brand.id);
+    }
+  };
 
   const toggleCategory = (cat: string) => {
     setCategories((cs) => (cs.includes(cat) ? cs.filter((c) => c !== cat) : [...cs, cat]));

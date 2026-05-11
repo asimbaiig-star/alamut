@@ -61,6 +61,8 @@ import {
 // line of its `tx` block. If the actor lacks the capability the helper
 // throws; if no actor is set (test/seed mode) the check is bypassed.
 import { requireCapability, getActorUserId } from '@/lib/permissions';
+// Phase 2 — Supabase write path for brand updates. See brandsRepo.ts.
+import { isSupabaseConfigured } from '@/lib/supabase';
 
 const PLATFORM_FEE = 0.10;
 const WHT = 0.05;
@@ -1934,16 +1936,47 @@ export function v2LaunchCampaign(input: LaunchCampaignInput): Campaign | null {
  * inbox / collab side panel. Requires `campaign.update` (admin/ops
  * on the brand team — same gate as editing any brand-owned record).
  */
-export function v2UpdateBrand(
+// Phase 2 — Supabase is now the source of truth for brand rows that
+// have been migrated (Aesop, Le Creuset). When configured, writes hit
+// Supabase first (RLS gates by `auth.email() = owner_email`), then
+// mirror to the local Zustand store so the rest of the app — which
+// still reads from the store — sees the update immediately. For
+// brands that don't exist in Supabase yet (the ~78 generated b_gb*
+// rows), the Supabase write returns "not found" and we silently fall
+// through to a local-only write, preserving the demo experience.
+export async function v2UpdateBrand(
   brandId: string,
   patch: Partial<Pick<Brand, 'name' | 'industry' | 'hq' | 'website' | 'about' | 'logoMark' | 'logoUrl' | 'preferredCategories' | 'preferredRegions'>>,
-): Brand | null {
+): Promise<Brand | null> {
+  // 1. Try the Supabase write first. Anything else (RLS rejection,
+  //    network error) we surface — the caller's UI will show the
+  //    failure toast. Only "row not in Supabase yet" falls through
+  //    silently so generated demo brands stay editable in-store.
+  let serverResult: Brand | null = null;
+  if (isSupabaseConfigured()) {
+    try {
+      const { updateBrandInSupabase } = await import('@/lib/data/brandsRepo');
+      serverResult = await updateBrandInSupabase(brandId, patch);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // PostgREST shapes "no rows updated" as a generic error; we
+      // detect it via the message text and the count check below.
+      if (!/no rows|0 rows|not found|JSON object requested/i.test(msg)) {
+        throw err;
+      }
+      // Otherwise: brand isn't in Supabase yet — local-only write.
+    }
+  }
+
+  // 2. Mirror the change into the local store. With serverResult set,
+  //    use the canonical server row; otherwise apply the patch onto
+  //    the local row directly.
   return tx((db) => {
     requireCapability(getActorUserId(), 'campaign.update', db);
     const idx = db.brands.findIndex((b) => b.id === brandId);
     if (idx === -1) return null;
     const current = db.brands[idx];
-    const next: Brand = {
+    const next: Brand = serverResult ?? {
       ...current,
       ...patch,
       // Keep array fields as immutable copies so no caller can mutate

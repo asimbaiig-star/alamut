@@ -182,3 +182,33 @@ if (typeof window !== 'undefined') {
     }
   });
 }
+
+// Phase 2 — Supabase boot hydration for brand rows. When Supabase is
+// configured we fetch the brands table once at startup and overlay any
+// rows that exist there onto the local Zustand store. Brands that
+// don't exist in Supabase yet (the ~78 generated b_gb* rows) keep
+// their seed values, so the demo experience stays full. Reads
+// elsewhere in the app continue going through `useStore` unchanged —
+// they just see fresh data for migrated brands.
+if (typeof window !== 'undefined') {
+  void (async () => {
+    try {
+      const { fetchAllBrandsFromSupabase } = await import('@/lib/data/brandsRepo');
+      const remote = await fetchAllBrandsFromSupabase();
+      if (remote.length === 0) return;
+      useStore.setState((s) => {
+        const byId = new Map(remote.map((b) => [b.id, b]));
+        const next = s.db.brands.map((b) => byId.get(b.id) ?? b);
+        // Append any Supabase brands that don't exist locally (future
+        // brands created via real sign-up).
+        const localIds = new Set(s.db.brands.map((b) => b.id));
+        for (const b of remote) if (!localIds.has(b.id)) next.push(b);
+        return { db: { ...s.db, brands: next } };
+      });
+    } catch (e) {
+      // Network down / Supabase outage — local store stays as-is.
+      // eslint-disable-next-line no-console
+      console.warn('[store] brand hydration skipped:', e);
+    }
+  })();
+}
