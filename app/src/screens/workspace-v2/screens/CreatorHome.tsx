@@ -126,12 +126,54 @@ export function CreatorHome({ onRoute }: Props) {
       });
     }
 
-    // Note — "Post & mark live" and "Complete KYC" used to live here.
-    // Both removed: mark-live is a brand-side action in the current
-    // workflow (creator has no MarkLiveModal in CollabDetail), and KYC
-    // routes to the same page as the sidebar entry, which violates the
-    // "every Today tile must land at the action point" rule. Both can
-    // come back when their respective deep-link surfaces exist.
+    // 4. Approved content waiting to be posted live. After the brand
+    //    approves, the creator has to actually post on their platform
+    //    AND paste the public URL back here — that triggers the brand's
+    //    verify-and-confirm flow, which releases the final 50% of
+    //    escrow. Deep-link to `?action=mark-live` pops CollabDetail's
+    //    `CreatorMarkLiveModal` directly.
+    //    Only surface this for submissions that are approved AND have
+    //    no permalink yet; once the creator pastes a URL the brand owns
+    //    the next action (verify + confirm live).
+    for (const c of myCollabs) {
+      if (items.length >= 4) break;
+      const hasApprovedAwaitingPost = db.submissions.some((s) =>
+        s.campaignId === c.campaignId &&
+        s.creatorId === c.creatorId &&
+        s.status === 'approved' &&
+        !s.permalink,
+      );
+      if (!hasApprovedAwaitingPost) continue;
+      const camp = allCampaigns.find((x) => x.id === c.campaignId);
+      if (!camp) continue;
+      items.push({
+        id: `live_${c.id}`,
+        icon: '⤴',
+        urgent: false,
+        title: `Post & mark live`,
+        sub: `${camp.brand} approved · paste the live URL to release ${fmtUSD(Math.round(c.price * 0.5))}`,
+        route: `collab:${c.id}?action=mark-live`,
+      });
+    }
+
+    // 5. KYC if profile completion is incomplete. Deep-links to KycTax
+    //    with `?action=next-step` which scrolls to + pulse-highlights
+    //    the first incomplete step — distinct from the sidebar entry
+    //    that just opens the page header.
+    if (creator && items.length < 4) {
+      // The KycTax page currently uses static step data; surface the
+      // tile whenever the creator hasn't fully completed all steps.
+      // Wired off creator presence as a proxy until step state moves
+      // to the store.
+      items.push({
+        id: 'kyc',
+        icon: '✓',
+        urgent: false,
+        title: 'Complete KYC verification',
+        sub: 'Unlock payouts above $1,000 · 2 minutes',
+        route: 'kyc?action=next-step',
+      });
+    }
 
     return items;
   }, [myCollabs, allCampaigns, me.id, creator, db]);

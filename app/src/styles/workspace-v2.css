@@ -2569,3 +2569,18 @@ body:has([data-surface="v2"]) {
   box-shadow: 0 0 0 1px var(--v2-accent-soft);
 }
 
+/* §needs-you-direct-jump — temporary highlight applied to a KycTax
+   step row when CreatorHome's "Complete KYC" tile deep-links here with
+   `?action=next-step`. JS adds the class on scroll-into-view and
+   removes it after ~2s. The pulse draws attention without persistently
+   altering the card style. */
+.kyc-step-highlight {
+  animation: kyc-step-pulse 2s ease-out;
+  box-shadow: 0 0 0 3px var(--v2-accent-soft);
+}
+@keyframes kyc-step-pulse {
+  0%   { box-shadow: 0 0 0 0px var(--v2-accent-soft); }
+  20%  { box-shadow: 0 0 0 6px var(--v2-accent-soft); }
+  100% { box-shadow: 0 0 0 0px var(--v2-accent-soft); }
+}
+

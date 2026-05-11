@@ -11,7 +11,7 @@ import { useV2AllCampaigns, useV2CollabById } from '../v2Hooks';
 import { V2_PIPELINE_STAGES } from '../v2Adapters';
 import type { V2Collab, V2CollabStage, V2Deliverable } from '../data';
 import { ContentUploadModal } from './ContentUploadModal';
-import { CounterOfferModal } from './WorkflowModals';
+import { CounterOfferModal, CreatorMarkLiveModal } from './WorkflowModals';
 import {
   v2AcceptOffer, v2WithdrawApplication, getApplicationFor, getActiveOfferFor,
   getLatestSubmissionFor, v2SetSubmissionPermalink,
@@ -40,6 +40,14 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
   // adapter from platform/format and passed through for the modal title.
   const [uploadSlot, setUploadSlot] = useState<{ deliverableId: string; label: string; isResubmit: boolean } | null>(null);
   const [counterOpen, setCounterOpen] = useState(false);
+  // Creator-side mark-live modal target. Set by the `?action=mark-live`
+  // route param (CreatorHome's Today tile) or by the inline action on
+  // an approved-but-not-yet-live deliverable.
+  const [markLiveTarget, setMarkLiveTarget] = useState<{
+    submissionId: string;
+    deliverableLabel: string;
+    initialPermalink?: string;
+  } | null>(null);
 
   // Find an offer the creator should respond to. Two shapes count:
   //   1. status='pending'  — brand's first offer, no creator response yet
@@ -87,6 +95,27 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
   useEffect(() => {
     if (initialAction === 'upload' && nextSlot && !uploadSlot) {
       setUploadSlot(nextSlot);
+      return;
+    }
+    if (initialAction === 'mark-live' && collab && !markLiveTarget) {
+      // Find an approved submission for this collab whose permalink isn't
+      // set yet — that's the one the creator needs to paste a URL for.
+      const target = db.submissions
+        .filter((s) =>
+          s.campaignId === collab.campaignId &&
+          s.creatorId === collab.creatorId &&
+          s.status === 'approved' &&
+          !s.permalink,
+        )
+        .sort((a, b) => +new Date(b.submittedAt) - +new Date(a.submittedAt))[0];
+      if (target) {
+        const del = collab.deliverables.find((d) => d.deliverableId === target.deliverableId);
+        setMarkLiveTarget({
+          submissionId: target.id,
+          deliverableLabel: del?.label ?? 'Deliverable',
+          initialPermalink: target.permalink,
+        });
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialAction]);
@@ -340,6 +369,19 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
           brandName={camp.brand}
           currentRate={pendingOffer.rate}
           onClose={() => setCounterOpen(false)}
+        />
+      )}
+      {markLiveTarget && (
+        <CreatorMarkLiveModal
+          submissionId={markLiveTarget.submissionId}
+          deliverableLabel={markLiveTarget.deliverableLabel}
+          campaignName={camp.name}
+          brandName={camp.brand}
+          initialPermalink={markLiveTarget.initialPermalink}
+          // Final 50% of escrow releases on brand-confirmed live (the
+          // milestone schema is 50/50 across approve and live).
+          releaseAmount={Math.round(collab.price * 0.5)}
+          onClose={() => setMarkLiveTarget(null)}
         />
       )}
     </>

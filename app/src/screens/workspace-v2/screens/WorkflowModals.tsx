@@ -10,7 +10,8 @@
 import { useMemo, useState } from 'react';
 import { fmtUSD, Icon } from '../lib';
 import {
-  v2CounterOffer, v2CounterCounter, v2DeclineOffer, v2MarkContentLive, v2SendOffer,
+  v2CounterOffer, v2CounterCounter, v2DeclineOffer, v2MarkContentLive,
+  v2SendOffer, v2SetSubmissionPermalink,
 } from '../v2CampaignActions';
 import { v2InviteCreator } from '../v2CollabActions';
 import { useV2Creators } from '../v2Hooks';
@@ -575,6 +576,153 @@ export function InviteCreatorsModal({
                 {Icon.plus} Invite {count > 0 ? count : ''} {count === 1 ? 'creator' : 'creators'}
               </button>
             </div>
+          </div>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+// =====================================================================
+// CreatorMarkLiveModal — creator pastes the live post URL
+// =====================================================================
+//
+// After the brand approves a submission, the creator posts on their
+// platform (Instagram, TikTok, etc.) and comes back here to attach the
+// public URL. Calls `v2SetSubmissionPermalink` which notifies the brand
+// "ready to confirm." The brand then verifies the link is actually live
+// and clicks Mark Live on their end, which flips status to live and
+// releases the final escrow milestone.
+//
+// This modal is the deep-link target for the creator's "Post & mark
+// live" home tile (route: `collab:<id>?action=mark-live`). It replaces
+// the inline editor on CollabDetail when the user arrived via a tile,
+// so they land directly in the action.
+
+interface CreatorMarkLiveProps {
+  submissionId: string;
+  deliverableLabel: string;
+  campaignName: string;
+  brandName: string;
+  initialPermalink?: string;
+  /** Net amount that releases when the brand confirms live. Shown so the
+   *  creator sees what's at stake before pasting. */
+  releaseAmount: number;
+  onClose: () => void;
+}
+
+export function CreatorMarkLiveModal({
+  submissionId, deliverableLabel, campaignName, brandName,
+  initialPermalink, releaseAmount, onClose,
+}: CreatorMarkLiveProps) {
+  const [url, setUrl] = useState(initialPermalink ?? '');
+  const [confirmed, setConfirmed] = useState(false);
+  const canSetPermalink = useCapability('content.setPermalink');
+  // Basic URL validation — accepts http/https. The platform doesn't have
+  // to match the deliverable; the brand verifies that on their end.
+  const isValidUrl = useMemo(() => {
+    const trimmed = url.trim();
+    if (!trimmed) return false;
+    try { new URL(trimmed); return true; } catch { return false; }
+  }, [url]);
+  const ready = canSetPermalink && isValidUrl && confirmed;
+
+  const onSave = () => {
+    if (!ready) return;
+    v2SetSubmissionPermalink(submissionId, url.trim());
+    onClose();
+  };
+
+  return (
+    <div className="v2-modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
+      <div
+        className="v2-card v2-upload-modal"
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: 560 }}
+      >
+        <header className="v2-upload-modal-head">
+          <div>
+            <h2 style={{
+              fontFamily: 'var(--v2-font-display)',
+              fontSize: 22, fontWeight: 500, margin: 0, letterSpacing: '-0.02em',
+            }}>Mark live</h2>
+            <div className="v2-muted" style={{ fontSize: 13, marginTop: 4 }}>
+              {deliverableLabel} · {campaignName} · {brandName}
+            </div>
+          </div>
+          <button type="button" className="v2-icon-btn" onClick={onClose} aria-label="Close">×</button>
+        </header>
+
+        <div style={{ padding: '14px 20px 8px' }}>
+          <p style={{ fontSize: 13.5, lineHeight: 1.55, margin: '0 0 12px', color: 'var(--v2-ink-2)' }}>
+            Post your approved content on the platform first, then paste the public URL here. {brandName} will verify it's
+            live and confirm — that releases the final <strong>{fmtUSD(releaseAmount)}</strong> from escrow to your wallet.
+          </p>
+
+          <label className="v2-eyebrow" style={{ display: 'block', marginBottom: 6 }}>
+            Public URL
+          </label>
+          <input
+            className="v2-input"
+            type="url"
+            inputMode="url"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://www.instagram.com/p/…"
+            style={{ width: '100%' }}
+          />
+          {url.trim() && !isValidUrl && (
+            <div className="v2-muted" style={{
+              fontSize: 12, marginTop: 6, color: 'var(--v2-gold)',
+            }}>
+              That doesn't look like a valid URL — paste the full link including https://
+            </div>
+          )}
+
+          <label
+            className="v2-row"
+            style={{
+              gap: 10,
+              marginTop: 14,
+              padding: 10,
+              borderRadius: 8,
+              border: '1px solid var(--v2-border)',
+              cursor: 'pointer',
+              alignItems: 'flex-start',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={confirmed}
+              onChange={(e) => setConfirmed(e.target.checked)}
+              style={{ marginTop: 3 }}
+            />
+            <div style={{ fontSize: 13, lineHeight: 1.45 }}>
+              <strong>I confirm the post is live and publicly accessible.</strong>{' '}
+              <span className="v2-muted">
+                Removing or making it private after marking live can put the deal in dispute.
+              </span>
+            </div>
+          </label>
+        </div>
+
+        <footer className="v2-upload-modal-foot">
+          <div className="v2-row" style={{ justifyContent: 'flex-end', gap: 8 }}>
+            <button type="button" className="v2-btn v2-btn-outline" onClick={onClose}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="v2-btn v2-btn-primary"
+              disabled={!ready}
+              title={!canSetPermalink ? 'You don\'t have permission to mark this live' : undefined}
+              onClick={onSave}
+            >
+              {Icon.check} Submit for confirmation
+            </button>
           </div>
         </footer>
       </div>

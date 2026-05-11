@@ -51,11 +51,44 @@ export function BrandHome({ onRoute }: Props) {
       route: string;
     };
     const items: Item[] = [];
-    // Counter offers from the creator come FIRST across all campaigns —
-    // they're the most time-sensitive (creator is waiting on the brand)
-    // so we surface them before in-review submissions and pitches that
-    // can otherwise crowd them out of the 4-item cap.
     const campIds = new Set(campaigns.map((c) => c.id));
+
+    // Creator-attached live URLs awaiting brand verification + confirm.
+    // The creator posted on their platform and pasted the URL via
+    // CreatorMarkLiveModal — now the brand has to open the link, check
+    // the post is actually live, and click Mark Live to flip the
+    // collab to `live` and release the final escrow milestone. Marked
+    // urgent: the creator is waiting on payment.
+    const liveUrlsAwaitingConfirm = db.submissions.filter((s) => {
+      if (!campIds.has(s.campaignId)) return false;
+      if (s.status !== 'approved') return false;
+      if (!s.permalink) return false;
+      // Skip if already confirmed live (LIVE: feedback row exists).
+      return !s.feedback?.some((f) => f.text?.startsWith('LIVE: '));
+    });
+    for (const sub of liveUrlsAwaitingConfirm) {
+      if (items.length >= 4) break;
+      const creator = creators.find((cr) => cr.id === sub.creatorId);
+      const camp = campaigns.find((c) => c.id === sub.campaignId);
+      if (!creator || !camp) continue;
+      items.push({
+        id: `verify_${sub.id}`,
+        urgent: true,
+        who: creator.name,
+        what: `posted live on ${camp.name} — verify and confirm`,
+        when: 'just now',
+        action: 'Verify',
+        // Deep-link straight to the MarkLiveModal for this submission so
+        // the brand lands inside the verify action, not on the campaign
+        // overview they could reach from the sidebar.
+        route: `campaign:${camp.id}?action=verify-live&sub=${sub.id}`,
+      });
+    }
+
+    // Counter offers from the creator come next — they're the most
+    // time-sensitive (creator is waiting on the brand) so we surface
+    // them before in-review submissions and pitches that can otherwise
+    // crowd them out of the 4-item cap.
     const counterOffers = db.offers.filter((o) => {
       if (!campIds.has(o.campaignId)) return false;
       if (o.status !== 'countered') return false;

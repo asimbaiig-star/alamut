@@ -50,6 +50,11 @@ interface Props {
    *  Powered by `?review=<collabId>` so a single click from a home
    *  tile opens the campaign on the right tab AND the right modal. */
   initialReviewCollabId?: string;
+  /** Optional submission id whose MarkLiveModal should open on mount.
+   *  Powered by `?action=verify-live&sub=<id>` so the BrandHome
+   *  "<creator> posted live on <campaign> — verify and confirm" tile
+   *  lands the brand directly in the verify-and-confirm modal. */
+  initialVerifyLiveSubmissionId?: string;
 }
 
 type TabId = 'pipeline' | 'brief' | 'content' | 'analytics' | 'settings';
@@ -58,6 +63,7 @@ const VALID_TABS: TabId[] = ['pipeline', 'brief', 'content', 'analytics', 'setti
 
 export function CampaignDetail({
   campaignId, onRoute, initialTab, initialReviewCollabId,
+  initialVerifyLiveSubmissionId,
 }: Props) {
   const campaign = useV2CampaignById(campaignId);
   const collabs = useV2CollabsForCampaign(campaignId);
@@ -79,6 +85,16 @@ export function CampaignDetail({
   }, [initialReviewCollabId, collabs]);
   const [offering, setOffering] = useState<{ creator: V2Creator; defaultRate: number } | null>(null);
   const [markingLive, setMarkingLive] = useState<{ submissionId: string; campaignName: string } | null>(null);
+  // §needs-you-direct-jump — when BrandHome's "posted live — verify and
+  // confirm" tile passes `?action=verify-live&sub=<id>`, pop the
+  // MarkLiveModal for that submission on mount. Reads campaign.name once
+  // collab data is available so the modal title is correct.
+  useEffect(() => {
+    if (!initialVerifyLiveSubmissionId || !campaign) return;
+    const sub = db.submissions.find((s) => s.id === initialVerifyLiveSubmissionId);
+    if (!sub || sub.campaignId !== campaignId) return;
+    setMarkingLive({ submissionId: sub.id, campaignName: campaign.name });
+  }, [initialVerifyLiveSubmissionId, campaign, campaignId, db.submissions]);
   // Brand-side counter response — when the creator counters an offer,
   // the brand needs Accept / Counter back / Decline. Inline buttons
   // live on the kanban card; "Counter back" pops this modal.

@@ -258,12 +258,18 @@ function RouteOutlet({ route, onRoute, persona }: { route: string; onRoute: (r: 
     // settings); unknown values fall through to the default tab.
     const [campaignId, queryStr] = route.slice('campaign:'.length).split('?');
     const params = new URLSearchParams(queryStr ?? '');
+    // `?action=verify-live&sub=<id>` from BrandHome's "verify and confirm
+    // live" tile auto-pops MarkLiveModal for the given submission.
+    const verifyLiveSub = params.get('action') === 'verify-live'
+      ? (params.get('sub') ?? undefined)
+      : undefined;
     return (
       <CampaignDetail
         campaignId={campaignId}
         onRoute={onRoute}
         initialTab={(params.get('tab') as never) ?? undefined}
         initialReviewCollabId={params.get('review') ?? undefined}
+        initialVerifyLiveSubmissionId={verifyLiveSub}
       />
     );
   }
@@ -315,7 +321,17 @@ function RouteOutlet({ route, onRoute, persona }: { route: string; onRoute: (r: 
   if (route === 'creator-inbox') return <Inbox onRoute={onRoute} persona="creator" />;
   if (route === 'analytics') return <Analytics onRoute={onRoute} />;
   if (route === 'creator-wallet') return <CreatorWallet onRoute={onRoute} />;
-  if (route === 'kyc') return <KycTax onRoute={onRoute} />;
+  if (route === 'kyc' || route.startsWith('kyc?')) {
+    // `kyc?action=next-step` scrolls to the next incomplete step.
+    const queryStr = route.includes('?') ? route.split('?')[1] : '';
+    const params = new URLSearchParams(queryStr);
+    return (
+      <KycTax
+        onRoute={onRoute}
+        initialAction={(params.get('action') as never) ?? undefined}
+      />
+    );
+  }
 
   return <BrandHome onRoute={onRoute} />;
 }

@@ -9,11 +9,17 @@
 // Bottom block: auto-generated tax certificates that creators can
 // download for filing season.
 
+import { useEffect } from 'react';
 import { Icon, Topbar } from '../lib';
 import { pushToast } from '@/lib/utils/toast';
 
 interface Props {
   onRoute: (r: string) => void;
+  /** When the route arrived with `?action=next-step` (CreatorHome's
+   *  Today tile), scroll to + visually highlight the first incomplete
+   *  step so the creator lands inside the next action instead of at
+   *  the page header (which the sidebar already does). */
+  initialAction?: 'next-step';
 }
 
 type StepStatus = 'verified' | 'pending' | 'action' | 'locked';
@@ -77,9 +83,29 @@ const TAX_DOCS = [
   { id: 'tx3', name: '2025 Withholding tax certificate', date: 'Jan 15, 2026', size: '88 KB', amount: 930 },
 ];
 
-export function KycTax({ onRoute }: Props) {
+export function KycTax({ onRoute, initialAction }: Props) {
   const completed = STEPS.filter((s) => s.status === 'verified').length;
   const pct = Math.round((completed / STEPS.length) * 100);
+  const nextActionStep = STEPS.find((s) => s.status === 'action');
+
+  // §needs-you-direct-jump — when CreatorHome's "Complete KYC" tile
+  // deep-links here with `?action=next-step`, scroll to the first
+  // incomplete step and add a temporary highlight ring. Without this
+  // the deep-link is no different from clicking KYC & Tax in the
+  // sidebar.
+  useEffect(() => {
+    if (initialAction !== 'next-step' || !nextActionStep) return;
+    // Wait one tick so the article element is mounted, then scroll +
+    // pulse-highlight via a CSS class we add and remove after 2s.
+    const id = window.setTimeout(() => {
+      const el = document.getElementById(`kyc-step-${nextActionStep.id}`);
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('kyc-step-highlight');
+      window.setTimeout(() => el.classList.remove('kyc-step-highlight'), 2200);
+    }, 100);
+    return () => window.clearTimeout(id);
+  }, [initialAction, nextActionStep]);
 
   return (
     <>
@@ -218,10 +244,12 @@ function StepRow({ step, index }: { step: Step; index: number }) {
 
   return (
     <article
+      id={`kyc-step-${step.id}`}
       className="v2-card v2-card-pad"
       style={{
         opacity: step.status === 'locked' ? 0.55 : 1,
         borderColor: step.status === 'action' ? 'var(--v2-accent)' : undefined,
+        transition: 'box-shadow 200ms ease, transform 200ms ease',
       }}
     >
       <div className="v2-row" style={{ gap: 16, alignItems: 'flex-start' }}>
