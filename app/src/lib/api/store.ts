@@ -194,24 +194,31 @@ if (typeof window !== 'undefined') {
 if (typeof window !== 'undefined') {
   void (async () => {
     try {
-      const [brandsMod, campaignsMod, applicationsMod, offersMod, creatorsMod] = await Promise.all([
+      const [brandsMod, campaignsMod, applicationsMod, offersMod, creatorsMod, collabsMod, submissionsMod, deliverablesMod] = await Promise.all([
         import('@/lib/data/brandsRepo'),
         import('@/lib/data/campaignsRepo'),
         import('@/lib/data/applicationsRepo'),
         import('@/lib/data/offersRepo'),
         import('@/lib/data/creatorsRepo'),
+        import('@/lib/data/collaborationsRepo'),
+        import('@/lib/data/submissionsRepo'),
+        import('@/lib/data/deliverablesRepo'),
       ]);
-      const [brands, campaigns, applications, offers, creators] = await Promise.all([
+      const [brands, campaigns, applications, offers, creators, collaborations, submissions, deliverables] = await Promise.all([
         brandsMod.fetchAllBrandsFromSupabase(),
         campaignsMod.fetchAllCampaignsFromSupabase(),
         applicationsMod.fetchAllApplicationsFromSupabase(),
         offersMod.fetchAllOffersFromSupabase(),
         creatorsMod.fetchAllCreatorsFromSupabase(),
+        collabsMod.fetchAllCollabsFromSupabase(),
+        submissionsMod.fetchAllSubmissionsFromSupabase(),
+        deliverablesMod.fetchAllDeliverablesFromSupabase(),
       ]);
       if (
         brands.length === 0 && campaigns.length === 0 &&
         applications.length === 0 && offers.length === 0 &&
-        creators.length === 0
+        creators.length === 0 && collaborations.length === 0 &&
+        submissions.length === 0 && deliverables.length === 0
       ) return;
       useStore.setState((s) => {
         // Overlay helper — same pattern for every table.
@@ -231,6 +238,9 @@ if (typeof window !== 'undefined') {
             applications: overlay(s.db.applications, applications),
             offers: overlay(s.db.offers, offers),
             creators: overlay(s.db.creators, creators),
+            collaborations: overlay(s.db.collaborations ?? [], collaborations),
+            submissions: overlay(s.db.submissions, submissions),
+            deliverables: overlay(s.db.deliverables ?? [], deliverables),
           },
         };
       });

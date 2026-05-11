@@ -195,5 +195,27 @@ export function ensureCollabState(
     }
   }
 
+  // Phase 5c — mirror the resulting collab to Supabase. Fire-and-forget
+  // so the local tx() commits regardless of network conditions.
+  // Wrapped in dynamic import to avoid pulling Supabase into hot paths
+  // when env vars aren't set (the helper short-circuits anyway).
+  if (typeof window !== 'undefined') {
+    void (async () => {
+      try {
+        const { isSupabaseConfigured } = await import('@/lib/supabase');
+        if (!isSupabaseConfigured()) return;
+        const { upsertCollabInSupabase } = await import('@/lib/data/collaborationsRepo');
+        await upsertCollabInSupabase(collab!);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        // Silence RLS rejections (not the row's owner) + FK violations
+        // (campaign/creator not in Postgres yet for generated cmp_g* etc.)
+        if (/row-level security|new row violates|foreign key|no rows|0 rows|not found/i.test(msg)) return;
+        // eslint-disable-next-line no-console
+        console.warn('[collab mirror] failed:', msg);
+      }
+    })();
+  }
+
   return collab;
 }

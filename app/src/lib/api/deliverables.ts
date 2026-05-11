@@ -94,7 +94,13 @@ export function inferFormatLocal(label: string, type: string): DeliverableFormat
 /** Materialize Deliverable rows from a free-form placement string for a
  *  newly created campaign. Pushes rows into `db.deliverables` and returns
  *  the FK array to set on `Campaign.deliverableIds`. Use inside a `tx()`
- *  block right after the campaign is pushed. */
+ *  block right after the campaign is pushed.
+ *
+ *  Phase 5d — also fires a fire-and-forget bulk INSERT to Supabase for
+ *  the freshly-created rows (skipping ones that already existed locally
+ *  from an idempotent re-run). Failures are silenced for the usual cases:
+ *  Supabase not configured, RLS rejection, FK violation (campaign is a
+ *  generated cmp_g* that doesn't exist in Postgres). */
 export function materializeDeliverablesForCampaign(
   campaignId: string,
   placementText: string,
@@ -102,13 +108,14 @@ export function materializeDeliverablesForCampaign(
 ): string[] {
   const slots = parseDeliverableSlotsFreeForm(placementText);
   const ids: string[] = [];
+  const fresh: Deliverable[] = [];
   for (const slot of slots) {
     const id = `del_${campaignId}_${slot.index}`;
     if (db.deliverables.some((d) => d.id === id)) {
       ids.push(id);
       continue;
     }
-    db.deliverables.push({
+    const row: Deliverable = {
       id,
       campaignId,
       index: slot.index,
@@ -117,8 +124,31 @@ export function materializeDeliverablesForCampaign(
       quantity: 1,
       dueOffsetDays: null,
       specs: null,
-    } as Deliverable);
+    };
+    db.deliverables.push(row);
+    fresh.push(row);
     ids.push(id);
   }
+
+  // Phase 5d — fire-and-forget bulk insert. Same pattern as the collab
+  // mirror in collabSync.ts: dynamic import keeps Supabase out of hot
+  // paths, env-gate short-circuits when unconfigured, and we silence the
+  // expected RLS / FK errors for rows that live only in the local store.
+  if (typeof window !== 'undefined' && fresh.length > 0) {
+    void (async () => {
+      try {
+        const { isSupabaseConfigured } = await import('@/lib/supabase');
+        if (!isSupabaseConfigured()) return;
+        const { insertDeliverablesInSupabase } = await import('@/lib/data/deliverablesRepo');
+        await insertDeliverablesInSupabase(fresh);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (/row-level security|new row violates|foreign key|duplicate key|already exists/i.test(msg)) return;
+        // eslint-disable-next-line no-console
+        console.warn('[deliverables mirror] failed:', msg);
+      }
+    })();
+  }
+
   return ids;
 }

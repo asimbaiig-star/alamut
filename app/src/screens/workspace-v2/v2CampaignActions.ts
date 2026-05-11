@@ -169,6 +169,41 @@ function mirrorApplicationUpdateToSupabase(
   })();
 }
 
+/** Fire-and-forget Supabase mirror for a Submission INSERT (Phase 5d). */
+function mirrorSubmissionInsertToSupabase(submission: Submission): void {
+  if (!isSupabaseConfigured()) return;
+  void (async () => {
+    try {
+      const { insertSubmissionInSupabase } = await import('@/lib/data/submissionsRepo');
+      await insertSubmissionInSupabase(submission);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (isNotFoundError(msg) || /foreign key|violates|row-level security/i.test(msg)) return;
+      // eslint-disable-next-line no-console
+      console.warn('[submission insert mirror] failed:', msg);
+    }
+  })();
+}
+
+/** Fire-and-forget Supabase mirror for a Submission UPDATE (Phase 5d). */
+function mirrorSubmissionUpdateToSupabase(
+  submissionId: string,
+  patch: Parameters<typeof import('@/lib/data/submissionsRepo').updateSubmissionInSupabase>[1],
+): void {
+  if (!isSupabaseConfigured()) return;
+  void (async () => {
+    try {
+      const { updateSubmissionInSupabase } = await import('@/lib/data/submissionsRepo');
+      await updateSubmissionInSupabase(submissionId, patch);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (isNotFoundError(msg) || /row-level security/i.test(msg)) return;
+      // eslint-disable-next-line no-console
+      console.warn('[submission update mirror] failed:', msg);
+    }
+  })();
+}
+
 const PLATFORM_FEE = 0.10;
 const WHT = 0.05;
 
@@ -681,7 +716,7 @@ export function v2SubmitContent(
   fileName: string,
   deliverableId: string,
 ): Submission | null {
-  return tx((db) => {
+  const result = tx((db) => {
     // P5 §4.1 — creator-side capability.
     requireCapability(getActorUserId(), 'content.submit', db);
 
@@ -741,6 +776,8 @@ export function v2SubmitContent(
 
     return submission;
   });
+  if (result) mirrorSubmissionInsertToSupabase(result);
+  return result;
 }
 
 // =====================================================================
@@ -760,7 +797,7 @@ export function v2SubmitContent(
 const DISPUTE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 export function v2ApproveContent(submissionId: string): Submission | null {
-  return tx((db) => {
+  const result = tx((db) => {
     // P5 §4.1 — brand-side `content.approve` (admin/ops).
     requireCapability(getActorUserId(), 'content.approve', db);
 
@@ -946,6 +983,8 @@ export function v2ApproveContent(submissionId: string): Submission | null {
 
     return db.submissions[subIdx];
   });
+  if (result) mirrorSubmissionUpdateToSupabase(submissionId, { status: result.status, feedback: result.feedback });
+  return result;
 }
 
 // =====================================================================
@@ -957,7 +996,7 @@ export function v2ApproveContent(submissionId: string): Submission | null {
  * brand's note appended to the feedback log.
  */
 export function v2RequestRevision(submissionId: string, note: string): Submission | null {
-  return tx((db) => {
+  const result = tx((db) => {
     // P5 §4.1 — same role set as content.approve; the brand team that
     // can approve content can also send it back for revision.
     requireCapability(getActorUserId(), 'content.revise', db);
@@ -1000,6 +1039,8 @@ export function v2RequestRevision(submissionId: string, note: string): Submissio
 
     return db.submissions[subIdx];
   });
+  if (result) mirrorSubmissionUpdateToSupabase(submissionId, { status: result.status, feedback: result.feedback });
+  return result;
 }
 
 // =====================================================================
@@ -1528,7 +1569,7 @@ export function v2WithdrawOffer(offerId: string): Offer | null {
  * URL field and the brand confirms it's right.
  */
 export function v2MarkContentLive(submissionId: string): Submission | null {
-  return tx((db) => {
+  const result = tx((db) => {
     // P5 §4.1 — brand confirmation that the post is live; admin/ops.
     requireCapability(getActorUserId(), 'content.markLive', db);
 
@@ -1577,6 +1618,15 @@ export function v2MarkContentLive(submissionId: string): Submission | null {
 
     return db.submissions[idx];
   });
+  // Phase 5d — mirror the feedback append to Supabase (status + permalink
+  // didn't change, but the LIVE: feedback row is what makes the post
+  // discoverable in analytics).
+  if (result) {
+    mirrorSubmissionUpdateToSupabase(submissionId, {
+      feedback: result.feedback,
+    });
+  }
+  return result;
 }
 
 /**
@@ -1593,7 +1643,7 @@ export function v2SetSubmissionPermalink(
   submissionId: string,
   permalink: string,
 ): Submission | null {
-  return tx((db) => {
+  const result = tx((db) => {
     // P5 §4.1 — creator-side; the creator owns the URL field.
     requireCapability(getActorUserId(), 'content.setPermalink', db);
 
@@ -1638,6 +1688,14 @@ export function v2SetSubmissionPermalink(
 
     return db.submissions[idx];
   });
+  // Phase 5d — mirror the URL change to Supabase. `permalink: null` is
+  // how the repo encodes "clear it"; map undefined → null at the edge.
+  if (result) {
+    mirrorSubmissionUpdateToSupabase(submissionId, {
+      permalink: result.permalink ?? null,
+    });
+  }
+  return result;
 }
 
 // =====================================================================
