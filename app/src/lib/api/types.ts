@@ -258,6 +258,13 @@ export interface Brand {
   website: string;
   about: string;
   logoMark?: string;
+  /** Optional uploaded logo image as a data URL (base64-encoded PNG/JPEG).
+   *  Stored inline so the entirely-client-side demo persists across
+   *  reloads via localStorage. The brand-profile editor downscales to
+   *  256×256 before encoding so the payload stays small (~30–60 KB).
+   *  When present, every brand-mark surface should render the image
+   *  instead of the `logoMark` letter glyph. */
+  logoUrl?: string;
   preferredCategories: string[];
   preferredRegions: string[];
   walletBalance: number;     // available, cleared

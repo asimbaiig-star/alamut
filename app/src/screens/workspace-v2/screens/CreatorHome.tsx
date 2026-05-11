@@ -975,14 +975,16 @@ function SavedForLater({ me, campaigns, onRoute }: {
                   e.currentTarget.style.transform = 'translateY(0)';
                 }}
               >
-                {/* Brand-coloured mark — matches the CampaignTile letterhead */}
+                {/* Brand mark — uploaded logo when set, brand-coloured
+                    initial otherwise. Same precedence rule as the
+                    CampaignTile so brand uploads propagate everywhere. */}
                 <span
                   aria-hidden="true"
                   style={{
                     width: 32,
                     height: 32,
                     borderRadius: 8,
-                    background: accent.bg,
+                    background: c.brandLogoUrl ? 'var(--v2-paper)' : accent.bg,
                     color: accent.ink,
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -991,9 +993,19 @@ function SavedForLater({ me, campaigns, onRoute }: {
                     fontWeight: 600,
                     fontSize: 16,
                     flexShrink: 0,
+                    overflow: 'hidden',
+                    border: c.brandLogoUrl ? '1px solid var(--v2-line)' : 'none',
                   }}
                 >
-                  {c.brand[0]}
+                  {c.brandLogoUrl ? (
+                    <img
+                      src={c.brandLogoUrl}
+                      alt=""
+                      style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                    />
+                  ) : (
+                    c.brand[0]
+                  )}
                 </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div

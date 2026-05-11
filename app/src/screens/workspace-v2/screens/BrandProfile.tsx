@@ -12,12 +12,43 @@
 // in the surface taxonomy: both let one side configure how the other
 // side perceives them.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Icon, Topbar } from '../lib';
 import { useV2CurrentBrand } from '../v2Hooks';
 import { v2UpdateBrand } from '../v2CampaignActions';
 import { useCapability } from '@/lib/permissions';
 import { pushToast } from '@/lib/utils/toast';
+
+// Downscale + encode an uploaded image to a data URL. Demo app has no
+// backend, so logos live inline in localStorage — 256×256 JPEG @ 0.85
+// quality keeps a typical logo under 50 KB and well clear of the 5 MB
+// localStorage budget.
+async function downscaleToDataUrl(file: File, maxDim = 256): Promise<string> {
+  const buf = await file.arrayBuffer();
+  const blob = new Blob([buf], { type: file.type });
+  const bitmap = await createImageBitmap(blob);
+  // Preserve aspect ratio while fitting into a max×max box.
+  const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+  const w = Math.round(bitmap.width * scale);
+  const h = Math.round(bitmap.height * scale);
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas 2D context unavailable');
+  // Prefer JPEG (smaller) for photos; PNG if alpha matters (transparent
+  // backgrounds common on logos). Decide via file type — PNG / WEBP →
+  // PNG output; everything else → JPEG.
+  const wantsAlpha = /png|webp|svg/i.test(file.type);
+  if (!wantsAlpha) {
+    // White paint behind to flatten transparency for JPEG.
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, w, h);
+  }
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  const mime = wantsAlpha ? 'image/png' : 'image/jpeg';
+  return canvas.toDataURL(mime, 0.85);
+}
 
 interface Props {
   onRoute: (r: string) => void;
@@ -47,6 +78,9 @@ export function BrandProfile({ onRoute }: Props) {
   const [website, setWebsite] = useState(brand?.website ?? '');
   const [about, setAbout] = useState(brand?.about ?? '');
   const [logoMark, setLogoMark] = useState(brand?.logoMark ?? '');
+  const [logoUrl, setLogoUrl] = useState<string | undefined>(brand?.logoUrl);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [categories, setCategories] = useState<string[]>(brand?.preferredCategories ?? []);
   const [regions, setRegions] = useState<string[]>(brand?.preferredRegions ?? []);
   const [busy, setBusy] = useState(false);
@@ -59,6 +93,7 @@ export function BrandProfile({ onRoute }: Props) {
     setWebsite(brand.website);
     setAbout(brand.about);
     setLogoMark(brand.logoMark ?? '');
+    setLogoUrl(brand.logoUrl);
     setCategories(brand.preferredCategories ?? []);
     setRegions(brand.preferredRegions ?? []);
   }, [brand?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -79,6 +114,7 @@ export function BrandProfile({ onRoute }: Props) {
     website !== brand.website ||
     about !== brand.about ||
     (logoMark || '') !== (brand.logoMark ?? '') ||
+    (logoUrl ?? '') !== (brand.logoUrl ?? '') ||
     !arraysEqual(categories, brand.preferredCategories ?? []) ||
     !arraysEqual(regions, brand.preferredRegions ?? []);
 
@@ -93,6 +129,7 @@ export function BrandProfile({ onRoute }: Props) {
         website: website.trim(),
         about: about.trim(),
         logoMark: (logoMark.trim() || undefined),
+        logoUrl: logoUrl || undefined,
         preferredCategories: categories,
         preferredRegions: regions,
       });
@@ -112,9 +149,39 @@ export function BrandProfile({ onRoute }: Props) {
     setWebsite(brand.website);
     setAbout(brand.about);
     setLogoMark(brand.logoMark ?? '');
+    setLogoUrl(brand.logoUrl);
     setCategories(brand.preferredCategories ?? []);
     setRegions(brand.preferredRegions ?? []);
   };
+
+  // File-picker handler. Validates the type, downscales to 256×256,
+  // and stores the base64 result in form state. The actual brand
+  // mutation only fires on Save so the user can preview + change
+  // their mind before persisting.
+  const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-uploading the same file later
+    if (!file) return;
+    if (!/image\/(png|jpe?g|webp|gif|svg\+xml)/i.test(file.type)) {
+      pushToast('Logo must be a PNG, JPEG, WEBP, GIF or SVG image', 'bad');
+      return;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      pushToast('Logo file is over 4 MB — pick a smaller one', 'bad');
+      return;
+    }
+    setLogoUploading(true);
+    try {
+      const dataUrl = await downscaleToDataUrl(file);
+      setLogoUrl(dataUrl);
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : 'Could not read that image', 'bad');
+    } finally {
+      setLogoUploading(false);
+    }
+  };
+
+  const onRemoveLogo = () => setLogoUrl(undefined);
 
   const toggleCategory = (cat: string) => {
     setCategories((cs) => (cs.includes(cat) ? cs.filter((c) => c !== cat) : [...cs, cat]));
@@ -171,7 +238,80 @@ export function BrandProfile({ onRoute }: Props) {
                   placeholder="Aesop"
                 />
               </Field>
-              <Field label="Logo letter (optional override)" hint="Defaults to the first letter of your name. Override to use a different glyph (e.g. Æ for Aēsop).">
+              <Field
+                label="Logo"
+                hint="PNG, JPEG, WEBP or SVG up to 4 MB. We downscale to 256×256 so the file stays small. If you don't upload anything, the letter fallback is used instead."
+              >
+                <div className="v2-row" style={{ gap: 14, alignItems: 'center' }}>
+                  {/* Hidden native file input — triggered via the
+                      labelled button so we can style it cleanly. */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+                    onChange={onPickFile}
+                    style={{ display: 'none' }}
+                    aria-label="Upload brand logo"
+                  />
+                  {/* Logo preview — image when set, letter fallback otherwise. */}
+                  <div
+                    style={{
+                      width: 72,
+                      height: 72,
+                      borderRadius: 'var(--v2-r-md)',
+                      background: logoUrl ? 'var(--v2-bg-1)' : 'var(--v2-ink)',
+                      color: 'var(--v2-paper)',
+                      display: 'grid',
+                      placeItems: 'center',
+                      fontFamily: 'var(--v2-font-display)',
+                      fontWeight: 500,
+                      fontSize: 32,
+                      letterSpacing: '-0.02em',
+                      border: '1px solid var(--v2-line)',
+                      overflow: 'hidden',
+                      flexShrink: 0,
+                    }}
+                    aria-hidden="true"
+                  >
+                    {logoUrl ? (
+                      <img
+                        src={logoUrl}
+                        alt=""
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'contain',
+                          background: 'var(--v2-paper)',
+                        }}
+                      />
+                    ) : (
+                      ((logoMark.trim() || name || 'B').charAt(0).toUpperCase())
+                    )}
+                  </div>
+                  <div className="v2-row" style={{ gap: 8 }}>
+                    <button
+                      type="button"
+                      className="v2-btn v2-btn-outline v2-btn-sm"
+                      disabled={!canEdit || logoUploading}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      {Icon.plus}
+                      {logoUploading ? 'Processing…' : logoUrl ? 'Replace logo' : 'Upload logo'}
+                    </button>
+                    {logoUrl && (
+                      <button
+                        type="button"
+                        className="v2-btn v2-btn-ghost v2-btn-sm"
+                        disabled={!canEdit}
+                        onClick={onRemoveLogo}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </Field>
+              <Field label="Letter fallback" hint="Used when no logo image is uploaded. Defaults to the first letter of your name; override to use a different glyph (e.g. Æ for Aēsop).">
                 <input
                   className="v2-input"
                   value={logoMark}
@@ -301,17 +441,28 @@ export function BrandProfile({ onRoute }: Props) {
                     height: 56,
                     fontSize: 28,
                     fontFamily: 'var(--v2-font-display)',
-                    background: 'var(--v2-ink)',
+                    background: logoUrl ? 'var(--v2-paper)' : 'var(--v2-ink)',
                     color: 'var(--v2-paper)',
                     display: 'grid',
                     placeItems: 'center',
                     borderRadius: 'var(--v2-r-md)',
                     fontWeight: 500,
                     letterSpacing: '-0.02em',
+                    border: logoUrl ? '1px solid var(--v2-line)' : 'none',
+                    overflow: 'hidden',
+                    flexShrink: 0,
                   }}
                   aria-hidden="true"
                 >
-                  {logoChar}
+                  {logoUrl ? (
+                    <img
+                      src={logoUrl}
+                      alt=""
+                      style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                    />
+                  ) : (
+                    logoChar
+                  )}
                 </div>
                 <div>
                   <div style={{

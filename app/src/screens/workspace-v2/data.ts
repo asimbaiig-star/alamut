@@ -101,6 +101,10 @@ export interface V2Campaign {
    *  "Verified · pays in 3 days" badge on the editorial CampaignTile
    *  so it's data-driven instead of a hardcoded string. */
   brandVerified: boolean;
+  /** Mirrors `Brand.logoUrl`. When set, the CampaignTile letterhead
+   *  band renders the uploaded image instead of the brand-initial
+   *  glyph so brand uploads propagate to every creator surface. */
+  brandLogoUrl?: string;
   /** Mirrors `Campaign.escrowHeld` (PKR/USD held against the brand
    *  wallet for in-flight collabs). Drives the "● Escrow funded"
    *  indicator on the CampaignTile — green dot when > 0, muted when

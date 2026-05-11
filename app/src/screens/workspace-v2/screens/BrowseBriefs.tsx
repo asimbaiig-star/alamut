@@ -971,9 +971,26 @@ function CampaignTile({ campaign, onOpen }: {
       <div className="v2-ct-band" style={{ background: accent.bg, color: accent.ink }}>
         <span className="v2-ct-band-tex" aria-hidden="true" />
         <div className="v2-row" style={{ gap: 11, alignItems: 'center', minWidth: 0, position: 'relative' }}>
-          <div className="v2-ct-mark" style={{ color: accent.bg, background: accent.ink }} aria-hidden="true">
-            {campaign.brand[0]}
-          </div>
+          {/* Brand mark — uploaded image when set, brand initial otherwise.
+              The image override flips the chip's bg to paper-white (so a
+              dark logo reads) and contains the image to preserve aspect. */}
+          {campaign.brandLogoUrl ? (
+            <div
+              className="v2-ct-mark"
+              style={{ background: 'var(--v2-paper)', color: accent.bg, padding: 2 }}
+              aria-hidden="true"
+            >
+              <img
+                src={campaign.brandLogoUrl}
+                alt=""
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+              />
+            </div>
+          ) : (
+            <div className="v2-ct-mark" style={{ color: accent.bg, background: accent.ink }} aria-hidden="true">
+              {campaign.brand[0]}
+            </div>
+          )}
           <div style={{ minWidth: 0 }}>
             <div className="v2-ct-brand">{campaign.brand}</div>
             <div className="v2-ct-brand-meta">

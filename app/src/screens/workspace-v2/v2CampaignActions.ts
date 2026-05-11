@@ -1936,7 +1936,7 @@ export function v2LaunchCampaign(input: LaunchCampaignInput): Campaign | null {
  */
 export function v2UpdateBrand(
   brandId: string,
-  patch: Partial<Pick<Brand, 'name' | 'industry' | 'hq' | 'website' | 'about' | 'logoMark' | 'preferredCategories' | 'preferredRegions'>>,
+  patch: Partial<Pick<Brand, 'name' | 'industry' | 'hq' | 'website' | 'about' | 'logoMark' | 'logoUrl' | 'preferredCategories' | 'preferredRegions'>>,
 ): Brand | null {
   return tx((db) => {
     requireCapability(getActorUserId(), 'campaign.update', db);

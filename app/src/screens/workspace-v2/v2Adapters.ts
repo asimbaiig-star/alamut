@@ -213,6 +213,7 @@ export function campaignToV2(c: Campaign, db: Database): V2Campaign {
     category: c.category,
     createdAt: c.createdAt,
     brandVerified: brand?.verified ?? false,
+    brandLogoUrl: brand?.logoUrl,
     escrowHeld: c.escrowHeld,
   };
 }
