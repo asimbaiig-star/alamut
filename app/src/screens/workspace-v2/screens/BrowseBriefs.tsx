@@ -5,7 +5,7 @@
 // (category, budget band, fit-for-me) + sort dropdown over a card
 // grid. Sidebar surfaces this as "Browse campaigns".
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { fmtUSD, Icon, Topbar } from '../lib';
 import { type V2Campaign } from '../data';
 import { useV2AllCampaigns, useV2CurrentCreator } from '../v2Hooks';
@@ -132,35 +132,41 @@ export function BrowseBriefs({ onRoute }: Props) {
     setBudget('any');
   };
 
+  // Active filter chips — only present ones the user has narrowed.
+  // Used by the "what's applied" strip above the results so the
+  // current view is legible at a glance + one-click removable.
+  const activeChips: { key: string; label: string; clear: () => void }[] = [];
+  if (query.trim())     activeChips.push({ key: 'q',   label: `“${query.trim()}”`,                                clear: () => setQuery('') });
+  if (status !== 'all') activeChips.push({ key: 's',   label: status === 'Live' ? 'Live only' : 'Coming soon',     clear: () => setStatus('all') });
+  if (fitOnly)          activeChips.push({ key: 'fit', label: 'Fit for me',                                        clear: () => setFitOnly(false) });
+  if (budget !== 'any') activeChips.push({ key: 'b',   label: BUDGET_BANDS.find((b) => b.id === budget)?.label ?? '', clear: () => setBudget('any') });
+  if (category !== 'any') activeChips.push({ key: 'c', label: category,                                            clear: () => setCategory('any') });
+
   return (
     <>
       <Topbar
         title="Browse campaigns"
-        crumb={`${liveCount} live · matching your audience`}
-        actions={
-          <select
-            className="v2-input"
-            value={sort}
-            onChange={(e) => setSort(e.target.value as SortKey)}
-            style={{ minWidth: 180 }}
-            aria-label="Sort campaigns"
-          >
-            {SORT_OPTIONS.map((o) => (
-              <option key={o.id} value={o.id}>Sort · {o.label}</option>
-            ))}
-          </select>
-        }
+        crumb={`${liveCount} live briefs · matching your audience`}
       />
       <div className="v2-content">
-        {/* Search + filter bar */}
-        <div className="v2-card v2-card-pad" style={{ marginBottom: 20 }}>
-          {/* Search input — first visual hit at top, full width */}
-          <div style={{ position: 'relative', marginBottom: 12 }}>
+        {/* Hero search — dominant first-touch element. Soft tinted
+            surface so it reads as the primary affordance and the chip
+            rows underneath stay quiet by comparison. */}
+        <div
+          style={{
+            background: 'linear-gradient(180deg, var(--v2-bg-1) 0%, var(--v2-paper) 100%)',
+            border: '1px solid var(--v2-line)',
+            borderRadius: 'var(--v2-r-lg)',
+            padding: 22,
+            marginBottom: 16,
+          }}
+        >
+          <div style={{ position: 'relative' }}>
             <span
               aria-hidden="true"
               style={{
                 position: 'absolute',
-                left: 12,
+                left: 18,
                 top: '50%',
                 transform: 'translateY(-50%)',
                 color: 'var(--v2-ink-3)',
@@ -171,19 +177,30 @@ export function BrowseBriefs({ onRoute }: Props) {
             </span>
             <input
               type="search"
-              className="v2-input"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by brand, brief title, category, or platform…"
+              placeholder={`Search ${allCampaigns.filter((c) => c.status !== 'Completed').length} open briefs by brand, category, platform…`}
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
+              aria-label="Search briefs"
               style={{
                 width: '100%',
-                paddingLeft: 38,
-                paddingRight: query ? 36 : 12,
-                fontSize: 14,
+                paddingLeft: 48,
+                paddingRight: query ? 44 : 16,
+                fontSize: 15,
+                lineHeight: '1.4',
+                height: 52,
+                background: 'var(--v2-paper)',
+                border: '1px solid var(--v2-line)',
+                borderRadius: 'var(--v2-r-md)',
+                fontFamily: 'inherit',
+                color: 'var(--v2-ink)',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                outline: 'none',
               }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--v2-accent)'; e.currentTarget.style.boxShadow = '0 0 0 3px var(--v2-accent-soft)'; }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--v2-line)'; e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.04)'; }}
             />
             {query && (
               <button
@@ -192,104 +209,195 @@ export function BrowseBriefs({ onRoute }: Props) {
                 aria-label="Clear search"
                 style={{
                   position: 'absolute',
-                  right: 10,
+                  right: 12,
                   top: '50%',
                   transform: 'translateY(-50%)',
-                  background: 'transparent',
-                  border: 'none',
+                  width: 28,
+                  height: 28,
+                  borderRadius: '50%',
+                  background: 'var(--v2-bg-1)',
+                  border: '1px solid var(--v2-line)',
                   cursor: 'pointer',
-                  color: 'var(--v2-ink-3)',
-                  fontSize: 18,
+                  color: 'var(--v2-ink-2)',
+                  fontSize: 16,
                   lineHeight: 1,
-                  padding: 4,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                   fontFamily: 'inherit',
+                  padding: 0,
                 }}
               >×</button>
             )}
           </div>
-
-          {/* Status pills */}
-          <div className="v2-row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-            <FilterPill label="All briefs"   active={status === 'all'}     onClick={() => setStatus('all')} />
-            <FilterPill label="Live"         active={status === 'Live'}    onClick={() => setStatus('Live')} dot="var(--v2-accent)" />
-            <FilterPill label="Coming soon"  active={status === 'Planned'} onClick={() => setStatus('Planned')} dot="var(--v2-ink-3)" />
-            <span className="v2-spacer" />
-            <label
-              className="v2-row"
-              style={{
-                gap: 8,
-                fontSize: 13,
-                padding: '6px 12px',
-                background: fitOnly ? 'var(--v2-accent-soft)' : 'var(--v2-bg-2)',
-                border: `1px solid ${fitOnly ? 'var(--v2-accent)' : 'var(--v2-line)'}`,
-                color: fitOnly ? 'var(--v2-accent)' : 'var(--v2-ink-2)',
-                borderRadius: 'var(--v2-r-pill)',
-                cursor: 'pointer',
-                fontWeight: 500,
-                transition: 'all 0.12s',
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={fitOnly}
-                onChange={(e) => setFitOnly(e.target.checked)}
-                style={{ margin: 0 }}
-              />
-              <span>Fit for me</span>
-            </label>
-          </div>
-
-          {/* Budget bands */}
-          <div className="v2-row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-            <span className="v2-eyebrow" style={{ alignSelf: 'center', minWidth: 56, fontSize: 10 }}>BUDGET</span>
-            {BUDGET_BANDS.map((b) => (
-              <FilterPill
-                key={b.id}
-                label={b.label}
-                active={budget === b.id}
-                onClick={() => setBudget(b.id)}
-              />
-            ))}
-          </div>
-
-          {/* Category chips — only render if there's more than one to choose between */}
-          {categoryOptions.length > 1 && (
-            <div className="v2-row" style={{ gap: 8, flexWrap: 'wrap' }}>
-              <span className="v2-eyebrow" style={{ alignSelf: 'center', minWidth: 56, fontSize: 10 }}>CATEGORY</span>
-              <FilterPill
-                label="All"
-                active={category === 'any'}
-                onClick={() => setCategory('any')}
-              />
-              {categoryOptions.map((cat) => (
-                <FilterPill
-                  key={cat}
-                  label={cat}
-                  active={category.toLowerCase() === cat.toLowerCase()}
-                  onClick={() => setCategory(cat)}
-                />
-              ))}
-            </div>
-          )}
         </div>
 
-        <div className="v2-row" style={{ justifyContent: 'space-between', marginBottom: 12, alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-          <div className="v2-muted" style={{ fontSize: 13 }}>
-            {briefs.length} {briefs.length === 1 ? 'campaign' : 'campaigns'}
-            {activeFilterCount > 0 && (
-              <> · {activeFilterCount} filter{activeFilterCount === 1 ? '' : 's'} active</>
-            )}
-            {' · '}sorted by {SORT_OPTIONS.find((o) => o.id === sort)?.label.toLowerCase()}
-          </div>
-          {activeFilterCount > 0 && (
+        {/* Filter strip — compact, single visual block, no eyebrows.
+            Status pills get tonal weight (accent for Live, paper for
+            inactive). Budget and Category drop into native-feeling
+            chip-dropdowns (compact buttons with caret) instead of
+            wall-of-chips. Sort sits at the right end so the visual
+            line reads "narrow ← then → reorder". */}
+        <div
+          className="v2-card"
+          style={{
+            padding: 12,
+            marginBottom: activeChips.length > 0 ? 12 : 16,
+            display: 'flex',
+            gap: 8,
+            alignItems: 'center',
+            flexWrap: 'wrap',
+          }}
+        >
+          <Segment
+            options={[
+              { id: 'all',     label: 'All',         count: allCampaigns.filter((c) => c.status !== 'Completed').length },
+              { id: 'Live',    label: 'Live',        count: allCampaigns.filter((c) => c.status === 'Live').length,    dot: 'var(--v2-accent)' },
+              { id: 'Planned', label: 'Coming soon', count: allCampaigns.filter((c) => c.status === 'Planned').length, dot: 'var(--v2-ink-3)' },
+            ]}
+            value={status}
+            onChange={(v) => setStatus(v as Status)}
+          />
+
+          <span style={{ width: 1, height: 22, background: 'var(--v2-line)', margin: '0 4px' }} aria-hidden="true" />
+
+          <ChipDropdown
+            label="Budget"
+            value={budget === 'any' ? null : BUDGET_BANDS.find((b) => b.id === budget)?.label ?? null}
+            options={BUDGET_BANDS.map((b) => ({ id: b.id, label: b.label }))}
+            onChange={(id) => setBudget(id as BudgetBand)}
+          />
+
+          {categoryOptions.length > 0 && (
+            <ChipDropdown
+              label="Category"
+              value={category === 'any' ? null : category}
+              options={[{ id: 'any', label: 'All categories' }, ...categoryOptions.map((c) => ({ id: c, label: c }))]}
+              onChange={(id) => setCategory(id)}
+            />
+          )}
+
+          <ToggleChip
+            label="Fit for me"
+            active={fitOnly}
+            onChange={() => setFitOnly((v) => !v)}
+          />
+
+          <span className="v2-spacer" />
+
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortKey)}
+            aria-label="Sort campaigns"
+            style={{
+              border: '1px solid var(--v2-line)',
+              background: 'var(--v2-paper)',
+              color: 'var(--v2-ink)',
+              padding: '7px 32px 7px 12px',
+              borderRadius: 'var(--v2-r-pill)',
+              fontSize: 13,
+              fontFamily: 'inherit',
+              cursor: 'pointer',
+              appearance: 'none',
+              backgroundImage: 'linear-gradient(45deg, transparent 50%, var(--v2-ink-3) 50%), linear-gradient(135deg, var(--v2-ink-3) 50%, transparent 50%)',
+              backgroundPosition: 'calc(100% - 14px) 50%, calc(100% - 9px) 50%',
+              backgroundSize: '5px 5px, 5px 5px',
+              backgroundRepeat: 'no-repeat',
+            }}
+          >
+            {SORT_OPTIONS.map((o) => (
+              <option key={o.id} value={o.id}>Sort · {o.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Active filter chips — only when something is narrowed.
+            Each chip shows what's applied + a one-click remove. Gives
+            users a clear "what am I looking at" header without making
+            them scan the filter bar. */}
+        {activeChips.length > 0 && (
+          <div
+            className="v2-row"
+            style={{
+              gap: 6,
+              flexWrap: 'wrap',
+              marginBottom: 16,
+              alignItems: 'center',
+            }}
+          >
+            <span className="v2-muted" style={{ fontSize: 12, marginRight: 4 }}>
+              Filtered by:
+            </span>
+            {activeChips.map((chip) => (
+              <button
+                key={chip.key}
+                type="button"
+                onClick={chip.clear}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '4px 6px 4px 10px',
+                  background: 'var(--v2-accent-soft)',
+                  color: 'var(--v2-accent)',
+                  border: '1px solid transparent',
+                  borderRadius: 'var(--v2-r-pill)',
+                  fontSize: 12,
+                  fontWeight: 550,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+                aria-label={`Remove filter ${chip.label}`}
+              >
+                <span>{chip.label}</span>
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: '50%',
+                    background: 'rgba(0,0,0,0.06)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 13,
+                    lineHeight: 1,
+                  }}
+                >×</span>
+              </button>
+            ))}
             <button
               type="button"
-              className="v2-btn v2-btn-ghost v2-btn-sm"
               onClick={clearAll}
+              style={{
+                marginLeft: 4,
+                padding: '4px 8px',
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--v2-ink-2)',
+                fontSize: 12,
+                fontWeight: 550,
+                cursor: 'pointer',
+                textDecoration: 'underline',
+                fontFamily: 'inherit',
+              }}
             >
-              Clear filters
+              Clear all
             </button>
-          )}
+          </div>
+        )}
+
+        {/* Result count row */}
+        <div className="v2-row" style={{ justifyContent: 'space-between', marginBottom: 12, alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+          <div className="v2-muted" style={{ fontSize: 13 }}>
+            <strong style={{ color: 'var(--v2-ink)', fontWeight: 600 }}>
+              {briefs.length}
+            </strong>
+            {' '}
+            {briefs.length === 1 ? 'campaign' : 'campaigns'}
+            {' · '}
+            sorted by {SORT_OPTIONS.find((o) => o.id === sort)?.label.toLowerCase()}
+          </div>
         </div>
 
         {briefs.length > 0 ? (
@@ -339,39 +447,247 @@ export function BrowseBriefs({ onRoute }: Props) {
   );
 }
 
-function FilterPill({ label, active, onClick, dot }: {
+// Segmented status control — three exclusive options rendered as a
+// single connected pill cluster (Apple-style segmented control). Counts
+// are baked in for at-a-glance scale. The active option uses the paper
+// surface with an accent underline so it doesn't dominate visually the
+// way a solid-ink fill did before.
+function Segment<T extends string>({ options, value, onChange }: {
+  options: { id: T; label: string; count?: number; dot?: string }[];
+  value: T;
+  onChange: (id: T) => void;
+}) {
+  return (
+    <div
+      role="tablist"
+      style={{
+        display: 'inline-flex',
+        background: 'var(--v2-bg-1)',
+        border: '1px solid var(--v2-line)',
+        borderRadius: 'var(--v2-r-pill)',
+        padding: 3,
+        gap: 2,
+      }}
+    >
+      {options.map((opt) => {
+        const active = opt.id === value;
+        return (
+          <button
+            key={opt.id}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onChange(opt.id)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '5px 11px',
+              background: active ? 'var(--v2-paper)' : 'transparent',
+              color: active ? 'var(--v2-ink)' : 'var(--v2-ink-2)',
+              border: 'none',
+              borderRadius: 'var(--v2-r-pill)',
+              fontSize: 13,
+              fontWeight: active ? 600 : 500,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              transition: 'background 120ms ease, color 120ms ease',
+              boxShadow: active ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+            }}
+          >
+            {opt.dot && (
+              <span
+                aria-hidden="true"
+                style={{ width: 6, height: 6, borderRadius: '50%', background: opt.dot }}
+              />
+            )}
+            {opt.label}
+            {typeof opt.count === 'number' && (
+              <span
+                className="v2-tabular"
+                style={{
+                  fontSize: 11,
+                  color: active ? 'var(--v2-ink-3)' : 'var(--v2-ink-3)',
+                  fontWeight: 500,
+                }}
+              >
+                {opt.count}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// Compact filter chip that doubles as a dropdown trigger. Closed state
+// shows "Budget" when nothing's selected, "Under $5K" when something
+// is. Opens a small floating menu of options. Replaces the wall-of-
+// chips treatment for any filter dimension with more than ~4 options.
+function ChipDropdown({ label, value, options, onChange }: {
+  label: string;
+  value: string | null;
+  options: { id: string; label: string }[];
+  onChange: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  // Click-outside dismiss
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+  const active = value !== null;
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '6px 10px 6px 12px',
+          background: active ? 'var(--v2-accent-soft)' : 'var(--v2-paper)',
+          color: active ? 'var(--v2-accent)' : 'var(--v2-ink-2)',
+          border: `1px solid ${active ? 'var(--v2-accent)' : 'var(--v2-line)'}`,
+          borderRadius: 'var(--v2-r-pill)',
+          fontSize: 13,
+          fontWeight: active ? 600 : 500,
+          cursor: 'pointer',
+          fontFamily: 'inherit',
+          transition: 'all 120ms ease',
+        }}
+      >
+        <span>{active ? value : label}</span>
+        <span
+          aria-hidden="true"
+          style={{
+            display: 'inline-block',
+            width: 0,
+            height: 0,
+            borderLeft: '4px solid transparent',
+            borderRight: '4px solid transparent',
+            borderTop: `4px solid ${active ? 'var(--v2-accent)' : 'var(--v2-ink-3)'}`,
+            transform: open ? 'rotate(180deg)' : 'none',
+            transition: 'transform 120ms ease',
+          }}
+        />
+      </button>
+      {open && (
+        <div
+          role="listbox"
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 4px)',
+            left: 0,
+            zIndex: 30,
+            minWidth: 200,
+            background: 'var(--v2-paper)',
+            border: '1px solid var(--v2-line)',
+            borderRadius: 'var(--v2-r-md)',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
+            padding: 4,
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
+          {options.map((opt) => {
+            const selected = opt.id === (value ?? 'any');
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                onClick={() => { onChange(opt.id); setOpen(false); }}
+                style={{
+                  textAlign: 'left',
+                  padding: '8px 10px',
+                  background: selected ? 'var(--v2-accent-soft)' : 'transparent',
+                  color: selected ? 'var(--v2-accent)' : 'var(--v2-ink)',
+                  border: 'none',
+                  borderRadius: 6,
+                  fontSize: 13,
+                  fontWeight: selected ? 600 : 500,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 8,
+                }}
+                onMouseEnter={(e) => { if (!selected) e.currentTarget.style.background = 'var(--v2-bg-1)'; }}
+                onMouseLeave={(e) => { if (!selected) e.currentTarget.style.background = 'transparent'; }}
+              >
+                <span>{opt.label}</span>
+                {selected && (
+                  <span aria-hidden="true" style={{ display: 'flex' }}>{Icon.check}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Single-action toggle chip — for binary filters like "Fit for me".
+// Soft-accent fill when on; outline when off. Smaller checkbox-as-pill
+// pattern than the old inline label.
+function ToggleChip({ label, active, onChange }: {
   label: string;
   active: boolean;
-  onClick: () => void;
-  dot?: string;
+  onChange: () => void;
 }) {
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={onChange}
+      aria-pressed={active}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
         gap: 6,
         padding: '6px 12px',
-        background: active ? 'var(--v2-ink)' : 'var(--v2-paper)',
-        color: active ? 'var(--v2-paper)' : 'var(--v2-ink-2)',
-        border: `1px solid ${active ? 'var(--v2-ink)' : 'var(--v2-line)'}`,
+        background: active ? 'var(--v2-accent-soft)' : 'var(--v2-paper)',
+        color: active ? 'var(--v2-accent)' : 'var(--v2-ink-2)',
+        border: `1px solid ${active ? 'var(--v2-accent)' : 'var(--v2-line)'}`,
         borderRadius: 'var(--v2-r-pill)',
         fontSize: 13,
-        fontWeight: 500,
+        fontWeight: active ? 600 : 500,
         cursor: 'pointer',
         fontFamily: 'inherit',
-        transition: 'all 0.12s',
+        transition: 'all 120ms ease',
       }}
     >
-      {dot && (
-        <span style={{
-          width: 6, height: 6, borderRadius: '50%',
-          background: dot,
-        }} />
-      )}
-      {label}
+      <span
+        aria-hidden="true"
+        style={{
+          width: 14,
+          height: 14,
+          borderRadius: 4,
+          border: `1.5px solid ${active ? 'var(--v2-accent)' : 'var(--v2-ink-3)'}`,
+          background: active ? 'var(--v2-accent)' : 'transparent',
+          color: 'var(--v2-paper)',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 10,
+          lineHeight: 1,
+        }}
+      >
+        {active ? '✓' : ''}
+      </span>
+      <span>{label}</span>
     </button>
   );
 }
