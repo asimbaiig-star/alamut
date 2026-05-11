@@ -517,18 +517,16 @@ function RecentActivityFeed({ items, onRoute }: {
   );
 }
 
-// Shared compact recent-activity card — used by both BrandHome and
-// CreatorHome (re-exported from this module). Replaces the full-width
-// "wall of dots + grey text" layout with:
-//   - Constrained max-width so the card doesn't sprawl across wide screens.
-//   - Event-type-aware coloured icons (offer / approval / counter /
-//     submission / live / payout / fallback) inferred from the
-//     notification copy. Adds visual variety where the old design
-//     leaned on identical 8px dots.
-//   - Inline timestamp chip (right-aligned, tabular) instead of stacked
-//     under the body text — tightens vertical rhythm.
-//   - Tighter row padding (8px) so 6 items fit in ~the height the old
-//     layout used for 4.
+// Shared recent-activity card. Sits full-width alongside the rest of
+// the home tiles so the home-screen rhythm stays even, but internal
+// layout is a responsive 2-column grid (auto-fill, min 280px) — 6 events
+// become a tight 3×2 / 2×3 / 1×6 grid depending on viewport. Each cell
+// carries the event-type colour-coded icon, the copy, and a pill
+// timestamp on a single row so the card stays dense even at full width.
+//
+// Replaces the earlier "wall of dots + grey text" and the over-corrected
+// 760px-max constrained card that floated awkwardly between full-width
+// neighbours. Density now matches what's around it.
 export function RecentActivityCard({
   items, onRoute, fallbackRoute, campaignRoutePrefix, subtitle,
 }: {
@@ -541,20 +539,40 @@ export function RecentActivityCard({
   return (
     <section
       className="v2-card v2-card-pad"
-      style={{ marginBottom: 24, maxWidth: 760 }}
+      style={{ marginBottom: 24 }}
     >
-      <div className="v2-row" style={{ justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 10 }}>
+      <div className="v2-row" style={{ justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 14 }}>
         <div>
           <div className="v2-eyebrow">Recent activity</div>
-          <p className="v2-muted" style={{ margin: '3px 0 0', fontSize: 12 }}>
+          <p className="v2-muted" style={{ margin: '3px 0 0', fontSize: 12.5 }}>
             {subtitle}
           </p>
         </div>
-        <span className="v2-tabular v2-muted" style={{ fontSize: 11 }}>
+        <span
+          className="v2-tabular v2-muted"
+          style={{
+            fontSize: 11,
+            background: 'var(--v2-bg-1)',
+            padding: '3px 9px',
+            borderRadius: 99,
+            whiteSpace: 'nowrap',
+          }}
+        >
           {items.length} event{items.length === 1 ? '' : 's'}
         </span>
       </div>
-      <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <ul
+        style={{
+          listStyle: 'none',
+          margin: 0,
+          padding: 0,
+          display: 'grid',
+          // Responsive: 1 col when narrow, 2 cols at ≥720px, 3 cols at ≥1080px.
+          // `auto-fill` keeps the grid balanced without media queries.
+          gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+          gap: 8,
+        }}
+      >
         {items.map((n) => {
           const ev = classifyActivity(n.text);
           return (
@@ -567,32 +585,33 @@ export function RecentActivityCard({
                 }}
                 style={{
                   display: 'flex',
-                  alignItems: 'center',
+                  alignItems: 'flex-start',
                   gap: 10,
-                  padding: '8px 10px',
-                  borderRadius: 8,
-                  background: 'transparent',
-                  border: '1px solid transparent',
+                  padding: '10px 12px',
+                  borderRadius: 10,
+                  background: 'var(--v2-bg-1)',
+                  border: '1px solid var(--v2-line)',
                   textAlign: 'left',
                   cursor: 'pointer',
                   fontFamily: 'inherit',
                   width: '100%',
-                  transition: 'background 120ms ease, border-color 120ms ease',
+                  height: '100%',
+                  transition: 'background 140ms ease, border-color 140ms ease, transform 140ms ease',
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'var(--v2-bg-1)';
-                  e.currentTarget.style.borderColor = 'var(--v2-line)';
+                  e.currentTarget.style.borderColor = ev.fg;
+                  e.currentTarget.style.transform = 'translateY(-1px)';
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'transparent';
-                  e.currentTarget.style.borderColor = 'transparent';
+                  e.currentTarget.style.borderColor = 'var(--v2-line)';
+                  e.currentTarget.style.transform = 'translateY(0)';
                 }}
               >
                 <span
                   aria-hidden="true"
                   style={{
-                    width: 30,
-                    height: 30,
+                    width: 32,
+                    height: 32,
                     borderRadius: 8,
                     background: ev.bg,
                     color: ev.fg,
@@ -604,22 +623,27 @@ export function RecentActivityCard({
                 >
                   {ev.icon}
                 </span>
-                <span style={{ flex: 1, minWidth: 0, fontSize: 13, lineHeight: 1.4, color: 'var(--v2-ink-1)' }}>
-                  {n.text}
-                </span>
-                <span
-                  className="v2-tabular v2-muted"
-                  style={{
-                    fontSize: 11,
-                    flexShrink: 0,
-                    background: 'var(--v2-bg-1)',
-                    padding: '2px 7px',
-                    borderRadius: 99,
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {fmtRelShort(n.at)}
-                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      lineHeight: 1.4,
+                      color: 'var(--v2-ink-1)',
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {n.text}
+                  </div>
+                  <div
+                    className="v2-tabular v2-muted"
+                    style={{ fontSize: 11, marginTop: 4, letterSpacing: '0.02em' }}
+                  >
+                    {fmtRelShort(n.at)}
+                  </div>
+                </div>
               </button>
             </li>
           );
