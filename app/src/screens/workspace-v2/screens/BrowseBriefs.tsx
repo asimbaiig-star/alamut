@@ -8,8 +8,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon, Topbar } from '../lib';
 import { type V2Campaign } from '../data';
-import { useV2AllCampaigns, useV2CurrentCreator } from '../v2Hooks';
+import { useV2AllCampaigns, useV2CurrentCreator, v2ToggleSavedBrief } from '../v2Hooks';
 import { useStore } from '@/lib/api/store';
+import type { Creator } from '@/lib/api/types';
 
 interface Props {
   onRoute: (r: string) => void;
@@ -764,9 +765,11 @@ function deliverableGlyph(placement: string): string {
   return '◆';
 }
 
-// Per-category fit reasons — synthesised. Each card surfaces three.
-// Returned in priority order; the design renders all three.
-function fitReasonsFor(category: string | undefined): string[] {
+// Per-category fallback reasons — used when there's no signed-in
+// creator or insufficient data for a personal match score. The real
+// `computeMatch()` below produces creator-specific reasons whenever
+// the viewer is a creator.
+function fallbackReasonsFor(category: string | undefined): string[] {
   const c = (category ?? '').toLowerCase();
   if (c.includes('fashion'))   return ['Fashion audience', 'Lahore 18–34 women', 'Mid-tier rate'];
   if (c.includes('beauty'))    return ['Beauty audience', 'High craft signal', 'Mid-tier rate'];
@@ -778,11 +781,86 @@ function fitReasonsFor(category: string | undefined): string[] {
   return ['Niche fit', 'City match', 'Rate aligned'];
 }
 
+// Real creator-vs-campaign match. Ports BriefDetail's `facets` logic
+// (audience/niche/ER/geo/history) and adds rate alignment. Returns the
+// overall %, plus the top 3 *qualifying* reasons in priority order so
+// the tile's "why this match" list is personalised to the viewer.
+function computeMatch(
+  creator: Creator | undefined,
+  campaign: V2Campaign,
+  perCreator: number,
+): { overall: number; reasons: string[] } {
+  if (!creator) {
+    // No creator context — fall back to the synthesised score the
+    // pre-personalised tile used (88 + id-hash modulo).
+    return {
+      overall: 88 + ((campaign.id.charCodeAt(0) || 0) % 10),
+      reasons: fallbackReasonsFor(campaign.category),
+    };
+  }
+  const myCats = creator.categories ?? [];
+  // Audience: heuristic that scales with how rich the creator profile
+  // signal is (proxy via number of categories).
+  const audience = Math.min(98, 75 + myCats.length * 2);
+  // Niche: 92 if any creator category matches the campaign category.
+  const niche = campaign.category && myCats.some((c) => c.toLowerCase() === campaign.category!.toLowerCase())
+    ? 92
+    : 70;
+  // Engagement: scaled off the creator's top channel ER (0–10% range).
+  const erPct = creator.platforms?.[0]?.engagement ?? 0;
+  const er = erPct > 0 ? Math.min(96, 60 + Math.round(erPct * 6)) : 75;
+  // Geo: 90 if the campaign placement text mentions the creator's city.
+  const geo = creator.city && (campaign.placement ?? '').toLowerCase().includes(creator.city.toLowerCase())
+    ? 90
+    : 78;
+  // History: 95 if they've worked with this brand before.
+  const history = (creator.pastClients ?? []).includes(campaign.brand) ? 95 : 60;
+  // Rate alignment: 90 if the per-creator allocation matches the
+  // creator's rate-card ballpark (within 25%); 60 otherwise. We pull a
+  // representative number off rateCard.post when available.
+  const ratePost = parseInt((creator.rateCard?.post ?? '').replace(/[^0-9]/g, ''), 10);
+  const rateAligned = !Number.isNaN(ratePost) && ratePost > 0
+    ? Math.abs(perCreator - ratePost) / ratePost <= 0.25
+    : false;
+  const rate = rateAligned ? 90 : 65;
+
+  const overall = Math.round((audience + niche + er + geo + history + rate) / 6);
+
+  // Pick the top three reasons that pass a "qualifies" threshold so we
+  // only surface positive signals (not "you don't match"). Each reason
+  // has a one-line label keyed off the campaign + creator.
+  const candidates: { score: number; label: string }[] = [];
+  if (niche >= 90)    candidates.push({ score: niche, label: `${campaign.category ?? 'Niche'} fit` });
+  if (history >= 90)  candidates.push({ score: history, label: `Worked with ${campaign.brand}` });
+  if (er >= 90)       candidates.push({ score: er, label: `${erPct.toFixed(1)}% ER` });
+  if (geo >= 85)      candidates.push({ score: geo, label: `${creator.city} audience` });
+  if (audience >= 92) candidates.push({ score: audience, label: 'Audience overlap' });
+  if (rateAligned)    candidates.push({ score: rate, label: 'Rate aligned' });
+
+  // Fill in with category fallbacks if fewer than three qualified.
+  const reasons = candidates
+    .sort((a, b) => b.score - a.score)
+    .map((c) => c.label);
+  while (reasons.length < 3) {
+    const filler = fallbackReasonsFor(campaign.category)[reasons.length];
+    if (!filler || reasons.includes(filler)) break;
+    reasons.push(filler);
+  }
+  return { overall, reasons: reasons.slice(0, 3) };
+}
+
 function CampaignTile({ campaign, onOpen }: {
   campaign: V2Campaign;
   onOpen: () => void;
 }) {
   const db = useStore((s) => s.db);
+  const me = useV2CurrentCreator();
+  // Resolve the underlying Creator object to feed into the match
+  // helper. useV2CurrentCreator returns a V2Creator (projection); we
+  // want the raw Creator so we can read platforms/categories/etc.
+  const meRaw: Creator | undefined = me ? db.creators.find((c) => c.id === me.id) : undefined;
+  const isSaved = !!meRaw?.savedBriefs?.includes(campaign.id);
+
   const accent = brandAccent(campaign.brand);
   // Per-creator price; min divisor 4 so a tiny roster doesn't inflate.
   const perCreator = Math.round(campaign.budget / Math.max(campaign.creators.length, 4));
@@ -793,9 +871,13 @@ function CampaignTile({ campaign, onOpen }: {
   );
   const urgent = daysLeft <= 5;
 
-  // Match score — synthesised from the campaign id so it stays stable
-  // for a given campaign across renders. Range 88–97.
-  const matchPct = 88 + ((campaign.id.charCodeAt(0) || 0) % 10);
+  // Real match — driven by creator profile signal against the campaign.
+  // Falls back to the synthesised hash-based score for non-creator viewers.
+  const { overall: matchPct, reasons: fitReasons } = useMemo(
+    () => computeMatch(meRaw, campaign, perCreator),
+    [meRaw, campaign, perCreator],
+  );
+
   // Posted-days-ago — uses real createdAt if available, otherwise a
   // small synthesised number (1–5d).
   const postedDays = (() => {
@@ -835,7 +917,6 @@ function CampaignTile({ campaign, onOpen }: {
   );
 
   const placements = (campaign.placement ?? '').split(/\s*\+\s*/).filter(Boolean);
-  const fitReasons = fitReasonsFor(campaign.category);
 
   // Deadline display: "22 May" (Pakistan-friendly DD MMM).
   const deadlineStr = new Date(campaign.deadline).toLocaleDateString('en-GB', {
@@ -860,7 +941,11 @@ function CampaignTile({ campaign, onOpen }: {
           </div>
           <div style={{ minWidth: 0 }}>
             <div className="v2-ct-brand">{campaign.brand}</div>
-            <div className="v2-ct-brand-meta">Verified · pays in 3 days</div>
+            <div className="v2-ct-brand-meta">
+              {campaign.brandVerified
+                ? 'Verified · pays in 3 days'
+                : 'Unverified brand · use caution'}
+            </div>
           </div>
         </div>
         <div className="v2-ct-band-right">
@@ -901,7 +986,12 @@ function CampaignTile({ campaign, onOpen }: {
               <span className="v2-ct-money-cur">Rs</span>
               <span className="v2-tabular">{fmtPKR(perCreator).replace(/^Rs\s*/, '')}</span>
             </div>
-            <div className="v2-ct-pillar-sub">● Escrow funded</div>
+            <div
+              className="v2-ct-pillar-sub"
+              style={{ color: campaign.escrowHeld > 0 ? 'var(--v2-moss)' : 'var(--v2-ink-3)' }}
+            >
+              ● {campaign.escrowHeld > 0 ? 'Escrow funded' : 'Awaiting funding'}
+            </div>
           </div>
           <div className="v2-ct-pillar">
             <div className="v2-ct-pillar-label">Deliverables</div>
@@ -953,11 +1043,21 @@ function CampaignTile({ campaign, onOpen }: {
             <button
               type="button"
               className="v2-ct-save"
-              title="Save brief"
-              aria-label="Save brief"
-              onClick={(e) => { e.stopPropagation(); }}
+              title={isSaved ? 'Saved · click to remove' : 'Save brief for later'}
+              aria-label={isSaved ? 'Remove saved brief' : 'Save brief'}
+              aria-pressed={isSaved}
+              onClick={(e) => {
+                e.stopPropagation();
+                v2ToggleSavedBrief(campaign.id);
+              }}
+              style={isSaved ? {
+                color: 'var(--v2-accent)',
+                borderColor: 'var(--v2-accent)',
+                background: 'var(--v2-accent-soft)',
+              } : undefined}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              {/* Bookmark glyph — filled when saved, outlined when not */}
+              <svg width="14" height="14" viewBox="0 0 24 24" fill={isSaved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
                 <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
               </svg>
             </button>

@@ -229,6 +229,10 @@ export interface Creator {
    *  filling the rest with the chronological tail. Added in workspace-v2
    *  storefront editor (session 18). */
   featuredReviewIds?: string[];
+  /** Campaign IDs the creator has bookmarked from Browse campaigns
+   *  (creator-side equivalent of `Brand.savedCreators`). Toggled by
+   *  the save chip on the editorial CampaignTile. */
+  savedBriefs?: string[];
 
   // Tier 4+: managed-by-an-agent. When set, the creator's account is operated
   // by a separate User who has role='creator' and managesCreatorIds[] including this id.

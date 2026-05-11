@@ -97,6 +97,15 @@ export interface V2Campaign {
    *  BrowseBriefs to sort newest-first so freshly-created campaigns
    *  appear at the top of the list rather than the bottom. */
   createdAt: string;
+  /** Mirrors `Brand.verified` for the underlying brand. Drives the
+   *  "Verified · pays in 3 days" badge on the editorial CampaignTile
+   *  so it's data-driven instead of a hardcoded string. */
+  brandVerified: boolean;
+  /** Mirrors `Campaign.escrowHeld` (PKR/USD held against the brand
+   *  wallet for in-flight collabs). Drives the "● Escrow funded"
+   *  indicator on the CampaignTile — green dot when > 0, muted when
+   *  unfunded so creators see the difference at a glance. */
+  escrowHeld: number;
 }
 
 export interface V2Conversation {

@@ -212,6 +212,8 @@ export function campaignToV2(c: Campaign, db: Database): V2Campaign {
     brief: c.pitch || c.brief,
     category: c.category,
     createdAt: c.createdAt,
+    brandVerified: brand?.verified ?? false,
+    escrowHeld: c.escrowHeld,
   };
 }
 

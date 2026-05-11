@@ -235,6 +235,30 @@ export function useV2BrandShortlist(): string[] {
 // Mutations (wrap tx() for v2 surfaces)
 // =====================================================================
 
+/** Creator-side bookmarks: add (or remove) a campaign id to/from the
+ *  current creator's `savedBriefs` list. Mirrors `v2ToggleSavedCreator`
+ *  for the brand-side roster. Powers the save chip on the editorial
+ *  CampaignTile. */
+export function v2ToggleSavedBrief(campaignId: string) {
+  tx((db) => {
+    const session = useStore.getState().session;
+    const viewerId = getViewerUserId(db, session?.userId ?? null, 'creator');
+    const me = db.users.find((u) => u.id === viewerId);
+    if (!me?.creatorId) return;
+    const idx = db.creators.findIndex((c) => c.id === me.creatorId);
+    if (idx === -1) return;
+    const creator = db.creators[idx];
+    const current = creator.savedBriefs ?? [];
+    const has = current.includes(campaignId);
+    db.creators[idx] = {
+      ...creator,
+      savedBriefs: has
+        ? current.filter((id) => id !== campaignId)
+        : [...current, campaignId],
+    };
+  });
+}
+
 /** Add (or remove) a creator id to/from the current brand's saved list. */
 export function v2ToggleSavedCreator(creatorId: string) {
   tx((db) => {
