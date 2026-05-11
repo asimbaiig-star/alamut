@@ -506,72 +506,177 @@ function RecentActivityFeed({ items, onRoute }: {
   items: RecentActivityItem[];
   onRoute: (r: string) => void;
 }) {
-  const fmtRel = (iso: string) => {
-    const ms = Date.now() - +new Date(iso);
-    const m = Math.floor(ms / 60_000);
-    if (m < 1) return 'just now';
-    if (m < 60) return `${m}m ago`;
-    const h = Math.floor(m / 60);
-    if (h < 24) return `${h}h ago`;
-    const d = Math.floor(h / 24);
-    if (d < 7) return `${d}d ago`;
-    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
   return (
-    <section className="v2-card v2-card-pad" style={{ marginBottom: 24 }}>
-      <div className="v2-row" style={{ justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 12 }}>
+    <RecentActivityCard
+      items={items}
+      onRoute={(r) => onRoute(r)}
+      fallbackRoute="campaigns"
+      campaignRoutePrefix="campaign:"
+      subtitle="Cross-campaign events as they happen"
+    />
+  );
+}
+
+// Shared compact recent-activity card — used by both BrandHome and
+// CreatorHome (re-exported from this module). Replaces the full-width
+// "wall of dots + grey text" layout with:
+//   - Constrained max-width so the card doesn't sprawl across wide screens.
+//   - Event-type-aware coloured icons (offer / approval / counter /
+//     submission / live / payout / fallback) inferred from the
+//     notification copy. Adds visual variety where the old design
+//     leaned on identical 8px dots.
+//   - Inline timestamp chip (right-aligned, tabular) instead of stacked
+//     under the body text — tightens vertical rhythm.
+//   - Tighter row padding (8px) so 6 items fit in ~the height the old
+//     layout used for 4.
+export function RecentActivityCard({
+  items, onRoute, fallbackRoute, campaignRoutePrefix, subtitle,
+}: {
+  items: RecentActivityItem[];
+  onRoute: (route: string) => void;
+  fallbackRoute: string;
+  campaignRoutePrefix: 'campaign:' | 'brief:';
+  subtitle: string;
+}) {
+  return (
+    <section
+      className="v2-card v2-card-pad"
+      style={{ marginBottom: 24, maxWidth: 760 }}
+    >
+      <div className="v2-row" style={{ justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 10 }}>
         <div>
           <div className="v2-eyebrow">Recent activity</div>
-          <p className="v2-muted" style={{ margin: '4px 0 0', fontSize: 12.5 }}>
-            Cross-campaign events as they happen
+          <p className="v2-muted" style={{ margin: '3px 0 0', fontSize: 12 }}>
+            {subtitle}
           </p>
         </div>
+        <span className="v2-tabular v2-muted" style={{ fontSize: 11 }}>
+          {items.length} event{items.length === 1 ? '' : 's'}
+        </span>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column' }}>
-        {items.map((n, i) => (
-          <button
-            key={n.id}
-            type="button"
-            className="v2-row"
-            style={{
-              padding: '12px 0',
-              gap: 12,
-              borderTop: i === 0 ? 'none' : '1px solid var(--v2-line)',
-              background: 'transparent',
-              border: i === 0 ? 'none' : undefined,
-              textAlign: 'left',
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-              width: '100%',
-              alignItems: 'center',
-            }}
-            onClick={() => {
-              if (n.meta?.campaignId) onRoute(`campaign:${n.meta.campaignId}`);
-              else onRoute('campaigns');
-            }}
-          >
-            <span
-              style={{
-                width: 8, height: 8, borderRadius: 50,
-                background: n.read ? 'var(--v2-line)' : 'var(--v2-accent)',
-                flexShrink: 0,
-              }}
-              aria-hidden="true"
-            />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13.5, color: 'var(--v2-ink-2)', lineHeight: 1.45 }}>
-                {n.text}
-              </div>
-              <div className="v2-muted" style={{ fontSize: 11.5, marginTop: 2 }}>
-                {fmtRel(n.at)}
-              </div>
-            </div>
-            <span style={{ color: 'var(--v2-ink-3)', flexShrink: 0 }}>{Icon.arrow}</span>
-          </button>
-        ))}
-      </div>
+      <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {items.map((n) => {
+          const ev = classifyActivity(n.text);
+          return (
+            <li key={n.id}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (n.meta?.campaignId) onRoute(`${campaignRoutePrefix}${n.meta.campaignId}`);
+                  else onRoute(fallbackRoute);
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '8px 10px',
+                  borderRadius: 8,
+                  background: 'transparent',
+                  border: '1px solid transparent',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  width: '100%',
+                  transition: 'background 120ms ease, border-color 120ms ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'var(--v2-bg-1)';
+                  e.currentTarget.style.borderColor = 'var(--v2-line)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.borderColor = 'transparent';
+                }}
+              >
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: 8,
+                    background: ev.bg,
+                    color: ev.fg,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  {ev.icon}
+                </span>
+                <span style={{ flex: 1, minWidth: 0, fontSize: 13, lineHeight: 1.4, color: 'var(--v2-ink-1)' }}>
+                  {n.text}
+                </span>
+                <span
+                  className="v2-tabular v2-muted"
+                  style={{
+                    fontSize: 11,
+                    flexShrink: 0,
+                    background: 'var(--v2-bg-1)',
+                    padding: '2px 7px',
+                    borderRadius: 99,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {fmtRelShort(n.at)}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
     </section>
   );
+}
+
+function fmtRelShort(iso: string): string {
+  const ms = Date.now() - +new Date(iso);
+  const m = Math.floor(ms / 60_000);
+  if (m < 1) return 'now';
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}d`;
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+// Map a notification's free-form copy to an event-type icon + colour.
+// Lightweight keyword classifier — works against the strings already
+// written by v2 mutation actions (no schema change needed). Falls back
+// to a neutral bell when nothing matches.
+function classifyActivity(text: string): { icon: React.ReactNode; bg: string; fg: string } {
+  const t = text.toLowerCase();
+  // Payment / payout — moss + wallet icon
+  if (/paid|payout|wallet|cleared|released|escrow/.test(t)) {
+    return { icon: Icon.wallet, bg: 'rgba(74, 124, 89, 0.12)', fg: 'var(--v2-moss)' };
+  }
+  // Live / posted — accent + spark
+  if (/live|posted|published/.test(t)) {
+    return { icon: Icon.spark, bg: 'var(--v2-accent-soft)', fg: 'var(--v2-accent)' };
+  }
+  // Approval / acceptance — moss + check
+  if (/approved|accepted|confirmed|ready to confirm/.test(t)) {
+    return { icon: Icon.check, bg: 'rgba(74, 124, 89, 0.12)', fg: 'var(--v2-moss)' };
+  }
+  // Counter / negotiation — gold + arrows
+  if (/counter|negotiat/.test(t)) {
+    return { icon: Icon.arrow, bg: 'rgba(184, 144, 47, 0.12)', fg: 'var(--v2-gold)' };
+  }
+  // Revision requested — gold + edit
+  if (/revision|changes|resubmit/.test(t)) {
+    return { icon: Icon.edit, bg: 'rgba(184, 144, 47, 0.12)', fg: 'var(--v2-gold)' };
+  }
+  // Submission / pitched / new offer — info / accent + spark
+  if (/submitted|pitched|new offer|sent an offer|invited|invitation/.test(t)) {
+    return { icon: Icon.spark, bg: 'var(--v2-accent-soft)', fg: 'var(--v2-accent)' };
+  }
+  // Paused / ended — neutral
+  if (/paused|on hold|ended|closed/.test(t)) {
+    return { icon: Icon.inbox, bg: 'var(--v2-bg-1)', fg: 'var(--v2-ink-3)' };
+  }
+  // Fallback — neutral bell-ish (use inbox icon)
+  return { icon: Icon.inbox, bg: 'var(--v2-bg-1)', fg: 'var(--v2-ink-3)' };
 }
 
 // =====================================================================

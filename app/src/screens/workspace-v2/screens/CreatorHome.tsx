@@ -17,6 +17,7 @@ import {
 import { creatorToV2 } from '../v2Adapters';
 import { useStore } from '@/lib/api/store';
 import type { V2Campaign, V2Creator } from '../data';
+import { RecentActivityCard } from './BrandHome';
 // P6 §5.6 — compute on read instead of reading the (now-removed)
 // stored field.
 
@@ -378,71 +379,14 @@ function CreatorRecentActivity({ items, onRoute }: {
   items: CreatorActivityItem[];
   onRoute: (r: string) => void;
 }) {
-  const fmtRel = (iso: string) => {
-    const ms = Date.now() - +new Date(iso);
-    const m = Math.floor(ms / 60_000);
-    if (m < 1) return 'just now';
-    if (m < 60) return `${m}m ago`;
-    const h = Math.floor(m / 60);
-    if (h < 24) return `${h}h ago`;
-    const d = Math.floor(h / 24);
-    if (d < 7) return `${d}d ago`;
-    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
   return (
-    <section className="v2-card v2-card-pad" style={{ marginBottom: 24 }}>
-      <div className="v2-row" style={{ justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 12 }}>
-        <div>
-          <div className="v2-eyebrow">Recent activity</div>
-          <p className="v2-muted" style={{ margin: '4px 0 0', fontSize: 12.5 }}>
-            New offers, approvals, payouts, content going live — as it happens
-          </p>
-        </div>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column' }}>
-        {items.map((n, i) => (
-          <button
-            key={n.id}
-            type="button"
-            style={{
-              display: 'flex',
-              padding: '12px 0',
-              gap: 12,
-              borderTop: i === 0 ? 'none' : '1px solid var(--v2-line)',
-              background: 'transparent',
-              border: i === 0 ? 'none' : undefined,
-              textAlign: 'left',
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-              width: '100%',
-              alignItems: 'center',
-            }}
-            onClick={() => {
-              if (n.meta?.campaignId) onRoute(`brief:${n.meta.campaignId}`);
-              else onRoute('creator-collabs');
-            }}
-          >
-            <span
-              style={{
-                width: 8, height: 8, borderRadius: 50,
-                background: n.read ? 'var(--v2-line)' : 'var(--v2-accent)',
-                flexShrink: 0,
-              }}
-              aria-hidden="true"
-            />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13.5, color: 'var(--v2-ink-2)', lineHeight: 1.45 }}>
-                {n.text}
-              </div>
-              <div className="v2-muted" style={{ fontSize: 11.5, marginTop: 2 }}>
-                {fmtRel(n.at)}
-              </div>
-            </div>
-            <span style={{ color: 'var(--v2-ink-3)', flexShrink: 0 }}>{Icon.arrow}</span>
-          </button>
-        ))}
-      </div>
-    </section>
+    <RecentActivityCard
+      items={items}
+      onRoute={onRoute}
+      fallbackRoute="creator-collabs"
+      campaignRoutePrefix="brief:"
+      subtitle="New offers, approvals, payouts, content going live — as it happens"
+    />
   );
 }
 
