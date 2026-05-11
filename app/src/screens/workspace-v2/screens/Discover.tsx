@@ -14,7 +14,7 @@
 //      with a slim gender-split bar, and past brands in a single muted
 //      line. Total reach + price tier drop to the footer.
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { fmtUSD, fmtFollowers, Icon, ScoreBadge, PLATFORM_META, Topbar } from '../lib';
 import { type V2Creator } from '../data';
 import { useV2Creators } from '../v2Hooks';
@@ -25,27 +25,85 @@ interface Props {
 
 type Mode = 'filters' | 'spark';
 type Sort = 'score' | 'followers' | 'er' | 'price-low' | 'price-high';
+type AudienceGender = 'all' | 'female' | 'male';
 
+// Multi-select arrays: empty = "all". Brands can stack any combination
+// — e.g. "show me creators on Instagram OR LinkedIn, in any of {nano,
+// micro, macro}, in {Tech, Lifestyle}, based in any of {Lahore,
+// Karachi}". Each filter dimension is independent; within a dimension,
+// values OR together; across dimensions, AND.
 interface FilterState {
-  // Primary (always visible)
-  platform: string;
-  follower: string;
-  category: string;
-  city: string;
-  // Advanced (under +More)
-  audienceGender: 'all' | 'female' | 'male';
-  audienceAge: 'all' | 'young' | 'primeworking' | 'older';
-  minER: number;          // 0 means off; pct
-  priceMax: number;       // huge default means off
+  platforms: string[];
+  followers: string[];   // nano / micro / mid / macro
+  categories: string[];  // category ids (lowercased)
+  cities: string[];
+  ages: string[];        // young / primeworking / older
+  audienceGender: AudienceGender;
+  minER: number;
+  priceMax: number;
   verified: boolean;
   brandSafe: boolean;
 }
 
 const INITIAL_FILTERS: FilterState = {
-  platform: 'all', follower: 'all', category: 'all', city: 'all',
-  audienceGender: 'all', audienceAge: 'all',
+  platforms: [], followers: [], categories: [], cities: [], ages: [],
+  audienceGender: 'all',
   minER: 0, priceMax: 1_000_000, verified: false, brandSafe: false,
 };
+
+// Static option lists used by the multi-select chips. Labels are
+// display strings; ids feed the filter logic. Keeping these as
+// module-level constants so the dropdowns don't re-create on every
+// render.
+const PLATFORM_OPTIONS: { id: string; label: string }[] = [
+  { id: 'instagram',  label: 'Instagram' },
+  { id: 'tiktok',     label: 'TikTok' },
+  { id: 'youtube',    label: 'YouTube' },
+  { id: 'linkedin',   label: 'LinkedIn' },
+  { id: 'newsletter', label: 'Newsletter' },
+];
+const FOLLOWER_OPTIONS: { id: string; label: string }[] = [
+  { id: 'nano',  label: 'Nano · <10K' },
+  { id: 'micro', label: 'Micro · 10–100K' },
+  { id: 'mid',   label: 'Mid · 100–500K' },
+  { id: 'macro', label: 'Macro · 500K+' },
+];
+const CATEGORY_OPTIONS: { id: string; label: string }[] = [
+  { id: 'fashion',    label: 'Fashion' },
+  { id: 'lifestyle',  label: 'Lifestyle' },
+  { id: 'beauty',     label: 'Beauty' },
+  { id: 'food',       label: 'Food' },
+  { id: 'travel',     label: 'Travel' },
+  { id: 'tech',       label: 'Tech' },
+  { id: 'fitness',    label: 'Fitness' },
+  { id: 'finance',    label: 'Finance' },
+  { id: 'b2b',        label: 'B2B' },
+  { id: 'parenting',  label: 'Parenting' },
+  { id: 'wellness',   label: 'Wellness' },
+];
+const CITY_OPTIONS: { id: string; label: string }[] = [
+  { id: 'Karachi',     label: 'Karachi' },
+  { id: 'Lahore',      label: 'Lahore' },
+  { id: 'Islamabad',   label: 'Islamabad' },
+  { id: 'Rawalpindi',  label: 'Rawalpindi' },
+  { id: 'Faisalabad',  label: 'Faisalabad' },
+];
+const AGE_OPTIONS: { id: string; label: string }[] = [
+  { id: 'young',        label: 'Gen Z · 18–24' },
+  { id: 'primeworking', label: 'Millennial · 25–34' },
+  { id: 'older',        label: 'Gen X · 35–44' },
+];
+
+// Build a one-line summary for a multi-select chip:
+//   - 0 selected   →  "Any [label]"
+//   - 1 selected   →  the chosen label
+//   - 2+ selected  →  "first · +N"
+function summariseMulti(label: string, selectedIds: string[], options: { id: string; label: string }[]): string {
+  if (selectedIds.length === 0) return `Any ${label.toLowerCase()}`;
+  const first = options.find((o) => o.id === selectedIds[0])?.label ?? selectedIds[0];
+  if (selectedIds.length === 1) return first;
+  return `${first} · +${selectedIds.length - 1}`;
+}
 
 const SPARK_SUGGESTIONS = [
   'Find me 5 lifestyle creators in Lahore with mostly female audience',
@@ -64,26 +122,37 @@ export function Discover({ onRoute }: Props) {
 
   const isSpark = mode === 'spark';
 
-  // Active-count chip — used by `Clear N` and the +More filters badge.
+  // Within-dimension OR, across-dimension AND. A bucket helper for
+  // followers since each creator has a single max-follower number.
+  const followerBucket = (max: number): string => {
+    if (max < 10_000) return 'nano';
+    if (max < 100_000) return 'micro';
+    if (max < 500_000) return 'mid';
+    return 'macro';
+  };
+  // Age-band helper: maps a creator's audience distribution to which
+  // age buckets they "lean toward" (≥25% of audience falls into a band).
+  const ageBucketsFor = (a: V2Creator['audience']): string[] => {
+    const out: string[] = [];
+    if ((a.age1824 ?? 0) >= 25) out.push('young');
+    if (a.age2534 >= 40) out.push('primeworking');
+    if ((a.age3544 ?? 0) >= 25) out.push('older');
+    return out;
+  };
+
+  // Count of narrowed "advanced" dimensions — drives the badge on the
+  // +More toggle so the user can see filters are applied even when the
+  // advanced row is collapsed.
   const moreCount =
     (filters.audienceGender !== 'all' ? 1 : 0) +
-    (filters.audienceAge !== 'all' ? 1 : 0) +
     (filters.verified ? 1 : 0) +
     (filters.brandSafe ? 1 : 0) +
     (filters.minER > 0 ? 1 : 0) +
     (filters.priceMax < 1_000_000 ? 1 : 0);
-  const primaryCount =
-    (filters.platform !== 'all' ? 1 : 0) +
-    (filters.follower !== 'all' ? 1 : 0) +
-    (filters.category !== 'all' ? 1 : 0) +
-    (filters.city !== 'all' ? 1 : 0);
-  const activeCount = primaryCount + moreCount;
 
   const results = useMemo(() => {
     let r = allCreators.slice();
-    // Spark prompt or text query — both filter against name/bio/categories
-    // for now. The Spark mode in the design also scores prompt keywords;
-    // we keep that minimal here and let the user iterate via filters.
+    // Spark prompt or text query — both filter against name/bio/categories.
     const q = (isSpark ? sparkPrompt : query).toLowerCase().trim();
     if (q) {
       r = r.filter((c) =>
@@ -92,34 +161,34 @@ export function Discover({ onRoute }: Props) {
         c.categories.some((cat) => cat.toLowerCase().includes(q)),
       );
     }
-    if (filters.platform !== 'all') {
-      r = r.filter((c) => c.channels.some((ch) => ch.platform === filters.platform));
-    }
-    if (filters.city !== 'all') r = r.filter((c) => c.city === filters.city);
-    if (filters.category !== 'all') {
+    if (filters.platforms.length > 0) {
       r = r.filter((c) =>
-        c.categories.some((cat) => cat.toLowerCase() === filters.category.toLowerCase()),
+        c.channels.some((ch) => filters.platforms.includes(ch.platform)),
       );
     }
-    if (filters.follower !== 'all') {
+    if (filters.cities.length > 0) {
+      r = r.filter((c) => filters.cities.includes(c.city));
+    }
+    if (filters.categories.length > 0) {
+      const cats = filters.categories.map((s) => s.toLowerCase());
+      r = r.filter((c) =>
+        c.categories.some((cat) => cats.includes(cat.toLowerCase())),
+      );
+    }
+    if (filters.followers.length > 0) {
       r = r.filter((c) => {
         const max = Math.max(...c.channels.map((ch) => ch.followers));
-        if (filters.follower === 'nano') return max < 10_000;
-        if (filters.follower === 'micro') return max >= 10_000 && max < 100_000;
-        if (filters.follower === 'mid') return max >= 100_000 && max < 500_000;
-        if (filters.follower === 'macro') return max >= 500_000;
-        return true;
+        return filters.followers.includes(followerBucket(max));
+      });
+    }
+    if (filters.ages.length > 0) {
+      r = r.filter((c) => {
+        const buckets = ageBucketsFor(c.audience);
+        return buckets.some((b) => filters.ages.includes(b));
       });
     }
     if (filters.audienceGender === 'female') r = r.filter((c) => c.audience.female >= 60);
     if (filters.audienceGender === 'male')   r = r.filter((c) => c.audience.male   >= 60);
-    if (filters.audienceAge === 'young') {
-      r = r.filter((c) => (c.audience.age1824 ?? 0) >= 25);
-    } else if (filters.audienceAge === 'primeworking') {
-      r = r.filter((c) => c.audience.age2534 >= 40);
-    } else if (filters.audienceAge === 'older') {
-      r = r.filter((c) => (c.audience.age3544 ?? 0) >= 25);
-    }
     if (filters.verified) r = r.filter((c) => c.verified);
     if (filters.minER > 0) {
       r = r.filter((c) => Math.max(...c.channels.map((ch) => ch.engagement)) >= filters.minER);
@@ -144,10 +213,84 @@ export function Discover({ onRoute }: Props) {
 
   const clearAll = () => setFilters(INITIAL_FILTERS);
 
+  // Toggle a value within a multi-select dimension. `field` is the
+  // key on `filters` whose value is a string[].
+  const toggleMulti = <K extends 'platforms' | 'followers' | 'categories' | 'cities' | 'ages'>(
+    field: K, value: string,
+  ) => {
+    setFilters((f) => {
+      const list = f[field];
+      return {
+        ...f,
+        [field]: list.includes(value) ? list.filter((v) => v !== value) : [...list, value],
+      };
+    });
+  };
+
+  // Active filter chips for the bar above the result grid. Each entry
+  // shows what's narrowed and a one-click ×. Multi-select dimensions
+  // appear as one chip per selected value, so the user can drop a
+  // single platform without nuking the whole filter.
+  const activeChips: { key: string; label: string; clear: () => void }[] = [];
+  for (const id of filters.platforms) {
+    const label = PLATFORM_OPTIONS.find((o) => o.id === id)?.label ?? id;
+    activeChips.push({ key: `p_${id}`, label, clear: () => toggleMulti('platforms', id) });
+  }
+  for (const id of filters.followers) {
+    const label = FOLLOWER_OPTIONS.find((o) => o.id === id)?.label ?? id;
+    activeChips.push({ key: `f_${id}`, label, clear: () => toggleMulti('followers', id) });
+  }
+  for (const id of filters.categories) {
+    const label = CATEGORY_OPTIONS.find((o) => o.id === id)?.label ?? id;
+    activeChips.push({ key: `c_${id}`, label, clear: () => toggleMulti('categories', id) });
+  }
+  for (const id of filters.cities) {
+    activeChips.push({ key: `city_${id}`, label: id, clear: () => toggleMulti('cities', id) });
+  }
+  for (const id of filters.ages) {
+    const label = AGE_OPTIONS.find((o) => o.id === id)?.label ?? id;
+    activeChips.push({ key: `a_${id}`, label, clear: () => toggleMulti('ages', id) });
+  }
+  if (filters.audienceGender !== 'all') {
+    activeChips.push({
+      key: 'gender',
+      label: filters.audienceGender === 'female' ? 'Mostly female' : 'Mostly male',
+      clear: () => setFilters((f) => ({ ...f, audienceGender: 'all' })),
+    });
+  }
+  if (filters.minER > 0) {
+    activeChips.push({
+      key: 'er',
+      label: `Min ER ${filters.minER}%`,
+      clear: () => setFilters((f) => ({ ...f, minER: 0 })),
+    });
+  }
+  if (filters.priceMax < 1_000_000) {
+    activeChips.push({
+      key: 'rate',
+      label: `Max rate ${fmtUSD(filters.priceMax)}`,
+      clear: () => setFilters((f) => ({ ...f, priceMax: 1_000_000 })),
+    });
+  }
+  if (filters.verified) {
+    activeChips.push({
+      key: 'verified',
+      label: 'Verified only',
+      clear: () => setFilters((f) => ({ ...f, verified: false })),
+    });
+  }
+  if (filters.brandSafe) {
+    activeChips.push({
+      key: 'safe',
+      label: 'Brand-safe',
+      clear: () => setFilters((f) => ({ ...f, brandSafe: false })),
+    });
+  }
+
   return (
     <>
       <Topbar
-        title="Discover creators"
+        title="Discover Creators"
         crumb={`${allCreators.length} creators in network · ${results.length} match`}
       />
       <div className="v2-content">
@@ -215,123 +358,107 @@ export function Discover({ onRoute }: Props) {
           {/* Filter chips + Sort — only in filters mode. */}
           {!isSpark && (
             <>
-              <div className="v2-row" style={{ gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-                <FilterChip
+              <div className="v2-row" style={{ gap: 8, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                <MultiChipDropdown
                   label="Platform"
-                  value={filters.platform}
-                  options={[
-                    ['all', 'All platforms'],
-                    ['instagram', 'Instagram'],
-                    ['tiktok', 'TikTok'],
-                    ['youtube', 'YouTube'],
-                    ['linkedin', 'LinkedIn'],
-                    ['newsletter', 'Newsletter'],
-                  ]}
-                  onChange={(v) => setFilters((f) => ({ ...f, platform: v }))}
+                  values={filters.platforms}
+                  options={PLATFORM_OPTIONS}
+                  onToggle={(id) => toggleMulti('platforms', id)}
+                  onClear={() => setFilters((f) => ({ ...f, platforms: [] }))}
+                  summary={summariseMulti('platforms', filters.platforms, PLATFORM_OPTIONS)}
                 />
-                <FilterChip
+                <MultiChipDropdown
                   label="Followers"
-                  value={filters.follower}
-                  options={[
-                    ['all', 'Any size'],
-                    ['nano', 'Nano (<10K)'],
-                    ['micro', 'Micro (10–100K)'],
-                    ['mid', 'Mid (100–500K)'],
-                    ['macro', 'Macro (500K+)'],
-                  ]}
-                  onChange={(v) => setFilters((f) => ({ ...f, follower: v }))}
+                  values={filters.followers}
+                  options={FOLLOWER_OPTIONS}
+                  onToggle={(id) => toggleMulti('followers', id)}
+                  onClear={() => setFilters((f) => ({ ...f, followers: [] }))}
+                  summary={summariseMulti('sizes', filters.followers, FOLLOWER_OPTIONS)}
                 />
-                <FilterChip
+                <MultiChipDropdown
                   label="Category"
-                  value={filters.category}
-                  options={[
-                    ['all', 'All categories'],
-                    ['fashion', 'Fashion'],
-                    ['food', 'Food'],
-                    ['travel', 'Travel'],
-                    ['tech', 'Tech'],
-                    ['fitness', 'Fitness'],
-                    ['finance', 'Finance'],
-                    ['b2b', 'B2B'],
-                    ['parenting', 'Parenting'],
-                  ]}
-                  onChange={(v) => setFilters((f) => ({ ...f, category: v }))}
+                  values={filters.categories}
+                  options={CATEGORY_OPTIONS}
+                  onToggle={(id) => toggleMulti('categories', id)}
+                  onClear={() => setFilters((f) => ({ ...f, categories: [] }))}
+                  summary={summariseMulti('categories', filters.categories, CATEGORY_OPTIONS)}
                 />
-                <FilterChip
+                <MultiChipDropdown
                   label="City"
-                  value={filters.city}
-                  options={[
-                    ['all', 'All cities'],
-                    ['Karachi', 'Karachi'],
-                    ['Lahore', 'Lahore'],
-                    ['Islamabad', 'Islamabad'],
-                  ]}
-                  onChange={(v) => setFilters((f) => ({ ...f, city: v }))}
+                  values={filters.cities}
+                  options={CITY_OPTIONS}
+                  onToggle={(id) => toggleMulti('cities', id)}
+                  onClear={() => setFilters((f) => ({ ...f, cities: [] }))}
+                  summary={summariseMulti('cities', filters.cities, CITY_OPTIONS)}
                 />
 
                 <button
                   type="button"
                   onClick={() => setShowMore((v) => !v)}
-                  className="v2-pill"
                   style={{
                     cursor: 'pointer',
-                    fontSize: 12.5,
-                    fontWeight: 550,
+                    fontSize: 13,
+                    fontWeight: 500,
+                    padding: '6px 12px',
                     border: '1px dashed var(--v2-line-2)',
-                    background: showMore || moreCount ? 'var(--v2-bg-2)' : 'transparent',
+                    background: showMore || moreCount ? 'var(--v2-bg-1)' : 'transparent',
+                    color: 'var(--v2-ink-2)',
+                    borderRadius: 'var(--v2-r-pill)',
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: 6,
+                    fontFamily: 'inherit',
                   }}
                 >
-                  {showMore ? '− Less' : '+ More filters'}
+                  {showMore ? '− Less' : '+ More'}
                   {moreCount > 0 && (
                     <span style={{
-                      padding: '0 6px',
+                      minWidth: 18,
+                      height: 18,
+                      padding: '0 5px',
                       borderRadius: 999,
                       background: 'var(--v2-accent)',
                       color: 'white',
                       fontSize: 10.5,
                       fontWeight: 700,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
                     }}>{moreCount}</span>
                   )}
                 </button>
 
-                {activeCount > 0 && (
-                  <button
-                    type="button"
-                    onClick={clearAll}
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      padding: '6px 4px',
-                      fontSize: 12,
-                      color: 'var(--v2-ink-3)',
-                      cursor: 'pointer',
-                      textDecoration: 'underline',
-                    }}
-                  >
-                    Clear {activeCount}
-                  </button>
-                )}
-
                 <span className="v2-spacer" />
 
-                <FilterChip
-                  label="Sort"
+                <select
                   value={sort}
-                  options={[
-                    ['score', 'Alamut score'],
-                    ['followers', 'Followers'],
-                    ['er', 'Engagement'],
-                    ['price-low', 'Price · low → high'],
-                    ['price-high', 'Price · high → low'],
-                  ]}
-                  onChange={(v) => setSort(v as Sort)}
-                />
+                  onChange={(e) => setSort(e.target.value as Sort)}
+                  aria-label="Sort"
+                  style={{
+                    border: '1px solid var(--v2-line)',
+                    background: 'var(--v2-paper)',
+                    color: 'var(--v2-ink)',
+                    padding: '7px 32px 7px 12px',
+                    borderRadius: 'var(--v2-r-pill)',
+                    fontSize: 13,
+                    fontFamily: 'inherit',
+                    cursor: 'pointer',
+                    appearance: 'none',
+                    backgroundImage: 'linear-gradient(45deg, transparent 50%, var(--v2-ink-3) 50%), linear-gradient(135deg, var(--v2-ink-3) 50%, transparent 50%)',
+                    backgroundPosition: 'calc(100% - 14px) 50%, calc(100% - 9px) 50%',
+                    backgroundSize: '5px 5px, 5px 5px',
+                    backgroundRepeat: 'no-repeat',
+                  }}
+                >
+                  <option value="score">Sort · Alamut score</option>
+                  <option value="followers">Sort · Followers</option>
+                  <option value="er">Sort · Engagement</option>
+                  <option value="price-low">Sort · Price low → high</option>
+                  <option value="price-high">Sort · Price high → low</option>
+                </select>
               </div>
 
-              {/* Expandable advanced row. */}
+              {/* Expandable advanced row */}
               {showMore && (
                 <div
                   style={{
@@ -340,27 +467,29 @@ export function Discover({ onRoute }: Props) {
                     borderTop: '1px solid var(--v2-line)',
                   }}
                 >
-                  <div className="v2-row" style={{ gap: 14, flexWrap: 'wrap' }}>
-                    <FilterChip
-                      label="Audience"
+                  <div className="v2-row" style={{ gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <MultiChipDropdown
+                      label="Age band"
+                      values={filters.ages}
+                      options={AGE_OPTIONS}
+                      onToggle={(id) => toggleMulti('ages', id)}
+                      onClear={() => setFilters((f) => ({ ...f, ages: [] }))}
+                      summary={summariseMulti('age bands', filters.ages, AGE_OPTIONS)}
+                    />
+                    <SingleChipDropdown
+                      label="Gender skew"
                       value={filters.audienceGender}
                       options={[
-                        ['all', 'Any gender'],
-                        ['female', 'Mostly female (60%+)'],
-                        ['male', 'Mostly male (60%+)'],
+                        { id: 'all',    label: 'Any gender' },
+                        { id: 'female', label: 'Mostly female (60%+)' },
+                        { id: 'male',   label: 'Mostly male (60%+)' },
                       ]}
-                      onChange={(v) => setFilters((f) => ({ ...f, audienceGender: v as FilterState['audienceGender'] }))}
-                    />
-                    <FilterChip
-                      label="Age"
-                      value={filters.audienceAge}
-                      options={[
-                        ['all', 'Any age'],
-                        ['young', 'Gen Z (18–24)'],
-                        ['primeworking', 'Millennial (25–34)'],
-                        ['older', 'Gen X (35–44)'],
-                      ]}
-                      onChange={(v) => setFilters((f) => ({ ...f, audienceAge: v as FilterState['audienceAge'] }))}
+                      summary={
+                        filters.audienceGender === 'all'  ? 'Any gender' :
+                        filters.audienceGender === 'female' ? 'Mostly female' : 'Mostly male'
+                      }
+                      active={filters.audienceGender !== 'all'}
+                      onChange={(v) => setFilters((f) => ({ ...f, audienceGender: v as AudienceGender }))}
                     />
                     <RangeChip
                       label="Min ER"
@@ -396,6 +525,81 @@ export function Discover({ onRoute }: Props) {
             </>
           )}
         </div>
+
+        {/* Active filter chips — one chip per applied value with × remove.
+            Lets the user see what's narrowed at a glance and drop a single
+            value (e.g. one platform) without nuking the whole dimension. */}
+        {activeChips.length > 0 && !isSpark && (
+          <div
+            className="v2-row"
+            style={{
+              gap: 6,
+              flexWrap: 'wrap',
+              marginBottom: 12,
+              alignItems: 'center',
+            }}
+          >
+            <span className="v2-muted" style={{ fontSize: 12, marginRight: 4 }}>
+              Filtered by:
+            </span>
+            {activeChips.map((chip) => (
+              <button
+                key={chip.key}
+                type="button"
+                onClick={chip.clear}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '4px 6px 4px 10px',
+                  background: 'var(--v2-accent-soft)',
+                  color: 'var(--v2-accent)',
+                  border: '1px solid transparent',
+                  borderRadius: 'var(--v2-r-pill)',
+                  fontSize: 12,
+                  fontWeight: 550,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+                aria-label={`Remove ${chip.label}`}
+              >
+                <span>{chip.label}</span>
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: '50%',
+                    background: 'rgba(0,0,0,0.06)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 13,
+                    lineHeight: 1,
+                  }}
+                >×</span>
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={clearAll}
+              style={{
+                marginLeft: 4,
+                padding: '4px 8px',
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--v2-ink-2)',
+                fontSize: 12,
+                fontWeight: 550,
+                cursor: 'pointer',
+                textDecoration: 'underline',
+                fontFamily: 'inherit',
+              }}
+            >
+              Clear all
+            </button>
+          </div>
+        )}
 
         {/* Result count line */}
         <div className="v2-row" style={{ justifyContent: 'space-between', marginBottom: 12 }}>
@@ -433,37 +637,293 @@ export function Discover({ onRoute }: Props) {
 // Sub-components
 // ════════════════════════════════════════════════════════════════
 
-function FilterChip({
-  label, value, options, onChange,
+// Multi-select chip with popover. Click toggles open; click outside
+// dismisses. Each option has a checkbox; selected options highlight
+// in accent-soft. Footer of the popover has a one-click "Clear N"
+// when at least one is selected. Used for Platform / Followers /
+// Category / City / Age — every dimension where multi-select makes
+// sense.
+function MultiChipDropdown({
+  label, values, options, onToggle, onClear, summary,
+}: {
+  label: string;
+  values: string[];
+  options: { id: string; label: string }[];
+  onToggle: (id: string) => void;
+  onClear: () => void;
+  summary: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+  const active = values.length > 0;
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '6px 10px 6px 12px',
+          background: active ? 'var(--v2-accent-soft)' : 'var(--v2-paper)',
+          color: active ? 'var(--v2-accent)' : 'var(--v2-ink-2)',
+          border: `1px solid ${active ? 'var(--v2-accent)' : 'var(--v2-line)'}`,
+          borderRadius: 'var(--v2-r-pill)',
+          fontSize: 13,
+          fontWeight: active ? 600 : 500,
+          cursor: 'pointer',
+          fontFamily: 'inherit',
+          transition: 'all 120ms ease',
+        }}
+      >
+        <span>{label}</span>
+        <span style={{ fontWeight: 500, opacity: 0.85 }}>·</span>
+        <span style={{ fontWeight: active ? 700 : 500 }}>{summary}</span>
+        <span
+          aria-hidden="true"
+          style={{
+            display: 'inline-block',
+            width: 0,
+            height: 0,
+            borderLeft: '4px solid transparent',
+            borderRight: '4px solid transparent',
+            borderTop: `4px solid ${active ? 'var(--v2-accent)' : 'var(--v2-ink-3)'}`,
+            transform: open ? 'rotate(180deg)' : 'none',
+            transition: 'transform 120ms ease',
+            marginLeft: 2,
+          }}
+        />
+      </button>
+      {open && (
+        <div
+          role="listbox"
+          aria-multiselectable="true"
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 4px)',
+            left: 0,
+            zIndex: 30,
+            minWidth: 220,
+            maxHeight: 340,
+            overflowY: 'auto',
+            background: 'var(--v2-paper)',
+            border: '1px solid var(--v2-line)',
+            borderRadius: 'var(--v2-r-md)',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
+            padding: 4,
+          }}
+        >
+          {options.map((opt) => {
+            const selected = values.includes(opt.id);
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                onClick={() => onToggle(opt.id)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  textAlign: 'left',
+                  width: '100%',
+                  padding: '8px 10px',
+                  background: selected ? 'var(--v2-accent-soft)' : 'transparent',
+                  color: selected ? 'var(--v2-accent)' : 'var(--v2-ink)',
+                  border: 'none',
+                  borderRadius: 6,
+                  fontSize: 13,
+                  fontWeight: selected ? 600 : 500,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+                onMouseEnter={(e) => { if (!selected) e.currentTarget.style.background = 'var(--v2-bg-1)'; }}
+                onMouseLeave={(e) => { if (!selected) e.currentTarget.style.background = 'transparent'; }}
+              >
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: 16,
+                    height: 16,
+                    borderRadius: 4,
+                    border: `1.5px solid ${selected ? 'var(--v2-accent)' : 'var(--v2-line-2)'}`,
+                    background: selected ? 'var(--v2-accent)' : 'transparent',
+                    color: 'var(--v2-paper)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 11,
+                    lineHeight: 1,
+                    flexShrink: 0,
+                  }}
+                >
+                  {selected ? '✓' : ''}
+                </span>
+                <span>{opt.label}</span>
+              </button>
+            );
+          })}
+          {values.length > 0 && (
+            <>
+              <hr style={{ border: 'none', borderTop: '1px solid var(--v2-line)', margin: '4px 0' }} />
+              <button
+                type="button"
+                onClick={onClear}
+                style={{
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: '7px 10px',
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--v2-ink-2)',
+                  fontSize: 12.5,
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  borderRadius: 6,
+                  fontFamily: 'inherit',
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--v2-bg-1)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                Clear {values.length}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Single-select variant of the same chip — used for dimensions that
+// are mutually exclusive (e.g. gender skew). Same visual language as
+// MultiChipDropdown so the filter bar reads consistently.
+function SingleChipDropdown({
+  label, value, options, summary, active, onChange,
 }: {
   label: string;
   value: string;
-  options: [string, string][];
+  options: { id: string; label: string }[];
+  summary: string;
+  active: boolean;
   onChange: (v: string) => void;
 }) {
-  const current = options.find(([v]) => v === value)?.[1] ?? options[0][1];
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
   return (
-    <label className="v2-filter-chip" style={{ position: 'relative' }}>
-      <span className="v2-muted" style={{ fontSize: 11.5 }}>{label}</span>
-      <span style={{ fontWeight: 500 }}>{current}</span>
-      <span className="v2-muted" aria-hidden="true">▾</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        aria-label={label}
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
         style={{
-          position: 'absolute',
-          inset: 0,
-          opacity: 0,
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '6px 10px 6px 12px',
+          background: active ? 'var(--v2-accent-soft)' : 'var(--v2-paper)',
+          color: active ? 'var(--v2-accent)' : 'var(--v2-ink-2)',
+          border: `1px solid ${active ? 'var(--v2-accent)' : 'var(--v2-line)'}`,
+          borderRadius: 'var(--v2-r-pill)',
+          fontSize: 13,
+          fontWeight: active ? 600 : 500,
           cursor: 'pointer',
           fontFamily: 'inherit',
+          transition: 'all 120ms ease',
         }}
       >
-        {options.map(([v, lbl]) => (
-          <option key={v} value={v}>{lbl}</option>
-        ))}
-      </select>
-    </label>
+        <span>{label}</span>
+        <span style={{ fontWeight: 500, opacity: 0.85 }}>·</span>
+        <span style={{ fontWeight: active ? 700 : 500 }}>{summary}</span>
+        <span
+          aria-hidden="true"
+          style={{
+            display: 'inline-block',
+            width: 0,
+            height: 0,
+            borderLeft: '4px solid transparent',
+            borderRight: '4px solid transparent',
+            borderTop: `4px solid ${active ? 'var(--v2-accent)' : 'var(--v2-ink-3)'}`,
+            transform: open ? 'rotate(180deg)' : 'none',
+            transition: 'transform 120ms ease',
+            marginLeft: 2,
+          }}
+        />
+      </button>
+      {open && (
+        <div
+          role="listbox"
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 4px)',
+            left: 0,
+            zIndex: 30,
+            minWidth: 220,
+            background: 'var(--v2-paper)',
+            border: '1px solid var(--v2-line)',
+            borderRadius: 'var(--v2-r-md)',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
+            padding: 4,
+          }}
+        >
+          {options.map((opt) => {
+            const selected = opt.id === value;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                onClick={() => { onChange(opt.id); setOpen(false); }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 8,
+                  textAlign: 'left',
+                  width: '100%',
+                  padding: '8px 10px',
+                  background: selected ? 'var(--v2-accent-soft)' : 'transparent',
+                  color: selected ? 'var(--v2-accent)' : 'var(--v2-ink)',
+                  border: 'none',
+                  borderRadius: 6,
+                  fontSize: 13,
+                  fontWeight: selected ? 600 : 500,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+                onMouseEnter={(e) => { if (!selected) e.currentTarget.style.background = 'var(--v2-bg-1)'; }}
+                onMouseLeave={(e) => { if (!selected) e.currentTarget.style.background = 'transparent'; }}
+              >
+                <span>{opt.label}</span>
+                {selected && <span aria-hidden="true" style={{ display: 'flex' }}>{Icon.check}</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 

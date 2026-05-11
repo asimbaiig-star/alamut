@@ -46,7 +46,7 @@ type Persona = 'brand' | 'creator';
 const BRAND_ROUTES = [
   { id: 'home', label: 'Home', icon: Icon.home },
   { id: 'spark', label: 'Spark', icon: Icon.spark, badge: 'AI' },
-  { id: 'discover', label: 'Discover', icon: Icon.search },
+  { id: 'discover', label: 'Discover creators', icon: Icon.search },
   { id: 'campaigns', label: 'My campaigns', icon: Icon.campaign },
   { id: 'inbox', label: 'Inbox', icon: Icon.inbox, count: 3 },
   { id: 'brand-analytics', label: 'Analytics', icon: Icon.chart },
