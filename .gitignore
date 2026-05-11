@@ -25,6 +25,10 @@ dist-ssr/
 **/.claude/skills/
 /.claude/launch.json
 
+# Agent skill bundles installed locally via `npx skills add ...`.
+# These are symlinks to per-developer tool installations; not portable.
+**/.agents/
+
 # Editor / OS
 .DS_Store
 Thumbs.db

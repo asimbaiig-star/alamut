@@ -17,6 +17,9 @@ import { ensureCollabState } from './collabSync';
 // from `deliverablesText` at create-time so submissions can attach via
 // `Submission.deliverableId` immediately.
 import { materializeDeliverablesForCampaign } from './deliverables';
+// Phase 1 of the Supabase migration — real auth via Supabase when
+// VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY are set. See lib/supabase.ts.
+import { getSupabase, isSupabaseConfigured } from '../supabase';
 
 const LATENCY = 280; // ms — feel of a real network call
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -120,9 +123,63 @@ async function signUp(input: SignUpInput) {
 }
 
 async function signIn(email: string, password: string) {
+  // Phase 1 — Supabase Auth path. When Supabase env vars are set we
+  // delegate credential verification to Supabase first (real auth,
+  // hashed passwords, session refresh, etc), then map the
+  // authenticated user back to our local seed by email so the rest
+  // of the app — which still reads `useStore` — keeps working.
+  //
+  // Falls through to the legacy local-only flow when Supabase isn't
+  // configured, so `npm install && npm run dev` still works without
+  // any backend setup.
+  const cleanEmail = email.trim().toLowerCase();
+  const supaConfigured = isSupabaseConfigured();
+  if (supaConfigured) {
+    const sb = getSupabase();
+    const { data, error } = await sb.auth.signInWithPassword({
+      email: cleanEmail,
+      password,
+    });
+    if (error) {
+      // Map Supabase's "Invalid login credentials" / "Email not
+      // confirmed" etc. to our ApiError taxonomy so the form copy
+      // stays consistent. Anything else falls through as a generic.
+      if (/invalid|credentials|password/i.test(error.message)) {
+        throw new ApiError('bad_password', 'Wrong email or password.');
+      }
+      if (/confirm/i.test(error.message)) {
+        throw new ApiError('not_found', 'Confirm your email before signing in.');
+      }
+      throw new ApiError('not_found', error.message);
+    }
+    if (!data.session) throw new ApiError('not_found', 'Sign-in failed.');
+    // Map Supabase user → local seed user by email. The local row
+    // carries the profile metadata (brandId / creatorId / role) the
+    // rest of the app reads.
+    const db = useStore.getState().db;
+    const localUser = db.users.find((u) => u.email === cleanEmail);
+    if (!localUser) {
+      // Real auth succeeded but we have no local profile for this
+      // email yet — sign out of Supabase to avoid a half-signed-in
+      // state, then surface a clear error.
+      await sb.auth.signOut();
+      throw new ApiError(
+        'not_found',
+        'Signed in to auth but no Alamut profile exists for this email yet.',
+      );
+    }
+    if (localUser.status === 'suspended') {
+      await sb.auth.signOut();
+      throw new ApiError('suspended', 'This account is suspended. Contact support.');
+    }
+    useStore.getState().setSession({ userId: localUser.id, issuedAt: nowISO() });
+    return localUser;
+  }
+
+  // Legacy in-store path. Used in dev (no env vars) and during tests.
   await sleep(LATENCY);
   const db = useStore.getState().db;
-  const user = db.users.find((u) => u.email === email.trim().toLowerCase());
+  const user = db.users.find((u) => u.email === cleanEmail);
   if (!user) throw new ApiError('not_found', 'No account found with that email.');
   if (user.passwordHash !== password) throw new ApiError('bad_password', 'Wrong password. Try again or use a magic link.');
   if (user.status === 'suspended') throw new ApiError('suspended', 'This account is suspended. Contact support.');
@@ -159,7 +216,13 @@ async function verifyMagicLink(email: string, token: string) {
 }
 
 async function signOut() {
-  await sleep(80);
+  // Terminate the Supabase session too when configured so the user
+  // can't silently come back signed-in after a reload.
+  if (isSupabaseConfigured()) {
+    try { await getSupabase().auth.signOut(); } catch { /* best effort */ }
+  } else {
+    await sleep(80);
+  }
   useStore.getState().setSession(null);
 }
 
