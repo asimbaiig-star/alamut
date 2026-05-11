@@ -19,7 +19,6 @@ import { useStore } from '@/lib/api/store';
 import type { V2Campaign, V2Creator } from '../data';
 // P6 §5.6 — compute on read instead of reading the (now-removed)
 // stored field.
-import { computeProfileCompletion } from '@/lib/utils/profile-completion';
 
 interface Props {
   onRoute: (r: string) => void;
@@ -127,41 +126,15 @@ export function CreatorHome({ onRoute }: Props) {
       });
     }
 
-    // 4. Approved content waiting to be marked live. After the brand
-    //    approves a submission, the creator has to actually post it on
-    //    their platform and mark it live to release the second escrow
-    //    milestone — easy to forget if it doesn't surface here.
-    for (const c of myCollabs) {
-      if (items.length >= 4) break;
-      const approved = c.deliverables.find((d) => d.status === 'approved');
-      if (!approved) continue;
-      const camp = allCampaigns.find((x) => x.id === c.campaignId);
-      if (!camp) continue;
-      items.push({
-        id: `live_${c.id}`,
-        icon: '⤴',
-        urgent: false,
-        title: `Post ${approved.label} & mark live`,
-        sub: `${camp.brand} approved · release final ${fmtUSD(Math.round(c.price * 0.5))} on go-live`,
-        route: `collab:${c.id}?action=mark-live`,
-      });
-    }
-
-    // 4. KYC if profile completion looks low (P6 §5.6 — compute on read)
-    const completion = creator ? computeProfileCompletion(creator, db) : 100;
-    if (creator && completion < 80 && items.length < 4) {
-      items.push({
-        id: 'kyc',
-        icon: '✓',
-        urgent: false,
-        title: 'Complete KYC verification',
-        sub: 'Unlock payouts above $1,000 · 2 minutes',
-        route: 'kyc',
-      });
-    }
+    // Note — "Post & mark live" and "Complete KYC" used to live here.
+    // Both removed: mark-live is a brand-side action in the current
+    // workflow (creator has no MarkLiveModal in CollabDetail), and KYC
+    // routes to the same page as the sidebar entry, which violates the
+    // "every Today tile must land at the action point" rule. Both can
+    // come back when their respective deep-link surfaces exist.
 
     return items;
-  }, [myCollabs, allCampaigns, me.id, creator]);
+  }, [myCollabs, allCampaigns, me.id, creator, db]);
 
   return (
     <>

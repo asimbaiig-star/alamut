@@ -97,20 +97,10 @@ export function BrandHome({ onRoute }: Props) {
             route: `campaign:${camp.id}?tab=content&review=${c.id}`,
           });
         }
-        // Freshly-accepted offers: creator confirmed but no submission yet.
-        // This is the gap the user surfaced — accepting a campaign on the
-        // creator side wasn't visible on brand home. Now it shows up here.
-        if (c.stage === 'confirmed' && creator && items.length < 4) {
-          items.push({
-            id: `confirm_${c.id}`,
-            urgent: false,
-            who: creator.name,
-            what: `accepted your offer on ${camp.name}`,
-            when: 'recently',
-            action: 'Open',
-            route: `campaign:${camp.id}`,
-          });
-        }
+        // Note — "creator accepted your offer" used to live here but it's
+        // an event, not an action: the brand has nothing to do until the
+        // creator submits content. We surface it in Recent activity
+        // instead so the Needs-you list stays strictly action-required.
         if (c.stage === 'pitched' && creator && items.length < 4) {
           items.push({
             id: `pitch_${c.id}`,
@@ -133,7 +123,9 @@ export function BrandHome({ onRoute }: Props) {
         what: 'top up to keep escrow ready',
         when: 'soon',
         action: 'Top up',
-        route: 'wallet',
+        // Deep-link straight to the top-up modal rather than the wallet
+        // page (which is already reachable from the sidebar).
+        route: 'wallet?action=topup',
       });
     }
     return items.slice(0, 4);

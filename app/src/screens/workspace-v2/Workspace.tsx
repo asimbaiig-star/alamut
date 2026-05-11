@@ -292,7 +292,18 @@ function RouteOutlet({ route, onRoute, persona }: { route: string; onRoute: (r: 
   if (route === 'campaign-new') return <NewCampaignWizard onRoute={onRoute} />;
   if (route === 'campaigns') return <Campaigns onRoute={onRoute} />;
   if (route === 'inbox') return <Inbox onRoute={onRoute} persona="brand" />;
-  if (route === 'wallet') return <BrandWallet onRoute={onRoute} />;
+  if (route === 'wallet' || route.startsWith('wallet?')) {
+    // Parse `wallet?action=topup` so the "Top up wallet" Needs-you tile
+    // drops the brand directly into the top-up modal.
+    const queryStr = route.includes('?') ? route.split('?')[1] : '';
+    const params = new URLSearchParams(queryStr);
+    return (
+      <BrandWallet
+        onRoute={onRoute}
+        initialAction={(params.get('action') as never) ?? undefined}
+      />
+    );
+  }
   if (route === 'brand-profile') return <BrandProfile onRoute={onRoute} />;
   if (route === 'brand-analytics') return <BrandAnalytics onRoute={onRoute} />;
 

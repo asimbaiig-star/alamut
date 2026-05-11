@@ -4,7 +4,7 @@
 // hero balance card (gradient ink→accent), ledger table, payment-
 // methods sidebar, this-month rollup, top-up modal.
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { fmtUSD, fmtUSDfull, Icon, Topbar } from '../lib';
 import { useV2BrandWallet, useV2CurrentBrand } from '../v2Hooks';
 import { pushToast } from '@/lib/utils/toast';
@@ -12,10 +12,19 @@ import { useCapability } from '@/lib/permissions';
 
 interface Props {
   onRoute: (r: string) => void;
+  /** When the route arrived as `wallet?action=topup` (BrandHome's
+   *  "Needs you" tile direct-jump), pop the top-up modal on mount so
+   *  the brand lands inside the action rather than on the wallet page
+   *  they could reach via the sidebar. */
+  initialAction?: 'topup';
 }
 
-export function BrandWallet({ onRoute }: Props) {
+export function BrandWallet({ onRoute, initialAction }: Props) {
   const [showTopup, setShowTopup] = useState(false);
+  useEffect(() => {
+    if (initialAction === 'topup') setShowTopup(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialAction]);
   const W = useV2BrandWallet();
   const brand = useV2CurrentBrand();
   // P5 gating — admin + finance hold `wallet.topup`. Ops + viewer see
