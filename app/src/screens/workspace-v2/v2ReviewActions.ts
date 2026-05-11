@@ -29,6 +29,8 @@ import { tx } from '@/lib/api/store';
 import type { Review } from '@/lib/api/types';
 // P5 §4.1 — capability gate.
 import { requireCapability, getActorUserId } from '@/lib/permissions';
+// Phase 8 lite — Supabase mirror for review mutations.
+import { isSupabaseConfigured } from '@/lib/supabase';
 
 function newId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -36,6 +38,28 @@ function newId(prefix: string): string {
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+/** Fire-and-forget Supabase UPDATE mirror for a Review. Mirrors the
+ *  same fields the local mutation just changed. Silent on RLS / not
+ *  found (handles reviews tied to generated cmp_g* campaigns that
+ *  live only in the local store). */
+function mirrorReviewUpdateToSupabase(
+  reviewId: string,
+  patch: Parameters<typeof import('@/lib/data/reviewsRepo').updateReviewInSupabase>[1],
+): void {
+  if (!isSupabaseConfigured()) return;
+  void (async () => {
+    try {
+      const { updateReviewInSupabase } = await import('@/lib/data/reviewsRepo');
+      await updateReviewInSupabase(reviewId, patch);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/row-level security|no rows|0 rows|not found/i.test(msg)) return;
+      // eslint-disable-next-line no-console
+      console.warn('[review update mirror] failed:', msg);
+    }
+  })();
 }
 
 /**
@@ -49,7 +73,7 @@ export function v2ReportReview(
   byUserId: string,
   reason?: string,
 ): Review | null {
-  return tx((db) => {
+  const result = tx((db) => {
     // P5 §4.1 — `viewer.read` is the floor; everyone signed in can
     // report a review they find objectionable. Tightening this gate
     // would prevent legitimate flag traffic.
@@ -86,6 +110,8 @@ export function v2ReportReview(
 
     return review;
   });
+  if (result) mirrorReviewUpdateToSupabase(reviewId, { reportedBy: result.reportedBy ?? [] });
+  return result;
 }
 
 /**
@@ -100,7 +126,7 @@ export function v2HideReview(
   adminUserId: string,
   reason: string,
 ): Review | null {
-  return tx((db) => {
+  const result = tx((db) => {
     // P5 §4.1 — `review.moderate` is held by `super` + `disputes`
     // admin roles only. Brand teamRoles never get it.
     requireCapability(getActorUserId(), 'review.moderate', db);
@@ -132,6 +158,12 @@ export function v2HideReview(
 
     return review;
   });
+  if (result) mirrorReviewUpdateToSupabase(reviewId, {
+    hidden: result.hidden ?? false,
+    hiddenReason: result.hiddenReason ?? null,
+    hiddenAt: result.hiddenAt ?? null,
+  });
+  return result;
 }
 
 /**
@@ -139,7 +171,7 @@ export function v2HideReview(
  * visible again on public storefronts.
  */
 export function v2UnhideReview(reviewId: string, adminUserId: string): Review | null {
-  return tx((db) => {
+  const result = tx((db) => {
     // P5 §4.1 — same gate as hide.
     requireCapability(getActorUserId(), 'review.moderate', db);
 
@@ -167,4 +199,10 @@ export function v2UnhideReview(reviewId: string, adminUserId: string): Review | 
 
     return review;
   });
+  if (result) mirrorReviewUpdateToSupabase(reviewId, {
+    hidden: false,
+    hiddenReason: null,
+    hiddenAt: null,
+  });
+  return result;
 }

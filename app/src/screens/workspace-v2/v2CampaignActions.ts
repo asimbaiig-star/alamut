@@ -204,6 +204,23 @@ function mirrorSubmissionUpdateToSupabase(
   })();
 }
 
+/** Fire-and-forget Supabase mirror for a new Review INSERT (Phase 8 lite). */
+function mirrorReviewInsertToSupabase(review: import('@/lib/api/types').Review): void {
+  if (!isSupabaseConfigured()) return;
+  void (async () => {
+    try {
+      const { insertReviewInSupabase } = await import('@/lib/data/reviewsRepo');
+      await insertReviewInSupabase(review);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Reviews on generated cmp_g* campaigns hit the FK — silence.
+      if (isNotFoundError(msg) || /foreign key|violates|row-level security/i.test(msg)) return;
+      // eslint-disable-next-line no-console
+      console.warn('[review insert mirror] failed:', msg);
+    }
+  })();
+}
+
 const PLATFORM_FEE = 0.10;
 const WHT = 0.05;
 
@@ -1973,13 +1990,13 @@ export function v2LeaveReview(input: {
   rating: number;
   text: string;
 }) {
-  return tx((db) => {
+  const result = tx((db) => {
     // P5 §4.1 — both creator and brand teams can write reviews on
     // their own campaigns. Brand-side ops/admin and creator default
     // both have `review.write`.
     requireCapability(getActorUserId(), 'review.write', db);
 
-    db.reviews.push({
+    const review: import('@/lib/api/types').Review = {
       id: newId('rev'),
       campaignId: input.campaignId,
       fromUserId: input.fromUserId,
@@ -1988,7 +2005,8 @@ export function v2LeaveReview(input: {
       rating: input.rating,
       text: input.text,
       at: nowIso(),
-    });
+    };
+    db.reviews.push(review);
 
     // Notify the reviewed party (s19 — was missing). Reviews go both
     // ways: brand → creator and creator → brand. Resolve the recipient
@@ -2022,7 +2040,10 @@ export function v2LeaveReview(input: {
         meta: { campaignId: input.campaignId },
       });
     }
+    return review;
   });
+  if (result) mirrorReviewInsertToSupabase(result);
+  return result;
 }
 
 // =====================================================================

@@ -40,9 +40,47 @@ import { requireCapability, getActorUserId } from '@/lib/permissions';
 // helper every other money-moving mutation calls.
 import { ensureCollabState } from '@/lib/api/collabSync';
 import { markContractFulfilled } from '@/lib/api/contracts';
+// Phase 8 lite — Supabase mirror for dispute mutations.
+import { isSupabaseConfigured } from '@/lib/supabase';
 
 const PLATFORM_FEE = 0.10;
 const WHT = 0.05;
+
+/** Fire-and-forget mirror for a new Dispute INSERT. Silenced on FK
+ *  (collab/campaign tied to generated rows) + RLS. */
+function mirrorDisputeInsertToSupabase(d: Dispute): void {
+  if (!isSupabaseConfigured()) return;
+  void (async () => {
+    try {
+      const { insertDisputeInSupabase } = await import('@/lib/data/disputesRepo');
+      await insertDisputeInSupabase(d);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/foreign key|violates|row-level security|no rows|0 rows|not found/i.test(msg)) return;
+      // eslint-disable-next-line no-console
+      console.warn('[dispute insert mirror] failed:', msg);
+    }
+  })();
+}
+
+/** Fire-and-forget mirror for a Dispute UPDATE. */
+function mirrorDisputeUpdateToSupabase(
+  disputeId: string,
+  patch: Parameters<typeof import('@/lib/data/disputesRepo').updateDisputeInSupabase>[1],
+): void {
+  if (!isSupabaseConfigured()) return;
+  void (async () => {
+    try {
+      const { updateDisputeInSupabase } = await import('@/lib/data/disputesRepo');
+      await updateDisputeInSupabase(disputeId, patch);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/row-level security|no rows|0 rows|not found/i.test(msg)) return;
+      // eslint-disable-next-line no-console
+      console.warn('[dispute update mirror] failed:', msg);
+    }
+  })();
+}
 
 function newId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -76,7 +114,7 @@ export function v2RaiseDispute(input: {
   description: string;
   evidence?: DisputeEvidence[];
 }): Dispute | null {
-  return tx((db) => {
+  const result = tx((db) => {
     // P5 §4.1 — both sides have `dispute.raise`. Brand viewer/finance
     // can't raise; creators can.
     requireCapability(getActorUserId(), 'dispute.raise', db);
@@ -140,6 +178,8 @@ export function v2RaiseDispute(input: {
 
     return dispute;
   });
+  if (result) mirrorDisputeInsertToSupabase(result);
+  return result;
 }
 
 /**
@@ -148,7 +188,7 @@ export function v2RaiseDispute(input: {
  * be withdrawn (use `resolveDispute` to issue a corrective resolution).
  */
 export function v2WithdrawDispute(disputeId: string, byUserId: string): Dispute | null {
-  return tx((db) => {
+  const result = tx((db) => {
     // P5 §4.1 — same gate as raise. Only the original raiser can
     // withdraw (data-layer check below); the cap gate catches viewer/
     // finance users early.
@@ -182,6 +222,10 @@ export function v2WithdrawDispute(disputeId: string, byUserId: string): Dispute 
 
     return disp;
   });
+  if (result && result.status === 'withdrawn') {
+    mirrorDisputeUpdateToSupabase(disputeId, { status: 'withdrawn' });
+  }
+  return result;
 }
 
 /**
@@ -190,7 +234,7 @@ export function v2WithdrawDispute(disputeId: string, byUserId: string): Dispute 
  * the admin reads when deciding the resolution.
  */
 export function v2AddDisputeMessage(disputeId: string, fromUserId: string, body: string): Dispute | null {
-  return tx((db) => {
+  const result = tx((db) => {
     // P5 §4.1 — viewer/finance can read but can't post into a dispute.
     requireCapability(getActorUserId(), 'dispute.raise', db);
 
@@ -204,6 +248,8 @@ export function v2AddDisputeMessage(disputeId: string, fromUserId: string, body:
     disp.updatedAt = now;
     return disp;
   });
+  if (result) mirrorDisputeUpdateToSupabase(disputeId, { messages: result.messages });
+  return result;
 }
 
 /**
@@ -227,7 +273,7 @@ export function v2ResolveDispute(disputeId: string, input: {
   releaseAmount?: number;
   refundAmount?: number;
 }): Dispute | null {
-  return tx((db) => {
+  const result = tx((db) => {
     // P5 §4.1 — admin-only. The `dispute.resolve` capability is held
     // by the `super` and `disputes` AdminRoles; brand-side teamRoles
     // never get it.
@@ -410,6 +456,13 @@ export function v2ResolveDispute(disputeId: string, input: {
 
     return disp;
   });
+  if (result) {
+    mirrorDisputeUpdateToSupabase(disputeId, {
+      status: result.status,
+      resolution: result.resolution,
+    });
+  }
+  return result;
 }
 
 // Read-only convenience helpers

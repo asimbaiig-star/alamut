@@ -223,7 +223,7 @@ if (typeof window !== 'undefined') {
 if (typeof window !== 'undefined') {
   void (async () => {
     try {
-      const [brandsMod, campaignsMod, applicationsMod, offersMod, creatorsMod, collabsMod, submissionsMod, deliverablesMod, contractsMod, transactionsMod] = await Promise.all([
+      const [brandsMod, campaignsMod, applicationsMod, offersMod, creatorsMod, collabsMod, submissionsMod, deliverablesMod, contractsMod, transactionsMod, reviewsMod, disputesMod] = await Promise.all([
         import('@/lib/data/brandsRepo'),
         import('@/lib/data/campaignsRepo'),
         import('@/lib/data/applicationsRepo'),
@@ -234,8 +234,10 @@ if (typeof window !== 'undefined') {
         import('@/lib/data/deliverablesRepo'),
         import('@/lib/data/contractsRepo'),
         import('@/lib/data/transactionsRepo'),
+        import('@/lib/data/reviewsRepo'),
+        import('@/lib/data/disputesRepo'),
       ]);
-      const [brands, campaigns, applications, offers, creators, collaborations, submissions, deliverables, contracts, transactions] = await Promise.all([
+      const [brands, campaigns, applications, offers, creators, collaborations, submissions, deliverables, contracts, transactions, reviews, disputes] = await Promise.all([
         brandsMod.fetchAllBrandsFromSupabase(),
         campaignsMod.fetchAllCampaignsFromSupabase(),
         applicationsMod.fetchAllApplicationsFromSupabase(),
@@ -246,13 +248,16 @@ if (typeof window !== 'undefined') {
         deliverablesMod.fetchAllDeliverablesFromSupabase(),
         contractsMod.fetchAllContractsFromSupabase(),
         transactionsMod.fetchAllTransactionsFromSupabase(),
+        reviewsMod.fetchAllReviewsFromSupabase(),
+        disputesMod.fetchAllDisputesFromSupabase(),
       ]);
       if (
         brands.length === 0 && campaigns.length === 0 &&
         applications.length === 0 && offers.length === 0 &&
         creators.length === 0 && collaborations.length === 0 &&
         submissions.length === 0 && deliverables.length === 0 &&
-        contracts.length === 0 && transactions.length === 0
+        contracts.length === 0 && transactions.length === 0 &&
+        reviews.length === 0 && disputes.length === 0
       ) return;
       useStore.setState((s) => {
         // Overlay helper — same pattern for every table.
@@ -277,6 +282,8 @@ if (typeof window !== 'undefined') {
             deliverables: overlay(s.db.deliverables ?? [], deliverables),
             contracts: overlay(s.db.contracts ?? [], contracts),
             transactions: overlay(s.db.transactions, transactions),
+            reviews: overlay(s.db.reviews, reviews),
+            disputes: overlay(s.db.disputes, disputes),
           },
         };
       });
