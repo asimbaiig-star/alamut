@@ -136,6 +136,13 @@ if (useStore.getState().db.migrationVersion !== CURRENT_MIGRATION_VERSION) {
 // Helper: hand a fresh DB clone to mutate
 export function tx<T>(mutator: (db: Database) => T): T {
   let result!: T;
+  // Phase 7 — snapshot the transaction count BEFORE the mutation so we
+  // can diff the tail after commit and fire a fire-and-forget bulk INSERT
+  // for any new rows the mutation appended. Centralising here avoids
+  // tapping each of 13+ `db.transactions.push(...)` call sites and
+  // guarantees every new tx is mirrored regardless of which action
+  // created it.
+  const prevTxCount = useStore.getState().db.transactions.length;
   useStore.getState().setDB((prev) => {
     // Shallow-clone arrays for cheap immutability; mutator returns a new shape.
     const next: Database = {
@@ -165,6 +172,28 @@ export function tx<T>(mutator: (db: Database) => T): T {
     result = mutator(next);
     return next;
   });
+
+  // Phase 7 — mirror any newly-appended transactions in one bulk INSERT.
+  // Same fire-and-forget pattern as other mirrors: env-gated, dynamic
+  // import, silenced on RLS / FK / not-found for rows tied to generated
+  // cmp_g* campaigns that live only locally.
+  const newTxs = useStore.getState().db.transactions.slice(prevTxCount);
+  if (newTxs.length > 0 && typeof window !== 'undefined') {
+    void (async () => {
+      try {
+        const { isSupabaseConfigured } = await import('@/lib/supabase');
+        if (!isSupabaseConfigured()) return;
+        const { insertTransactionsBatchInSupabase } = await import('@/lib/data/transactionsRepo');
+        await insertTransactionsBatchInSupabase(newTxs);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (/row-level security|new row violates|foreign key|duplicate key|no rows|0 rows|not found/i.test(msg)) return;
+        // eslint-disable-next-line no-console
+        console.warn('[transactions mirror] failed:', msg);
+      }
+    })();
+  }
+
   return result;
 }
 
@@ -194,7 +223,7 @@ if (typeof window !== 'undefined') {
 if (typeof window !== 'undefined') {
   void (async () => {
     try {
-      const [brandsMod, campaignsMod, applicationsMod, offersMod, creatorsMod, collabsMod, submissionsMod, deliverablesMod, contractsMod] = await Promise.all([
+      const [brandsMod, campaignsMod, applicationsMod, offersMod, creatorsMod, collabsMod, submissionsMod, deliverablesMod, contractsMod, transactionsMod] = await Promise.all([
         import('@/lib/data/brandsRepo'),
         import('@/lib/data/campaignsRepo'),
         import('@/lib/data/applicationsRepo'),
@@ -204,8 +233,9 @@ if (typeof window !== 'undefined') {
         import('@/lib/data/submissionsRepo'),
         import('@/lib/data/deliverablesRepo'),
         import('@/lib/data/contractsRepo'),
+        import('@/lib/data/transactionsRepo'),
       ]);
-      const [brands, campaigns, applications, offers, creators, collaborations, submissions, deliverables, contracts] = await Promise.all([
+      const [brands, campaigns, applications, offers, creators, collaborations, submissions, deliverables, contracts, transactions] = await Promise.all([
         brandsMod.fetchAllBrandsFromSupabase(),
         campaignsMod.fetchAllCampaignsFromSupabase(),
         applicationsMod.fetchAllApplicationsFromSupabase(),
@@ -215,13 +245,14 @@ if (typeof window !== 'undefined') {
         submissionsMod.fetchAllSubmissionsFromSupabase(),
         deliverablesMod.fetchAllDeliverablesFromSupabase(),
         contractsMod.fetchAllContractsFromSupabase(),
+        transactionsMod.fetchAllTransactionsFromSupabase(),
       ]);
       if (
         brands.length === 0 && campaigns.length === 0 &&
         applications.length === 0 && offers.length === 0 &&
         creators.length === 0 && collaborations.length === 0 &&
         submissions.length === 0 && deliverables.length === 0 &&
-        contracts.length === 0
+        contracts.length === 0 && transactions.length === 0
       ) return;
       useStore.setState((s) => {
         // Overlay helper — same pattern for every table.
@@ -245,6 +276,7 @@ if (typeof window !== 'undefined') {
             submissions: overlay(s.db.submissions, submissions),
             deliverables: overlay(s.db.deliverables ?? [], deliverables),
             contracts: overlay(s.db.contracts ?? [], contracts),
+            transactions: overlay(s.db.transactions, transactions),
           },
         };
       });
