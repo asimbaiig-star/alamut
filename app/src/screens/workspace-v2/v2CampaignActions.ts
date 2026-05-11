@@ -221,6 +221,38 @@ function mirrorReviewInsertToSupabase(review: import('@/lib/api/types').Review):
   })();
 }
 
+/** Fire-and-forget Supabase mirror for a new Thread INSERT (Phase 10). */
+function mirrorThreadInsertToSupabase(thread: import('@/lib/api/types').Thread): void {
+  if (!isSupabaseConfigured()) return;
+  void (async () => {
+    try {
+      const { insertThreadInSupabase } = await import('@/lib/data/threadsRepo');
+      await insertThreadInSupabase(thread);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (isNotFoundError(msg) || /foreign key|violates|row-level security|duplicate key/i.test(msg)) return;
+      // eslint-disable-next-line no-console
+      console.warn('[thread insert mirror] failed:', msg);
+    }
+  })();
+}
+
+/** Fire-and-forget Supabase mirror for a new Message INSERT (Phase 10). */
+function mirrorMessageInsertToSupabase(message: import('@/lib/api/types').Message): void {
+  if (!isSupabaseConfigured()) return;
+  void (async () => {
+    try {
+      const { insertMessageInSupabase } = await import('@/lib/data/messagesRepo');
+      await insertMessageInSupabase(message);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (isNotFoundError(msg) || /foreign key|violates|row-level security|duplicate key/i.test(msg)) return;
+      // eslint-disable-next-line no-console
+      console.warn('[message insert mirror] failed:', msg);
+    }
+  })();
+}
+
 const PLATFORM_FEE = 0.10;
 const WHT = 0.05;
 
@@ -471,7 +503,7 @@ export function v2SendOffer(
       );
       if (!existing) {
         const threadId = newId('t');
-        db.threads.push({
+        const newThread: import('@/lib/api/types').Thread = {
           id: threadId,
           participants: [brandUser.id, creatorUser.id],
           campaignId, // §2.6 — set at creation; persists for lifetime
@@ -481,14 +513,20 @@ export function v2SendOffer(
           // §2.6 — operational anchor. Starts null; ensureCollabState
           // promotes to the real Collab id when the pair materializes.
           collaborationId: null,
-        });
-        db.messages.push({
+        };
+        db.threads.push(newThread);
+        const firstMsg: import('@/lib/api/types').Message = {
           id: newId('m'),
           threadId,
           fromUserId: brandUser.id,
           text: `Hi ${creator.name.split(' ')[0]} — sending an offer of $${rate.toLocaleString()} for ${camp.title}. ${message}`,
           at: nowIso(),
-        });
+        };
+        db.messages.push(firstMsg);
+        // Stash on the offer return path so the mirror block below
+        // can pick these up without re-querying the local store.
+        (offer as Offer & { __newThread?: typeof newThread; __firstMsg?: typeof firstMsg }).__newThread = newThread;
+        (offer as Offer & { __newThread?: typeof newThread; __firstMsg?: typeof firstMsg }).__firstMsg = firstMsg;
       }
       // Notify creator
       db.notifications.push({
@@ -531,6 +569,15 @@ export function v2SendOffer(
     mirrorOfferInsertToSupabase(result);
     const camp = useStore.getState().db.campaigns.find((c) => c.id === result.campaignId);
     if (camp) mirrorCampaignToSupabase(camp.id, { offers: camp.offers });
+
+    // Phase 10 — if v2SendOffer also created the initial thread + message
+    // (no prior conversation between brand and creator), mirror both.
+    const sidecar = result as Offer & {
+      __newThread?: import('@/lib/api/types').Thread;
+      __firstMsg?: import('@/lib/api/types').Message;
+    };
+    if (sidecar.__newThread) mirrorThreadInsertToSupabase(sidecar.__newThread);
+    if (sidecar.__firstMsg)  mirrorMessageInsertToSupabase(sidecar.__firstMsg);
 
     // Phase 9 — if this offer upgraded an existing Outreach, mirror the
     // back-link patch (resulting_offer_id + status flip). The local

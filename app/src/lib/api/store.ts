@@ -223,7 +223,7 @@ if (typeof window !== 'undefined') {
 if (typeof window !== 'undefined') {
   void (async () => {
     try {
-      const [brandsMod, campaignsMod, applicationsMod, offersMod, creatorsMod, collabsMod, submissionsMod, deliverablesMod, contractsMod, transactionsMod, reviewsMod, disputesMod, outreachMod] = await Promise.all([
+      const [brandsMod, campaignsMod, applicationsMod, offersMod, creatorsMod, collabsMod, submissionsMod, deliverablesMod, contractsMod, transactionsMod, reviewsMod, disputesMod, outreachMod, threadsMod, messagesMod] = await Promise.all([
         import('@/lib/data/brandsRepo'),
         import('@/lib/data/campaignsRepo'),
         import('@/lib/data/applicationsRepo'),
@@ -237,8 +237,10 @@ if (typeof window !== 'undefined') {
         import('@/lib/data/reviewsRepo'),
         import('@/lib/data/disputesRepo'),
         import('@/lib/data/outreachRepo'),
+        import('@/lib/data/threadsRepo'),
+        import('@/lib/data/messagesRepo'),
       ]);
-      const [brands, campaigns, applications, offers, creators, collaborations, submissions, deliverables, contracts, transactions, reviews, disputes, outreach] = await Promise.all([
+      const [brands, campaigns, applications, offers, creators, collaborations, submissions, deliverables, contracts, transactions, reviews, disputes, outreach, threads, messages] = await Promise.all([
         brandsMod.fetchAllBrandsFromSupabase(),
         campaignsMod.fetchAllCampaignsFromSupabase(),
         applicationsMod.fetchAllApplicationsFromSupabase(),
@@ -252,7 +254,21 @@ if (typeof window !== 'undefined') {
         reviewsMod.fetchAllReviewsFromSupabase(),
         disputesMod.fetchAllDisputesFromSupabase(),
         outreachMod.fetchAllOutreachFromSupabase(),
+        threadsMod.fetchAllThreadsFromSupabase(),
+        messagesMod.fetchAllMessagesFromSupabase(),
       ]);
+      // Phase 10 — mount the realtime chat subscription once initial
+      // hydration is complete. The subscription itself is idempotent
+      // so calling it twice is safe.
+      void (async () => {
+        try {
+          const { mountChatRealtime } = await import('@/lib/realtimeChat');
+          mountChatRealtime();
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn('[realtimeChat] mount skipped:', err);
+        }
+      })();
       if (
         brands.length === 0 && campaigns.length === 0 &&
         applications.length === 0 && offers.length === 0 &&
@@ -260,7 +276,8 @@ if (typeof window !== 'undefined') {
         submissions.length === 0 && deliverables.length === 0 &&
         contracts.length === 0 && transactions.length === 0 &&
         reviews.length === 0 && disputes.length === 0 &&
-        outreach.length === 0
+        outreach.length === 0 &&
+        threads.length === 0 && messages.length === 0
       ) return;
       useStore.setState((s) => {
         // Overlay helper — same pattern for every table.
@@ -288,6 +305,8 @@ if (typeof window !== 'undefined') {
             reviews: overlay(s.db.reviews, reviews),
             disputes: overlay(s.db.disputes, disputes),
             outreach: overlay(s.db.outreach ?? [], outreach),
+            threads: overlay(s.db.threads, threads),
+            messages: overlay(s.db.messages, messages),
           },
         };
       });

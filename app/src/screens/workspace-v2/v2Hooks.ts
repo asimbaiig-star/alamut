@@ -24,6 +24,44 @@ import {
   collabsForCampaign, collabsForCreator, deriveCollab,
 } from './v2Adapters';
 import type { V2Creator, V2Campaign, V2Conversation, V2Collab } from './data';
+// Phase 10 — Supabase mirror for thread + message mutations.
+import { isSupabaseConfigured } from '@/lib/supabase';
+
+/** Fire-and-forget thread UPDATE mirror (Phase 10). Used by mark-read +
+ *  send-message which both touch unread_for / last_message_at. */
+function mirrorThreadPatch(
+  threadId: string,
+  patch: Parameters<typeof import('@/lib/data/threadsRepo').updateThreadInSupabase>[1],
+): void {
+  if (!isSupabaseConfigured()) return;
+  void (async () => {
+    try {
+      const { updateThreadInSupabase } = await import('@/lib/data/threadsRepo');
+      await updateThreadInSupabase(threadId, patch);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/row-level security|no rows|0 rows|not found/i.test(msg)) return;
+      // eslint-disable-next-line no-console
+      console.warn('[thread update mirror] failed:', msg);
+    }
+  })();
+}
+
+/** Fire-and-forget message INSERT mirror (Phase 10). */
+function mirrorMessageInsert(message: import('@/lib/api/types').Message): void {
+  if (!isSupabaseConfigured()) return;
+  void (async () => {
+    try {
+      const { insertMessageInSupabase } = await import('@/lib/data/messagesRepo');
+      await insertMessageInSupabase(message);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/foreign key|violates|row-level security|duplicate key|no rows|0 rows|not found/i.test(msg)) return;
+      // eslint-disable-next-line no-console
+      console.warn('[message insert mirror] failed:', msg);
+    }
+  })();
+}
 
 // =====================================================================
 // Demo identity fallback (until Phase C auth gating)
@@ -299,6 +337,7 @@ export function v2ToggleSavedCreator(creatorId: string) {
 
 /** Mark all messages in a thread as read for the current viewer. */
 export function v2MarkThreadRead(threadId: string) {
+  let nextUnreadFor: string[] | null = null;
   tx((db) => {
     const session = useStore.getState().session;
     const persona = readPersona();
@@ -307,41 +346,50 @@ export function v2MarkThreadRead(threadId: string) {
     if (idx === -1) return;
     const thread = db.threads[idx];
     if (!thread.unreadFor.includes(viewerId)) return;
+    nextUnreadFor = thread.unreadFor.filter((u) => u !== viewerId);
     db.threads[idx] = {
       ...thread,
-      unreadFor: thread.unreadFor.filter((u) => u !== viewerId),
+      unreadFor: nextUnreadFor,
     };
   });
+  if (nextUnreadFor) mirrorThreadPatch(threadId, { unreadFor: nextUnreadFor });
 }
 
 /** Send a message in a thread, from the current viewer. */
 export function v2SendMessage(threadId: string, text: string) {
   if (!text.trim()) return;
+  let newMsg: import('@/lib/api/types').Message | null = null;
+  let threadPatch: { lastMessageAt: string; unreadFor: string[] } | null = null;
   tx((db) => {
     const session = useStore.getState().session;
     const persona = readPersona();
     const viewerId = getViewerUserId(db, session?.userId ?? null, persona);
     const now = new Date().toISOString();
     const id = `m_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    db.messages.push({
+    newMsg = {
       id,
       threadId,
       fromUserId: viewerId,
       text: text.trim(),
       at: now,
-    });
+    };
+    db.messages.push(newMsg);
     const idx = db.threads.findIndex((t) => t.id === threadId);
     if (idx !== -1) {
       const thread = db.threads[idx];
       // Mark unread for everyone except sender
       const others = thread.participants.filter((p) => p !== viewerId);
+      const nextUnreadFor = Array.from(new Set([...thread.unreadFor.filter((u) => u !== viewerId), ...others]));
+      threadPatch = { lastMessageAt: now, unreadFor: nextUnreadFor };
       db.threads[idx] = {
         ...thread,
         lastMessageAt: now,
-        unreadFor: Array.from(new Set([...thread.unreadFor.filter((u) => u !== viewerId), ...others])),
+        unreadFor: nextUnreadFor,
       };
     }
   });
+  if (newMsg) mirrorMessageInsert(newMsg);
+  if (threadPatch) mirrorThreadPatch(threadId, threadPatch);
 }
 
 /** Helper for Spark: sync its shortlist into the brand's saved list. */
