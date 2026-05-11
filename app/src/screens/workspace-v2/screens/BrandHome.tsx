@@ -17,6 +17,7 @@ import {
 import { useStore } from '@/lib/api/store';
 import { collabsForCampaign } from '../v2Adapters';
 import type { V2Campaign, V2Creator, V2Collab } from '../data';
+import { useRecentActivity } from '../useRecentActivity';
 
 interface Props {
   onRoute: (r: string) => void;
@@ -167,16 +168,14 @@ export function BrandHome({ onRoute }: Props) {
   // Recent activity — chronological feed from notifications targeted at
   // the current brand user. Source of truth that "something happened" —
   // pulled from db.notifications which is where v2CampaignActions writes
-  // every cross-persona event (offer accepted, content submitted, etc.).
-  const recentActivity = useMemo(() => {
-    if (!brand) return [];
-    const brandUser = db.users.find((u) => u.brandId === brand.id);
-    if (!brandUser) return [];
-    return db.notifications
-      .filter((n) => n.userId === brandUser.id)
-      .sort((a, b) => +new Date(b.at) - +new Date(a.at))
-      .slice(0, 6);
-  }, [brand, db.notifications, db.users]);
+  // every cross-persona event. Sourced from server-persisted state
+  // (collab history + transactions + reviews) so the feed is consistent
+  // across devices — see screens/workspace-v2/useRecentActivity.ts.
+  const brandUserId = useMemo(() => {
+    if (!brand) return null;
+    return db.users.find((u) => u.brandId === brand.id)?.id ?? null;
+  }, [brand, db.users]);
+  const recentActivity = useRecentActivity(brandUserId, { limit: 6 });
 
   const urgentCount = inboxItems.filter((i) => i.urgent).length;
   const activeCampaigns = campaigns.filter((c) => c.status === 'Live');

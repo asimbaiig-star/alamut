@@ -18,6 +18,7 @@ import { creatorToV2 } from '../v2Adapters';
 import { useStore } from '@/lib/api/store';
 import type { V2Campaign, V2Creator } from '../data';
 import { RecentActivityCard } from './BrandHome';
+import { useRecentActivity } from '../useRecentActivity';
 // P6 §5.6 — compute on read instead of reading the (now-removed)
 // stored field.
 
@@ -51,6 +52,13 @@ export function CreatorHome({ onRoute }: Props) {
       </>
     );
   }
+
+  // Recent activity items — derived from server state, see useRecentActivity.
+  const myUserId = useMemo(
+    () => db.users.find((u) => u.creatorId === creator?.id)?.id ?? null,
+    [db.users, creator?.id],
+  );
+  const recentActivityItems = useRecentActivity(myUserId, { limit: 5 });
 
   // Today list — derive from real collab state
   const todoItems = useMemo(() => {
@@ -205,19 +213,15 @@ export function CreatorHome({ onRoute }: Props) {
         {/* Money hero */}
         <EarningsHero wallet={wallet} onRoute={onRoute} />
 
-        {/* Recent activity — cross-persona event feed sourced from
-            db.notifications. Shows new offers, approvals, payouts,
-            content-live confirmations as they happen. (s19) */}
-        {(() => {
-          const myUser = db.users.find((u) => u.creatorId === creator?.id);
-          if (!myUser) return null;
-          const items = db.notifications
-            .filter((n) => n.userId === myUser.id)
-            .sort((a, b) => +new Date(b.at) - +new Date(a.at))
-            .slice(0, 5);
-          if (items.length === 0) return null;
-          return <CreatorRecentActivity items={items} onRoute={onRoute} />;
-        })()}
+        {/* Recent activity — cross-persona event feed derived from
+            server-persisted state (collab history + transactions +
+            reviews) via useRecentActivity. Cross-device consistent.
+            Shows new offers, approvals, payouts, content-live
+            confirmations as they happen. (s19) */}
+        {recentActivityItems.length > 0 && (
+          <CreatorRecentActivity items={recentActivityItems} onRoute={onRoute} />
+        )}
+
 
         {/* Today + Brief matches */}
         <div className="v2-home-row" style={{ marginBottom: 32 }}>
