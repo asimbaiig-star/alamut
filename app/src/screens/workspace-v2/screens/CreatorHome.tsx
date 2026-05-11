@@ -230,6 +230,14 @@ export function CreatorHome({ onRoute }: Props) {
           />
         </div>
 
+        {/* Saved for later — only rendered when the creator has bookmarked
+            at least one brief from the Browse campaigns CampaignTile. */}
+        <SavedForLater
+          me={me}
+          campaigns={allCampaigns}
+          onRoute={onRoute}
+        />
+
         {/* Storefront pulse + Audience */}
         <div className="v2-home-row" style={{ marginBottom: 32 }}>
           <StorefrontPulse me={me} onRoute={onRoute} />
@@ -840,5 +848,200 @@ function CreatorTip({ onRoute }: { onRoute: (r: string) => void }) {
         </div>
       </div>
     </div>
+  );
+}
+
+// =====================================================================
+// Saved for later — bookmarks tile
+// =====================================================================
+//
+// Surfaces the creator's `savedBriefs[]` collection on Home so saved
+// campaigns get re-encountered. Renders up to 4 compact rows; when
+// there are more, a "View all N saved →" footer link deep-links to
+// `creator-campaigns?filter=saved` (the Browse campaigns surface
+// pre-filtered to saved-only). Hidden entirely when the list is empty.
+
+const SAVED_TILE_LIMIT = 4;
+
+// Same deterministic brand palette as the editorial CampaignTile so the
+// mini-thumbs match the bigger surfaces visually.
+const _SAVED_BRAND_PALETTE: { bg: string; ink: string }[] = [
+  { bg: '#2A3F6E', ink: '#FBF7EE' },
+  { bg: '#5C2A1E', ink: '#FBF7EE' },
+  { bg: '#1F3527', ink: '#FBF7EE' },
+  { bg: '#7A2B22', ink: '#FBF7EE' },
+  { bg: '#3E2F4A', ink: '#FBF7EE' },
+  { bg: '#1C1A15', ink: '#FBF7EE' },
+];
+function _savedBrandColour(name: string): { bg: string; ink: string } {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
+  return _SAVED_BRAND_PALETTE[Math.abs(h) % _SAVED_BRAND_PALETTE.length];
+}
+
+function SavedForLater({ me, campaigns, onRoute }: {
+  me: V2Creator;
+  campaigns: V2Campaign[];
+  onRoute: (r: string) => void;
+}) {
+  const db = useStore((s) => s.db);
+  const meRaw = db.creators.find((c) => c.id === me.id);
+  const savedIds = meRaw?.savedBriefs ?? [];
+
+  // Resolve to actual campaigns (filtering out any saved IDs that were
+  // closed/deleted) and preserve save order — most-recently-saved last.
+  const savedCampaigns = useMemo(
+    () => savedIds
+      .map((id) => campaigns.find((c) => c.id === id))
+      .filter((c): c is V2Campaign => !!c && c.status !== 'Completed'),
+    [savedIds, campaigns],
+  );
+
+  if (savedCampaigns.length === 0) return null;
+  const visible = savedCampaigns.slice(0, SAVED_TILE_LIMIT);
+  const remaining = savedCampaigns.length - visible.length;
+
+  return (
+    <section
+      className="v2-card v2-card-pad"
+      style={{ marginBottom: 32 }}
+    >
+      <div
+        className="v2-row"
+        style={{ justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 14 }}
+      >
+        <div>
+          <div className="v2-eyebrow">Saved for later</div>
+          <p className="v2-muted" style={{ margin: '3px 0 0', fontSize: 12.5 }}>
+            Briefs you bookmarked while browsing — come back when you have a window.
+          </p>
+        </div>
+        <span
+          className="v2-tabular v2-muted"
+          style={{
+            fontSize: 11,
+            background: 'var(--v2-bg-1)',
+            padding: '3px 9px',
+            borderRadius: 99,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {savedCampaigns.length} saved
+        </span>
+      </div>
+
+      <ul
+        style={{
+          listStyle: 'none',
+          margin: 0,
+          padding: 0,
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+          gap: 8,
+        }}
+      >
+        {visible.map((c) => {
+          const accent = _savedBrandColour(c.brand);
+          const perCreator = Math.round(c.budget / Math.max(c.creators.length, 4));
+          const daysLeft = Math.max(
+            0,
+            Math.ceil((+new Date(c.deadline) - Date.now()) / 86_400_000),
+          );
+          return (
+            <li key={c.id}>
+              <button
+                type="button"
+                onClick={() => onRoute(`brief:${c.id}`)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '10px 12px',
+                  borderRadius: 10,
+                  background: 'var(--v2-bg-1)',
+                  border: '1px solid var(--v2-line)',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  width: '100%',
+                  transition: 'border-color 140ms ease, transform 140ms ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--v2-accent)';
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--v2-line)';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                }}
+              >
+                {/* Brand-coloured mark — matches the CampaignTile letterhead */}
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 8,
+                    background: accent.bg,
+                    color: accent.ink,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontFamily: 'var(--v2-font-display)',
+                    fontWeight: 600,
+                    fontSize: 16,
+                    flexShrink: 0,
+                  }}
+                >
+                  {c.brand[0]}
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 13.5,
+                      fontWeight: 550,
+                      color: 'var(--v2-ink)',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {c.name}
+                  </div>
+                  <div
+                    className="v2-muted"
+                    style={{ fontSize: 11.5, marginTop: 2 }}
+                  >
+                    {c.brand} · {fmtUSD(perCreator)}/creator · {daysLeft > 0 ? `${daysLeft}d left` : 'Ended'}
+                  </div>
+                </div>
+                <span aria-hidden="true" style={{ color: 'var(--v2-ink-3)', flexShrink: 0 }}>
+                  {Icon.arrow}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+
+      {remaining > 0 && (
+        <div
+          style={{
+            marginTop: 12,
+            paddingTop: 12,
+            borderTop: '1px solid var(--v2-line)',
+            textAlign: 'right',
+          }}
+        >
+          <button
+            type="button"
+            className="v2-btn v2-btn-outline v2-btn-sm"
+            onClick={() => onRoute('creator-campaigns?filter=saved')}
+          >
+            View all {savedCampaigns.length} saved {Icon.arrow}
+          </button>
+        </div>
+      )}
+    </section>
   );
 }

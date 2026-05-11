@@ -317,7 +317,19 @@ function RouteOutlet({ route, onRoute, persona }: { route: string; onRoute: (r: 
   if (route === 'creator-home') return <CreatorHome onRoute={onRoute} />;
   if (route === 'storefront') return <Storefront onRoute={onRoute} />;
   if (route === 'creator-collabs') return <MyCollabs onRoute={onRoute} />;
-  if (route === 'creator-campaigns') return <BrowseBriefs onRoute={onRoute} />;
+  if (route === 'creator-campaigns' || route.startsWith('creator-campaigns?')) {
+    // `creator-campaigns?filter=saved` pre-applies the saved-only
+    // filter so the "Saved for later" home tile lands the creator
+    // straight inside their bookmarks.
+    const queryStr = route.includes('?') ? route.split('?')[1] : '';
+    const params = new URLSearchParams(queryStr);
+    return (
+      <BrowseBriefs
+        onRoute={onRoute}
+        initialFilter={(params.get('filter') as never) ?? undefined}
+      />
+    );
+  }
   if (route === 'creator-inbox') return <Inbox onRoute={onRoute} persona="creator" />;
   if (route === 'analytics') return <Analytics onRoute={onRoute} />;
   if (route === 'creator-wallet') return <CreatorWallet onRoute={onRoute} />;

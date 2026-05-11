@@ -14,6 +14,11 @@ import type { Creator } from '@/lib/api/types';
 
 interface Props {
   onRoute: (r: string) => void;
+  /** Optional preset filter applied on mount. When the route arrives
+   *  as `creator-campaigns?filter=saved` (from CreatorHome's "Saved
+   *  for later" tile), the saved-only filter starts active so the
+   *  creator lands directly inside their bookmark list. */
+  initialFilter?: 'saved';
 }
 
 type Status = 'all' | 'Live' | 'Planned';
@@ -34,15 +39,22 @@ const SORT_OPTIONS: { id: SortKey; label: string }[] = [
   { id: 'fit',      label: 'Best fit for me' },
 ];
 
-export function BrowseBriefs({ onRoute }: Props) {
+export function BrowseBriefs({ onRoute, initialFilter }: Props) {
   const me = useV2CurrentCreator();
   const allCampaigns = useV2AllCampaigns();
+  const db = useStore((s) => s.db);
+  // Resolve the raw Creator row so we can read savedBriefs[].
+  // useV2CurrentCreator returns the V2Creator projection.
+  const meRaw = me ? db.creators.find((c) => c.id === me.id) : undefined;
 
   const [query, setQuery] = useState('');
   // P1b §1.2: 'Active' was dropped (it conflated per-collab progress with
   // campaign-level state). 'Live' is the only "currently accepting" filter.
   const [status, setStatus] = useState<Status>('all');
   const [fitOnly, setFitOnly] = useState(false);
+  // Saved-only filter — toggled via the chip in the filter strip, or
+  // pre-set by the `?filter=saved` deep-link from CreatorHome.
+  const [savedOnly, setSavedOnly] = useState(initialFilter === 'saved');
   const [category, setCategory] = useState<string>('any');
   const [budget, setBudget] = useState<BudgetBand>('any');
   const [sort, setSort] = useState<SortKey>('newest');
@@ -71,6 +83,10 @@ export function BrowseBriefs({ onRoute }: Props) {
     if (status !== 'all') r = r.filter((c) => c.status === status);
     if (fitOnly && me) {
       r = r.filter((c) => c.creators.includes(me.id));
+    }
+    if (savedOnly) {
+      const saved = new Set(meRaw?.savedBriefs ?? []);
+      r = r.filter((c) => saved.has(c.id));
     }
     if (category !== 'any') {
       r = r.filter((c) => (c.category ?? '').toLowerCase() === category.toLowerCase());
@@ -114,7 +130,7 @@ export function BrowseBriefs({ onRoute }: Props) {
         r.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
     }
     return r;
-  }, [allCampaigns, status, fitOnly, category, budget, query, sort, me]);
+  }, [allCampaigns, status, fitOnly, savedOnly, meRaw, category, budget, query, sort, me]);
 
   const liveCount = allCampaigns.filter((c) => c.status === 'Live').length;
 
@@ -122,14 +138,18 @@ export function BrowseBriefs({ onRoute }: Props) {
   const activeFilterCount =
     (status !== 'all' ? 1 : 0) +
     (fitOnly ? 1 : 0) +
+    (savedOnly ? 1 : 0) +
     (category !== 'any' ? 1 : 0) +
     (budget !== 'any' ? 1 : 0) +
     (query.trim() ? 1 : 0);
+
+  const savedCount = meRaw?.savedBriefs?.length ?? 0;
 
   const clearAll = () => {
     setQuery('');
     setStatus('all');
     setFitOnly(false);
+    setSavedOnly(false);
     setCategory('any');
     setBudget('any');
   };
@@ -141,6 +161,7 @@ export function BrowseBriefs({ onRoute }: Props) {
   if (query.trim())     activeChips.push({ key: 'q',   label: `“${query.trim()}”`,                                clear: () => setQuery('') });
   if (status !== 'all') activeChips.push({ key: 's',   label: status === 'Live' ? 'Live only' : 'Coming soon',     clear: () => setStatus('all') });
   if (fitOnly)          activeChips.push({ key: 'fit', label: 'Fit for me',                                        clear: () => setFitOnly(false) });
+  if (savedOnly)        activeChips.push({ key: 'sv',  label: 'Saved only',                                        clear: () => setSavedOnly(false) });
   if (budget !== 'any') activeChips.push({ key: 'b',   label: BUDGET_BANDS.find((b) => b.id === budget)?.label ?? '', clear: () => setBudget('any') });
   if (category !== 'any') activeChips.push({ key: 'c', label: category,                                            clear: () => setCategory('any') });
 
@@ -283,6 +304,16 @@ export function BrowseBriefs({ onRoute }: Props) {
             label="Fit for me"
             active={fitOnly}
             onChange={() => setFitOnly((v) => !v)}
+          />
+
+          {/* Saved-only toggle. Disabled when the creator hasn't saved
+              anything yet (the chip stays inactive + tooltip explains).
+              Active state matches Fit-for-me visually for consistency. */}
+          <ToggleChip
+            label={savedCount > 0 ? `Saved · ${savedCount}` : 'Saved'}
+            active={savedOnly}
+            onChange={() => setSavedOnly((v) => !v)}
+            disabled={savedCount === 0}
           />
 
           <span className="v2-spacer" />
@@ -644,28 +675,32 @@ function ChipDropdown({ label, value, options, onChange }: {
 // Single-action toggle chip — for binary filters like "Fit for me".
 // Soft-accent fill when on; outline when off. Smaller checkbox-as-pill
 // pattern than the old inline label.
-function ToggleChip({ label, active, onChange }: {
+function ToggleChip({ label, active, onChange, disabled }: {
   label: string;
   active: boolean;
   onChange: () => void;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onChange}
+      disabled={disabled}
       aria-pressed={active}
+      title={disabled ? 'Save a brief from any tile to enable this filter' : undefined}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
         gap: 6,
         padding: '6px 12px',
         background: active ? 'var(--v2-accent-soft)' : 'var(--v2-paper)',
-        color: active ? 'var(--v2-accent)' : 'var(--v2-ink-2)',
+        color: active ? 'var(--v2-accent)' : disabled ? 'var(--v2-ink-3)' : 'var(--v2-ink-2)',
         border: `1px solid ${active ? 'var(--v2-accent)' : 'var(--v2-line)'}`,
         borderRadius: 'var(--v2-r-pill)',
         fontSize: 13,
         fontWeight: active ? 600 : 500,
-        cursor: 'pointer',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.55 : 1,
         fontFamily: 'inherit',
         transition: 'all 120ms ease',
       }}
