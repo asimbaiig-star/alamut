@@ -196,6 +196,27 @@ function cancelCollabInternal(
     if (ctr && ctr.status === 'active') {
       ctr.status = 'cancelled';
       ctr.cancelledAt = Date.now();
+      // Phase 6 — fire-and-forget mirror of the cancel flip to Supabase.
+      const cancelledAtMs = ctr.cancelledAt;
+      const ctrId = ctr.id;
+      if (typeof window !== 'undefined') {
+        void (async () => {
+          try {
+            const { isSupabaseConfigured } = await import('@/lib/supabase');
+            if (!isSupabaseConfigured()) return;
+            const { updateContractInSupabase } = await import('@/lib/data/contractsRepo');
+            await updateContractInSupabase(ctrId, {
+              status: 'cancelled',
+              cancelledAt: cancelledAtMs,
+            });
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (/row-level security|no rows|0 rows|not found/i.test(msg)) return;
+            // eslint-disable-next-line no-console
+            console.warn('[contract cancelled mirror] failed:', msg);
+          }
+        })();
+      }
     }
   }
 

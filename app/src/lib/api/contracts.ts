@@ -8,6 +8,13 @@
 //
 // The two stay in lockstep — when the agreement shape changes, both
 // migrator 5 and this helper update.
+//
+// Phase 6 — both write paths fire-and-forget mirror to Supabase. Tapping
+// the two helpers here covers all four call sites (v2AcceptOffer +
+// v2AcceptCounter for INSERT, v2ApproveContent payout + v2ResolveDispute
+// for the fulfilled UPDATE) without scattering mirror calls. Cancel-path
+// status flips happen directly in v2CollabActions (no helper to tap) so
+// that mirror is wired at the call site there.
 
 import type {
   Database, Contract, ContractDeliverableSnapshot, Offer,
@@ -83,6 +90,28 @@ export function createContractForAcceptedOffer(
   };
   db.contracts.push(contract);
   collab.contractId = id;
+
+  // Phase 6 — mirror the new contract to Supabase. Fire-and-forget so
+  // the local tx() commits regardless. Same shape as the collab mirror
+  // in collabSync.ts: dynamic import keeps Supabase out of hot paths,
+  // env-gate short-circuits when unconfigured, and we silence the
+  // expected RLS / FK errors for rows that live only locally.
+  if (typeof window !== 'undefined') {
+    void (async () => {
+      try {
+        const { isSupabaseConfigured } = await import('@/lib/supabase');
+        if (!isSupabaseConfigured()) return;
+        const { insertContractInSupabase } = await import('@/lib/data/contractsRepo');
+        await insertContractInSupabase(contract);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (/row-level security|new row violates|foreign key|duplicate key|no rows|0 rows|not found/i.test(msg)) return;
+        // eslint-disable-next-line no-console
+        console.warn('[contract insert mirror] failed:', msg);
+      }
+    })();
+  }
+
   return id;
 }
 
@@ -108,4 +137,24 @@ export function markContractFulfilled(
   if (!c || c.status === 'fulfilled' || c.status === 'cancelled') return;
   c.status = 'fulfilled';
   c.fulfilledAt = fulfilledAtMs;
+
+  // Phase 6 — mirror the status flip to Supabase. Fire-and-forget.
+  if (typeof window !== 'undefined') {
+    void (async () => {
+      try {
+        const { isSupabaseConfigured } = await import('@/lib/supabase');
+        if (!isSupabaseConfigured()) return;
+        const { updateContractInSupabase } = await import('@/lib/data/contractsRepo');
+        await updateContractInSupabase(contractId, {
+          status: 'fulfilled',
+          fulfilledAt: fulfilledAtMs,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (/row-level security|no rows|0 rows|not found/i.test(msg)) return;
+        // eslint-disable-next-line no-console
+        console.warn('[contract fulfilled mirror] failed:', msg);
+      }
+    })();
+  }
 }
