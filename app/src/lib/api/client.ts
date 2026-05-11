@@ -122,6 +122,61 @@ async function signUp(input: SignUpInput) {
   return user;
 }
 
+/** Cross-device sign-in fallback: when Supabase auth verified the
+ *  email but we have no matching local User row (signup happened on
+ *  another device / browser), reconstruct the User from the migrated
+ *  brands.owner_email / creators.owner_email columns. The synthesized
+ *  user gets pushed into db.users so the rest of the app — which still
+ *  reads through useStore — works identically.
+ *
+ *  Returns the synthesized User or null if neither brands nor creators
+ *  has a row owned by this email. */
+async function resolveUserFromSupabaseByEmail(email: string): Promise<User | null> {
+  if (!isSupabaseConfigured()) return null;
+  const sb = getSupabase();
+  const [brandRes, creatorRes] = await Promise.all([
+    sb.from('brands').select('id, name').eq('owner_email', email).maybeSingle(),
+    sb.from('creators').select('id, name').eq('owner_email', email).maybeSingle(),
+  ]);
+  const brand = brandRes.data;
+  const creator = creatorRes.data;
+  if (!brand && !creator) return null;
+
+  // Deterministic user id from email so a creator who signs in across
+  // devices ends up with the same User.id every time (no duplicates,
+  // no collab/notification re-attribution). djb2 hash is good enough
+  // for collision-resistance in a single-tenant demo.
+  const hash = email.split('').reduce((h, c) => ((h * 33 + c.charCodeAt(0)) >>> 0), 5381).toString(36);
+  const userId = `u_x_${hash}`;
+  const now = nowISO();
+
+  // Prefer creator when both happen to point at the same email (rare
+  // but possible if someone owns both a brand and a creator profile).
+  // Brand-side ownership tends to be the team admin, so picking creator
+  // here keeps the demo-friendly behaviour where the personal storefront
+  // takes precedence over team-admin context.
+  const user: User = creator
+    ? {
+        id: userId,
+        email,
+        passwordHash: '', // Supabase owns the credential
+        role: 'creator',
+        status: 'active',
+        createdAt: now,
+        creatorId: creator.id,
+      }
+    : {
+        id: userId,
+        email,
+        passwordHash: '',
+        role: 'brand',
+        status: 'active',
+        createdAt: now,
+        brandId: brand!.id,
+      };
+  return user;
+}
+
 async function signIn(email: string, password: string) {
   // Phase 1 — Supabase Auth path. When Supabase env vars are set we
   // delegate credential verification to Supabase first (real auth,
@@ -157,11 +212,33 @@ async function signIn(email: string, password: string) {
     // carries the profile metadata (brandId / creatorId / role) the
     // rest of the app reads.
     const db = useStore.getState().db;
-    const localUser = db.users.find((u) => u.email === cleanEmail);
+    let localUser = db.users.find((u) => u.email === cleanEmail);
+
+    // Cross-device fallback: if local lookup fails (signup happened
+    // elsewhere — different device, fresh browser, post-storage-wipe),
+    // synthesize the User from Postgres `brands.owner_email` /
+    // `creators.owner_email`. Both columns are migrated (Phase 2 + 5a)
+    // so they're the canonical cross-device source of truth for "who
+    // owns what."
     if (!localUser) {
-      // Real auth succeeded but we have no local profile for this
-      // email yet — sign out of Supabase to avoid a half-signed-in
-      // state, then surface a clear error.
+      const resolved = await resolveUserFromSupabaseByEmail(cleanEmail);
+      if (resolved) {
+        // Push into the local store so subsequent reads (useAuth,
+        // selectors, etc.) find the User without round-tripping again.
+        tx((d) => {
+          if (!d.users.some((u) => u.id === resolved.id)) {
+            d.users.push(resolved);
+          }
+        });
+        localUser = resolved;
+      }
+    }
+
+    if (!localUser) {
+      // Real auth succeeded but neither the local store nor Postgres
+      // has a brand/creator owned by this email. This means signup
+      // never completed the profile-creation step — sign out of
+      // Supabase so we don't sit in a half-signed-in state.
       await sb.auth.signOut();
       throw new ApiError(
         'not_found',
