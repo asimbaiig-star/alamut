@@ -803,7 +803,21 @@ function CreatorOfTheWeek({ creator, onRoute }: { creator: V2Creator; onRoute: (
           Spark thinks you'd hit it off with…
         </h3>
       </div>
-      <div className="v2-card-pad" style={{ paddingTop: 0, marginTop: -32 }}>
+      <div
+        className="v2-card-pad"
+        style={{
+          paddingTop: 0,
+          marginTop: -32,
+          // The banner above uses `position: relative`, which puts it
+          // above non-positioned siblings in the stacking order. Without
+          // matching positioning + z-index here, the avatar's intended
+          // overlap into the banner ends up *behind* the banner. Giving
+          // the content section its own positioning context with z-index
+          // 1 makes the avatar float over the banner as designed.
+          position: 'relative',
+          zIndex: 1,
+        }}
+      >
         <div className="v2-row" style={{ alignItems: 'flex-end', marginBottom: 14, gap: 14 }}>
           <div
             className="v2-avatar"
@@ -815,6 +829,11 @@ function CreatorOfTheWeek({ creator, onRoute }: { creator: V2Creator; onRoute: (
               borderRadius: '50%',
               backgroundSize: 'cover',
               backgroundPosition: 'center',
+              // Lift the avatar specifically above any sibling so the
+              // 32px overlap into the banner renders cleanly even when
+              // the row's flex baseline changes with viewport text size.
+              boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
+              flexShrink: 0,
             }}
             aria-hidden="true"
           />
