@@ -1,79 +1,218 @@
 // BrowseBriefs.tsx — v2 creator-side brief marketplace
 //
 // The creator counterpart to brand Discover: live campaigns the
-// creator can apply to. Card grid + simple filters (status, category,
-// fit-for-me toggle).
+// creator can apply to. Top-of-page search + filter chips
+// (category, budget band, fit-for-me) + sort dropdown over a card
+// grid. Sidebar surfaces this as "Browse campaigns".
 
 import { useMemo, useState } from 'react';
 import { fmtUSD, Icon, Topbar } from '../lib';
 import { type V2Campaign } from '../data';
 import { useV2AllCampaigns, useV2CurrentCreator } from '../v2Hooks';
-import { pushToast } from '@/lib/utils/toast';
 
 interface Props {
   onRoute: (r: string) => void;
 }
 
+type Status = 'all' | 'Live' | 'Planned';
+type BudgetBand = 'any' | 'under5' | 'mid' | 'over15';
+type SortKey = 'newest' | 'budget' | 'deadline' | 'fit';
+
+const BUDGET_BANDS: { id: BudgetBand; label: string; test: (b: number) => boolean }[] = [
+  { id: 'any',     label: 'Any budget',         test: () => true },
+  { id: 'under5',  label: 'Under $5K',          test: (b) => b < 5_000 },
+  { id: 'mid',     label: '$5K – $15K',         test: (b) => b >= 5_000 && b <= 15_000 },
+  { id: 'over15',  label: 'Over $15K',          test: (b) => b > 15_000 },
+];
+
+const SORT_OPTIONS: { id: SortKey; label: string }[] = [
+  { id: 'newest',   label: 'Newest first' },
+  { id: 'budget',   label: 'Highest budget' },
+  { id: 'deadline', label: 'Closest deadline' },
+  { id: 'fit',      label: 'Best fit for me' },
+];
+
 export function BrowseBriefs({ onRoute }: Props) {
-  // P1b §1.2: 'Active' was dropped (it conflated per-collab progress with
-  // campaign-level state). 'Live' is the only "currently accepting" filter.
-  const [status, setStatus] = useState<'all' | 'Live' | 'Planned'>('all');
-  const [fitOnly, setFitOnly] = useState(false);
   const me = useV2CurrentCreator();
   const allCampaigns = useV2AllCampaigns();
 
+  const [query, setQuery] = useState('');
+  // P1b §1.2: 'Active' was dropped (it conflated per-collab progress with
+  // campaign-level state). 'Live' is the only "currently accepting" filter.
+  const [status, setStatus] = useState<Status>('all');
+  const [fitOnly, setFitOnly] = useState(false);
+  const [category, setCategory] = useState<string>('any');
+  const [budget, setBudget] = useState<BudgetBand>('any');
+  const [sort, setSort] = useState<SortKey>('newest');
+
+  // Derive category options from the actual campaigns the creator can
+  // see — keeps the filter list honest (no empty-result categories) and
+  // ranks by frequency so the most-active ones lead.
+  const categoryOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const c of allCampaigns) {
+      if (c.status === 'Completed') continue;
+      const cat = c.category?.trim();
+      if (!cat) continue;
+      counts.set(cat, (counts.get(cat) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([name]) => name);
+  }, [allCampaigns]);
+
   const briefs = useMemo(() => {
     let r = allCampaigns.slice();
-    if (status !== 'all') r = r.filter((c) => c.status === status);
-    if (fitOnly && me) {
-      // "Fit for me" = creator is in the roster OR shortlisted.
-      r = r.filter((c) => c.creators.includes(me.id));
-    }
     // Hide Completed by default since they're not actionable
     r = r.filter((c) => c.status !== 'Completed');
-    // Newest-first so freshly-posted briefs surface at the top.
-    r.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+
+    if (status !== 'all') r = r.filter((c) => c.status === status);
+    if (fitOnly && me) {
+      r = r.filter((c) => c.creators.includes(me.id));
+    }
+    if (category !== 'any') {
+      r = r.filter((c) => (c.category ?? '').toLowerCase() === category.toLowerCase());
+    }
+    const band = BUDGET_BANDS.find((b) => b.id === budget);
+    if (band) r = r.filter((c) => band.test(c.budget));
+    const q = query.trim().toLowerCase();
+    if (q) {
+      r = r.filter((c) =>
+        c.name.toLowerCase().includes(q) ||
+        c.brand.toLowerCase().includes(q) ||
+        (c.brief ?? '').toLowerCase().includes(q) ||
+        (c.category ?? '').toLowerCase().includes(q) ||
+        (c.placement ?? '').toLowerCase().includes(q),
+      );
+    }
+    // Sort
+    switch (sort) {
+      case 'budget':
+        r.sort((a, b) => b.budget - a.budget);
+        break;
+      case 'deadline': {
+        const score = (c: V2Campaign) => {
+          const d = +new Date(c.deadline) - Date.now();
+          // Past deadlines drop to the back; future closer first.
+          return d < 0 ? Number.POSITIVE_INFINITY : d;
+        };
+        r.sort((a, b) => score(a) - score(b));
+        break;
+      }
+      case 'fit':
+        r.sort((a, b) => {
+          const aFit = me && a.creators.includes(me.id) ? 1 : 0;
+          const bFit = me && b.creators.includes(me.id) ? 1 : 0;
+          if (aFit !== bFit) return bFit - aFit;
+          return +new Date(b.createdAt) - +new Date(a.createdAt);
+        });
+        break;
+      case 'newest':
+      default:
+        r.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+    }
     return r;
-  }, [allCampaigns, status, fitOnly, me]);
+  }, [allCampaigns, status, fitOnly, category, budget, query, sort, me]);
 
   const liveCount = allCampaigns.filter((c) => c.status === 'Live').length;
+
+  // Count active non-default filters — used for the "Clear all" affordance.
+  const activeFilterCount =
+    (status !== 'all' ? 1 : 0) +
+    (fitOnly ? 1 : 0) +
+    (category !== 'any' ? 1 : 0) +
+    (budget !== 'any' ? 1 : 0) +
+    (query.trim() ? 1 : 0);
+
+  const clearAll = () => {
+    setQuery('');
+    setStatus('all');
+    setFitOnly(false);
+    setCategory('any');
+    setBudget('any');
+  };
 
   return (
     <>
       <Topbar
-        title="Campaigns"
+        title="Browse campaigns"
         crumb={`${liveCount} live · matching your audience`}
         actions={
-          <button
-            className="v2-btn v2-btn-outline"
-            type="button"
-            onClick={() => pushToast('Saved searches coming soon — pin filters with the Fit-for-me toggle for now', 'default')}
+          <select
+            className="v2-input"
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortKey)}
+            style={{ minWidth: 180 }}
+            aria-label="Sort campaigns"
           >
-            {Icon.filter} Saved searches
-          </button>
+            {SORT_OPTIONS.map((o) => (
+              <option key={o.id} value={o.id}>Sort · {o.label}</option>
+            ))}
+          </select>
         }
       />
       <div className="v2-content">
-        {/* Filter bar */}
-        <div className="v2-card" style={{ padding: 16, marginBottom: 20 }}>
-          <div className="v2-row" style={{ gap: 8, flexWrap: 'wrap' }}>
-            <FilterPill
-              label="All briefs"
-              active={status === 'all'}
-              onClick={() => setStatus('all')}
+        {/* Search + filter bar */}
+        <div className="v2-card v2-card-pad" style={{ marginBottom: 20 }}>
+          {/* Search input — first visual hit at top, full width */}
+          <div style={{ position: 'relative', marginBottom: 12 }}>
+            <span
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                left: 12,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: 'var(--v2-ink-3)',
+                display: 'flex',
+              }}
+            >
+              {Icon.search}
+            </span>
+            <input
+              type="search"
+              className="v2-input"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by brand, brief title, category, or platform…"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              style={{
+                width: '100%',
+                paddingLeft: 38,
+                paddingRight: query ? 36 : 12,
+                fontSize: 14,
+              }}
             />
-            <FilterPill
-              label="Live"
-              active={status === 'Live'}
-              onClick={() => setStatus('Live')}
-              dot="var(--v2-accent)"
-            />
-            <FilterPill
-              label="Coming soon"
-              active={status === 'Planned'}
-              onClick={() => setStatus('Planned')}
-              dot="var(--v2-ink-3)"
-            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery('')}
+                aria-label="Clear search"
+                style={{
+                  position: 'absolute',
+                  right: 10,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: 'var(--v2-ink-3)',
+                  fontSize: 18,
+                  lineHeight: 1,
+                  padding: 4,
+                  fontFamily: 'inherit',
+                }}
+              >×</button>
+            )}
+          </div>
+
+          {/* Status pills */}
+          <div className="v2-row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+            <FilterPill label="All briefs"   active={status === 'all'}     onClick={() => setStatus('all')} />
+            <FilterPill label="Live"         active={status === 'Live'}    onClick={() => setStatus('Live')} dot="var(--v2-accent)" />
+            <FilterPill label="Coming soon"  active={status === 'Planned'} onClick={() => setStatus('Planned')} dot="var(--v2-ink-3)" />
             <span className="v2-spacer" />
             <label
               className="v2-row"
@@ -99,12 +238,58 @@ export function BrowseBriefs({ onRoute }: Props) {
               <span>Fit for me</span>
             </label>
           </div>
+
+          {/* Budget bands */}
+          <div className="v2-row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+            <span className="v2-eyebrow" style={{ alignSelf: 'center', minWidth: 56, fontSize: 10 }}>BUDGET</span>
+            {BUDGET_BANDS.map((b) => (
+              <FilterPill
+                key={b.id}
+                label={b.label}
+                active={budget === b.id}
+                onClick={() => setBudget(b.id)}
+              />
+            ))}
+          </div>
+
+          {/* Category chips — only render if there's more than one to choose between */}
+          {categoryOptions.length > 1 && (
+            <div className="v2-row" style={{ gap: 8, flexWrap: 'wrap' }}>
+              <span className="v2-eyebrow" style={{ alignSelf: 'center', minWidth: 56, fontSize: 10 }}>CATEGORY</span>
+              <FilterPill
+                label="All"
+                active={category === 'any'}
+                onClick={() => setCategory('any')}
+              />
+              {categoryOptions.map((cat) => (
+                <FilterPill
+                  key={cat}
+                  label={cat}
+                  active={category.toLowerCase() === cat.toLowerCase()}
+                  onClick={() => setCategory(cat)}
+                />
+              ))}
+            </div>
+          )}
         </div>
 
-        <div className="v2-row" style={{ justifyContent: 'space-between', marginBottom: 12 }}>
-          <div className="v2-muted">
-            {briefs.length} {briefs.length === 1 ? 'campaign' : 'campaigns'} · ranked by fit
+        <div className="v2-row" style={{ justifyContent: 'space-between', marginBottom: 12, alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+          <div className="v2-muted" style={{ fontSize: 13 }}>
+            {briefs.length} {briefs.length === 1 ? 'campaign' : 'campaigns'}
+            {activeFilterCount > 0 && (
+              <> · {activeFilterCount} filter{activeFilterCount === 1 ? '' : 's'} active</>
+            )}
+            {' · '}sorted by {SORT_OPTIONS.find((o) => o.id === sort)?.label.toLowerCase()}
           </div>
+          {activeFilterCount > 0 && (
+            <button
+              type="button"
+              className="v2-btn v2-btn-ghost v2-btn-sm"
+              onClick={clearAll}
+            >
+              Clear filters
+            </button>
+          )}
         </div>
 
         {briefs.length > 0 ? (
@@ -119,8 +304,34 @@ export function BrowseBriefs({ onRoute }: Props) {
             ))}
           </div>
         ) : (
-          <div className="v2-card v2-card-pad-lg" style={{ textAlign: 'center' }}>
-            <div className="v2-muted">No campaigns match — try widening filters.</div>
+          <div className="v2-card v2-card-pad-lg" style={{ textAlign: 'center', padding: 48 }}>
+            <div
+              aria-hidden="true"
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: 999,
+                background: 'var(--v2-bg-1)',
+                color: 'var(--v2-ink-3)',
+                margin: '0 auto 12px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              {Icon.search}
+            </div>
+            <div style={{ fontSize: 15, fontWeight: 550, marginBottom: 6 }}>
+              No campaigns match your filters
+            </div>
+            <div className="v2-muted" style={{ fontSize: 13, marginBottom: 14 }}>
+              {query.trim() ? `Nothing matches "${query.trim()}". ` : ''}Try widening the filters or clear them to see everything.
+            </div>
+            {activeFilterCount > 0 && (
+              <button type="button" className="v2-btn v2-btn-outline v2-btn-sm" onClick={clearAll}>
+                Clear filters
+              </button>
+            )}
           </div>
         )}
       </div>

@@ -59,7 +59,7 @@ const CREATOR_ROUTES = [
   { id: 'creator-home', label: 'Home', icon: Icon.home },
   { id: 'storefront', label: 'My storefront', icon: Icon.store },
   { id: 'creator-collabs', label: 'My collaborations', icon: Icon.campaign },
-  { id: 'creator-campaigns', label: 'Campaigns', icon: Icon.search },
+  { id: 'creator-campaigns', label: 'Browse campaigns', icon: Icon.search },
   { id: 'creator-inbox', label: 'Inbox', icon: Icon.inbox, count: 2 },
   { id: 'analytics', label: 'Analytics', icon: Icon.chart },
   { id: 'creator-wallet', label: 'Wallet', icon: Icon.wallet },
