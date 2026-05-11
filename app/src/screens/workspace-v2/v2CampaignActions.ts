@@ -61,8 +61,36 @@ import {
 // line of its `tx` block. If the actor lacks the capability the helper
 // throws; if no actor is set (test/seed mode) the check is bypassed.
 import { requireCapability, getActorUserId } from '@/lib/permissions';
-// Phase 2 — Supabase write path for brand updates. See brandsRepo.ts.
+// Phase 2 / 3 — Supabase write path for brand + campaign updates.
+// Reads continue going through the local store (which is hydrated
+// from Supabase at boot in lib/api/store.ts). Writes mirror locally
+// first (instant UI), then fire-and-forget against Supabase. The
+// helper below centralises the mirror so each action stays terse.
 import { isSupabaseConfigured } from '@/lib/supabase';
+
+/** Fire-and-forget Supabase mirror for a campaign mutation. Local
+ *  state has already been updated; this hands off the same change
+ *  to Postgres. Failures are logged (so they're diagnosable) but
+ *  never propagate to the caller — the UI stays responsive. The
+ *  "row not found in Supabase" case (typical for generated cmp_g*
+ *  campaigns whose brand also lives only locally) is silenced. */
+function mirrorCampaignToSupabase(
+  campaignId: string,
+  patch: Parameters<typeof import('@/lib/data/campaignsRepo').updateCampaignInSupabase>[1],
+): void {
+  if (!isSupabaseConfigured()) return;
+  void (async () => {
+    try {
+      const { updateCampaignInSupabase } = await import('@/lib/data/campaignsRepo');
+      await updateCampaignInSupabase(campaignId, patch);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/no rows|0 rows|not found|JSON object requested/i.test(msg)) return;
+      // eslint-disable-next-line no-console
+      console.warn('[campaign mirror] failed:', msg);
+    }
+  })();
+}
 
 const PLATFORM_FEE = 0.10;
 const WHT = 0.05;
@@ -1506,7 +1534,7 @@ export function v2SetSubmissionPermalink(
  * accepted offers stayed 'accepted' even after campaign-end.
  */
 export function v2EndCampaign(campaignId: string): Campaign | null {
-  return tx((db) => {
+  const result = tx((db) => {
     // P5 §4.1 — admin/ops only; finance and viewer cannot end campaigns.
     requireCapability(getActorUserId(), 'campaign.end', db);
 
@@ -1636,6 +1664,15 @@ export function v2EndCampaign(campaignId: string): Campaign | null {
     }
     return db.campaigns.find((c) => c.id === campaignId) ?? null;
   });
+  // Mirror stage + history + escrow to Supabase (Phase 3).
+  if (result) {
+    mirrorCampaignToSupabase(campaignId, {
+      stage: result.stage,
+      history: result.history,
+      escrowHeld: result.escrowHeld,
+    });
+  }
+  return result;
 }
 
 /**
@@ -1644,7 +1681,7 @@ export function v2EndCampaign(campaignId: string): Campaign | null {
  * application or active offer (s19 — was missing).
  */
 export function v2PauseCampaign(campaignId: string): Campaign | null {
-  return tx((db) => {
+  const result = tx((db) => {
     // P5 §4.1 — admin/ops only.
     requireCapability(getActorUserId(), 'campaign.pause', db);
 
@@ -1684,10 +1721,13 @@ export function v2PauseCampaign(campaignId: string): Campaign | null {
     }
     return db.campaigns[idx];
   });
+  // Mirror stage + history to Supabase (Phase 3).
+  if (result) mirrorCampaignToSupabase(campaignId, { stage: result.stage, history: result.history });
+  return result;
 }
 
 export function v2ResumeCampaign(campaignId: string): Campaign | null {
-  return tx((db) => {
+  const result = tx((db) => {
     // P5 §4.1 — same gate as pause.
     requireCapability(getActorUserId(), 'campaign.pause', db);
 
@@ -1726,6 +1766,9 @@ export function v2ResumeCampaign(campaignId: string): Campaign | null {
     }
     return db.campaigns[idx];
   });
+  // Mirror stage + history to Supabase (Phase 3).
+  if (result) mirrorCampaignToSupabase(campaignId, { stage: result.stage, history: result.history });
+  return result;
 }
 
 // =====================================================================
@@ -1831,7 +1874,7 @@ export function getLatestSubmissionFor(campaignId: string, creatorId: string) {
  * funds yet — funds reserve as offers get accepted.
  */
 export function v2LaunchCampaign(input: LaunchCampaignInput): Campaign | null {
-  return tx((db) => {
+  const result = tx((db) => {
     // P5 §4.1 — admin/ops only; finance + viewer cannot create campaigns.
     requireCapability(getActorUserId(), 'campaign.create', db);
 
@@ -1926,6 +1969,22 @@ export function v2LaunchCampaign(input: LaunchCampaignInput): Campaign | null {
 
     return camp;
   });
+  // Mirror the new row to Supabase (Phase 3). INSERT-only path —
+  // updateCampaignInSupabase won't work because the row doesn't
+  // exist yet. Falls through silently when Supabase isn't configured.
+  if (result && isSupabaseConfigured()) {
+    void (async () => {
+      try {
+        const { insertCampaignInSupabase } = await import('@/lib/data/campaignsRepo');
+        await insertCampaignInSupabase(result);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        // eslint-disable-next-line no-console
+        console.warn('[v2LaunchCampaign] Supabase insert failed:', msg);
+      }
+    })();
+  }
+  return result;
 }
 
 /**

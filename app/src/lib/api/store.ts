@@ -183,32 +183,49 @@ if (typeof window !== 'undefined') {
   });
 }
 
-// Phase 2 — Supabase boot hydration for brand rows. When Supabase is
-// configured we fetch the brands table once at startup and overlay any
-// rows that exist there onto the local Zustand store. Brands that
-// don't exist in Supabase yet (the ~78 generated b_gb* rows) keep
-// their seed values, so the demo experience stays full. Reads
-// elsewhere in the app continue going through `useStore` unchanged —
-// they just see fresh data for migrated brands.
+// Phase 2/3 — Supabase boot hydration. When Supabase is configured we
+// fetch every migrated table once at startup and overlay returned
+// rows onto the local Zustand cache by id. Rows that don't exist in
+// Supabase yet (e.g. generated b_gb* brands, cmp_g* campaigns) keep
+// their seed values. Reads elsewhere in the app continue going
+// through `useStore` unchanged — they just see fresh data for
+// migrated rows. Phase 4+ adds offers, applications, etc. to the
+// same list.
 if (typeof window !== 'undefined') {
   void (async () => {
     try {
-      const { fetchAllBrandsFromSupabase } = await import('@/lib/data/brandsRepo');
-      const remote = await fetchAllBrandsFromSupabase();
-      if (remote.length === 0) return;
+      const [brandsMod, campaignsMod] = await Promise.all([
+        import('@/lib/data/brandsRepo'),
+        import('@/lib/data/campaignsRepo'),
+      ]);
+      const [brands, campaigns] = await Promise.all([
+        brandsMod.fetchAllBrandsFromSupabase(),
+        campaignsMod.fetchAllCampaignsFromSupabase(),
+      ]);
+      if (brands.length === 0 && campaigns.length === 0) return;
       useStore.setState((s) => {
-        const byId = new Map(remote.map((b) => [b.id, b]));
-        const next = s.db.brands.map((b) => byId.get(b.id) ?? b);
-        // Append any Supabase brands that don't exist locally (future
-        // brands created via real sign-up).
-        const localIds = new Set(s.db.brands.map((b) => b.id));
-        for (const b of remote) if (!localIds.has(b.id)) next.push(b);
-        return { db: { ...s.db, brands: next } };
+        // Brand overlay
+        let nextBrands = s.db.brands;
+        if (brands.length > 0) {
+          const byId = new Map(brands.map((b) => [b.id, b]));
+          nextBrands = s.db.brands.map((b) => byId.get(b.id) ?? b);
+          const localIds = new Set(s.db.brands.map((b) => b.id));
+          for (const b of brands) if (!localIds.has(b.id)) nextBrands.push(b);
+        }
+        // Campaign overlay — same pattern.
+        let nextCampaigns = s.db.campaigns;
+        if (campaigns.length > 0) {
+          const byId = new Map(campaigns.map((c) => [c.id, c]));
+          nextCampaigns = s.db.campaigns.map((c) => byId.get(c.id) ?? c);
+          const localIds = new Set(s.db.campaigns.map((c) => c.id));
+          for (const c of campaigns) if (!localIds.has(c.id)) nextCampaigns.push(c);
+        }
+        return { db: { ...s.db, brands: nextBrands, campaigns: nextCampaigns } };
       });
     } catch (e) {
       // Network down / Supabase outage — local store stays as-is.
       // eslint-disable-next-line no-console
-      console.warn('[store] brand hydration skipped:', e);
+      console.warn('[store] hydration skipped:', e);
     }
   })();
 }
