@@ -194,21 +194,24 @@ if (typeof window !== 'undefined') {
 if (typeof window !== 'undefined') {
   void (async () => {
     try {
-      const [brandsMod, campaignsMod, applicationsMod, offersMod] = await Promise.all([
+      const [brandsMod, campaignsMod, applicationsMod, offersMod, creatorsMod] = await Promise.all([
         import('@/lib/data/brandsRepo'),
         import('@/lib/data/campaignsRepo'),
         import('@/lib/data/applicationsRepo'),
         import('@/lib/data/offersRepo'),
+        import('@/lib/data/creatorsRepo'),
       ]);
-      const [brands, campaigns, applications, offers] = await Promise.all([
+      const [brands, campaigns, applications, offers, creators] = await Promise.all([
         brandsMod.fetchAllBrandsFromSupabase(),
         campaignsMod.fetchAllCampaignsFromSupabase(),
         applicationsMod.fetchAllApplicationsFromSupabase(),
         offersMod.fetchAllOffersFromSupabase(),
+        creatorsMod.fetchAllCreatorsFromSupabase(),
       ]);
       if (
         brands.length === 0 && campaigns.length === 0 &&
-        applications.length === 0 && offers.length === 0
+        applications.length === 0 && offers.length === 0 &&
+        creators.length === 0
       ) return;
       useStore.setState((s) => {
         // Overlay helper — same pattern for every table.
@@ -227,6 +230,7 @@ if (typeof window !== 'undefined') {
             campaigns: overlay(s.db.campaigns, campaigns),
             applications: overlay(s.db.applications, applications),
             offers: overlay(s.db.offers, offers),
+            creators: overlay(s.db.creators, creators),
           },
         };
       });

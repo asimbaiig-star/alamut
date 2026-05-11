@@ -240,6 +240,8 @@ export function useV2BrandShortlist(): string[] {
  *  for the brand-side roster. Powers the save chip on the editorial
  *  CampaignTile. */
 export function v2ToggleSavedBrief(campaignId: string) {
+  let nextSavedBriefs: string[] | undefined;
+  let creatorId: string | undefined;
   tx((db) => {
     const session = useStore.getState().session;
     const viewerId = getViewerUserId(db, session?.userId ?? null, 'creator');
@@ -250,13 +252,27 @@ export function v2ToggleSavedBrief(campaignId: string) {
     const creator = db.creators[idx];
     const current = creator.savedBriefs ?? [];
     const has = current.includes(campaignId);
-    db.creators[idx] = {
-      ...creator,
-      savedBriefs: has
-        ? current.filter((id) => id !== campaignId)
-        : [...current, campaignId],
-    };
+    const next = has ? current.filter((id) => id !== campaignId) : [...current, campaignId];
+    db.creators[idx] = { ...creator, savedBriefs: next };
+    nextSavedBriefs = next;
+    creatorId = creator.id;
   });
+  // Phase 5 — mirror the savedBriefs column to Supabase. RLS gates
+  // by auth.email() = owner_email so only the right creator can
+  // land the write.
+  if (creatorId && nextSavedBriefs !== undefined) {
+    void (async () => {
+      try {
+        const { updateCreatorInSupabase } = await import('@/lib/data/creatorsRepo');
+        await updateCreatorInSupabase(creatorId!, { savedBriefs: nextSavedBriefs });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (/no rows|0 rows|not found|new row violates|row-level security/i.test(msg)) return;
+        // eslint-disable-next-line no-console
+        console.warn('[v2ToggleSavedBrief mirror] failed:', msg);
+      }
+    })();
+  }
 }
 
 /** Add (or remove) a creator id to/from the current brand's saved list. */

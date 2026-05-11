@@ -17,8 +17,64 @@
 
 import { tx } from '@/lib/api/store';
 import type {
-  Creator, Platform, RateCardEntry, Availability,
+  Creator, Platform, RateCardEntry, Availability, Database,
 } from '@/lib/api/types';
+// Phase 5 — Supabase mirror for creator self-service writes. The
+// helper below wraps every tx() so we don't have to thread mirror
+// calls through 21 separate mutations.
+import { isSupabaseConfigured } from '@/lib/supabase';
+
+/** Fire-and-forget Supabase mirror for any Creator field change.
+ *  Sends the full editable surface so the helper doesn't need to
+ *  know which mutation called it. RLS on the table enforces that
+ *  only the creator (auth.email() = owner_email) can land the
+ *  write — anyone else's mirror silently no-ops at the DB layer. */
+function mirrorCreatorToSupabase(creator: Creator): void {
+  if (!isSupabaseConfigured()) return;
+  void (async () => {
+    try {
+      const { updateCreatorInSupabase } = await import('@/lib/data/creatorsRepo');
+      await updateCreatorInSupabase(creator.id, {
+        name: creator.name,
+        handle: creator.handle,
+        tagline: creator.tagline,
+        bio: creator.bio,
+        cover: creator.cover,
+        portrait: creator.portrait,
+        city: creator.city,
+        country: creator.country,
+        languages: creator.languages,
+        categories: creator.categories,
+        work: creator.work,
+        pastClients: creator.pastClients,
+        platforms: creator.platforms,
+        rateCard: creator.rateCard,
+        rateCards: creator.rateCards,
+        payout: creator.payout,
+        availability: creator.availability ?? null,
+        featuredReviewIds: creator.featuredReviewIds,
+        savedBriefs: creator.savedBriefs,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Silence "row not found" (generated creators not in Supabase)
+      // and RLS rejections (not the row's owner — e.g. brand-side
+      // helpers that touch creator data they don't own).
+      if (/no rows|0 rows|not found|JSON object requested|new row violates|row-level security/i.test(msg)) return;
+      // eslint-disable-next-line no-console
+      console.warn('[creator mirror] failed:', msg);
+    }
+  })();
+}
+
+/** Wrap `tx(...)` so the result also mirrors to Supabase when the
+ *  caller produced a non-null Creator. Every v2Creator* mutation
+ *  threads through this so the v2CreatorActions API stays sync. */
+function txCreator(fn: (db: Database) => Creator | null): Creator | null {
+  const r = tx(fn);
+  if (r) mirrorCreatorToSupabase(r);
+  return r;
+}
 
 // =====================================================================
 // Identity (name, handle, bio, city, categories, country)
@@ -44,7 +100,7 @@ export interface IdentityPatch {
  * rest of the schema.
  */
 export function v2UpdateCreatorIdentity(creatorId: string, patch: IdentityPatch): Creator | null {
-  return tx((db) => {
+  return txCreator((db) => {
     const idx = db.creators.findIndex((c) => c.id === creatorId);
     if (idx === -1) return null;
     const c = db.creators[idx];
@@ -84,7 +140,7 @@ function recomputeAggregates(platforms: Platform[]): { reach: number; engagement
 }
 
 export function v2AddCreatorChannel(creatorId: string, channel: Platform): Creator | null {
-  return tx((db) => {
+  return txCreator((db) => {
     const idx = db.creators.findIndex((c) => c.id === creatorId);
     if (idx === -1) return null;
     const c = db.creators[idx];
@@ -120,7 +176,7 @@ export function v2VerifyChannel(
   creatorId: string,
   channelIndex: number,
 ): Creator | null {
-  return tx((db) => {
+  return txCreator((db) => {
     const idx = db.creators.findIndex((c) => c.id === creatorId);
     if (idx === -1) return null;
     const c = db.creators[idx];
@@ -140,7 +196,7 @@ export function v2UpdateCreatorChannel(
   channelIndex: number,
   changes: Partial<Platform>,
 ): Creator | null {
-  return tx((db) => {
+  return txCreator((db) => {
     const idx = db.creators.findIndex((c) => c.id === creatorId);
     if (idx === -1) return null;
     const c = db.creators[idx];
@@ -153,7 +209,7 @@ export function v2UpdateCreatorChannel(
 }
 
 export function v2RemoveCreatorChannel(creatorId: string, channelIndex: number): Creator | null {
-  return tx((db) => {
+  return txCreator((db) => {
     const idx = db.creators.findIndex((c) => c.id === creatorId);
     if (idx === -1) return null;
     const c = db.creators[idx];
@@ -181,7 +237,7 @@ export function v2UpdateLegacyRateCard(
   creatorId: string,
   patch: Partial<{ post: string; reel: string; story: string; longform: string }>,
 ): Creator | null {
-  return tx((db) => {
+  return txCreator((db) => {
     const idx = db.creators.findIndex((c) => c.id === creatorId);
     if (idx === -1) return null;
     const c = db.creators[idx];
@@ -199,7 +255,7 @@ export function v2UpdateLegacyRateCard(
 }
 
 export function v2AddRateCardEntry(creatorId: string, entry: Omit<RateCardEntry, 'id'>): Creator | null {
-  return tx((db) => {
+  return txCreator((db) => {
     const idx = db.creators.findIndex((c) => c.id === creatorId);
     if (idx === -1) return null;
     const c = db.creators[idx];
@@ -220,7 +276,7 @@ export function v2UpdateRateCardEntry(
   entryId: string,
   changes: Partial<RateCardEntry>,
 ): Creator | null {
-  return tx((db) => {
+  return txCreator((db) => {
     const idx = db.creators.findIndex((c) => c.id === creatorId);
     if (idx === -1) return null;
     const c = db.creators[idx];
@@ -234,7 +290,7 @@ export function v2UpdateRateCardEntry(
 }
 
 export function v2RemoveRateCardEntry(creatorId: string, entryId: string): Creator | null {
-  return tx((db) => {
+  return txCreator((db) => {
     const idx = db.creators.findIndex((c) => c.id === creatorId);
     if (idx === -1) return null;
     const c = db.creators[idx];
@@ -249,7 +305,7 @@ export function v2RemoveRateCardEntry(creatorId: string, entryId: string): Creat
 // =====================================================================
 
 export function v2AddPastBrand(creatorId: string, brandName: string): Creator | null {
-  return tx((db) => {
+  return txCreator((db) => {
     const idx = db.creators.findIndex((c) => c.id === creatorId);
     if (idx === -1) return null;
     const c = db.creators[idx];
@@ -261,7 +317,7 @@ export function v2AddPastBrand(creatorId: string, brandName: string): Creator | 
 }
 
 export function v2RemovePastBrand(creatorId: string, brandName: string): Creator | null {
-  return tx((db) => {
+  return txCreator((db) => {
     const idx = db.creators.findIndex((c) => c.id === creatorId);
     if (idx === -1) return null;
     const c = db.creators[idx];
@@ -275,7 +331,7 @@ export function v2RemovePastBrand(creatorId: string, brandName: string): Creator
 // =====================================================================
 
 export function v2UpdateAvailability(creatorId: string, availability: Availability): Creator | null {
-  return tx((db) => {
+  return txCreator((db) => {
     const idx = db.creators.findIndex((c) => c.id === creatorId);
     if (idx === -1) return null;
     db.creators[idx] = { ...db.creators[idx], availability };
@@ -292,7 +348,7 @@ export function v2UpdateAvailability(creatorId: string, availability: Availabili
 // drilldown thumbnails.
 
 export function v2AddWorkSample(creatorId: string, url: string): Creator | null {
-  return tx((db) => {
+  return txCreator((db) => {
     const idx = db.creators.findIndex((c) => c.id === creatorId);
     if (idx === -1) return null;
     const c = db.creators[idx];
@@ -304,7 +360,7 @@ export function v2AddWorkSample(creatorId: string, url: string): Creator | null 
 }
 
 export function v2RemoveWorkSample(creatorId: string, index: number): Creator | null {
-  return tx((db) => {
+  return txCreator((db) => {
     const idx = db.creators.findIndex((c) => c.id === creatorId);
     if (idx === -1) return null;
     const c = db.creators[idx];
@@ -315,7 +371,7 @@ export function v2RemoveWorkSample(creatorId: string, index: number): Creator | 
 }
 
 export function v2ReorderWorkSamples(creatorId: string, from: number, to: number): Creator | null {
-  return tx((db) => {
+  return txCreator((db) => {
     const idx = db.creators.findIndex((c) => c.id === creatorId);
     if (idx === -1) return null;
     const c = db.creators[idx];
@@ -346,7 +402,7 @@ export function v2AddPressMention(
   creatorId: string,
   mention: { source: string; title: string; year: number },
 ): Creator | null {
-  return tx((db) => {
+  return txCreator((db) => {
     const idx = db.creators.findIndex((c) => c.id === creatorId);
     if (idx === -1) return null;
     const c = db.creators[idx];
@@ -371,7 +427,7 @@ export function v2UpdatePressMention(
   index: number,
   changes: PressMentionPatch,
 ): Creator | null {
-  return tx((db) => {
+  return txCreator((db) => {
     const idx = db.creators.findIndex((c) => c.id === creatorId);
     if (idx === -1) return null;
     const c = db.creators[idx];
@@ -391,7 +447,7 @@ export function v2UpdatePressMention(
 }
 
 export function v2RemovePressMention(creatorId: string, index: number): Creator | null {
-  return tx((db) => {
+  return txCreator((db) => {
     const idx = db.creators.findIndex((c) => c.id === creatorId);
     if (idx === -1) return null;
     const c = db.creators[idx];
@@ -411,7 +467,7 @@ export function v2RemovePressMention(creatorId: string, index: number): Creator 
 // =====================================================================
 
 export function v2PinReview(creatorId: string, reviewId: string): Creator | null {
-  return tx((db) => {
+  return txCreator((db) => {
     const idx = db.creators.findIndex((c) => c.id === creatorId);
     if (idx === -1) return null;
     const c = db.creators[idx];
@@ -429,7 +485,7 @@ export function v2PinReview(creatorId: string, reviewId: string): Creator | null
 }
 
 export function v2UnpinReview(creatorId: string, reviewId: string): Creator | null {
-  return tx((db) => {
+  return txCreator((db) => {
     const idx = db.creators.findIndex((c) => c.id === creatorId);
     if (idx === -1) return null;
     const c = db.creators[idx];
@@ -445,7 +501,7 @@ export function v2ReorderFeaturedReviews(
   from: number,
   to: number,
 ): Creator | null {
-  return tx((db) => {
+  return txCreator((db) => {
     const idx = db.creators.findIndex((c) => c.id === creatorId);
     if (idx === -1) return null;
     const c = db.creators[idx];
