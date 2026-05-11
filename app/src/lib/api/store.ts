@@ -194,33 +194,41 @@ if (typeof window !== 'undefined') {
 if (typeof window !== 'undefined') {
   void (async () => {
     try {
-      const [brandsMod, campaignsMod] = await Promise.all([
+      const [brandsMod, campaignsMod, applicationsMod, offersMod] = await Promise.all([
         import('@/lib/data/brandsRepo'),
         import('@/lib/data/campaignsRepo'),
+        import('@/lib/data/applicationsRepo'),
+        import('@/lib/data/offersRepo'),
       ]);
-      const [brands, campaigns] = await Promise.all([
+      const [brands, campaigns, applications, offers] = await Promise.all([
         brandsMod.fetchAllBrandsFromSupabase(),
         campaignsMod.fetchAllCampaignsFromSupabase(),
+        applicationsMod.fetchAllApplicationsFromSupabase(),
+        offersMod.fetchAllOffersFromSupabase(),
       ]);
-      if (brands.length === 0 && campaigns.length === 0) return;
+      if (
+        brands.length === 0 && campaigns.length === 0 &&
+        applications.length === 0 && offers.length === 0
+      ) return;
       useStore.setState((s) => {
-        // Brand overlay
-        let nextBrands = s.db.brands;
-        if (brands.length > 0) {
-          const byId = new Map(brands.map((b) => [b.id, b]));
-          nextBrands = s.db.brands.map((b) => byId.get(b.id) ?? b);
-          const localIds = new Set(s.db.brands.map((b) => b.id));
-          for (const b of brands) if (!localIds.has(b.id)) nextBrands.push(b);
-        }
-        // Campaign overlay — same pattern.
-        let nextCampaigns = s.db.campaigns;
-        if (campaigns.length > 0) {
-          const byId = new Map(campaigns.map((c) => [c.id, c]));
-          nextCampaigns = s.db.campaigns.map((c) => byId.get(c.id) ?? c);
-          const localIds = new Set(s.db.campaigns.map((c) => c.id));
-          for (const c of campaigns) if (!localIds.has(c.id)) nextCampaigns.push(c);
-        }
-        return { db: { ...s.db, brands: nextBrands, campaigns: nextCampaigns } };
+        // Overlay helper — same pattern for every table.
+        const overlay = <T extends { id: string }>(local: T[], remote: T[]): T[] => {
+          if (remote.length === 0) return local;
+          const byId = new Map(remote.map((r) => [r.id, r]));
+          const next = local.map((row) => byId.get(row.id) ?? row);
+          const localIds = new Set(local.map((row) => row.id));
+          for (const row of remote) if (!localIds.has(row.id)) next.push(row);
+          return next;
+        };
+        return {
+          db: {
+            ...s.db,
+            brands: overlay(s.db.brands, brands),
+            campaigns: overlay(s.db.campaigns, campaigns),
+            applications: overlay(s.db.applications, applications),
+            offers: overlay(s.db.offers, offers),
+          },
+        };
       });
     } catch (e) {
       // Network down / Supabase outage — local store stays as-is.

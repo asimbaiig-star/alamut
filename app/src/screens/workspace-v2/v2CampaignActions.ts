@@ -68,12 +68,17 @@ import { requireCapability, getActorUserId } from '@/lib/permissions';
 // helper below centralises the mirror so each action stays terse.
 import { isSupabaseConfigured } from '@/lib/supabase';
 
-/** Fire-and-forget Supabase mirror for a campaign mutation. Local
+// Common pattern: every mirror swallows "row not found" silently
+// (those are rows that still live only in the local store — e.g.
+// generated cmp_g* campaigns whose brand never migrated to Postgres).
+// Anything else logs so it's diagnosable without breaking the UI.
+function isNotFoundError(msg: string): boolean {
+  return /no rows|0 rows|not found|JSON object requested/i.test(msg);
+}
+
+/** Fire-and-forget Supabase mirror for a campaign UPDATE. Local
  *  state has already been updated; this hands off the same change
- *  to Postgres. Failures are logged (so they're diagnosable) but
- *  never propagate to the caller — the UI stays responsive. The
- *  "row not found in Supabase" case (typical for generated cmp_g*
- *  campaigns whose brand also lives only locally) is silenced. */
+ *  to Postgres. Failures are logged but never propagate. */
 function mirrorCampaignToSupabase(
   campaignId: string,
   patch: Parameters<typeof import('@/lib/data/campaignsRepo').updateCampaignInSupabase>[1],
@@ -85,9 +90,81 @@ function mirrorCampaignToSupabase(
       await updateCampaignInSupabase(campaignId, patch);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (/no rows|0 rows|not found|JSON object requested/i.test(msg)) return;
+      if (isNotFoundError(msg)) return;
       // eslint-disable-next-line no-console
       console.warn('[campaign mirror] failed:', msg);
+    }
+  })();
+}
+
+/** Fire-and-forget Supabase mirror for a new Offer INSERT. */
+function mirrorOfferInsertToSupabase(offer: Offer): void {
+  if (!isSupabaseConfigured()) return;
+  void (async () => {
+    try {
+      const { insertOfferInSupabase } = await import('@/lib/data/offersRepo');
+      await insertOfferInSupabase(offer);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // For new offers referencing campaigns that aren't in Supabase
+      // (e.g. cmp_g* generated campaigns), the FK fires — silence.
+      if (isNotFoundError(msg) || /foreign key|violates/i.test(msg)) return;
+      // eslint-disable-next-line no-console
+      console.warn('[offer insert mirror] failed:', msg);
+    }
+  })();
+}
+
+/** Fire-and-forget Supabase mirror for an Offer UPDATE. */
+function mirrorOfferUpdateToSupabase(
+  offerId: string,
+  patch: Parameters<typeof import('@/lib/data/offersRepo').updateOfferInSupabase>[1],
+): void {
+  if (!isSupabaseConfigured()) return;
+  void (async () => {
+    try {
+      const { updateOfferInSupabase } = await import('@/lib/data/offersRepo');
+      await updateOfferInSupabase(offerId, patch);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (isNotFoundError(msg)) return;
+      // eslint-disable-next-line no-console
+      console.warn('[offer update mirror] failed:', msg);
+    }
+  })();
+}
+
+/** Fire-and-forget Supabase mirror for a new Application INSERT. */
+function mirrorApplicationInsertToSupabase(application: Application): void {
+  if (!isSupabaseConfigured()) return;
+  void (async () => {
+    try {
+      const { insertApplicationInSupabase } = await import('@/lib/data/applicationsRepo');
+      await insertApplicationInSupabase(application);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (isNotFoundError(msg) || /foreign key|violates/i.test(msg)) return;
+      // eslint-disable-next-line no-console
+      console.warn('[application insert mirror] failed:', msg);
+    }
+  })();
+}
+
+/** Fire-and-forget Supabase mirror for an Application UPDATE. */
+function mirrorApplicationUpdateToSupabase(
+  applicationId: string,
+  patch: Parameters<typeof import('@/lib/data/applicationsRepo').updateApplicationInSupabase>[1],
+): void {
+  if (!isSupabaseConfigured()) return;
+  void (async () => {
+    try {
+      const { updateApplicationInSupabase } = await import('@/lib/data/applicationsRepo');
+      await updateApplicationInSupabase(applicationId, patch);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (isNotFoundError(msg)) return;
+      // eslint-disable-next-line no-console
+      console.warn('[application update mirror] failed:', msg);
     }
   })();
 }
@@ -169,7 +246,7 @@ export function v2ApplyToCampaign(
   pitch: string,
   proposedRate: number,
 ): Application | null {
-  return tx((db) => {
+  const result = tx((db) => {
     // P5 §4.1 — `application.invite` is held by creators (self-apply).
     requireCapability(getActorUserId(), 'application.invite', db);
 
@@ -234,6 +311,13 @@ export function v2ApplyToCampaign(
 
     return app;
   });
+  // Mirror new application + the campaign's updated applications[] to Supabase.
+  if (result) {
+    mirrorApplicationInsertToSupabase(result);
+    const camp = useStore.getState().db.campaigns.find((c) => c.id === campaignId);
+    if (camp) mirrorCampaignToSupabase(campaignId, { applications: camp.applications });
+  }
+  return result;
 }
 
 // =====================================================================
@@ -262,7 +346,7 @@ export function v2SendOffer(
    *  Null/undefined for non-outreach paths. */
   outreachId: string | null = null,
 ): Offer | null {
-  return tx((db) => {
+  const result = tx((db) => {
     // P5 §4.1 — brand-side `offer.send` (admin/ops; not finance/viewer).
     requireCapability(getActorUserId(), 'offer.send', db);
 
@@ -390,6 +474,13 @@ export function v2SendOffer(
 
     return offer;
   });
+  // Mirror new offer + the campaign's updated offers[] to Supabase.
+  if (result) {
+    mirrorOfferInsertToSupabase(result);
+    const camp = useStore.getState().db.campaigns.find((c) => c.id === result.campaignId);
+    if (camp) mirrorCampaignToSupabase(camp.id, { offers: camp.offers });
+  }
+  return result;
 }
 
 // =====================================================================
@@ -409,7 +500,7 @@ export function v2SendOffer(
  *   - acceptedCreators list updated on Campaign
  */
 export function v2AcceptOffer(offerId: string): Offer | null {
-  return tx((db) => {
+  const result = tx((db) => {
     // P5 §4.1 — accept is a creator-side action (creators have
     // `offer.counter` which covers accept/decline/counter on their
     // own offers).
@@ -549,6 +640,17 @@ export function v2AcceptOffer(offerId: string): Offer | null {
 
     return db.offers[offerIdx];
   });
+  // Mirror status flip + the campaign's escrow update.
+  if (result) {
+    mirrorOfferUpdateToSupabase(offerId, {
+      status: result.status,
+      rate: result.rate,
+      respondedAt: result.respondedAt,
+    });
+    const camp = useStore.getState().db.campaigns.find((c) => c.id === result.campaignId);
+    if (camp) mirrorCampaignToSupabase(camp.id, { escrowHeld: camp.escrowHeld });
+  }
+  return result;
 }
 
 // =====================================================================
@@ -930,7 +1032,7 @@ export interface LaunchCampaignInput {
  * accept). Notifies brand.
  */
 export function v2DeclineOffer(offerId: string, reason?: string): Offer | null {
-  return tx((db) => {
+  const result = tx((db) => {
     // P5 §4.1 — creator action; same capability as counter.
     requireCapability(getActorUserId(), 'offer.counter', db);
 
@@ -972,6 +1074,8 @@ export function v2DeclineOffer(offerId: string, reason?: string): Offer | null {
 
     return db.offers[idx];
   });
+  if (result) mirrorOfferUpdateToSupabase(offerId, { status: result.status, respondedAt: result.respondedAt });
+  return result;
 }
 
 /**
@@ -997,7 +1101,7 @@ export const MAX_OFFER_ROUNDS = 4;
  * to `submitted` so the brand can still re-engage with a fresh Offer.
  */
 export function v2CounterOffer(offerId: string, rate: number, message: string): Offer | null {
-  return tx((db) => {
+  const result = tx((db) => {
     // P5 §4.1 — creator-side counter.
     requireCapability(getActorUserId(), 'offer.counter', db);
 
@@ -1063,6 +1167,11 @@ export function v2CounterOffer(offerId: string, rate: number, message: string): 
 
     return db.offers[idx];
   });
+  if (result) mirrorOfferUpdateToSupabase(offerId, {
+    status: result.status, rate: result.rate, message: result.message,
+    rounds: result.rounds, respondedAt: result.respondedAt,
+  });
+  return result;
 }
 
 /**
@@ -1071,7 +1180,7 @@ export function v2CounterOffer(offerId: string, rate: number, message: string): 
  * precondition: the latest round was a creator round. Same cap behavior.
  */
 export function v2CounterCounter(offerId: string, rate: number, message: string): Offer | null {
-  return tx((db) => {
+  const result = tx((db) => {
     // P5 §4.1 — brand-side counter-back; admin/ops only.
     requireCapability(getActorUserId(), 'offer.send', db);
 
@@ -1126,6 +1235,11 @@ export function v2CounterCounter(offerId: string, rate: number, message: string)
 
     return db.offers[idx];
   });
+  if (result) mirrorOfferUpdateToSupabase(offerId, {
+    status: result.status, rate: result.rate, message: result.message,
+    rounds: result.rounds, respondedAt: result.respondedAt,
+  });
+  return result;
 }
 
 /**
@@ -1133,7 +1247,7 @@ export function v2CounterCounter(offerId: string, rate: number, message: string)
  * accepted rate and runs the same escrow logic as v2AcceptOffer.
  */
 export function v2AcceptCounter(offerId: string): Offer | null {
-  return tx((db) => {
+  const result = tx((db) => {
     // P5 §4.1 — brand-side accept; admin/ops only.
     requireCapability(getActorUserId(), 'offer.send', db);
 
@@ -1254,6 +1368,15 @@ export function v2AcceptCounter(offerId: string): Offer | null {
 
     return db.offers[idx];
   });
+  // Mirror counter-accept + campaign escrow update.
+  if (result) {
+    mirrorOfferUpdateToSupabase(offerId, {
+      status: result.status, rate: result.rate, respondedAt: result.respondedAt,
+    });
+    const camp = useStore.getState().db.campaigns.find((c) => c.id === result.campaignId);
+    if (camp) mirrorCampaignToSupabase(camp.id, { escrowHeld: camp.escrowHeld });
+  }
+  return result;
 }
 
 /**
@@ -1261,7 +1384,7 @@ export function v2AcceptCounter(offerId: string): Offer | null {
  * Notifies creator.
  */
 export function v2RejectApplication(applicationId: string): Application | null {
-  return tx((db) => {
+  const result = tx((db) => {
     // P5 §4.1 — brand-side application decision.
     requireCapability(getActorUserId(), 'application.decide', db);
 
@@ -1293,6 +1416,8 @@ export function v2RejectApplication(applicationId: string): Application | null {
 
     return db.applications[idx];
   });
+  if (result) mirrorApplicationUpdateToSupabase(applicationId, { status: result.status, decidedAt: result.decidedAt });
+  return result;
 }
 
 /**
@@ -1300,7 +1425,7 @@ export function v2RejectApplication(applicationId: string): Application | null {
  * Notifies brand (s19 — was missing).
  */
 export function v2WithdrawApplication(applicationId: string): Application | null {
-  return tx((db) => {
+  const result = tx((db) => {
     // P5 §4.1 — creator self-withdrawal; same capability as self-apply.
     requireCapability(getActorUserId(), 'application.invite', db);
 
@@ -1332,6 +1457,8 @@ export function v2WithdrawApplication(applicationId: string): Application | null
 
     return db.applications[idx];
   });
+  if (result) mirrorApplicationUpdateToSupabase(applicationId, { status: result.status, decidedAt: result.decidedAt });
+  return result;
 }
 
 /**
@@ -1340,7 +1467,7 @@ export function v2WithdrawApplication(applicationId: string): Application | null
  * (s19 — was missing).
  */
 export function v2WithdrawOffer(offerId: string): Offer | null {
-  return tx((db) => {
+  const result = tx((db) => {
     // P5 §4.1 — brand-side withdrawal of a sent offer.
     requireCapability(getActorUserId(), 'offer.withdraw', db);
 
@@ -1379,6 +1506,8 @@ export function v2WithdrawOffer(offerId: string): Offer | null {
 
     return db.offers[idx];
   });
+  if (result) mirrorOfferUpdateToSupabase(offerId, { status: result.status, respondedAt: result.respondedAt });
+  return result;
 }
 
 // =====================================================================
@@ -1972,11 +2101,20 @@ export function v2LaunchCampaign(input: LaunchCampaignInput): Campaign | null {
   // Mirror the new row to Supabase (Phase 3). INSERT-only path —
   // updateCampaignInSupabase won't work because the row doesn't
   // exist yet. Falls through silently when Supabase isn't configured.
+  // Phase 4 — also mirror any invite-flow offers created inline so
+  // the negotiation kanban reads from Postgres immediately.
   if (result && isSupabaseConfigured()) {
     void (async () => {
       try {
         const { insertCampaignInSupabase } = await import('@/lib/data/campaignsRepo');
         await insertCampaignInSupabase(result);
+        // Phase 4 — mirror invite-flow offers. These were pushed into
+        // db.offers inside the tx block; result.offers carries their IDs.
+        if (result.offers.length > 0) {
+          const db = useStore.getState().db;
+          const newOffers = db.offers.filter((o) => result.offers.includes(o.id));
+          for (const o of newOffers) mirrorOfferInsertToSupabase(o);
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         // eslint-disable-next-line no-console
