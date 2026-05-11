@@ -25,6 +25,8 @@
 import { tx } from '@/lib/api/store';
 import type { Outreach, OutreachStatus } from '@/lib/api/types';
 import { requireCapability, getActorUserId } from '@/lib/permissions';
+// Phase 9 — Supabase mirror.
+import { isSupabaseConfigured } from '@/lib/supabase';
 
 function newId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -32,6 +34,42 @@ function newId(prefix: string): string {
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+/** Fire-and-forget mirror for a new Outreach INSERT. Silenced on FK
+ *  (campaign tied to generated rows) + RLS. */
+function mirrorOutreachInsertToSupabase(o: Outreach): void {
+  if (!isSupabaseConfigured()) return;
+  void (async () => {
+    try {
+      const { insertOutreachInSupabase } = await import('@/lib/data/outreachRepo');
+      await insertOutreachInSupabase(o);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/foreign key|violates|row-level security|no rows|0 rows|not found/i.test(msg)) return;
+      // eslint-disable-next-line no-console
+      console.warn('[outreach insert mirror] failed:', msg);
+    }
+  })();
+}
+
+/** Fire-and-forget mirror for an Outreach UPDATE. */
+function mirrorOutreachUpdateToSupabase(
+  outreachId: string,
+  patch: Parameters<typeof import('@/lib/data/outreachRepo').updateOutreachInSupabase>[1],
+): void {
+  if (!isSupabaseConfigured()) return;
+  void (async () => {
+    try {
+      const { updateOutreachInSupabase } = await import('@/lib/data/outreachRepo');
+      await updateOutreachInSupabase(outreachId, patch);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/row-level security|no rows|0 rows|not found/i.test(msg)) return;
+      // eslint-disable-next-line no-console
+      console.warn('[outreach update mirror] failed:', msg);
+    }
+  })();
 }
 
 /**
@@ -48,7 +86,7 @@ export function v2SendOutreach(input: {
   message: string;
   sentByUserId: string;
 }): Outreach | null {
-  return tx((db) => {
+  const result = tx((db) => {
     requireCapability(getActorUserId(), 'application.invite', db);
 
     const creator = db.creators.find((c) => c.id === input.creatorId);
@@ -92,6 +130,8 @@ export function v2SendOutreach(input: {
 
     return outreach;
   });
+  if (result) mirrorOutreachInsertToSupabase(result);
+  return result;
 }
 
 /**
@@ -104,7 +144,7 @@ export function v2RespondOutreach(
   outreachId: string,
   decision: Extract<OutreachStatus, 'replied' | 'declined'>,
 ): Outreach | null {
-  return tx((db) => {
+  const result = tx((db) => {
     requireCapability(getActorUserId(), 'application.invite', db);
 
     const idx = db.outreach.findIndex((o) => o.id === outreachId);
@@ -132,6 +172,13 @@ export function v2RespondOutreach(
 
     return db.outreach[idx];
   });
+  if (result && (result.status === 'replied' || result.status === 'declined')) {
+    mirrorOutreachUpdateToSupabase(outreachId, {
+      status: result.status,
+      respondedAt: result.respondedAt ?? null,
+    });
+  }
+  return result;
 }
 
 /**
@@ -140,7 +187,7 @@ export function v2RespondOutreach(
  * already-archived rows.
  */
 export function v2ArchiveOutreach(outreachId: string): Outreach | null {
-  return tx((db) => {
+  const result = tx((db) => {
     requireCapability(getActorUserId(), 'application.invite', db);
 
     const idx = db.outreach.findIndex((o) => o.id === outreachId);
@@ -149,4 +196,11 @@ export function v2ArchiveOutreach(outreachId: string): Outreach | null {
     db.outreach[idx] = { ...db.outreach[idx], status: 'archived', respondedAt: nowIso() };
     return db.outreach[idx];
   });
+  if (result && result.status === 'archived') {
+    mirrorOutreachUpdateToSupabase(outreachId, {
+      status: 'archived',
+      respondedAt: result.respondedAt ?? null,
+    });
+  }
+  return result;
 }

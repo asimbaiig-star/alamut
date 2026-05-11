@@ -531,6 +531,30 @@ export function v2SendOffer(
     mirrorOfferInsertToSupabase(result);
     const camp = useStore.getState().db.campaigns.find((c) => c.id === result.campaignId);
     if (camp) mirrorCampaignToSupabase(camp.id, { offers: camp.offers });
+
+    // Phase 9 — if this offer upgraded an existing Outreach, mirror the
+    // back-link patch (resulting_offer_id + status flip). The local
+    // mutation already updated the row; just hand the same change to
+    // Postgres so the audit trail matches.
+    if (outreachId) {
+      const updatedOutreach = useStore.getState().db.outreach.find((o) => o.id === outreachId);
+      if (updatedOutreach && updatedOutreach.resultingOfferId === result.id) {
+        void (async () => {
+          try {
+            const { updateOutreachInSupabase } = await import('@/lib/data/outreachRepo');
+            await updateOutreachInSupabase(outreachId, {
+              resultingOfferId: result.id,
+              status: updatedOutreach.status,
+            });
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (/row-level security|no rows|0 rows|not found/i.test(msg)) return;
+            // eslint-disable-next-line no-console
+            console.warn('[outreach back-link mirror] failed:', msg);
+          }
+        })();
+      }
+    }
   }
   return result;
 }

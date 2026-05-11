@@ -223,7 +223,7 @@ if (typeof window !== 'undefined') {
 if (typeof window !== 'undefined') {
   void (async () => {
     try {
-      const [brandsMod, campaignsMod, applicationsMod, offersMod, creatorsMod, collabsMod, submissionsMod, deliverablesMod, contractsMod, transactionsMod, reviewsMod, disputesMod] = await Promise.all([
+      const [brandsMod, campaignsMod, applicationsMod, offersMod, creatorsMod, collabsMod, submissionsMod, deliverablesMod, contractsMod, transactionsMod, reviewsMod, disputesMod, outreachMod] = await Promise.all([
         import('@/lib/data/brandsRepo'),
         import('@/lib/data/campaignsRepo'),
         import('@/lib/data/applicationsRepo'),
@@ -236,8 +236,9 @@ if (typeof window !== 'undefined') {
         import('@/lib/data/transactionsRepo'),
         import('@/lib/data/reviewsRepo'),
         import('@/lib/data/disputesRepo'),
+        import('@/lib/data/outreachRepo'),
       ]);
-      const [brands, campaigns, applications, offers, creators, collaborations, submissions, deliverables, contracts, transactions, reviews, disputes] = await Promise.all([
+      const [brands, campaigns, applications, offers, creators, collaborations, submissions, deliverables, contracts, transactions, reviews, disputes, outreach] = await Promise.all([
         brandsMod.fetchAllBrandsFromSupabase(),
         campaignsMod.fetchAllCampaignsFromSupabase(),
         applicationsMod.fetchAllApplicationsFromSupabase(),
@@ -250,6 +251,7 @@ if (typeof window !== 'undefined') {
         transactionsMod.fetchAllTransactionsFromSupabase(),
         reviewsMod.fetchAllReviewsFromSupabase(),
         disputesMod.fetchAllDisputesFromSupabase(),
+        outreachMod.fetchAllOutreachFromSupabase(),
       ]);
       if (
         brands.length === 0 && campaigns.length === 0 &&
@@ -257,7 +259,8 @@ if (typeof window !== 'undefined') {
         creators.length === 0 && collaborations.length === 0 &&
         submissions.length === 0 && deliverables.length === 0 &&
         contracts.length === 0 && transactions.length === 0 &&
-        reviews.length === 0 && disputes.length === 0
+        reviews.length === 0 && disputes.length === 0 &&
+        outreach.length === 0
       ) return;
       useStore.setState((s) => {
         // Overlay helper — same pattern for every table.
@@ -284,6 +287,7 @@ if (typeof window !== 'undefined') {
             transactions: overlay(s.db.transactions, transactions),
             reviews: overlay(s.db.reviews, reviews),
             disputes: overlay(s.db.disputes, disputes),
+            outreach: overlay(s.db.outreach ?? [], outreach),
           },
         };
       });
