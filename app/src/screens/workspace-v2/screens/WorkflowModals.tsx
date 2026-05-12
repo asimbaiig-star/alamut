@@ -98,6 +98,20 @@ export function SendOfferModal({ campaignId, creator, defaultRate, onClose }: Se
                 Creator's listed floor: {fmtUSD(minRate)}
               </div>
             )}
+            {rate <= 0 && (
+              <div style={{
+                marginTop: 8,
+                padding: '8px 10px',
+                background: 'rgba(206, 90, 70, 0.08)',
+                borderRadius: 6,
+                border: '1px solid var(--v2-accent)',
+                fontSize: 12,
+                color: 'var(--v2-accent)',
+                lineHeight: 1.45,
+              }}>
+                Enter a positive rate to send the offer.
+              </div>
+            )}
             {isBelowFloor && (
               <div style={{
                 marginTop: 8,

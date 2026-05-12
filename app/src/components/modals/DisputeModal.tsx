@@ -118,7 +118,14 @@ export function DisputeModal({ open, onClose, campaign, side }: DisputeModalProp
           onChange={(e) => setDetails(e.target.value)}
           placeholder="What happened, what you've already tried, what outcome you're asking for. The admin only sees this — be specific."
         />
-        <span className="field-help">Both parties will be notified. Admin reviews and can release funds, refund, or split.</span>
+        <span
+          className="field-help"
+          style={{ color: details.trim().length < 20 && details.length > 0 ? 'var(--accent)' : undefined }}
+        >
+          {details.trim().length < 20
+            ? `${details.trim().length}/20 minimum characters`
+            : 'Both parties will be notified. Admin reviews and can release funds, refund, or split.'}
+        </span>
       </div>
     </Modal>
   );

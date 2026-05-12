@@ -17,7 +17,11 @@ interface ReviewModalProps {
 }
 
 export function ReviewModal({ open, onClose, campaign, reviewType, targetId, targetName }: ReviewModalProps) {
-  const [rating, setRating] = useState(5);
+  // Default to 0 so the user has to explicitly pick a star. Pre-defaulting
+  // to 5★ caused accidental max-rating submissions when reviewers tabbed
+  // through quickly. Now the submit button stays disabled until a real
+  // rating is chosen.
+  const [rating, setRating] = useState(0);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   // Both creators (writing about a brand) and brand admin/ops (writing
@@ -26,12 +30,13 @@ export function ReviewModal({ open, onClose, campaign, reviewType, targetId, tar
   const canWrite = useCapability('review.write');
 
   const submit = async () => {
+    if (rating < 1) { pushToast('Pick a star rating before submitting', 'bad'); return; }
     if (!text.trim()) { pushToast('Add a few words explaining your rating', 'bad'); return; }
     setBusy(true);
     try {
       await api.reviews.leave({ campaignId: campaign.id, reviewType, targetId, rating, text: text.trim() });
       pushToast('Review submitted', 'good');
-      setText(''); setRating(5);
+      setText(''); setRating(0);
       onClose();
     } catch (e) {
       pushToast(e instanceof Error ? e.message : 'Submit failed', 'bad');
@@ -51,7 +56,7 @@ export function ReviewModal({ open, onClose, campaign, reviewType, targetId, tar
         <Button
           onClick={submit}
           loading={busy}
-          disabled={!text.trim() || !canWrite}
+          disabled={rating < 1 || !text.trim() || !canWrite}
           title={!canWrite ? 'Reviews require admin, ops, or creator role' : undefined}
           icon={<Icon.check s={14} />}
         >

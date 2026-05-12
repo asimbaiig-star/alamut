@@ -128,6 +128,12 @@ export function RequestAdvanceModal({ open, onClose, onSuccess }: RequestAdvance
               {amount > 0 && amount < 100 && (
                 <span className="field-help" style={{ color: 'var(--bad)' }}>Minimum advance is $100.</span>
               )}
+              {amount === 0 && (
+                <span className="field-help">
+                  Enter at least <strong>$100</strong> · max <strong>{fmtMoneyFull(maxAvailable)}</strong>.
+                  Use the percentage chips below or type a custom amount.
+                </span>
+              )}
             </div>
 
             {amount >= 100 && amount <= maxAvailable && (

@@ -30,7 +30,11 @@ export function MessageComposeModal({
   const navigate = useNavigate();
 
   const send = async () => {
-    if (!text.trim() || busy) return;
+    if (busy) return;
+    if (!text.trim()) {
+      pushToast('Add some message text first', 'bad');
+      return;
+    }
     setBusy(true);
     try {
       await api.messages.send({

@@ -16,14 +16,22 @@ interface ApplyModalProps {
   onApplied?: () => void;
 }
 
+const PITCH_MIN_CHARS = 40;
+
 export function ApplyModal({ open, onClose, campaign, brand, onApplied }: ApplyModalProps) {
   const suggestedRate = Math.round(campaign.budget / 4);
   const [pitch, setPitch] = useState('');
   const [rate, setRate] = useState(suggestedRate);
   const [busy, setBusy] = useState(false);
 
+  const pitchLen = pitch.trim().length;
+  const pitchValid = pitchLen >= PITCH_MIN_CHARS;
+
   const submit = async () => {
-    if (!pitch.trim()) { pushToast('Add a pitch — brands skim quickly', 'bad'); return; }
+    if (!pitchValid) {
+      pushToast(`Pitch needs at least ${PITCH_MIN_CHARS} characters (you have ${pitchLen})`, 'bad');
+      return;
+    }
     setBusy(true);
     try {
       await api.applications.apply({ campaignId: campaign.id, pitch: pitch.trim(), proposedRate: rate });
@@ -46,7 +54,7 @@ export function ApplyModal({ open, onClose, campaign, brand, onApplied }: ApplyM
       width={620}
       footer={<>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button onClick={submit} loading={busy} disabled={!pitch.trim()} icon={<Icon.arrow s={14} />}>Submit application</Button>
+        <Button onClick={submit} loading={busy} disabled={!pitchValid} icon={<Icon.arrow s={14} />}>Submit application</Button>
       </>}
     >
       <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 18, paddingBottom: 18, borderBottom: '1px solid var(--rule)' }}>
@@ -79,7 +87,11 @@ export function ApplyModal({ open, onClose, campaign, brand, onApplied }: ApplyM
             placeholder="Why you, what's your angle, anything specific you'd bring. 2–4 sentences works."
             autoFocus
           />
-          <span className="field-help">Be specific. Brands review fast. Avoid generic openers.</span>
+          <span className="field-help" style={{ color: pitchValid ? undefined : 'var(--accent)' }}>
+            {pitchValid
+              ? `${pitchLen} characters · looking good`
+              : `Be specific. Brands review fast. Minimum ${PITCH_MIN_CHARS} characters (${PITCH_MIN_CHARS - pitchLen} to go).`}
+          </span>
         </div>
         <div className="field full">
           <label className="field-label">Proposed rate (USD)</label>
