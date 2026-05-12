@@ -11,6 +11,35 @@ import './styles/screens.css';
 import './styles/responsive.css';
 import './styles/print.css';
 
+// Stale-chunk recovery — when Vercel deploys new build hashes while a
+// user has an old tab open, code-split imports start 404ing ("Unable
+// to preload CSS for /assets/X-<old-hash>.css"). Vite emits a
+// `vite:preloadError` for exactly this case. Auto-reload once so the
+// user picks up the fresh index.js with the correct chunk hashes.
+//
+// Reload-loop guard: stash a marker on sessionStorage with the failing
+// chunk url. If the same url fails again after reload, the issue isn't
+// stale chunks — it's a genuine 404. Fall through and let the error
+// surface so we don't ping-pong infinitely.
+if (typeof window !== 'undefined') {
+  window.addEventListener('vite:preloadError', (event) => {
+    const failingUrl =
+      (event as Event & { payload?: { url?: string } }).payload?.url ?? 'unknown';
+    const marker = 'alamut.preload-reload';
+    const lastFailed = sessionStorage.getItem(marker);
+    if (lastFailed === failingUrl) {
+      // Already reloaded once for this exact url — let the error
+      // bubble so the user sees something rather than a silent loop.
+      // eslint-disable-next-line no-console
+      console.error('[preloadError] still failing after reload:', failingUrl);
+      return;
+    }
+    sessionStorage.setItem(marker, failingUrl);
+    event.preventDefault();
+    window.location.reload();
+  });
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />
