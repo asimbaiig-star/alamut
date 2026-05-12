@@ -17,6 +17,7 @@ import { collabsForCampaign } from '../v2Adapters';
 import { useStore } from '@/lib/api/store';
 import type { V2CampaignPerf, V2Collab } from '../data';
 import { pushToast } from '@/lib/utils/toast';
+import { downloadCSV } from '@/lib/utils/csv';
 import {
   derivePerf, KpiTile, BigPerfChart, BreakdownBar,
   TopPerformersTable, ContentTypeTile,
@@ -191,14 +192,55 @@ export function BrandAnalytics({ onRoute }: Props) {
             <button
               className="v2-btn v2-btn-sm v2-btn-outline"
               type="button"
-              onClick={() => pushToast('Brand-wide CSV export queued — full archive in 2 min', 'good')}
+              onClick={() => {
+                const rows = campaigns.map((c) => ({
+                  campaign: c.name,
+                  status: c.status,
+                  budget: c.budget,
+                  spent: c.spent,
+                  escrow: c.escrowHeld,
+                  category: c.category,
+                  deadline: c.deadline ?? '',
+                  creators: c.creators.length,
+                }));
+                if (rows.length === 0) {
+                  pushToast('No campaigns to export yet');
+                  return;
+                }
+                downloadCSV(
+                  `${brand?.name?.toLowerCase().replace(/\s+/g, '-') ?? 'brand'}-analytics-${new Date().toISOString().slice(0, 10)}`,
+                  rows,
+                );
+                pushToast(`Analytics exported · ${rows.length} campaigns`);
+              }}
             >
               {Icon.external} Export CSV
             </button>
             <button
               className="v2-btn v2-btn-sm v2-btn-outline"
               type="button"
-              onClick={() => pushToast('Shareable analytics report copied to clipboard', 'good')}
+              onClick={async () => {
+                // Copy a shareable summary string to the clipboard. Real
+                // share-link generation would require a server endpoint;
+                // for now we ship a self-contained text summary the brand
+                // can paste into Slack / email.
+                const live = campaigns.filter((c) => c.status === 'Live').length;
+                const completed = campaigns.filter((c) => c.status === 'Completed').length;
+                const totalBudget = campaigns.reduce((s, c) => s + c.budget, 0);
+                const totalSpent = campaigns.reduce((s, c) => s + c.spent, 0);
+                const summary = [
+                  `${brand?.name ?? 'Brand'} · Analytics snapshot`,
+                  `${live} live · ${completed} completed`,
+                  `Budget: ${fmtUSD(totalBudget)} · Spent: ${fmtUSD(totalSpent)}`,
+                  `As of ${new Date().toLocaleDateString()}`,
+                ].join('\n');
+                try {
+                  await navigator.clipboard.writeText(summary);
+                  pushToast('Analytics summary copied to clipboard');
+                } catch {
+                  pushToast('Could not access clipboard — try Export CSV instead');
+                }
+              }}
             >
               Share report
             </button>

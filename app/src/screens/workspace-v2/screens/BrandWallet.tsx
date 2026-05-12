@@ -4,10 +4,11 @@
 // hero balance card (gradient ink→accent), ledger table, payment-
 // methods sidebar, this-month rollup, top-up modal.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { fmtUSD, fmtUSDfull, Icon, Topbar } from '../lib';
 import { useV2BrandWallet, useV2CurrentBrand } from '../v2Hooks';
 import { pushToast } from '@/lib/utils/toast';
+import { downloadCSV } from '@/lib/utils/csv';
 import { useCapability } from '@/lib/permissions';
 
 interface Props {
@@ -34,6 +35,19 @@ export function BrandWallet({ onRoute, initialAction }: Props) {
   const canTopup = useCapability('wallet.topup');
   void onRoute;
 
+  // Ledger type filter — narrows the visible rows by type. 'all' keeps
+  // every entry. The set of available types is derived from the live
+  // ledger so the dropdown stays honest if the data shape evolves.
+  const [typeFilter, setTypeFilter] = useState<string>('all');
+  const availableTypes = useMemo(
+    () => Array.from(new Set(W.ledger.map((l) => l.type).filter((t): t is NonNullable<typeof t> => !!t))).sort(),
+    [W.ledger],
+  );
+  const filteredLedger = useMemo(
+    () => typeFilter === 'all' ? W.ledger : W.ledger.filter((l) => l.type === typeFilter),
+    [W.ledger, typeFilter],
+  );
+
   return (
     <>
       <Topbar
@@ -45,8 +59,17 @@ export function BrandWallet({ onRoute, initialAction }: Props) {
               className="v2-btn v2-btn-outline"
               type="button"
               onClick={() => {
-                pushToast('Statement export will be available next release · use browser print for now', 'default');
-                window.print();
+                downloadCSV(
+                  `alamut-wallet-statement-${new Date().toISOString().slice(0, 10)}`,
+                  W.ledger.map((l) => ({
+                    date: l.date,
+                    description: l.desc,
+                    status: l.status,
+                    amount: l.amount,
+                    type: l.type ?? '',
+                  })),
+                );
+                pushToast(`Wallet statement exported · ${W.ledger.length} rows`);
               }}
             >
               Download statement
@@ -107,13 +130,25 @@ export function BrandWallet({ onRoute, initialAction }: Props) {
                 <h3 className="v2-section-title" style={{ fontSize: 22, margin: 0 }}>
                   Recent activity
                 </h3>
-                <button
-                  className="v2-btn v2-btn-sm v2-btn-ghost"
-                  type="button"
-                  onClick={() => pushToast('Type filter coming soon — for now, scroll the full ledger', 'default')}
+                <select
+                  className="v2-select v2-btn-sm"
+                  value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value)}
+                  style={{
+                    fontFamily: 'inherit', fontSize: 12.5,
+                    padding: '4px 8px', borderRadius: 'var(--v2-r-pill)',
+                    border: '1px solid var(--v2-line)',
+                    background: 'var(--v2-paper)', color: 'var(--v2-ink-2)',
+                  }}
+                  aria-label="Filter ledger by type"
                 >
-                  {Icon.filter} All types
-                </button>
+                  <option value="all">All types ({W.ledger.length})</option>
+                  {availableTypes.map((t) => (
+                    <option key={t} value={t}>
+                      {t} ({W.ledger.filter((l) => l.type === t).length})
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
             <table className="v2-table">
@@ -126,7 +161,7 @@ export function BrandWallet({ onRoute, initialAction }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {W.ledger.map((l, i) => {
+                {filteredLedger.map((l, i) => {
                   const isPositive = l.amount > 0;
                   const dotColor = isPositive
                     ? 'var(--v2-moss)'
@@ -188,7 +223,27 @@ export function BrandWallet({ onRoute, initialAction }: Props) {
                 className="v2-btn v2-btn-outline"
                 type="button"
                 style={{ width: '100%', justifyContent: 'center' }}
-                onClick={() => pushToast('Tax report export coming soon · all data is in the ledger above', 'default')}
+                onClick={() => {
+                  // Tax report = the ledger filtered to fee + withholding rows
+                  // grouped by month. Useful for end-of-quarter / EOY reconciliation.
+                  const taxRows = W.ledger
+                    .filter((l) => l.type === 'fee' || l.type === 'tax')
+                    .map((l) => ({
+                      date: l.date,
+                      description: l.desc,
+                      type: l.type ?? '',
+                      amount: l.amount,
+                    }));
+                  if (taxRows.length === 0) {
+                    pushToast('No tax-flagged entries in current ledger window');
+                    return;
+                  }
+                  downloadCSV(
+                    `alamut-tax-report-${new Date().toISOString().slice(0, 10)}`,
+                    taxRows,
+                  );
+                  pushToast(`Tax report exported · ${taxRows.length} rows`);
+                }}
               >
                 Download tax report
               </button>

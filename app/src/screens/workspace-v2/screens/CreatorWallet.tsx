@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { fmtUSD, fmtUSDfull, Icon, Topbar } from '../lib';
 import { useV2CreatorWallet, useV2CurrentCreator, v2RequestWithdrawal } from '../v2Hooks';
 import { pushToast } from '@/lib/utils/toast';
+import { downloadCSV } from '@/lib/utils/csv';
 
 interface Props {
   onRoute: (r: string) => void;
@@ -160,8 +161,29 @@ export function CreatorWallet({ onRoute }: Props) {
               <p className="v2-muted" style={{ fontSize: 12.5, lineHeight: 1.5, margin: '0 0 12px' }}>
                 Tax certificates auto-generated quarterly. We deduct withholding on each payout.
               </p>
-              <button className="v2-btn v2-btn-outline" type="button" style={{ width: '100%', justifyContent: 'center' }}>
-                Download Q1 statement
+              <button
+                className="v2-btn v2-btn-outline"
+                type="button"
+                style={{ width: '100%', justifyContent: 'center' }}
+                onClick={() => {
+                  if (W.ledger.length === 0) {
+                    pushToast('No wallet activity to export yet');
+                    return;
+                  }
+                  downloadCSV(
+                    `alamut-creator-statement-${new Date().toISOString().slice(0, 10)}`,
+                    W.ledger.map((l) => ({
+                      date: l.date,
+                      description: l.desc,
+                      status: l.status,
+                      amount: l.amount,
+                      type: l.type ?? '',
+                    })),
+                  );
+                  pushToast(`Statement exported · ${W.ledger.length} rows`);
+                }}
+              >
+                Download statement
               </button>
             </div>
           </div>
