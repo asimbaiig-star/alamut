@@ -5,7 +5,8 @@
 
 import { useState } from 'react';
 import { fmtUSD, fmtUSDfull, Icon, Topbar } from '../lib';
-import { useV2CreatorWallet, useV2CurrentCreator } from '../v2Hooks';
+import { useV2CreatorWallet, useV2CurrentCreator, v2RequestWithdrawal } from '../v2Hooks';
+import { pushToast } from '@/lib/utils/toast';
 
 interface Props {
   onRoute: (r: string) => void;
@@ -15,7 +16,6 @@ export function CreatorWallet({ onRoute }: Props) {
   const [showWithdraw, setShowWithdraw] = useState(false);
   const W = useV2CreatorWallet();
   const creator = useV2CurrentCreator();
-  void onRoute;
 
   return (
     <>
@@ -140,7 +140,14 @@ export function CreatorWallet({ onRoute }: Props) {
                   <div style={{ fontSize: 13.5, fontWeight: 600 }}>Bank transfer</div>
                   <div className="v2-muted" style={{ fontSize: 11.5 }}>Account ending 4291</div>
                 </div>
-                <button className="v2-btn v2-btn-sm v2-btn-ghost" type="button">Edit</button>
+                <button
+                  className="v2-btn v2-btn-sm v2-btn-ghost"
+                  type="button"
+                  onClick={() => onRoute('kyc')}
+                  title="Manage payout methods in KYC settings"
+                >
+                  Edit
+                </button>
               </div>
               <hr style={{ height: 1, background: 'var(--v2-line)', margin: '12px 0', border: 'none' }} />
               <p className="v2-muted" style={{ fontSize: 12, lineHeight: 1.5, margin: 0 }}>
@@ -161,12 +168,30 @@ export function CreatorWallet({ onRoute }: Props) {
         </div>
       </div>
 
-      {showWithdraw && <WithdrawModal available={W.available} onClose={() => setShowWithdraw(false)} />}
+      {showWithdraw && (
+        <WithdrawModal
+          available={W.available}
+          onClose={() => setShowWithdraw(false)}
+          onConfirm={(amount) => {
+            const ok = v2RequestWithdrawal(amount);
+            if (ok) {
+              pushToast(`Withdrawal of $${amount.toLocaleString()} initiated · 1–2 business days to your bank`);
+              setShowWithdraw(false);
+            } else {
+              pushToast('Withdrawal failed — check amount and try again');
+            }
+          }}
+        />
+      )}
     </>
   );
 }
 
-function WithdrawModal({ available, onClose }: { available: number; onClose: () => void }) {
+function WithdrawModal({ available, onClose, onConfirm }: {
+  available: number;
+  onClose: () => void;
+  onConfirm: (amount: number) => void;
+}) {
   // P5 capability gap (Tier 2 follow-up):
   //   The capability matrix has `wallet.withdraw` (brand-side) but no
   //   creator-side equivalent — creators withdraw their earnings via
@@ -243,7 +268,7 @@ function WithdrawModal({ available, onClose }: { available: number; onClose: () 
             className="v2-btn v2-btn-primary"
             type="button"
             disabled={amount <= 0 || amount > available}
-            onClick={onClose}
+            onClick={() => onConfirm(amount)}
           >
             Confirm withdrawal
           </button>

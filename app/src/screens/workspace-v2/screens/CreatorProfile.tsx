@@ -10,7 +10,7 @@
 // outcomes) and primary CTAs in the topbar.
 
 import { fmtUSD, fmtFollowers, Icon, PLATFORM_META, ScoreBadge, Topbar } from '../lib';
-import { useV2AllCampaigns, useV2Creators } from '../v2Hooks';
+import { useV2AllCampaigns, useV2Creators, useV2BrandShortlist, v2ToggleSavedCreator } from '../v2Hooks';
 
 interface Props {
   creatorId: string;
@@ -20,6 +20,7 @@ interface Props {
 export function CreatorProfile({ creatorId, onRoute }: Props) {
   const allCreators = useV2Creators();
   const allCampaigns = useV2AllCampaigns();
+  const savedIds = useV2BrandShortlist();
   const creator = allCreators.find((c) => c.id === creatorId) ?? allCreators[0];
   if (!creator) {
     return (
@@ -52,9 +53,20 @@ export function CreatorProfile({ creatorId, onRoute }: Props) {
             <button className="v2-btn v2-btn-outline" type="button" onClick={() => onRoute('discover')}>
               {Icon.arrow}<span style={{ marginLeft: 4 }}>Back to Discover</span>
             </button>
-            <button className="v2-btn v2-btn-outline" type="button">
-              {Icon.plus}<span>Save to shortlist</span>
-            </button>
+            {(() => {
+              const isSaved = savedIds.includes(creator.id);
+              return (
+                <button
+                  className="v2-btn v2-btn-outline"
+                  type="button"
+                  onClick={() => v2ToggleSavedCreator(creator.id)}
+                  aria-pressed={isSaved}
+                >
+                  {isSaved ? Icon.check : Icon.plus}
+                  <span>{isSaved ? 'Saved to shortlist' : 'Save to shortlist'}</span>
+                </button>
+              );
+            })()}
             <button className="v2-btn v2-btn-primary" type="button" onClick={() => onRoute('spark')}>
               {Icon.send}<span>Send brief</span>
             </button>

@@ -748,7 +748,6 @@ function CreatorGoals({ wallet, onRoute }: {
   wallet: ReturnType<typeof useV2CreatorWallet>;
   onRoute: (r: string) => void;
 }) {
-  void onRoute;
   const target = 2500; // synthetic monthly target
   const earned = wallet.available + wallet.pending;
   const pct = Math.min(100, Math.round((earned / target) * 100));
@@ -767,7 +766,15 @@ function CreatorGoals({ wallet, onRoute }: {
             You're {pct}% to your monthly target 🎯
           </h3>
         </div>
-        <span className="v2-pill v2-pill-moss" style={{ fontSize: 11 }}>Silver tier</span>
+        <button
+          type="button"
+          className="v2-pill v2-pill-moss"
+          onClick={() => onRoute('wallet')}
+          style={{ fontSize: 11, border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
+          title="View your earnings + tier progress"
+        >
+          Silver tier
+        </button>
       </div>
       <div className="v2-home-goal-card">
         <div className="v2-row" style={{ justifyContent: 'space-between', marginBottom: 6 }}>
@@ -838,7 +845,13 @@ function CreatorTip({ onRoute }: { onRoute: (r: string) => void }) {
             type="button"
             onClick={() => onRoute('creator-inbox')}
           >Set up alerts</button>
-          <button className="v2-btn v2-btn-ghost v2-btn-sm" type="button">More tips</button>
+          <button
+            className="v2-btn v2-btn-ghost v2-btn-sm"
+            type="button"
+            onClick={() => onRoute('storefront')}
+          >
+            More tips
+          </button>
         </div>
       </div>
       <div className="v2-home-tip-foot">

@@ -476,6 +476,48 @@ export function v2EnsureThreadFor(
   return createdThread ? (createdThread as import('@/lib/api/types').Thread).id : null;
 }
 
+/** Creator withdraws funds from their wallet to their bank. Decrements
+ *  walletBalance and writes a 'payout' transaction so the wallet ledger
+ *  shows the outflow. No real bank API — this is the demo's terminal
+ *  step for the money story.
+ *
+ *  Returns true on success, false if the amount is invalid (≤0 or >
+ *  available balance). The caller is responsible for input validation
+ *  in the UI; this function defends the wallet-balance invariant. */
+export function v2RequestWithdrawal(amount: number): boolean {
+  if (!Number.isFinite(amount) || amount <= 0) return false;
+  let ok = false;
+  tx((db) => {
+    const session = useStore.getState().session;
+    const persona = readPersona();
+    const viewerId = getViewerUserId(db, session?.userId ?? null, persona);
+    const me = db.users.find((u) => u.id === viewerId);
+    if (!me?.creatorId) return;
+    const idx = db.creators.findIndex((c) => c.id === me.creatorId);
+    if (idx === -1) return;
+    const creator = db.creators[idx];
+    if (amount > creator.walletBalance) return;
+
+    db.creators[idx] = {
+      ...creator,
+      walletBalance: creator.walletBalance - amount,
+    };
+    db.transactions.push({
+      id: `tx_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      at: new Date().toISOString(),
+      userId: me.id,
+      kind: 'payout',
+      // Negative because amount leaves the wallet (matches escrow_release
+      // / fee convention in the rest of the seed).
+      amount: -amount,
+      status: 'cleared',
+      note: 'Withdrawal to bank',
+    });
+    ok = true;
+  });
+  return ok;
+}
+
 /** Helper for Spark: sync its shortlist into the brand's saved list. */
 export function v2SyncSparkShortlist(creatorIds: string[]) {
   tx((db) => {
