@@ -9,9 +9,12 @@
 // Bottom block: auto-generated tax certificates that creators can
 // download for filing season.
 
-import { useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Icon, Topbar } from '../lib';
 import { pushToast } from '@/lib/utils/toast';
+import { downloadCSV } from '@/lib/utils/csv';
+import { useV2CurrentCreator } from '../v2Hooks';
+import { useStore, tx } from '@/lib/api/store';
 
 interface Props {
   onRoute: (r: string) => void;
@@ -34,59 +37,155 @@ interface Step {
   cta?: string;
 }
 
-const STEPS: Step[] = [
-  {
-    id: 'identity',
-    title: 'Identity verification',
-    description: 'Government-issued ID + selfie. Powered by Persona — typically clears in under 5 minutes.',
-    detail: 'CNIC · Pakistani national ID',
-    status: 'verified',
-    completedAt: 'Verified Apr 12, 2026',
-  },
-  {
-    id: 'address',
-    title: 'Address verification',
-    description: 'Utility bill or bank statement showing your name and current address.',
-    detail: 'Lahore, Punjab',
-    status: 'verified',
-    completedAt: 'Verified Apr 12, 2026',
-  },
-  {
-    id: 'tax-form',
-    title: 'Tax form (W-equivalent)',
-    description: 'Pakistan FBR registration. We auto-generate filing receipts for every brand payment.',
-    detail: 'Filer status: pending FBR confirmation',
-    status: 'pending',
-    cta: 'View status',
-  },
-  {
-    id: 'bank',
-    title: 'Bank account',
-    description: 'Where we deposit your earnings. Domestic Pakistani bank or international wire.',
-    detail: '',
-    status: 'action',
-    cta: 'Add bank account',
-  },
-  {
-    id: 'agreement',
-    title: 'Creator agreement',
-    description: 'Standard payment + content-rights agreement. One-time signature.',
-    detail: '',
-    status: 'locked',
-    cta: 'Locked until bank verified',
-  },
-];
+/** Build the step list from the actual creator state.
+ *  - identity / address: gated by `creator.verified`
+ *  - tax-form: pending until creator.payout has a country indicator
+ *  - bank: action until creator.payout.account is set
+ *  - agreement: locked until bank is set; verified once Creator has
+ *    at least one paid collab (signal that the agreement was signed
+ *    when the first offer was accepted)
+ */
+function buildSteps(creator: {
+  verified?: boolean;
+  payout?: { account?: string; method?: string; currency?: string };
+  city?: string;
+  country?: string;
+} | null | undefined, hasPaidCollab: boolean): Step[] {
+  const c = creator;
+  const verified = !!c?.verified;
+  const hasBank = !!(c?.payout?.account && c.payout.account.trim().length > 0);
+  const idStatus: StepStatus = verified ? 'verified' : 'action';
+  const addrStatus: StepStatus = verified ? 'verified' : 'action';
+  const taxStatus: StepStatus = verified ? (hasBank ? 'verified' : 'pending') : 'locked';
+  const bankStatus: StepStatus = verified ? (hasBank ? 'verified' : 'action') : 'locked';
+  const agreementStatus: StepStatus = hasBank && hasPaidCollab ? 'verified' : hasBank ? 'action' : 'locked';
 
-const TAX_DOCS = [
-  { id: 'tx1', name: '2026 Q1 earnings statement', date: 'Apr 1, 2026', size: '124 KB', amount: 4200 },
-  { id: 'tx2', name: '2025 Annual filing receipt', date: 'Jan 15, 2026', size: '212 KB', amount: 18600 },
-  { id: 'tx3', name: '2025 Withholding tax certificate', date: 'Jan 15, 2026', size: '88 KB', amount: 930 },
-];
+  return [
+    {
+      id: 'identity',
+      title: 'Identity verification',
+      description: 'Government-issued ID + selfie. Powered by Persona — typically clears in under 5 minutes.',
+      detail: c?.country ? `${c.country} national ID` : undefined,
+      status: idStatus,
+      completedAt: idStatus === 'verified' ? 'Verified' : undefined,
+      cta: idStatus === 'verified' ? undefined : 'Start verification',
+    },
+    {
+      id: 'address',
+      title: 'Address verification',
+      description: 'Utility bill or bank statement showing your name and current address.',
+      detail: c?.city ? `${c.city}${c.country ? `, ${c.country}` : ''}` : undefined,
+      status: addrStatus,
+      completedAt: addrStatus === 'verified' ? 'Verified' : undefined,
+      cta: addrStatus === 'verified' ? undefined : 'Upload document',
+    },
+    {
+      id: 'tax-form',
+      title: 'Tax form (W-equivalent)',
+      description: 'Tax-jurisdiction registration. We auto-generate filing receipts for every brand payment.',
+      detail: taxStatus === 'verified' ? 'On file' : taxStatus === 'pending' ? 'Pending — finish bank step first' : '',
+      status: taxStatus,
+      cta: taxStatus === 'pending' ? 'Complete tax form' : undefined,
+    },
+    {
+      id: 'bank',
+      title: 'Bank account',
+      description: 'Where we deposit your earnings. Domestic bank or international wire.',
+      detail: hasBank ? `${c?.payout?.method ?? 'Bank'} · ${c?.payout?.account}` : '',
+      status: bankStatus,
+      cta: bankStatus === 'verified' ? 'Update' : 'Add bank account',
+    },
+    {
+      id: 'agreement',
+      title: 'Creator agreement',
+      description: 'Standard payment + content-rights agreement. One-time signature.',
+      detail: agreementStatus === 'verified' ? 'Signed via first accepted offer' : '',
+      status: agreementStatus,
+      cta: agreementStatus === 'locked' ? 'Locked until bank verified'
+        : agreementStatus === 'verified' ? undefined
+        : 'Review agreement',
+    },
+  ];
+}
 
 export function KycTax({ onRoute, initialAction }: Props) {
+  const me = useV2CurrentCreator();
+  const db = useStore((s) => s.db);
+  const [showBankModal, setShowBankModal] = useState(false);
+
+  // Real creator state — used to compute step status + filter tax docs.
+  const rawCreator = me ? db.creators.find((c) => c.id === me.id) : null;
+  // "Has at least one paid collab" — used to mark Creator Agreement verified.
+  const hasPaidCollab = rawCreator
+    ? db.transactions.some(
+        (t) => t.kind === 'payout' && t.status === 'cleared' && t.userId === rawCreator.userId,
+      )
+    : false;
+
+  const STEPS = useMemo(
+    () => buildSteps(rawCreator, hasPaidCollab),
+    [rawCreator, hasPaidCollab],
+  );
   const completed = STEPS.filter((s) => s.status === 'verified').length;
   const pct = Math.round((completed / STEPS.length) * 100);
   const nextActionStep = STEPS.find((s) => s.status === 'action');
+
+  // Quarterly tax docs derived from the creator's payout transactions —
+  // groups by year+quarter, sums declared amount per bucket.
+  const taxDocs = useMemo(() => {
+    if (!rawCreator) return [] as { id: string; name: string; date: string; amount: number; period: string }[];
+    type Bucket = { year: number; q: number; sum: number; periodStart: Date };
+    const buckets = new Map<string, Bucket>();
+    for (const t of db.transactions) {
+      if (t.userId !== rawCreator.userId) continue;
+      if (t.kind !== 'payout' || t.status !== 'cleared') continue;
+      const at = new Date(t.at);
+      const q = Math.floor(at.getMonth() / 3) + 1;
+      const year = at.getFullYear();
+      const key = `${year}-Q${q}`;
+      const existing = buckets.get(key);
+      if (existing) existing.sum += Math.abs(t.amount);
+      else buckets.set(key, { year, q, sum: Math.abs(t.amount), periodStart: new Date(year, (q - 1) * 3, 1) });
+    }
+    return Array.from(buckets.values())
+      .sort((a, b) => (b.year - a.year) || (b.q - a.q))
+      .map((b) => ({
+        id: `tax-${b.year}-q${b.q}`,
+        name: `${b.year} Q${b.q} earnings statement`,
+        date: b.periodStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        amount: Math.round(b.sum),
+        period: `${b.year}-Q${b.q}`,
+      }));
+  }, [db.transactions, rawCreator]);
+
+  // CTA handlers — wire each step's button to a real flow instead of toasts.
+  function handleStepCta(step: Step) {
+    if (step.status === 'locked') return;
+    switch (step.id) {
+      case 'identity':
+      case 'address': {
+        // Mark creator verified — in production this'd be a Persona /
+        // Onfido handoff. For demo, flip the flag locally + toast.
+        if (!rawCreator) return;
+        tx((d) => {
+          const idx = d.creators.findIndex((c) => c.id === rawCreator.id);
+          if (idx !== -1) d.creators[idx] = { ...d.creators[idx], verified: true };
+        });
+        pushToast(step.id === 'identity' ? 'Identity verified' : 'Address verified');
+        break;
+      }
+      case 'tax-form':
+        pushToast('Tax form on file — auto-generated quarterly');
+        break;
+      case 'bank':
+        setShowBankModal(true);
+        break;
+      case 'agreement':
+        // Mark creator's first collab as agreement-signed by toasting.
+        pushToast('Creator agreement reviewed — sign on your first offer acceptance');
+        break;
+    }
+  }
 
   // §needs-you-direct-jump — when CreatorHome's "Complete KYC" tile
   // deep-links here with `?action=next-step`, scroll to the first
@@ -164,9 +263,25 @@ export function KycTax({ onRoute, initialAction }: Props) {
         <div className="v2-eyebrow" style={{ marginBottom: 12 }}>Steps</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 32 }}>
           {STEPS.map((step, i) => (
-            <StepRow key={step.id} step={step} index={i + 1} />
+            <StepRow key={step.id} step={step} index={i + 1} onCta={handleStepCta} />
           ))}
         </div>
+
+        {showBankModal && rawCreator && (
+          <BankAccountModal
+            onClose={() => setShowBankModal(false)}
+            initial={rawCreator.payout}
+            onSave={(payout) => {
+              tx((d) => {
+                const idx = d.creators.findIndex((c) => c.id === rawCreator.id);
+                if (idx === -1) return;
+                d.creators[idx] = { ...d.creators[idx], payout };
+              });
+              pushToast('Bank account saved');
+              setShowBankModal(false);
+            }}
+          />
+        )}
 
         {/* Tax certificates */}
         <section className="v2-card v2-card-pad">
@@ -180,13 +295,33 @@ export function KycTax({ onRoute, initialAction }: Props) {
             <button
               className="v2-btn v2-btn-sm v2-btn-outline"
               type="button"
-              onClick={() => pushToast('Full archive coming soon — every quarter is listed below for the current year', 'default')}
+              onClick={() => {
+                if (taxDocs.length === 0) {
+                  pushToast('No quarterly statements yet — your first payout will generate one');
+                  return;
+                }
+                downloadCSV(
+                  `alamut-tax-archive-${new Date().getFullYear()}`,
+                  taxDocs.map((d) => ({
+                    period: d.period,
+                    name: d.name,
+                    date: d.date,
+                    amount_usd: d.amount,
+                  })),
+                );
+                pushToast(`Full archive exported · ${taxDocs.length} statements`);
+              }}
             >
               {Icon.external} View all
             </button>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {TAX_DOCS.map((doc) => (
+            {taxDocs.length === 0 && (
+              <p className="v2-muted" style={{ fontSize: 13, margin: 0 }}>
+                No quarterly statements yet. Your first cleared payout will generate one.
+              </p>
+            )}
+            {taxDocs.map((doc) => (
               <div key={doc.id} className="v2-row" style={{
                 justifyContent: 'space-between',
                 padding: '12px 14px',
@@ -213,14 +348,38 @@ export function KycTax({ onRoute, initialAction }: Props) {
                       {doc.name}
                     </div>
                     <div className="v2-muted" style={{ fontSize: 11.5 }}>
-                      {doc.date} · {doc.size} · ${doc.amount.toLocaleString()} declared
+                      {doc.date} · ${doc.amount.toLocaleString()} declared
                     </div>
                   </div>
                 </div>
                 <button
                   className="v2-btn v2-btn-sm v2-btn-outline"
                   type="button"
-                  onClick={() => pushToast(`${doc.name} — PDF export coming soon`, 'default')}
+                  onClick={() => {
+                    if (!rawCreator) return;
+                    // Quarter-scoped payout rows.
+                    const [yearStr, qStr] = doc.period.split('-Q');
+                    const year = parseInt(yearStr, 10);
+                    const q = parseInt(qStr, 10);
+                    const quarterStart = +new Date(year, (q - 1) * 3, 1);
+                    const quarterEnd = +new Date(year, q * 3, 1);
+                    const rows = db.transactions
+                      .filter((t) =>
+                        t.userId === rawCreator.userId &&
+                        t.kind === 'payout' &&
+                        t.status === 'cleared' &&
+                        +new Date(t.at) >= quarterStart &&
+                        +new Date(t.at) < quarterEnd,
+                      )
+                      .map((t) => ({
+                        date: new Date(t.at).toISOString().slice(0, 10),
+                        description: t.note,
+                        campaign_id: t.campaignId ?? '',
+                        amount_usd: Math.abs(t.amount),
+                      }));
+                    downloadCSV(`alamut-${doc.period}-statement`, rows);
+                    pushToast(`${doc.name} exported · ${rows.length} payouts`);
+                  }}
                 >
                   Download
                 </button>
@@ -233,7 +392,70 @@ export function KycTax({ onRoute, initialAction }: Props) {
   );
 }
 
-function StepRow({ step, index }: { step: Step; index: number }) {
+function BankAccountModal({ onClose, initial, onSave }: {
+  onClose: () => void;
+  initial: { account?: string; method?: string; currency?: string };
+  onSave: (p: { account: string; method: string; currency: string }) => void;
+}) {
+  const [account, setAccount] = useState(initial.account ?? '');
+  const [method, setMethod] = useState(initial.method ?? 'ACH');
+  const [currency, setCurrency] = useState(initial.currency ?? 'USD');
+  const valid = account.trim().length >= 4;
+  return (
+    <div className="v2-modal-overlay" onClick={onClose}>
+      <div className="v2-card v2-card-pad-lg v2-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
+        <h2 style={{
+          fontFamily: 'var(--v2-font-display)', fontSize: 22, fontWeight: 500,
+          margin: '0 0 6px', letterSpacing: '-0.02em',
+        }}>Add bank account</h2>
+        <p className="v2-muted" style={{ margin: '0 0 16px', fontSize: 13 }}>
+          Account details are encrypted at rest. We never share them with brands.
+        </p>
+        <label className="v2-eyebrow" style={{ display: 'block', marginBottom: 6 }}>Account number / IBAN</label>
+        <input
+          className="v2-input"
+          value={account}
+          onChange={(e) => setAccount(e.target.value)}
+          placeholder="e.g. PK24SCBL1234567890123456"
+          style={{ marginBottom: 12, fontFamily: 'inherit', width: '100%' }}
+        />
+        <div className="v2-row" style={{ gap: 8, marginBottom: 16 }}>
+          <div style={{ flex: 1 }}>
+            <label className="v2-eyebrow" style={{ display: 'block', marginBottom: 6 }}>Method</label>
+            <select className="v2-input" value={method} onChange={(e) => setMethod(e.target.value)} style={{ width: '100%', fontFamily: 'inherit' }}>
+              <option value="ACH">ACH</option>
+              <option value="Wire">Wire</option>
+              <option value="SEPA">SEPA</option>
+              <option value="Local bank">Local bank</option>
+            </select>
+          </div>
+          <div style={{ flex: 1 }}>
+            <label className="v2-eyebrow" style={{ display: 'block', marginBottom: 6 }}>Currency</label>
+            <select className="v2-input" value={currency} onChange={(e) => setCurrency(e.target.value)} style={{ width: '100%', fontFamily: 'inherit' }}>
+              <option value="USD">USD</option>
+              <option value="EUR">EUR</option>
+              <option value="GBP">GBP</option>
+              <option value="PKR">PKR</option>
+            </select>
+          </div>
+        </div>
+        <div className="v2-row" style={{ justifyContent: 'flex-end', gap: 8 }}>
+          <button className="v2-btn v2-btn-ghost" type="button" onClick={onClose}>Cancel</button>
+          <button
+            className="v2-btn v2-btn-primary"
+            type="button"
+            disabled={!valid}
+            onClick={() => onSave({ account: account.trim(), method, currency })}
+          >
+            Save bank
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StepRow({ step, index, onCta }: { step: Step; index: number; onCta: (s: Step) => void }) {
   const statusMeta: Record<StepStatus, { pill: string; label: string }> = {
     verified: { pill: 'v2-pill-moss', label: 'Verified' },
     pending: { pill: 'v2-pill-draft', label: 'Pending' },
@@ -307,10 +529,7 @@ function StepRow({ step, index }: { step: Step; index: number }) {
             type="button"
             disabled={step.status === 'locked'}
             style={step.status === 'locked' ? { cursor: 'not-allowed' } : undefined}
-            onClick={() => {
-              if (step.status === 'locked') return;
-              pushToast(`${step.title} — flow coming soon`, 'default');
-            }}
+            onClick={() => onCta(step)}
           >
             {step.cta}
           </button>
