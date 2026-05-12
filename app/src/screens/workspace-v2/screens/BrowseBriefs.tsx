@@ -270,6 +270,12 @@ export function BrowseBriefs({ onRoute, initialFilter }: Props) {
             gap: 8,
             alignItems: 'center',
             flexWrap: 'wrap',
+            // .v2-card globally has `overflow: hidden` (for border-radius
+            // clipping on content cards). That clips the Budget/Category
+            // dropdown panels — they only show the first option then get
+            // cut off. Override here since this card only holds filter
+            // chips; nothing inside needs clipping.
+            overflow: 'visible',
           }}
         >
           <Segment

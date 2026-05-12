@@ -297,7 +297,9 @@ export function Discover({ onRoute }: Props) {
         {/* ─── Unified search ─────────────────────────────────────── */}
         <div
           className="v2-card"
-          style={{ padding: 14, marginBottom: 16 }}
+          // overflow: visible — see BrowseBriefs.tsx note. The card holds
+          // filter dropdowns whose panels need to escape the card bounds.
+          style={{ padding: 14, marginBottom: 16, overflow: 'visible' }}
         >
           {/* Search row — input + Spark toggle */}
           <div className="v2-row" style={{ gap: 8, alignItems: 'stretch' }}>
