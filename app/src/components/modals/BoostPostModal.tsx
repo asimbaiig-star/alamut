@@ -30,6 +30,28 @@ export function BoostPostModal({ open, onClose, campaign }: BoostPostModalProps)
   const [busy, setBusy] = useState(false);
 
   if (!brand) return null;
+
+  // Platform-specific minimum daily budgets — matches what the ad
+  // networks actually enforce. Whoever owns the boost spec has been
+  // burned by hitting "boost" only to see a generic "Daily budget too
+  // low" error from the network; surface it here instead.
+  const PLATFORM_MIN_DAILY: Record<string, number> = {
+    instagram: 5,
+    facebook: 5,
+    snapchat: 5,
+    youtube: 10,
+    linkedin: 10,
+    x: 10,
+    tiktok: 20,
+    pinterest: 2,
+  };
+  // Resolve the platform for THIS boost from the selected creator's
+  // primary channel. The boost runs on whatever they posted on.
+  const selectedCreator = db.creators.find((c) => c.id === creatorId);
+  const primaryPlatform = selectedCreator?.platforms?.[0]?.name?.toLowerCase() ?? 'instagram';
+  const minDailyForPlatform = PLATFORM_MIN_DAILY[primaryPlatform] ?? 5;
+  const belowMin = dailyBudget < minDailyForPlatform;
+
   const total = durationDays * dailyBudget;
   const insufficient = brand.walletBalance < total;
   // Boost spends from the brand wallet, so it gates on the same
@@ -45,6 +67,13 @@ export function BoostPostModal({ open, onClose, campaign }: BoostPostModalProps)
   const submit = async () => {
     if (!creatorId) { pushToast('Pick a creator', 'bad'); return; }
     if (insufficient) { pushToast('Top up your wallet first', 'bad'); return; }
+    if (belowMin) {
+      pushToast(
+        `${primaryPlatform[0].toUpperCase() + primaryPlatform.slice(1)} requires a minimum daily budget of $${minDailyForPlatform}`,
+        'bad',
+      );
+      return;
+    }
     setBusy(true);
     try {
       await api.ads.startBoost({ campaignId: campaign.id, creatorId, durationDays, dailyBudget });
@@ -68,7 +97,7 @@ export function BoostPostModal({ open, onClose, campaign }: BoostPostModalProps)
         <Button
           onClick={submit}
           loading={busy}
-          disabled={insufficient || !creatorId || !canBoost}
+          disabled={insufficient || !creatorId || !canBoost || belowMin}
           title={!canBoost ? 'Boosts require admin or finance role' : undefined}
           icon={<Icon.spark s={14} />}
         >
@@ -98,7 +127,21 @@ export function BoostPostModal({ open, onClose, campaign }: BoostPostModalProps)
         </div>
         <div className="field">
           <label className="field-label">Daily budget (USD)</label>
-          <input type="number" min={5} step={5} value={dailyBudget} onChange={(e) => setDailyBudget(Number(e.target.value))} />
+          <input
+            type="number"
+            min={minDailyForPlatform}
+            step={5}
+            value={dailyBudget}
+            onChange={(e) => setDailyBudget(Number(e.target.value))}
+          />
+          <span
+            className="field-help"
+            style={{ color: belowMin ? 'var(--bad)' : undefined }}
+          >
+            {belowMin
+              ? `${primaryPlatform[0].toUpperCase() + primaryPlatform.slice(1)} requires a minimum of $${minDailyForPlatform}/day`
+              : `${primaryPlatform[0].toUpperCase() + primaryPlatform.slice(1)} minimum: $${minDailyForPlatform}/day`}
+          </span>
         </div>
         <div className="field full">
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '14px 0', borderTop: '1px solid var(--rule)', borderBottom: '1px solid var(--rule)' }}>

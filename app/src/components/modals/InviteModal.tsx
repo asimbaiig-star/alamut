@@ -42,18 +42,44 @@ export function InviteModal({ open, onClose, creatorIds, onSent }: InviteModalPr
     if (!campaignId) { pushToast('Pick a campaign', 'bad'); return; }
     if (!creatorIds.length) { pushToast('No creators selected', 'bad'); return; }
     setBusy(true);
-    try {
-      for (const cid of creatorIds) {
+    // Track per-creator outcomes — previously a single failure killed
+    // the whole loop and silently buried which creators were already
+    // invited. Now we attempt each, accumulate failures with the
+    // creator id, and surface a precise report at the end.
+    const successes: string[] = [];
+    const failures: { creatorId: string; error: string }[] = [];
+    for (const cid of creatorIds) {
+      try {
         await api.offers.send({ campaignId, creatorId: cid, rate, message });
+        successes.push(cid);
+      } catch (e) {
+        failures.push({
+          creatorId: cid,
+          error: e instanceof Error ? e.message : 'Send failed',
+        });
       }
-      pushToast(`Sent ${creatorIds.length} offer${creatorIds.length === 1 ? '' : 's'}`, 'good');
+    }
+    setBusy(false);
+    if (failures.length === 0) {
+      pushToast(`Sent ${successes.length} offer${successes.length === 1 ? '' : 's'}`, 'good');
       onSent?.();
       onClose();
-    } catch (e) {
-      pushToast(e instanceof Error ? e.message : 'Send failed', 'bad');
-    } finally {
-      setBusy(false);
+      return;
     }
+    if (successes.length === 0) {
+      pushToast(`All ${failures.length} sends failed — ${failures[0].error}`, 'bad');
+      return;
+    }
+    // Partial failure — keep the modal open so the brand can retry the
+    // remaining creators after fixing whatever broke (insufficient
+    // balance most commonly). Log a useful debug line.
+    pushToast(
+      `${successes.length} sent · ${failures.length} failed — try again for the rest`,
+      'bad',
+    );
+    // eslint-disable-next-line no-console
+    console.warn('[InviteModal] partial failures:', failures);
+    onSent?.(); // still notify parent of the successes
   };
 
   return (

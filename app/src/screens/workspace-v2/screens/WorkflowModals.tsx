@@ -632,14 +632,37 @@ export function CreatorMarkLiveModal({
   const [url, setUrl] = useState(initialPermalink ?? '');
   const [confirmed, setConfirmed] = useState(false);
   const canSetPermalink = useCapability('content.setPermalink');
-  // Basic URL validation — accepts http/https. The platform doesn't have
-  // to match the deliverable; the brand verifies that on their end.
-  const isValidUrl = useMemo(() => {
+  // Two-tier URL validation:
+  //   1. `isValidUrl` — must parse as http(s) — catches typos and
+  //      missing protocols.
+  //   2. `isRecognizedPlatform` — host must match a known platform
+  //      domain. Catches "google.com" or unrelated links the
+  //      creator might paste by accident. Whitelist intentionally
+  //      narrow; brand still verifies on their end.
+  const urlCheck = useMemo(() => {
     const trimmed = url.trim();
-    if (!trimmed) return false;
-    try { new URL(trimmed); return true; } catch { return false; }
+    if (!trimmed) return { valid: false, recognized: false, platform: '' };
+    let parsed: URL;
+    try { parsed = new URL(trimmed); } catch { return { valid: false, recognized: false, platform: '' }; }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return { valid: false, recognized: false, platform: '' };
+    }
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, '');
+    const platformMap: { match: string[]; label: string }[] = [
+      { match: ['instagram.com'], label: 'Instagram' },
+      { match: ['tiktok.com', 'vm.tiktok.com'], label: 'TikTok' },
+      { match: ['youtube.com', 'youtu.be', 'm.youtube.com'], label: 'YouTube' },
+      { match: ['twitter.com', 'x.com'], label: 'X (Twitter)' },
+      { match: ['linkedin.com'], label: 'LinkedIn' },
+      { match: ['threads.net'], label: 'Threads' },
+      { match: ['snapchat.com'], label: 'Snapchat' },
+      { match: ['facebook.com', 'fb.com'], label: 'Facebook' },
+      { match: ['pinterest.com'], label: 'Pinterest' },
+    ];
+    const matched = platformMap.find((p) => p.match.some((d) => host === d || host.endsWith(`.${d}`)));
+    return { valid: true, recognized: !!matched, platform: matched?.label ?? '' };
   }, [url]);
-  const ready = canSetPermalink && isValidUrl && confirmed;
+  const ready = canSetPermalink && urlCheck.valid && urlCheck.recognized && confirmed;
 
   const onSave = () => {
     if (!ready) return;
@@ -688,11 +711,25 @@ export function CreatorMarkLiveModal({
             placeholder="https://www.instagram.com/p/…"
             style={{ width: '100%' }}
           />
-          {url.trim() && !isValidUrl && (
+          {url.trim() && !urlCheck.valid && (
             <div className="v2-muted" style={{
               fontSize: 12, marginTop: 6, color: 'var(--v2-gold)',
             }}>
               That doesn't look like a valid URL — paste the full link including https://
+            </div>
+          )}
+          {url.trim() && urlCheck.valid && !urlCheck.recognized && (
+            <div className="v2-muted" style={{
+              fontSize: 12, marginTop: 6, color: 'var(--v2-gold)',
+            }}>
+              Unrecognized host — paste a link to Instagram, TikTok, YouTube, X, LinkedIn, Threads, Snapchat, Facebook, or Pinterest.
+            </div>
+          )}
+          {url.trim() && urlCheck.recognized && (
+            <div className="v2-muted" style={{
+              fontSize: 12, marginTop: 6, color: 'var(--v2-moss)',
+            }}>
+              {urlCheck.platform} link detected ✓
             </div>
           )}
 

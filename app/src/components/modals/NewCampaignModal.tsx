@@ -177,7 +177,32 @@ export function NewCampaignModal({ open, onClose, onCreated, cloneFrom }: NewCam
     setErrors({});
   };
 
-  const handleClose = () => { reset(); onClose(); };
+  // Detect "user has typed something" so we can guard against losing
+  // work. We compare against the initial defaults — if any field has
+  // changed, we treat the form as dirty and prompt before close.
+  const hasUnsavedChanges = (
+    title.trim() !== '' ||
+    pitch.trim() !== '' ||
+    brief.trim() !== '' ||
+    budget !== 5000 ||
+    category !== 'Lifestyle' ||
+    region !== 'Global' ||
+    deliverables !== '1 Reel + 2 stories' ||
+    rights.exclusivity !== 'none' ||
+    rights.whitelistAds ||
+    rights.repurpose !== 'none' ||
+    rights.derivative ||
+    kind !== 'one_off' ||
+    pricingModel !== 'fixed'
+  );
+
+  const handleClose = () => {
+    if (hasUnsavedChanges && !window.confirm('Discard this campaign draft? Your changes will be lost.')) {
+      return;
+    }
+    reset();
+    onClose();
+  };
 
   const create = async (live: boolean) => {
     if (!title.trim()) {
