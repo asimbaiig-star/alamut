@@ -1509,10 +1509,32 @@ const seededDisputes: Dispute[] = [];
 }
 
 // ============ REVIEWS (seed for the documented demo flow) ============
+// Each demo creator (Sarah, Yuki, Amir) gets 3-5 reviews from past
+// campaigns dating back 90-180 days so storefronts show a credible
+// review history instead of a single rv_1 entry. Mirror brand-side
+// reviews where the creator reviewed back. campaignId reuses the
+// demo campaigns (cmp_1..cmp_4) — even if those are still 'live' in
+// the seed, the review is dated to suggest a prior cycle.
 const seededReviews: import('./types').Review[] = [
   // Holiday Tables (cmp_4) — Le Creuset ↔ Amir
   { id: 'rv_1', campaignId: 'cmp_4', fromUserId: 'u_marcus', reviewType: 'creator', targetId: 'c_amir', rating: 5, text: 'Amir delivered above and beyond. Reels were the highlight of the campaign — natural light, considered shot list. Would book again immediately.', at: dayAgo(85) },
   { id: 'rv_2', campaignId: 'cmp_4', fromUserId: 'u_amir',   reviewType: 'brand',   targetId: 'b_lecreuset', rating: 5, text: 'Marcus and the Le Creuset team were a dream. Clear brief, fast feedback, escrow released before noon the day after posting.', at: dayAgo(85) },
+
+  // Sarah — 4 prior reviews
+  { id: 'rv_s1', campaignId: 'cmp_1', fromUserId: 'u_hannah', reviewType: 'creator', targetId: 'c_sarah', rating: 5, text: 'Best collaboration we ran last quarter. Sarah\'s framing and editorial sensibility nailed the Spring Renewal brief on the first take.', at: dayAgo(95) },
+  { id: 'rv_s2', campaignId: 'cmp_3', fromUserId: 'u_hannah', reviewType: 'creator', targetId: 'c_sarah', rating: 5, text: 'Sarah responded to feedback faster than my internal team. Two rounds, both shipped on time.', at: dayAgo(140) },
+  { id: 'rv_s3', campaignId: 'cmp_2', fromUserId: 'u_marcus', reviewType: 'creator', targetId: 'c_sarah', rating: 4, text: 'Strong visual work. We pushed back twice on tonal direction; she received it gracefully and re-shot. Great communication throughout.', at: dayAgo(170) },
+  { id: 'rv_s4', campaignId: 'cmp_1', fromUserId: 'u_sarah',  reviewType: 'brand',   targetId: 'b_aesop',     rating: 5, text: 'Aesop respects the craft. Brief was clear, no scope creep, payment cleared next business day.', at: dayAgo(95) },
+
+  // Yuki — 3 prior reviews
+  { id: 'rv_y1', campaignId: 'cmp_3', fromUserId: 'u_hannah', reviewType: 'creator', targetId: 'c_yuki', rating: 5, text: 'Yuki\'s Studio Notes work felt like a brand campaign we couldn\'t have produced internally. Already booking the next one.', at: dayAgo(110) },
+  { id: 'rv_y2', campaignId: 'cmp_2', fromUserId: 'u_marcus', reviewType: 'creator', targetId: 'c_yuki', rating: 5, text: 'Beautiful daylight footage, on time, exactly the deliverables we briefed. Easiest 5 stars I\'ve ever given.', at: dayAgo(155) },
+  { id: 'rv_y3', campaignId: 'cmp_3', fromUserId: 'u_yuki',   reviewType: 'brand',   targetId: 'b_aesop',     rating: 5, text: 'Editorial-grade brief, generous feedback, prompt payout. Aesop is the bar.', at: dayAgo(110) },
+
+  // Amir — 3 prior reviews (in addition to rv_1/rv_2 above)
+  { id: 'rv_a1', campaignId: 'cmp_2', fromUserId: 'u_marcus', reviewType: 'creator', targetId: 'c_amir', rating: 5, text: 'Second campaign with Amir. Reach numbers held up, audience overlap was exactly what we briefed.', at: dayAgo(125) },
+  { id: 'rv_a2', campaignId: 'cmp_1', fromUserId: 'u_hannah', reviewType: 'creator', targetId: 'c_amir', rating: 4, text: 'Excellent food framing. Minor delay in Round 2 — flagged it, he fixed promptly. Would happily book again.', at: dayAgo(165) },
+  { id: 'rv_a3', campaignId: 'cmp_2', fromUserId: 'u_amir',   reviewType: 'brand',   targetId: 'b_lecreuset', rating: 5, text: 'Le Creuset gave creative space without micromanaging. The mark of a brand that actually trusts the creator.', at: dayAgo(125) },
 ];
 
 // ============ REFERRALS (creator network) ============
