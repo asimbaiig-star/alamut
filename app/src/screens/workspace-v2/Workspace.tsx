@@ -128,6 +128,14 @@ export function WorkspaceV2() {
   const [persona, setPersonaState] = useState<Persona>(personaForUser);
   const [route, setRouteState] = useState<string>(() => {
     if (typeof window === 'undefined') return persona === 'creator' ? 'creator-home' : 'home';
+    // URL `?tab=<route>` takes precedence over localStorage so deep-
+    // links + browser back/forward both work. The URL is updated on
+    // every `go()` (see effect below) so this initial-load read is
+    // the only place we trust localStorage as a fallback.
+    try {
+      const urlTab = new URLSearchParams(window.location.search).get('tab');
+      if (urlTab && routeFitsPersona(urlTab, persona)) return urlTab;
+    } catch { /* no-op */ }
     let stored: string | null = null;
     try { stored = localStorage.getItem(ROUTE_KEY); } catch { /* no-op */ }
     // Reject a stored route that doesn't fit the persona — fixes the
@@ -169,6 +177,46 @@ export function WorkspaceV2() {
   useEffect(() => {
     try { localStorage.setItem(ROUTE_KEY, route); } catch { /* no-op */ }
   }, [route]);
+
+  // Browser history sync — push every route change into the URL so the
+  // browser's back/forward buttons navigate between workspace tabs
+  // instead of escaping all the way out to the landing page. The route
+  // string becomes `?tab=<route>`; on popstate we read it back and
+  // update the internal state. Initial mount also seeds from URL (see
+  // useState initializer above).
+  //
+  // Suppression flag: when the URL changes BECAUSE we just popstate'd,
+  // skip the push to avoid an infinite loop.
+  const suppressNextPushRef = useRef(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (suppressNextPushRef.current) {
+      suppressNextPushRef.current = false;
+      return;
+    }
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const current = params.get('tab');
+      if (current === route) return; // already in sync
+      params.set('tab', route);
+      const url = `${window.location.pathname}?${params.toString()}`;
+      window.history.pushState({ alamutTab: route }, '', url);
+    } catch { /* no-op */ }
+  }, [route]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    function onPopState() {
+      try {
+        const urlTab = new URLSearchParams(window.location.search).get('tab');
+        if (!urlTab) return;
+        suppressNextPushRef.current = true;
+        setRouteState(urlTab);
+      } catch { /* no-op */ }
+    }
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   function go(next: string) {
     setRouteState(next);

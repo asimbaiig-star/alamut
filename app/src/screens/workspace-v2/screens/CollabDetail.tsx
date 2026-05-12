@@ -35,6 +35,23 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
   const collab = useV2CollabById(collabId);
   const campaigns = useV2AllCampaigns();
   const db = useStore((s) => s.db);
+
+  // Resolve "Message brand" → deal:<threadId> so the Inbox auto-selects
+  // the right conversation instead of opening the most-recent unrelated
+  // thread. Falls back to the plain inbox tab when no thread exists yet
+  // (defensive — v2SendOffer creates one at offer-send time, so post-
+  // acceptance the thread should always exist).
+  function openConversationForCollab() {
+    if (!collab) { onRoute('creator-inbox'); return; }
+    const creatorUser = db.users.find((u) => u.creatorId === collab.creatorId);
+    const thread = creatorUser
+      ? db.threads.find((t) =>
+          t.campaignId === collab.campaignId &&
+          t.participants.includes(creatorUser.id),
+        )
+      : null;
+    onRoute(thread ? `deal:${thread.id}` : 'creator-inbox');
+  }
   // P1d §1.5 — track which deliverable is being uploaded as the FK id
   // (was a numeric slot index pre-P1d). The label is computed by the
   // adapter from platform/format and passed through for the modal title.
@@ -170,7 +187,7 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
             <button
               className="v2-btn v2-btn-outline"
               type="button"
-              onClick={() => onRoute('creator-inbox')}
+              onClick={openConversationForCollab}
             >
               {Icon.inbox} Message brand
             </button>
@@ -209,7 +226,7 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
                 onCounter={() => setCounterOpen(true)}
                 onUpload={() => nextSlot && setUploadSlot(nextSlot)}
                 onWithdraw={() => myApplication && v2WithdrawApplication(myApplication.id)}
-                onMessageBrand={() => onRoute('creator-inbox')}
+                onMessageBrand={openConversationForCollab}
                 activeOfferRate={activeOffer?.rate}
                 latestRevisionNote={
                   collab.deliverables.find((d) => d.status === 'revision')?.notes
@@ -344,7 +361,7 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
                 className="v2-btn v2-btn-sm v2-btn-outline"
                 type="button"
                 style={{ width: '100%' }}
-                onClick={() => onRoute('creator-inbox')}
+                onClick={openConversationForCollab}
               >
                 {Icon.inbox} Open conversation
               </button>
