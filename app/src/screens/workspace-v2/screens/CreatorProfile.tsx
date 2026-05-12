@@ -9,8 +9,10 @@
 // signals at the top (response time, fit-score, recent campaign
 // outcomes) and primary CTAs in the topbar.
 
+import { useMemo } from 'react';
 import { fmtUSD, fmtFollowers, Icon, PLATFORM_META, ScoreBadge, Topbar } from '../lib';
 import { useV2AllCampaigns, useV2Creators, useV2BrandShortlist, v2ToggleSavedCreator } from '../v2Hooks';
+import { useStore } from '@/lib/api/store';
 
 interface Props {
   creatorId: string;
@@ -34,6 +36,38 @@ export function CreatorProfile({ creatorId, onRoute }: Props) {
   const avgEngagement = (
     creator.channels.reduce((s, ch) => s + ch.engagement, 0) / creator.channels.length
   ).toFixed(1);
+
+  // Response time — average gap between the brand's last message and
+  // this creator's reply, across every thread they share. Falls back
+  // to the raw Creator.responseHrs from the seed when no replies exist.
+  const db = useStore((s) => s.db);
+  const responseTimeCopy = useMemo(() => {
+    const rawCreator = db.creators.find((c) => c.id === creator.id);
+    const userId = rawCreator?.userId;
+    if (!userId) return `~${(creator as { responseHrs?: number }).responseHrs ?? 24} hrs`;
+    // Walk all threads the creator participates in; for each thread, find
+    // pairs where the other party messages first and the creator replies.
+    const gaps: number[] = [];
+    for (const t of db.threads) {
+      if (!t.participants.includes(userId)) continue;
+      const msgs = db.messages
+        .filter((m) => m.threadId === t.id)
+        .sort((a, b) => +new Date(a.at) - +new Date(b.at));
+      for (let i = 1; i < msgs.length; i++) {
+        const prev = msgs[i - 1];
+        const curr = msgs[i];
+        if (prev.fromUserId !== userId && curr.fromUserId === userId) {
+          gaps.push(+new Date(curr.at) - +new Date(prev.at));
+        }
+      }
+    }
+    if (gaps.length === 0) return `~${(creator as { responseHrs?: number }).responseHrs ?? 24} hrs`;
+    const avgMs = gaps.reduce((s, g) => s + g, 0) / gaps.length;
+    const hours = avgMs / 3_600_000;
+    if (hours < 1) return `~${Math.round(hours * 60)} min`;
+    if (hours < 24) return `~${Math.round(hours)} hrs`;
+    return `~${(hours / 24).toFixed(1)} days`;
+  }, [db, creator]);
 
   // Past collabs from campaigns table
   const pastCollabs = allCampaigns.filter(
@@ -137,7 +171,7 @@ export function CreatorProfile({ creatorId, onRoute }: Props) {
           >
             <KpiInline label="Total reach" value={fmtFollowers(totalFollowers)} sub="across all channels" />
             <KpiInline label="Avg engagement" value={`${avgEngagement}%`} sub="last 30 days" />
-            <KpiInline label="Response time" value="~3 hrs" sub="business hours" />
+            <KpiInline label="Response time" value={responseTimeCopy} sub="message threads" />
             <KpiInline label="Going rate" value={fmtUSD(creator.rate)} sub="per Reel + Stories" />
             <KpiInline label="Past brands" value={String(creator.pastBrands.length + pastCollabs.length)} sub={creator.pastBrands.slice(0, 2).join(', ')} />
           </div>

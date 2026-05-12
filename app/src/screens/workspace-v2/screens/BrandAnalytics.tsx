@@ -15,7 +15,7 @@ import { fmtFollowers, fmtUSD, Icon, Topbar } from '../lib';
 import { useV2Campaigns, useV2Creators, useV2CurrentBrand } from '../v2Hooks';
 import { collabsForCampaign } from '../v2Adapters';
 import { useStore } from '@/lib/api/store';
-import type { V2CampaignPerf, V2Collab } from '../data';
+import type { V2CampaignPerf, V2Collab, V2Creator } from '../data';
 import { pushToast } from '@/lib/utils/toast';
 import { downloadCSV } from '@/lib/utils/csv';
 import {
@@ -407,28 +407,7 @@ export function BrandAnalytics({ onRoute }: Props) {
             }}>
               Audience reached
             </h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-              <div>
-                <div className="v2-eyebrow" style={{ marginBottom: 8 }}>By city</div>
-                <BreakdownBar label="New York"      value={42} total={100} color="var(--v2-ink)"   pct />
-                <BreakdownBar label="Los Angeles"   value={31} total={100} color="var(--v2-ink-2)" pct />
-                <BreakdownBar label="London"        value={14} total={100} color="var(--v2-ink-3)" pct />
-                <BreakdownBar label="Toronto"       value={7}  total={100} color="var(--v2-ink-4)" pct />
-                <BreakdownBar label="Other"         value={6}  total={100} color="var(--v2-line-2)" pct />
-              </div>
-              <div>
-                <div className="v2-eyebrow" style={{ marginBottom: 8 }}>By age</div>
-                <BreakdownBar label="18–24" value={28} total={100} color="var(--v2-accent)" pct />
-                <BreakdownBar label="25–34" value={46} total={100} color="var(--v2-accent)" pct />
-                <BreakdownBar label="35–44" value={19} total={100} color="var(--v2-accent)" pct />
-                <BreakdownBar label="45+"   value={7}  total={100} color="var(--v2-accent)" pct />
-                <hr style={{ border: 0, borderTop: '1px solid var(--v2-line)', margin: '12px 0' }} />
-                <div className="v2-row" style={{ justifyContent: 'space-between', fontSize: 12, marginTop: 6 }}>
-                  <span className="v2-muted">Female</span>
-                  <span className="v2-tabular" style={{ fontWeight: 600 }}>78%</span>
-                </div>
-              </div>
-            </div>
+            <AudienceBreakdown collabs={allCollabs} creators={creators} />
           </div>
 
           <div className="v2-card v2-card-pad-lg">
@@ -484,5 +463,91 @@ function countDeliverables(collabs: V2Collab[], rx: RegExp): number {
   return collabs.reduce(
     (sum, c) => sum + c.deliverables.filter((d) => rx.test(d.label)).length,
     0,
+  );
+}
+
+/** Audience breakdown computed from the actual accepted creators on
+ *  this brand's collabs. Aggregates city distribution (weighted by
+ *  reach) and age + gender from each creator's `audience` field. */
+function AudienceBreakdown({ collabs, creators }: { collabs: V2Collab[]; creators: V2Creator[] }) {
+  const involvedCreatorIds = new Set(collabs.map((c) => c.creatorId));
+  const involved = creators.filter((c) => involvedCreatorIds.has(c.id));
+
+  // Weight by total reach so a 2M-follower creator counts more than a 50K one.
+  type Bucket = { weight: number; label: string };
+  const cityWeights = new Map<string, number>();
+  let totalReach = 0;
+  let weightedFemale = 0;
+  let weightedAge2534 = 0;
+  let weightedAge1824 = 0;
+  let weightedAge3544 = 0;
+  let weightedAge45plus = 0;
+
+  for (const cr of involved) {
+    const reach = cr.channels.reduce((s, ch) => s + ch.followers, 0);
+    if (reach <= 0) continue;
+    totalReach += reach;
+    const city = cr.city || 'Other';
+    cityWeights.set(city, (cityWeights.get(city) ?? 0) + reach);
+    weightedFemale += (cr.audience?.female ?? 0) * reach;
+    const a25 = cr.audience?.age2534 ?? 0;
+    const a18 = cr.audience?.age1824 ?? 0;
+    const a35 = cr.audience?.age3544 ?? 0;
+    weightedAge2534 += a25 * reach;
+    weightedAge1824 += a18 * reach;
+    weightedAge3544 += a35 * reach;
+    // Anything left over → 45+ bucket.
+    weightedAge45plus += Math.max(0, 100 - a25 - a18 - a35) * reach;
+  }
+
+  if (totalReach === 0) {
+    return (
+      <p className="v2-muted" style={{ fontSize: 13, margin: 0 }}>
+        No accepted collabs yet — audience reach will populate once creators are confirmed on a campaign.
+      </p>
+    );
+  }
+
+  const cityBuckets: Bucket[] = Array.from(cityWeights.entries())
+    .map(([label, weight]) => ({ label, weight }))
+    .sort((a, b) => b.weight - a.weight);
+  const topCities = cityBuckets.slice(0, 4);
+  const otherWeight = cityBuckets.slice(4).reduce((s, b) => s + b.weight, 0);
+  if (otherWeight > 0) topCities.push({ label: 'Other', weight: otherWeight });
+
+  const pct = (w: number) => Math.round((w / totalReach) * 100);
+  const cityColors = ['var(--v2-ink)', 'var(--v2-ink-2)', 'var(--v2-ink-3)', 'var(--v2-ink-4)', 'var(--v2-line-2)'];
+
+  const femalePct = Math.round(weightedFemale / totalReach);
+  const age2534Pct = Math.round(weightedAge2534 / totalReach);
+  const age1824Pct = Math.round(weightedAge1824 / totalReach);
+  const age3544Pct = Math.round(weightedAge3544 / totalReach);
+  const age45Pct = Math.max(0, 100 - age2534Pct - age1824Pct - age3544Pct);
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+      <div>
+        <div className="v2-eyebrow" style={{ marginBottom: 8 }}>By city</div>
+        {topCities.map((b, i) => (
+          <BreakdownBar key={b.label} label={b.label} value={pct(b.weight)} total={100} color={cityColors[i] ?? 'var(--v2-line-2)'} pct />
+        ))}
+      </div>
+      <div>
+        <div className="v2-eyebrow" style={{ marginBottom: 8 }}>By age</div>
+        <BreakdownBar label="18–24" value={age1824Pct} total={100} color="var(--v2-accent)" pct />
+        <BreakdownBar label="25–34" value={age2534Pct} total={100} color="var(--v2-accent)" pct />
+        <BreakdownBar label="35–44" value={age3544Pct} total={100} color="var(--v2-accent)" pct />
+        <BreakdownBar label="45+"   value={age45Pct}   total={100} color="var(--v2-accent)" pct />
+        <hr style={{ border: 0, borderTop: '1px solid var(--v2-line)', margin: '12px 0' }} />
+        <div className="v2-row" style={{ justifyContent: 'space-between', fontSize: 12, marginTop: 6 }}>
+          <span className="v2-muted">Female</span>
+          <span className="v2-tabular" style={{ fontWeight: 600 }}>{femalePct}%</span>
+        </div>
+        <div className="v2-row" style={{ justifyContent: 'space-between', fontSize: 12, marginTop: 4 }}>
+          <span className="v2-muted">Male</span>
+          <span className="v2-tabular" style={{ fontWeight: 600 }}>{100 - femalePct}%</span>
+        </div>
+      </div>
+    </div>
   );
 }
