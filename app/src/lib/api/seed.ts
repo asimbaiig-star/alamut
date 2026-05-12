@@ -612,7 +612,28 @@ function genCreator(idx: number, name: string, tier: 'Rising' | 'Specialist' | '
       // P6 §5.6 — `profileCompletion` is computed on read via
       // `lib/utils/profile-completion.ts`; no longer stored.
       pressMentions: [],
-      pastClients: chance(0.5) ? [pick(BRAND_POOL).name, pick(BRAND_POOL).name] : [],
+      // pastClients seeded by tier so storefronts feel populated.
+      // Rising: 1–2 brands, Specialist: 2–4, Flagship: 3–5. Dedupe so
+      // we don't show the same brand twice when picks collide.
+      pastClients: (() => {
+        const targetCount = tier === 'Flagship' ? range(3, 5)
+          : tier === 'Specialist' ? range(2, 4)
+          : range(1, 2);
+        const picked = new Set<string>();
+        for (let i = 0; i < targetCount * 3 && picked.size < targetCount; i++) {
+          picked.add(pick(BRAND_POOL).name);
+        }
+        return Array.from(picked);
+      })(),
+      // Availability seeded for every creator so the brand-side
+      // "open / limited / booked" filter on Discover has real signal
+      // to work with. 70/20/10 split mirrors the audit recommendation.
+      availability: (() => {
+        const r = rng();
+        if (r < 0.7) return { status: 'open' as const, note: 'Open for briefs' };
+        if (r < 0.9) return { status: 'limited' as const, untilDate: dayAhead(range(7, 45)), note: 'Limited slots — book early' };
+        return { status: 'booked' as const, untilDate: dayAhead(range(20, 90)), note: 'Fully booked this period' };
+      })(),
     },
   };
 }
@@ -1396,9 +1417,19 @@ const liveCampaignsForFeature = generatedCampaigns
   .slice(0, 4);
 liveCampaignsForFeature.forEach((cs) => { cs.campaign.editorsPick = true; });
 
-// And mark top creators as Editor's Picks (Sarah, Yuki, Amir + 3 generated Flagship)
+// Mark top creators as Editor's Picks. Includes the demo trio
+// (Sarah, Yuki, Amir) plus top Flagship + Specialist by rating, so
+// Discover's "Editor's pick" filter has ~18-20 candidates instead of 6.
 DEMO_CREATORS.forEach((c) => { c.editorsPick = true; });
-generatedCreators.filter(({ creator }) => creator.tier === 'Flagship').slice(0, 3).forEach(({ creator }) => { creator.editorsPick = true; });
+const flagshipPicks = generatedCreators
+  .filter(({ creator }) => creator.tier === 'Flagship')
+  .sort((a, b) => b.creator.rating - a.creator.rating)
+  .slice(0, 10);
+const specialistPicks = generatedCreators
+  .filter(({ creator }) => creator.tier === 'Specialist')
+  .sort((a, b) => b.creator.rating - a.creator.rating)
+  .slice(0, 8);
+[...flagshipPicks, ...specialistPicks].forEach(({ creator }) => { creator.editorsPick = true; });
 
 // ============ DISPUTES (a couple seeded for admin demo) ============
 const seededDisputes: Dispute[] = [];
@@ -1805,6 +1836,81 @@ const seededTestimonials: import('./types').Testimonial[] = [
     authorSubtitle: 'Head of Growth, Le Labo',
     authorPortrait: upx('https://images.unsplash.com/photo-1568602471122-7832951cc4c5', 200, 200),
     campaignId: 'cmp_2',
+  },
+  // Phase-58 audit augmentation — add 7 more rows so the voices wall
+  // feels substantial. Each quote names a different mechanic (negotiation
+  // speed, audience verification, dispute resolution, instant payouts,
+  // contract clarity, EOY tax docs, regional fit) so the rotation reads
+  // varied across page loads.
+  {
+    id: 'tm_12',
+    shownTo: 'brand',
+    quote:
+      "Set my floor rate, watched the first offer come in at 80% of it, countered, locked at my number. Took 36 minutes start to finish.",
+    authorName: 'Léa Martin',
+    authorSubtitle: '@lealifestyle',
+    authorPortrait: upx('https://images.unsplash.com/photo-1531746020798-e6953c6e8e04', 200, 200),
+    campaignId: 'cmp_1',
+  },
+  {
+    id: 'tm_13',
+    shownTo: 'brand',
+    quote:
+      "Brand tried to push scope after acceptance. Filed a dispute. Got a partial release within 48 hours. First platform where I didn't have to eat the loss.",
+    authorName: 'Marcus Chen',
+    authorSubtitle: '@marcuseats',
+    authorPortrait: upx('https://images.unsplash.com/photo-1500648767791-00dcc994a43e', 200, 200),
+    campaignId: 'cmp_4',
+  },
+  {
+    id: 'tm_14',
+    shownTo: 'brand',
+    quote:
+      "Withdraw to bank arrived in 14 hours after the brand approved. My last platform took six weeks and I had to chase three emails.",
+    authorName: 'Ananya Rao',
+    authorSubtitle: '@ananyatravel',
+    authorPortrait: upx('https://images.unsplash.com/photo-1438761681033-6461ffad8d80', 200, 200),
+    campaignId: 'cmp_2',
+  },
+  {
+    id: 'tm_15',
+    shownTo: 'creator',
+    quote:
+      "We're a small founder team — agencies wouldn't take our budget. Alamut got us 4 creators in our actual audience and 2 of them outperformed our paid social.",
+    authorName: 'Elena Park',
+    authorSubtitle: 'Co-founder, Notable',
+    authorPortrait: upx('https://images.unsplash.com/photo-1580489944761-15a19d654956', 200, 200),
+    campaignId: 'cmp_3',
+  },
+  {
+    id: 'tm_16',
+    shownTo: 'creator',
+    quote:
+      "Q1 tax statement was just sitting there in my wallet at the end of March. Every payout, every fee, every withholding line. Saved my accountant a week.",
+    authorName: 'Diego Fernández',
+    authorSubtitle: '@diegoshoots',
+    authorPortrait: upx('https://images.unsplash.com/photo-1542909168-82c3e7fdca5c', 200, 200),
+    campaignId: 'cmp_4',
+  },
+  {
+    id: 'tm_17',
+    shownTo: 'creator',
+    quote:
+      "Contract snapshot at acceptance is the killer feature. Brand tried to update the brief two weeks in — my signed scope didn't change. Slept fine that night.",
+    authorName: 'Olivia Bennett',
+    authorSubtitle: '@oliviabakes',
+    authorPortrait: upx('https://images.unsplash.com/photo-1517841905240-472988babdf9', 200, 200),
+    campaignId: 'cmp_1',
+  },
+  {
+    id: 'tm_18',
+    shownTo: 'brand',
+    quote:
+      "We needed Lahore + Karachi creators specifically. Filtered, shortlisted 8, offered 3, two accepted same day. No agency would have moved that fast on a regional brief.",
+    authorName: 'Imran Sheikh',
+    authorSubtitle: 'Brand Manager, National Foods',
+    authorPortrait: upx('https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d', 200, 200),
+    campaignId: 'cmp_3',
   },
 ];
 
