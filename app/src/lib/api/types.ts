@@ -20,6 +20,25 @@ export interface NotificationPrefs {
  *  be able to see everything. */
 export type TeamRole = 'admin' | 'ops' | 'finance' | 'viewer';
 
+/** Phase 14 — brand-team invite. Brand owner creates one; invitee
+ *  redeems via the secret token. Acceptance attaches the user to
+ *  the brand with the named role. */
+export interface TeamInvite {
+  id: string;
+  brandId: string;
+  invitedByUserId: string;
+  invitedEmail: string;
+  role: TeamRole;
+  /** Secret URL token — used in the accept-invite path. The brand
+   *  shares this with the invitee out-of-band (in the demo, copy
+   *  from a modal; production would email via SES/SendGrid). */
+  token: string;
+  createdAt: string;
+  acceptedAt?: string;
+  acceptedByUserId?: string;
+  revokedAt?: string;
+}
+
 /** P5 §4.2 — platform-admin role split. Pre-P5 a `User.role === 'admin'`
  *  was an all-or-nothing super-admin. P5 lets us assign one or more
  *  specialized admin roles per user so the admin queue can filter tabs
@@ -1072,6 +1091,9 @@ export interface Database {
   scheduledNotifications: ScheduledNotification[];
   /** P6 §5.3 — brand-side soft outreach before any offer is sent. */
   outreach: Outreach[];
+  /** Phase 14 — brand team invites. Brand owner creates rows; invitee
+   *  redeems via token URL to join the team with the specified role. */
+  teamInvites?: TeamInvite[];
   /** Forward-only data-migration version. Bumps with each migration phase
    *  (see `lib/api/migrations.ts`). Hydration runs every migrator from
    *  `version + 1 → CURRENT_MIGRATION_VERSION`. Distinct from Zustand's

@@ -19,6 +19,7 @@ import { RedirectToV2 } from './screens/workspace-v2/RedirectToV2';
 // users hitting any /<role>/today route bypass this entirely.
 import { SignUp } from './screens/auth/SignUp';
 import { SignIn } from './screens/auth/SignIn';
+import { AcceptInvite } from './screens/auth/AcceptInvite';
 
 // Eager: admin home stays loaded eagerly for fast first-paint when an
 // admin user signs in. Admin portal migration is deferred to Phase H.
@@ -105,6 +106,7 @@ export const router = createBrowserRouter([
   { path: '/creators', element: lazyRoute(CreatorsDirectory) },
   { path: '/signup', element: <SignUp /> },
   { path: '/signin', element: <SignIn /> },
+  { path: '/accept-invite', element: <AcceptInvite /> },
   { path: '/c/:handle', element: lazyRoute(PublicCreator) },
   // Phase B+C — workspace v2. Owns its own shell + sidebar; no
   // WorkspaceShell wrapper. Phase C added auth gating: both brand and

@@ -1977,4 +1977,6 @@ export const SEED: Database = {
   // P6 §5.3 — brand-side soft outreach. Empty on fresh load; populated
   // by `v2SendOutreach` when the brand reaches out via Spark.
   outreach: [],
+  // Phase 14 — team invites are brand-owner-created in the live app.
+  teamInvites: [],
 };

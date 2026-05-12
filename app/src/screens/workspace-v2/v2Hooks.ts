@@ -731,6 +731,181 @@ export async function v2RemoveCampaignAsset(
   return true;
 }
 
+// =====================================================================
+// Phase 14 — Team invites
+// =====================================================================
+
+/** Brand owner sends a team invite. Generates a token, writes the row
+ *  locally, mirrors to Postgres. Returns the new invite so the caller
+ *  can immediately display the share URL (the demo flow doesn't email
+ *  the invitee; the brand copies the link from a modal). */
+export function v2SendTeamInvite(input: {
+  brandId: string;
+  email: string;
+  role: import('@/lib/api/types').TeamRole;
+}): import('@/lib/api/types').TeamInvite | null {
+  const cleanEmail = input.email.trim().toLowerCase();
+  if (!cleanEmail) return null;
+  const session = useStore.getState().session;
+  const me = session ? useStore.getState().db.users.find((u) => u.id === session.userId) : null;
+  if (!me) return null;
+  let created: import('@/lib/api/types').TeamInvite | null = null;
+  tx((db) => {
+    // Idempotent — if a pending invite already exists for this
+    // (brand, email), reuse it. Avoids the brand burning multiple
+    // tokens by re-clicking Send.
+    const existing = (db.teamInvites ?? []).find(
+      (i) => i.brandId === input.brandId
+        && i.invitedEmail.toLowerCase() === cleanEmail
+        && !i.acceptedAt
+        && !i.revokedAt,
+    );
+    if (existing) { created = existing; return; }
+    const invite: import('@/lib/api/types').TeamInvite = {
+      id: `inv_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      brandId: input.brandId,
+      invitedByUserId: me.id,
+      invitedEmail: cleanEmail,
+      role: input.role,
+      token: `tk_${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`,
+      createdAt: new Date().toISOString(),
+    };
+    db.teamInvites = [...(db.teamInvites ?? []), invite];
+    created = invite;
+  });
+
+  // Fire-and-forget mirror.
+  if (created && typeof window !== 'undefined') {
+    const inviteToMirror = created;
+    void (async () => {
+      try {
+        const { isSupabaseConfigured } = await import('@/lib/supabase');
+        if (!isSupabaseConfigured()) return;
+        const { insertTeamInviteInSupabase } = await import('@/lib/data/teamInvitesRepo');
+        await insertTeamInviteInSupabase(inviteToMirror);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        // Idempotent re-insert hits duplicate-key; silence.
+        if (/duplicate|already|row-level security|no rows|0 rows|not found/i.test(msg)) return;
+        // eslint-disable-next-line no-console
+        console.warn('[team invite mirror] failed:', msg);
+      }
+    })();
+  }
+  return created;
+}
+
+/** Brand owner revokes a pending invite (token can no longer be redeemed). */
+export function v2RevokeTeamInvite(inviteId: string): boolean {
+  let revokedAt: string | null = null;
+  tx((db) => {
+    const idx = (db.teamInvites ?? []).findIndex((i) => i.id === inviteId);
+    if (idx === -1) return;
+    const invite = db.teamInvites![idx];
+    if (invite.acceptedAt || invite.revokedAt) return; // already terminal
+    revokedAt = new Date().toISOString();
+    db.teamInvites = [
+      ...db.teamInvites!.slice(0, idx),
+      { ...invite, revokedAt: revokedAt as string },
+      ...db.teamInvites!.slice(idx + 1),
+    ];
+  });
+  if (revokedAt && typeof window !== 'undefined') {
+    const stamp = revokedAt;
+    void (async () => {
+      try {
+        const { isSupabaseConfigured } = await import('@/lib/supabase');
+        if (!isSupabaseConfigured()) return;
+        const { updateTeamInviteInSupabase } = await import('@/lib/data/teamInvitesRepo');
+        await updateTeamInviteInSupabase(inviteId, { revokedAt: stamp });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (/row-level security|no rows|0 rows|not found/i.test(msg)) return;
+        // eslint-disable-next-line no-console
+        console.warn('[team invite revoke mirror] failed:', msg);
+      }
+    })();
+  }
+  return revokedAt !== null;
+}
+
+/** Invitee accepts an invite by token. Attaches their User to the
+ *  brand with the invite's role. Idempotent — re-accepting a
+ *  previously-accepted invite returns success without mutating. */
+export function v2AcceptTeamInvite(token: string): { ok: boolean; reason?: string } {
+  const session = useStore.getState().session;
+  if (!session) return { ok: false, reason: 'sign-in-required' };
+  const me = useStore.getState().db.users.find((u) => u.id === session.userId);
+  if (!me) return { ok: false, reason: 'sign-in-required' };
+
+  let result: { ok: boolean; reason?: string } = { ok: false, reason: 'not-found' };
+  tx((db) => {
+    const idx = (db.teamInvites ?? []).findIndex((i) => i.token === token);
+    if (idx === -1) { result = { ok: false, reason: 'not-found' }; return; }
+    const invite = db.teamInvites![idx];
+    if (invite.revokedAt) { result = { ok: false, reason: 'revoked' }; return; }
+    if (invite.acceptedAt) { result = { ok: true }; return; } // idempotent
+    if (invite.invitedEmail.toLowerCase() !== me.email.toLowerCase()) {
+      result = { ok: false, reason: 'wrong-account' };
+      return;
+    }
+    const acceptedAt = new Date().toISOString();
+    // Update the invite.
+    db.teamInvites = [
+      ...db.teamInvites!.slice(0, idx),
+      { ...invite, acceptedAt, acceptedByUserId: me.id },
+      ...db.teamInvites!.slice(idx + 1),
+    ];
+    // Attach the user to the brand with the role.
+    const uIdx = db.users.findIndex((u) => u.id === me.id);
+    if (uIdx !== -1) {
+      db.users[uIdx] = {
+        ...db.users[uIdx],
+        brandId: invite.brandId,
+        role: 'brand',
+        teamRole: invite.role,
+      };
+    }
+    result = { ok: true };
+
+    // Notify the inviter.
+    db.notifications.push({
+      id: `n_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      userId: invite.invitedByUserId,
+      text: `${me.email} joined your team as ${invite.role}`,
+      href: '/v2',
+      at: acceptedAt,
+      read: false,
+      meta: {},
+    });
+  });
+
+  // Mirror to Supabase if we actually accepted (skip on already-accepted).
+  if (result.ok && result.reason !== 'revoked' && result.reason !== 'not-found' && typeof window !== 'undefined') {
+    const meId = me.id;
+    void (async () => {
+      try {
+        const { isSupabaseConfigured } = await import('@/lib/supabase');
+        if (!isSupabaseConfigured()) return;
+        const { updateTeamInviteInSupabase } = await import('@/lib/data/teamInvitesRepo');
+        const invite = useStore.getState().db.teamInvites?.find((i) => i.token === token);
+        if (invite?.acceptedAt) {
+          await updateTeamInviteInSupabase(invite.id, {
+            acceptedAt: invite.acceptedAt,
+            acceptedByUserId: meId,
+          });
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (/row-level security|no rows|0 rows|not found/i.test(msg)) return;
+        // eslint-disable-next-line no-console
+        console.warn('[team invite accept mirror] failed:', msg);
+      }
+    })();
+  }
+  return result;
+}
+
 /** Helper for Spark: sync its shortlist into the brand's saved list. */
 export function v2SyncSparkShortlist(creatorIds: string[]) {
   tx((db) => {

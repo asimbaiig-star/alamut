@@ -126,6 +126,7 @@ if (useStore.getState().db.migrationVersion !== CURRENT_MIGRATION_VERSION) {
       contracts: [...(s.db.contracts ?? [])],
       scheduledNotifications: [...(s.db.scheduledNotifications ?? [])],
       outreach: [...(s.db.outreach ?? [])],
+      teamInvites: [...(s.db.teamInvites ?? [])],
       migrationVersion: s.db.migrationVersion,
     };
     runPendingMigrations(next);
@@ -167,6 +168,7 @@ export function tx<T>(mutator: (db: Database) => T): T {
       contracts: [...(prev.contracts ?? [])],           // P2 — same defensive guard
       scheduledNotifications: [...(prev.scheduledNotifications ?? [])], // P4 — same
       outreach: [...(prev.outreach ?? [])],             // P6 §5.3 — same
+      teamInvites: [...(prev.teamInvites ?? [])],       // Phase 14 — same
       migrationVersion: prev.migrationVersion,
     };
     result = mutator(next);
@@ -223,7 +225,7 @@ if (typeof window !== 'undefined') {
 if (typeof window !== 'undefined') {
   void (async () => {
     try {
-      const [brandsMod, campaignsMod, applicationsMod, offersMod, creatorsMod, collabsMod, submissionsMod, deliverablesMod, contractsMod, transactionsMod, reviewsMod, disputesMod, outreachMod, threadsMod, messagesMod] = await Promise.all([
+      const [brandsMod, campaignsMod, applicationsMod, offersMod, creatorsMod, collabsMod, submissionsMod, deliverablesMod, contractsMod, transactionsMod, reviewsMod, disputesMod, outreachMod, threadsMod, messagesMod, teamInvitesMod] = await Promise.all([
         import('@/lib/data/brandsRepo'),
         import('@/lib/data/campaignsRepo'),
         import('@/lib/data/applicationsRepo'),
@@ -239,8 +241,9 @@ if (typeof window !== 'undefined') {
         import('@/lib/data/outreachRepo'),
         import('@/lib/data/threadsRepo'),
         import('@/lib/data/messagesRepo'),
+        import('@/lib/data/teamInvitesRepo'),
       ]);
-      const [brands, campaigns, applications, offers, creators, collaborations, submissions, deliverables, contracts, transactions, reviews, disputes, outreach, threads, messages] = await Promise.all([
+      const [brands, campaigns, applications, offers, creators, collaborations, submissions, deliverables, contracts, transactions, reviews, disputes, outreach, threads, messages, teamInvites] = await Promise.all([
         brandsMod.fetchAllBrandsFromSupabase(),
         campaignsMod.fetchAllCampaignsFromSupabase(),
         applicationsMod.fetchAllApplicationsFromSupabase(),
@@ -256,6 +259,7 @@ if (typeof window !== 'undefined') {
         outreachMod.fetchAllOutreachFromSupabase(),
         threadsMod.fetchAllThreadsFromSupabase(),
         messagesMod.fetchAllMessagesFromSupabase(),
+        teamInvitesMod.fetchAllTeamInvitesFromSupabase(),
       ]);
       // Phase 10 — mount the realtime chat subscription once initial
       // hydration is complete. The subscription itself is idempotent
@@ -307,6 +311,7 @@ if (typeof window !== 'undefined') {
             outreach: overlay(s.db.outreach ?? [], outreach),
             threads: overlay(s.db.threads, threads),
             messages: overlay(s.db.messages, messages),
+            teamInvites: overlay(s.db.teamInvites ?? [], teamInvites),
           },
         };
       });
