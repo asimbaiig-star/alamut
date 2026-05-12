@@ -358,9 +358,18 @@ export function v2MarkThreadRead(threadId: string) {
 /** Send a message in a thread, from the current viewer.
  *  Phase 11 — new messages clear the recipient(s) from the thread's
  *  `archivedFor` so an archived conversation comes back to their inbox
- *  when the other party speaks up (standard Gmail-style behaviour). */
-export function v2SendMessage(threadId: string, text: string) {
-  if (!text.trim()) return;
+ *  when the other party speaks up (standard Gmail-style behaviour).
+ *  Phase 12 — optional `attachments` carries file metadata uploaded via
+ *  uploadMessageAttachment beforehand. */
+export function v2SendMessage(
+  threadId: string,
+  text: string,
+  attachments?: import('@/lib/api/types').MessageAttachment[],
+) {
+  // Allow empty text when attachments are present (drop-only sends).
+  const hasText = text.trim().length > 0;
+  const hasAttachments = (attachments?.length ?? 0) > 0;
+  if (!hasText && !hasAttachments) return;
   let newMsg: import('@/lib/api/types').Message | null = null;
   let threadPatch:
     | { lastMessageAt: string; unreadFor: string[]; archivedFor?: string[] }
@@ -377,6 +386,7 @@ export function v2SendMessage(threadId: string, text: string) {
       fromUserId: viewerId,
       text: text.trim(),
       at: now,
+      ...(hasAttachments ? { attachments } : {}),
     };
     db.messages.push(newMsg);
     const idx = db.threads.findIndex((t) => t.id === threadId);

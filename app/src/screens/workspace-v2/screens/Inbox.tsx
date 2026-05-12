@@ -152,10 +152,42 @@ export function Inbox({ onRoute, persona, forceThreadId, forcePanelMode }: Props
 
   const totalUnread = conversations.reduce((s, c) => s + c.unread, 0);
 
+  // Pending attachments — accumulate as the user picks files, ship them
+  // with the next send. Each entry carries the resolved MessageAttachment
+  // (post-upload) so the message goes through with both text + files.
+  const [pendingAttachments, setPendingAttachments] = useState<
+    import('@/lib/api/types').MessageAttachment[]
+  >([]);
+  const [attachUploading, setAttachUploading] = useState(false);
+
+  async function handleAttachFiles(files: FileList | null) {
+    if (!files || files.length === 0 || !active) return;
+    setAttachUploading(true);
+    try {
+      const { uploadMessageAttachment } = await import('@/lib/data/messagesRepo');
+      const uploaded: import('@/lib/api/types').MessageAttachment[] = [];
+      for (const file of Array.from(files)) {
+        // Cap at 8 attachments per message to match common chat limits.
+        if (pendingAttachments.length + uploaded.length >= 8) break;
+        const att = await uploadMessageAttachment(active.id, file);
+        uploaded.push(att);
+      }
+      setPendingAttachments((curr) => [...curr, ...uploaded]);
+      pushToast(`${uploaded.length} file${uploaded.length === 1 ? '' : 's'} attached`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      pushToast(`Attachment failed · ${msg.slice(0, 60)}`);
+    } finally {
+      setAttachUploading(false);
+    }
+  }
+
   function handleSend() {
-    if (!draft.trim() || !active) return;
-    v2SendMessage(active.id, draft);
+    if (!active) return;
+    if (!draft.trim() && pendingAttachments.length === 0) return;
+    v2SendMessage(active.id, draft, pendingAttachments.length > 0 ? pendingAttachments : undefined);
     setDraft('');
+    setPendingAttachments([]);
   }
 
   return (
@@ -201,6 +233,12 @@ export function Inbox({ onRoute, persona, forceThreadId, forcePanelMode }: Props
             setDraft={setDraft}
             onRoute={onRoute}
             onSend={handleSend}
+            pendingAttachments={pendingAttachments}
+            onPickFiles={handleAttachFiles}
+            onRemoveAttachment={(idx) =>
+              setPendingAttachments((curr) => curr.filter((_, i) => i !== idx))
+            }
+            attachUploading={attachUploading}
           />
         ) : (
           <div className="v2-inbox-empty v2-inbox-thread">
@@ -308,6 +346,7 @@ function ConversationList({
 // =====================================================================
 function Thread({
   conversation, counterparty, persona, draft, setDraft, onRoute, onSend,
+  pendingAttachments, onPickFiles, onRemoveAttachment, attachUploading,
 }: {
   conversation: V2Conversation;
   counterparty: V2Creator;
@@ -316,7 +355,13 @@ function Thread({
   setDraft: (v: string) => void;
   onRoute: (r: string) => void;
   onSend: () => void;
+  pendingAttachments: import('@/lib/api/types').MessageAttachment[];
+  onPickFiles: (files: FileList | null) => void;
+  onRemoveAttachment: (idx: number) => void;
+  attachUploading: boolean;
 }) {
+  // Ref the hidden file input so the visible button can dispatch a click.
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   // Bubble alignment: when you (the viewer) are the brand, "brand" messages
   // are yours (right-aligned dark); when you're the creator, "creator"
   // messages are yours (right-aligned dark) and "brand" messages are
@@ -495,23 +540,114 @@ function Thread({
             <div
               key={i}
               className={`v2-inbox-msg ${isYou ? 'v2-inbox-msg-from-brand' : 'v2-inbox-msg-from-creator'}`}
-              style={isYou ? {} : { /* counterparty styling already applied */ }}
             >
-              <div>{m.text}</div>
+              {m.text && <div>{m.text}</div>}
+              {m.attachments && m.attachments.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: m.text ? 6 : 0 }}>
+                  {m.attachments.map((att, ai) => (
+                    <a
+                      key={ai}
+                      href={att.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        padding: '5px 8px',
+                        fontSize: 12,
+                        borderRadius: 6,
+                        background: 'rgba(0,0,0,0.06)',
+                        color: 'inherit',
+                        textDecoration: 'none',
+                        maxWidth: 240,
+                      }}
+                      title={att.name}
+                    >
+                      📎 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{att.name}</span>
+                    </a>
+                  ))}
+                </div>
+              )}
               <div className="v2-inbox-msg-time">{m.time}</div>
             </div>
           );
         })}
       </div>
 
+      {/* Pending attachments preview — shows above the composer between
+          file pick and send. Each chip has its own × to remove. */}
+      {pendingAttachments.length > 0 && (
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 6,
+            padding: '8px 14px 0',
+            borderTop: '1px solid var(--v2-line)',
+          }}
+        >
+          {pendingAttachments.map((att, idx) => (
+            <span
+              key={idx}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '4px 6px 4px 10px',
+                fontSize: 12,
+                background: 'var(--v2-accent-soft)',
+                color: 'var(--v2-accent)',
+                borderRadius: 999,
+                maxWidth: 220,
+              }}
+            >
+              📎 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{att.name}</span>
+              <button
+                type="button"
+                aria-label={`Remove ${att.name}`}
+                onClick={() => onRemoveAttachment(idx)}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'var(--v2-accent)',
+                  cursor: 'pointer',
+                  padding: 0,
+                  width: 18,
+                  height: 18,
+                  fontSize: 13,
+                  lineHeight: 1,
+                }}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className="v2-inbox-composer">
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            onPickFiles(e.target.files);
+            // Reset so the same file can be re-picked if removed.
+            e.target.value = '';
+          }}
+          aria-hidden="true"
+        />
         <button
           className="v2-icon-btn"
           type="button"
           aria-label="Attach file"
-          onClick={() => pushToast('Drag-and-drop attachments coming soon — for now, paste a Drive / Dropbox link', 'default')}
+          onClick={() => fileInputRef.current?.click()}
+          disabled={attachUploading}
+          title={attachUploading ? 'Uploading…' : 'Attach file'}
         >
-          {Icon.edit}
+          {attachUploading ? '…' : '📎'}
         </button>
         <textarea
           placeholder={`Message ${counterparty.name.split(' ')[0]}…`}
@@ -528,7 +664,7 @@ function Thread({
         <button
           className="v2-btn v2-btn-primary"
           type="button"
-          disabled={!draft.trim()}
+          disabled={!draft.trim() && pendingAttachments.length === 0}
           onClick={onSend}
         >
           {Icon.send}<span>Send</span>

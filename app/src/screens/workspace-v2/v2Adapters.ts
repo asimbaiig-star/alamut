@@ -271,6 +271,7 @@ export function threadToV2(t: Thread, db: Database, viewerUserId: string): V2Con
     from: m.fromUserId === viewerUserId ? 'brand' : 'creator',
     text: m.text,
     time: new Date(m.at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }),
+    attachments: m.attachments,
   })) as V2Conversation['messages'];
 
   const last = messages[messages.length - 1];

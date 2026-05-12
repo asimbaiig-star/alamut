@@ -125,7 +125,7 @@ export interface V2Conversation {
   unread: number;
   lastAt: string;
   preview: string;
-  messages: { from: 'brand' | 'creator'; text: string; time: string }[];
+  messages: { from: 'brand' | 'creator'; text: string; time: string; attachments?: { name: string; url: string }[] }[];
   /** Phase 11 — viewer's mute/archive state on this thread. Computed
    *  by threadToV2 against the requesting `viewerUserId`. */
   isMutedForViewer?: boolean;

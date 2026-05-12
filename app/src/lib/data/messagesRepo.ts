@@ -70,3 +70,34 @@ export async function insertMessageInSupabase(m: Message): Promise<Message> {
 export function rowToMessage(row: Record<string, unknown>): Message {
   return toMessage(row as unknown as Row);
 }
+
+/** Upload a file to the `message-attachments` Storage bucket. Returns
+ *  the public URL the message can reference. Path namespaces by
+ *  thread + a random suffix so concurrent uploads in the same thread
+ *  don't collide. */
+export async function uploadMessageAttachment(
+  threadId: string,
+  file: File,
+): Promise<MessageAttachment> {
+  if (!isSupabaseConfigured()) throw new Error('Supabase not configured');
+  const sb = getSupabase();
+  // Sanitize filename + add a random suffix so multiple uploads of
+  // foo.png in the same thread don't overwrite each other.
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
+  const random = Math.random().toString(36).slice(2, 8);
+  const path = `${threadId}/${Date.now()}-${random}-${safeName}`;
+  const { error: uploadError } = await sb
+    .storage
+    .from('message-attachments')
+    .upload(path, file, {
+      cacheControl: '3600',
+      upsert: false,
+      contentType: file.type || undefined,
+    });
+  if (uploadError) throw new Error(uploadError.message);
+  const { data } = sb.storage.from('message-attachments').getPublicUrl(path);
+  return {
+    name: file.name,
+    url: data.publicUrl,
+  };
+}
