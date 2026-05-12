@@ -906,6 +906,100 @@ export function v2AcceptTeamInvite(token: string): { ok: boolean; reason?: strin
   return result;
 }
 
+// =====================================================================
+// Phase 15 — Spark drafts
+// =====================================================================
+
+/** Save (or overwrite) a Spark draft. If `draftId` is provided, the
+ *  existing row is updated; otherwise a new row is inserted. Returns
+ *  the saved draft so the caller can switch its activeDraftId state
+ *  to the new id without re-querying the store. */
+export function v2SaveSparkDraft(input: {
+  brandId: string;
+  draftId?: string;
+  name?: string;
+  history: unknown[];
+  context: Record<string, unknown>;
+}): import('@/lib/api/types').SparkDraft | null {
+  let saved: import('@/lib/api/types').SparkDraft | null = null;
+  tx((db) => {
+    const now = new Date().toISOString();
+    if (input.draftId) {
+      const idx = (db.sparkDrafts ?? []).findIndex((d) => d.id === input.draftId);
+      if (idx !== -1) {
+        saved = {
+          ...db.sparkDrafts![idx],
+          name: input.name ?? db.sparkDrafts![idx].name,
+          history: input.history,
+          context: input.context,
+          lastEditedAt: now,
+        };
+        db.sparkDrafts = [
+          ...db.sparkDrafts!.slice(0, idx),
+          saved,
+          ...db.sparkDrafts!.slice(idx + 1),
+        ];
+        return;
+      }
+    }
+    // New draft.
+    saved = {
+      id: `sd_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      brandId: input.brandId,
+      name: input.name,
+      history: input.history,
+      context: input.context,
+      lastEditedAt: now,
+      createdAt: now,
+    };
+    db.sparkDrafts = [...(db.sparkDrafts ?? []), saved];
+  });
+
+  if (saved && typeof window !== 'undefined') {
+    const toMirror = saved;
+    void (async () => {
+      try {
+        const { isSupabaseConfigured } = await import('@/lib/supabase');
+        if (!isSupabaseConfigured()) return;
+        const { upsertSparkDraftInSupabase } = await import('@/lib/data/sparkDraftsRepo');
+        await upsertSparkDraftInSupabase(toMirror);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (/row-level security|foreign key|no rows|0 rows|not found/i.test(msg)) return;
+        // eslint-disable-next-line no-console
+        console.warn('[spark draft save mirror] failed:', msg);
+      }
+    })();
+  }
+  return saved;
+}
+
+/** Delete a Spark draft. Idempotent — silent no-op on missing row. */
+export function v2DeleteSparkDraft(draftId: string): boolean {
+  let existed = false;
+  tx((db) => {
+    const len = db.sparkDrafts?.length ?? 0;
+    db.sparkDrafts = (db.sparkDrafts ?? []).filter((d) => d.id !== draftId);
+    existed = (db.sparkDrafts.length ?? 0) < len;
+  });
+  if (existed && typeof window !== 'undefined') {
+    void (async () => {
+      try {
+        const { isSupabaseConfigured } = await import('@/lib/supabase');
+        if (!isSupabaseConfigured()) return;
+        const { deleteSparkDraftInSupabase } = await import('@/lib/data/sparkDraftsRepo');
+        await deleteSparkDraftInSupabase(draftId);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (/row-level security|no rows|0 rows|not found/i.test(msg)) return;
+        // eslint-disable-next-line no-console
+        console.warn('[spark draft delete mirror] failed:', msg);
+      }
+    })();
+  }
+  return existed;
+}
+
 /** Helper for Spark: sync its shortlist into the brand's saved list. */
 export function v2SyncSparkShortlist(creatorIds: string[]) {
   tx((db) => {

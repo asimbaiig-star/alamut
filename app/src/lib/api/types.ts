@@ -20,6 +20,27 @@ export interface NotificationPrefs {
  *  be able to see everything. */
 export type TeamRole = 'admin' | 'ops' | 'finance' | 'viewer';
 
+/** Phase 15 — Spark draft. A saved campaign-planning session: the
+ *  AI message history + the working context (shortlist, budget,
+ *  brief). Brand can have any number of drafts and switch between
+ *  them; loads replace the active Spark state. `history` and
+ *  `context` are stored as opaque JSONB matching the runtime
+ *  shapes in `screens/workspace-v2/sparkEngine.ts`. */
+export interface SparkDraft {
+  id: string;
+  brandId: string;
+  /** Optional human-readable name. UI defaults to "Untitled draft"
+   *  when null and offers an auto-suggest from the first prompt. */
+  name?: string;
+  /** SparkMessage[] — typed at the call site (sparkEngine.ts) since
+   *  this module shouldn't depend on a screen-layer type. */
+  history: unknown[];
+  /** SparkContext — same reasoning. */
+  context: Record<string, unknown>;
+  lastEditedAt: string;
+  createdAt: string;
+}
+
 /** Phase 14 — brand-team invite. Brand owner creates one; invitee
  *  redeems via the secret token. Acceptance attaches the user to
  *  the brand with the named role. */
@@ -1094,6 +1115,9 @@ export interface Database {
   /** Phase 14 — brand team invites. Brand owner creates rows; invitee
    *  redeems via token URL to join the team with the specified role. */
   teamInvites?: TeamInvite[];
+  /** Phase 15 — brand-side Spark planning sessions. One row per saved
+   *  draft; brand picks one from the Drafts rail to resume work. */
+  sparkDrafts?: SparkDraft[];
   /** Forward-only data-migration version. Bumps with each migration phase
    *  (see `lib/api/migrations.ts`). Hydration runs every migrator from
    *  `version + 1 → CURRENT_MIGRATION_VERSION`. Distinct from Zustand's

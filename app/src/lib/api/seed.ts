@@ -1979,4 +1979,6 @@ export const SEED: Database = {
   outreach: [],
   // Phase 14 — team invites are brand-owner-created in the live app.
   teamInvites: [],
+  // Phase 15 — Spark drafts are user-created at Save time; no seed.
+  sparkDrafts: [],
 };

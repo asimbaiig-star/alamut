@@ -26,9 +26,11 @@ import {
 } from '../sparkEngine';
 import {
   useV2AllCampaigns, useV2BrandShortlist, useV2Creators, useV2CurrentBrand,
-  v2SyncSparkShortlist,
+  v2SyncSparkShortlist, v2SaveSparkDraft, v2DeleteSparkDraft,
 } from '../v2Hooks';
 import { pushToast } from '@/lib/utils/toast';
+import { useStore } from '@/lib/api/store';
+import type { SparkDraft } from '@/lib/api/types';
 
 interface Props {
   onRoute: (r: string) => void;
@@ -113,6 +115,68 @@ export function Spark({ onRoute }: Props) {
   function handleReset() {
     setHistory([welcomeMessage()]);
     setContext(emptyContext());
+    setActiveDraftId(null);
+  }
+
+  // Phase 15 — saved drafts state.
+  const allDrafts = useStore((s) => s.db.sparkDrafts ?? []);
+  const drafts = useMemo<SparkDraft[]>(
+    () => brand
+      ? [...allDrafts].filter((d) => d.brandId === brand.id)
+          .sort((a, b) => +new Date(b.lastEditedAt) - +new Date(a.lastEditedAt))
+      : [],
+    [allDrafts, brand],
+  );
+  const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
+
+  function autoNameFromHistory(h: SparkMessage[]): string {
+    const firstUser = h.find((m) => m.from === 'user');
+    if (!firstUser) return 'Untitled draft';
+    const text = firstUser.blocks
+      .map((b) => (b.kind === 'text' ? b.body : ''))
+      .filter(Boolean).join(' ').trim();
+    if (!text) return 'Untitled draft';
+    const words = text.split(/\s+/).slice(0, 5).join(' ');
+    return words.length < text.length ? `${words}…` : words;
+  }
+
+  function handleSaveDraft() {
+    if (!brand) {
+      pushToast('Sign in as a brand to save drafts');
+      return;
+    }
+    const name = activeDraftId
+      ? drafts.find((d) => d.id === activeDraftId)?.name ?? autoNameFromHistory(history)
+      : autoNameFromHistory(history);
+    const saved = v2SaveSparkDraft({
+      brandId: brand.id,
+      draftId: activeDraftId ?? undefined,
+      name,
+      history: history as unknown[],
+      context: context as unknown as Record<string, unknown>,
+    });
+    if (saved) {
+      setActiveDraftId(saved.id);
+      pushToast(`Draft saved · "${name}"`);
+    } else {
+      pushToast('Could not save draft');
+    }
+  }
+
+  function handleLoadDraft(draft: SparkDraft) {
+    setHistory((draft.history as SparkMessage[]) ?? []);
+    setContext((draft.context as unknown as SparkContext) ?? emptyContext());
+    setActiveDraftId(draft.id);
+    pushToast(`Loaded "${draft.name ?? 'Untitled draft'}"`);
+  }
+
+  function handleDeleteDraft(draft: SparkDraft) {
+    if (!confirm(`Delete draft "${draft.name ?? 'Untitled draft'}"?`)) return;
+    const removed = v2DeleteSparkDraft(draft.id);
+    if (removed) {
+      if (activeDraftId === draft.id) setActiveDraftId(null);
+      pushToast('Draft deleted');
+    }
   }
 
   function saveCreators(creatorIds: string[]) {
@@ -160,6 +224,21 @@ export function Spark({ onRoute }: Props) {
         }
         actions={
           <>
+            <SparkDraftsDropdown
+              drafts={drafts}
+              activeDraftId={activeDraftId}
+              onLoad={handleLoadDraft}
+              onDelete={handleDeleteDraft}
+            />
+            <button
+              className="v2-btn v2-btn-outline"
+              type="button"
+              onClick={handleSaveDraft}
+              disabled={!brand || history.length < 2}
+              title={!brand ? 'Sign in as brand to save' : history.length < 2 ? 'Start a conversation first' : activeDraftId ? 'Update saved draft' : 'Save current plan'}
+            >
+              {Icon.check}<span>{activeDraftId ? 'Update draft' : 'Save draft'}</span>
+            </button>
             <button className="v2-btn v2-btn-outline" type="button" onClick={handleReset}>
               {Icon.plus}<span>New plan</span>
             </button>
@@ -837,4 +916,127 @@ function loadContext(brandName?: string): SparkContext {
     const parsed = JSON.parse(raw);
     return { ...base, ...parsed };
   } catch { return base; }
+}
+
+/** Phase 15 — dropdown listing saved Spark drafts. Click → load.
+ *  Each row has a × to delete. Empty-state hidden (parent hides the
+ *  button when drafts.length === 0). */
+function SparkDraftsDropdown({ drafts, activeDraftId, onLoad, onDelete }: {
+  drafts: SparkDraft[];
+  activeDraftId: string | null;
+  onLoad: (d: SparkDraft) => void;
+  onDelete: (d: SparkDraft) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  if (drafts.length === 0) return null;
+  const active = drafts.find((d) => d.id === activeDraftId);
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        className="v2-btn v2-btn-outline"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        title={active ? `Active: ${active.name ?? 'Untitled'}` : 'Open a saved draft'}
+      >
+        <span>{active ? active.name ?? 'Untitled' : 'Drafts'} · {drafts.length}</span>
+        <span aria-hidden="true" style={{
+          display: 'inline-block',
+          width: 0, height: 0, marginLeft: 4,
+          borderLeft: '4px solid transparent',
+          borderRight: '4px solid transparent',
+          borderTop: '4px solid currentColor',
+          transform: open ? 'rotate(180deg)' : 'none',
+          transition: 'transform 120ms ease',
+        }} />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          style={{
+            position: 'absolute',
+            right: 0,
+            top: 'calc(100% + 6px)',
+            zIndex: 30,
+            minWidth: 280,
+            maxHeight: 360,
+            overflowY: 'auto',
+            background: 'var(--v2-paper)',
+            border: '1px solid var(--v2-line)',
+            borderRadius: 'var(--v2-r-md)',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
+            padding: 4,
+          }}
+        >
+          {drafts.map((d) => {
+            const isActive = d.id === activeDraftId;
+            return (
+              <div
+                key={d.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '6px 6px',
+                  background: isActive ? 'var(--v2-accent-soft)' : 'transparent',
+                  borderRadius: 6,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => { onLoad(d); setOpen(false); }}
+                  style={{
+                    flex: 1,
+                    textAlign: 'left',
+                    background: 'transparent',
+                    border: 'none',
+                    fontFamily: 'inherit',
+                    fontSize: 13,
+                    padding: '4px 6px',
+                    color: isActive ? 'var(--v2-accent)' : 'var(--v2-ink)',
+                    fontWeight: isActive ? 600 : 500,
+                    cursor: 'pointer',
+                    minWidth: 0,
+                  }}
+                >
+                  <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {d.name ?? 'Untitled draft'}
+                  </div>
+                  <div className="v2-muted" style={{ fontSize: 11, marginTop: 2 }}>
+                    {new Date(d.lastEditedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  aria-label="Delete draft"
+                  onClick={(e) => { e.stopPropagation(); onDelete(d); }}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--v2-ink-3)',
+                    cursor: 'pointer',
+                    padding: '4px 6px',
+                    fontSize: 14,
+                  }}
+                  title="Delete"
+                >×</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
