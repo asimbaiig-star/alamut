@@ -236,18 +236,37 @@ function relativeTime(iso: string): string {
 }
 
 export function threadToV2(t: Thread, db: Database, viewerUserId: string): V2Conversation | null {
-  // Resolve creator/brand from participants
-  const otherUserId = t.participants.find((p) => p !== viewerUserId);
-  if (!otherUserId) return null;
-  const otherUser = db.users.find((u) => u.id === otherUserId);
-  const creatorId = otherUser?.creatorId ?? db.creators.find((c) => c.userId === otherUserId)?.id;
-  if (!creatorId) return null;
+  // Resolve the creator participant + brand participant — independent
+  // of who's viewing. A thread always has one of each (the brand owner
+  // + the creator). When the viewer is the brand, the counterparty is
+  // the creator; when the viewer is the creator, the counterparty is
+  // the brand. The Inbox picks the right side at render time.
+  let creatorId: string | undefined;
+  let brandId: string | undefined;
+  for (const userId of t.participants) {
+    const u = db.users.find((x) => x.id === userId);
+    if (!u) continue;
+    if (u.creatorId) creatorId = u.creatorId;
+    else if (u.brandId) brandId = u.brandId;
+  }
+  // Final fallback for creatorId: if no user row maps the participant to
+  // a creatorId directly, try the creator table (older threads may have
+  // user_id pointers that don't match).
+  if (!creatorId) {
+    for (const userId of t.participants) {
+      const c = db.creators.find((cr) => cr.userId === userId);
+      if (c) { creatorId = c.id; break; }
+    }
+  }
+  if (!creatorId) return null; // pre-Phase-1c threads with no creator side; skip
 
   const messages = db.messages
     .filter((m) => m.threadId === t.id)
     .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 
-  // Map fromUserId → 'brand' | 'creator' (relative to viewer)
+  // Map fromUserId → 'brand' | 'creator' position relative to viewer.
+  // The label is a UI convention ("from me" vs "from the other side")
+  // not a role — 'brand' = viewer-side, 'creator' = counter-side.
   const v2Messages = messages.map((m) => ({
     from: m.fromUserId === viewerUserId ? 'brand' : 'creator',
     text: m.text,
@@ -258,6 +277,7 @@ export function threadToV2(t: Thread, db: Database, viewerUserId: string): V2Con
   return {
     id: t.id,
     creatorId,
+    brandId: brandId ?? '',
     campaignId: t.campaignId ?? '',
     unread: t.unreadFor.includes(viewerUserId) ? 1 : 0,
     lastAt: last ? relativeTime(last.at) : 'no messages',

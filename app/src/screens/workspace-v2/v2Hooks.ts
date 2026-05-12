@@ -392,6 +392,90 @@ export function v2SendMessage(threadId: string, text: string) {
   if (threadPatch) mirrorThreadPatch(threadId, threadPatch);
 }
 
+/** Find-or-create the thread between the brand owner and the creator
+ *  for a given campaign. Used by "Message brand" CTAs across the
+ *  workspace so a creator can start a conversation even before the
+ *  brand has sent an offer (the offer path also auto-creates a thread,
+ *  but only at offer-send time — pitched/invited stages had no thread
+ *  yet, which is why "Message brand" landed on the wrong inbox row).
+ *  Returns the resolved threadId, or null if either party can't be
+ *  found in db.users. Idempotent — returns the existing thread id when
+ *  one already exists.
+ *
+ *  Phase 10 mirror: a freshly-created thread is mirrored to Supabase
+ *  fire-and-forget so peers see it via the realtime subscription. */
+export function v2EnsureThreadFor(
+  campaignId: string,
+  creatorId: string,
+): string | null {
+  const db0 = useStore.getState().db;
+  const camp = db0.campaigns.find((c) => c.id === campaignId);
+  if (!camp) return null;
+  const creator = db0.creators.find((c) => c.id === creatorId);
+  if (!creator) return null;
+  const creatorUser = db0.users.find((u) => u.id === creator.userId);
+  const brandUser = db0.users.find((u) => u.brandId === camp.brandId);
+  if (!creatorUser || !brandUser) return null;
+
+  // Fast-path: thread already exists.
+  const existing = db0.threads.find(
+    (t) =>
+      t.campaignId === campaignId &&
+      t.participants.includes(creatorUser.id) &&
+      t.participants.includes(brandUser.id),
+  );
+  if (existing) return existing.id;
+
+  // Create one.
+  let createdThread: import('@/lib/api/types').Thread | null = null;
+  tx((db) => {
+    // Re-check inside tx in case another mutation in this turn just
+    // created it (defensive against double-clicks).
+    const inTx = db.threads.find(
+      (t) =>
+        t.campaignId === campaignId &&
+        t.participants.includes(creatorUser.id) &&
+        t.participants.includes(brandUser.id),
+    );
+    if (inTx) { createdThread = inTx; return; }
+
+    const threadId = `t_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const now = new Date().toISOString();
+    const t: import('@/lib/api/types').Thread = {
+      id: threadId,
+      participants: [creatorUser.id, brandUser.id],
+      campaignId,
+      subject: camp.title,
+      lastMessageAt: now,
+      // Empty unreadFor — no actual message has been sent yet. The first
+      // v2SendMessage in this thread will populate it.
+      unreadFor: [],
+      collaborationId: null,
+    };
+    db.threads.push(t);
+    createdThread = t;
+  });
+
+  // Fire-and-forget mirror so the new thread shows up cross-device.
+  if (createdThread) {
+    void (async () => {
+      try {
+        const { isSupabaseConfigured } = await import('@/lib/supabase');
+        if (!isSupabaseConfigured()) return;
+        const { insertThreadInSupabase } = await import('@/lib/data/threadsRepo');
+        await insertThreadInSupabase(createdThread!);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (/foreign key|violates|row-level security|duplicate key|no rows|0 rows|not found/i.test(msg)) return;
+        // eslint-disable-next-line no-console
+        console.warn('[ensure thread mirror] failed:', msg);
+      }
+    })();
+  }
+
+  return createdThread ? (createdThread as import('@/lib/api/types').Thread).id : null;
+}
+
 /** Helper for Spark: sync its shortlist into the brand's saved list. */
 export function v2SyncSparkShortlist(creatorIds: string[]) {
   tx((db) => {

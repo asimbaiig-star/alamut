@@ -115,6 +115,12 @@ export interface V2Campaign {
 export interface V2Conversation {
   id: string;
   creatorId: string;
+  /** Brand party in the thread. Populated alongside creatorId so the
+   *  Inbox can resolve the counterparty from EITHER perspective
+   *  (brand views the creator; creator views the brand). Empty string
+   *  when the brand can't be resolved — defensive fallback so reads
+   *  in older call sites don't crash. */
+  brandId: string;
   campaignId: string;
   unread: number;
   lastAt: string;

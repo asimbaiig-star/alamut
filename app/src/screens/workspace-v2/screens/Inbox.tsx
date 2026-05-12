@@ -81,9 +81,49 @@ export function Inbox({ onRoute, persona, forceThreadId, forcePanelMode }: Props
   }, [activeId]);
 
   const active = conversations.find((c) => c.id === activeId) ?? conversations[0];
+
+  // Counterparty resolution depends on viewer persona:
+  //   - brand viewer  → counterparty is the creator (active.creatorId)
+  //   - creator viewer → counterparty is the brand (active.brandId);
+  //                       we synthesize a V2Creator-shaped object from
+  //                       the brand so downstream components (Thread,
+  //                       ConversationList, CollabSidePanel) keep
+  //                       working without a parallel V2Brand type.
   const counterparty = useMemo<V2Creator | undefined>(
-    () => creators.find((c) => c.id === active?.creatorId),
-    [creators, active],
+    () => {
+      if (!active) return undefined;
+      if (persona === 'brand') {
+        return creators.find((c) => c.id === active.creatorId);
+      }
+      // creator persona — find the brand on the other side.
+      const brand = db.brands.find((b) => b.id === active.brandId);
+      if (!brand) return undefined;
+      // Synthesize a V2Creator-shaped object. Only fields that the
+      // inbox UI actually reads are populated meaningfully; the rest
+      // get neutral defaults.
+      return {
+        id: brand.id,
+        handle: '@' + brand.name.toLowerCase().replace(/\s+/g, ''),
+        name: brand.name,
+        tagline: brand.industry,
+        avatar: brand.logoUrl ?? brand.logoMark ?? '',
+        cover: '',
+        city: brand.hq,
+        country: '',
+        bio: brand.about,
+        categories: brand.preferredCategories ?? [],
+        score: 0,
+        priceTier: '$$',
+        priceMin: 0,
+        priceMax: 0,
+        verified: brand.verified,
+        channels: [],
+        audience: { female: 0, male: 0, age2534: 0, topCity: brand.hq },
+        rate: 0,
+        pastBrands: [],
+      } as V2Creator;
+    },
+    [creators, active, persona, db.brands],
   );
   const campaign = useMemo<V2Campaign | undefined>(
     () => campaigns.find((c) => c.id === active?.campaignId),

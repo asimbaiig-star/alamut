@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import { fmtUSD, Icon, StagePill, Topbar } from '../lib';
-import { useV2AllCampaigns, useV2CollabById } from '../v2Hooks';
+import { useV2AllCampaigns, useV2CollabById, v2EnsureThreadFor } from '../v2Hooks';
 import { V2_PIPELINE_STAGES } from '../v2Adapters';
 import type { V2Collab, V2CollabStage, V2Deliverable } from '../data';
 import { ContentUploadModal } from './ContentUploadModal';
@@ -37,20 +37,15 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
   const db = useStore((s) => s.db);
 
   // Resolve "Message brand" → deal:<threadId> so the Inbox auto-selects
-  // the right conversation instead of opening the most-recent unrelated
-  // thread. Falls back to the plain inbox tab when no thread exists yet
-  // (defensive — v2SendOffer creates one at offer-send time, so post-
-  // acceptance the thread should always exist).
+  // the right conversation. If no thread exists yet (creator hasn't
+  // received an offer, so v2SendOffer never auto-created one), we
+  // create one inline via v2EnsureThreadFor — the creator can then
+  // start a fresh conversation. Falls back to plain inbox only if we
+  // can't resolve creator + brand users at all.
   function openConversationForCollab() {
     if (!collab) { onRoute('creator-inbox'); return; }
-    const creatorUser = db.users.find((u) => u.creatorId === collab.creatorId);
-    const thread = creatorUser
-      ? db.threads.find((t) =>
-          t.campaignId === collab.campaignId &&
-          t.participants.includes(creatorUser.id),
-        )
-      : null;
-    onRoute(thread ? `deal:${thread.id}` : 'creator-inbox');
+    const threadId = v2EnsureThreadFor(collab.campaignId, collab.creatorId);
+    onRoute(threadId ? `deal:${threadId}` : 'creator-inbox');
   }
   // P1d §1.5 — track which deliverable is being uploaded as the FK id
   // (was a numeric slot index pre-P1d). The label is computed by the
