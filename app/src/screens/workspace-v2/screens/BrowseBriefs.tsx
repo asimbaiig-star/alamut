@@ -22,11 +22,10 @@ interface Props {
 }
 
 type Status = 'all' | 'Live' | 'Planned';
-type BudgetBand = 'any' | 'under5' | 'mid' | 'over15';
+type BudgetBand = 'under5' | 'mid' | 'over15';
 type SortKey = 'newest' | 'budget' | 'deadline' | 'fit';
 
 const BUDGET_BANDS: { id: BudgetBand; label: string; test: (b: number) => boolean }[] = [
-  { id: 'any',     label: 'Any budget',         test: () => true },
   { id: 'under5',  label: 'Under $5K',          test: (b) => b < 5_000 },
   { id: 'mid',     label: '$5K – $15K',         test: (b) => b >= 5_000 && b <= 15_000 },
   { id: 'over15',  label: 'Over $15K',          test: (b) => b > 15_000 },
@@ -55,9 +54,21 @@ export function BrowseBriefs({ onRoute, initialFilter }: Props) {
   // Saved-only filter — toggled via the chip in the filter strip, or
   // pre-set by the `?filter=saved` deep-link from CreatorHome.
   const [savedOnly, setSavedOnly] = useState(initialFilter === 'saved');
-  const [category, setCategory] = useState<string>('any');
-  const [budget, setBudget] = useState<BudgetBand>('any');
+  // Multi-select filters — empty array means "no filter applied" (so
+  // the user picks ANY combination they want). Replaces the prior
+  // single-select state where 'any' was the no-filter sentinel.
+  const [categories, setCategories] = useState<string[]>([]);
+  const [budgets, setBudgets] = useState<BudgetBand[]>([]);
   const [sort, setSort] = useState<SortKey>('newest');
+
+  // Helpers — toggle a value in/out of the multi-select array.
+  const toggleCategory = (id: string) => {
+    if (id === 'any') { setCategories([]); return; }
+    setCategories((curr) => curr.includes(id) ? curr.filter((c) => c !== id) : [...curr, id]);
+  };
+  const toggleBudget = (id: BudgetBand) => {
+    setBudgets((curr) => curr.includes(id) ? curr.filter((b) => b !== id) : [...curr, id]);
+  };
 
   // Derive category options from the actual campaigns the creator can
   // see — keeps the filter list honest (no empty-result categories) and
@@ -88,11 +99,14 @@ export function BrowseBriefs({ onRoute, initialFilter }: Props) {
       const saved = new Set(meRaw?.savedBriefs ?? []);
       r = r.filter((c) => saved.has(c.id));
     }
-    if (category !== 'any') {
-      r = r.filter((c) => (c.category ?? '').toLowerCase() === category.toLowerCase());
+    if (categories.length > 0) {
+      const catSet = new Set(categories.map((c) => c.toLowerCase()));
+      r = r.filter((c) => catSet.has((c.category ?? '').toLowerCase()));
     }
-    const band = BUDGET_BANDS.find((b) => b.id === budget);
-    if (band) r = r.filter((c) => band.test(c.budget));
+    if (budgets.length > 0) {
+      const activeBands = BUDGET_BANDS.filter((b) => budgets.includes(b.id));
+      r = r.filter((c) => activeBands.some((band) => band.test(c.budget)));
+    }
     const q = query.trim().toLowerCase();
     if (q) {
       r = r.filter((c) =>
@@ -130,7 +144,7 @@ export function BrowseBriefs({ onRoute, initialFilter }: Props) {
         r.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
     }
     return r;
-  }, [allCampaigns, status, fitOnly, savedOnly, meRaw, category, budget, query, sort, me]);
+  }, [allCampaigns, status, fitOnly, savedOnly, meRaw, categories, budgets, query, sort, me]);
 
   const liveCount = allCampaigns.filter((c) => c.status === 'Live').length;
 
@@ -139,8 +153,8 @@ export function BrowseBriefs({ onRoute, initialFilter }: Props) {
     (status !== 'all' ? 1 : 0) +
     (fitOnly ? 1 : 0) +
     (savedOnly ? 1 : 0) +
-    (category !== 'any' ? 1 : 0) +
-    (budget !== 'any' ? 1 : 0) +
+    categories.length +
+    budgets.length +
     (query.trim() ? 1 : 0);
 
   const savedCount = meRaw?.savedBriefs?.length ?? 0;
@@ -150,20 +164,27 @@ export function BrowseBriefs({ onRoute, initialFilter }: Props) {
     setStatus('all');
     setFitOnly(false);
     setSavedOnly(false);
-    setCategory('any');
-    setBudget('any');
+    setCategories([]);
+    setBudgets([]);
   };
 
-  // Active filter chips — only present ones the user has narrowed.
-  // Used by the "what's applied" strip above the results so the
-  // current view is legible at a glance + one-click removable.
+  // Active filter chips — one chip per selected value for the multi-
+  // select dimensions, so the user can drop a single budget/category
+  // without nuking the whole filter.
   const activeChips: { key: string; label: string; clear: () => void }[] = [];
   if (query.trim())     activeChips.push({ key: 'q',   label: `“${query.trim()}”`,                                clear: () => setQuery('') });
   if (status !== 'all') activeChips.push({ key: 's',   label: status === 'Live' ? 'Live only' : 'Coming soon',     clear: () => setStatus('all') });
   if (fitOnly)          activeChips.push({ key: 'fit', label: 'Fit for me',                                        clear: () => setFitOnly(false) });
   if (savedOnly)        activeChips.push({ key: 'sv',  label: 'Saved only',                                        clear: () => setSavedOnly(false) });
-  if (budget !== 'any') activeChips.push({ key: 'b',   label: BUDGET_BANDS.find((b) => b.id === budget)?.label ?? '', clear: () => setBudget('any') });
-  if (category !== 'any') activeChips.push({ key: 'c', label: category,                                            clear: () => setCategory('any') });
+  for (const b of budgets) {
+    const band = BUDGET_BANDS.find((x) => x.id === b);
+    if (band) activeChips.push({
+      key: `b:${b}`, label: band.label, clear: () => toggleBudget(b),
+    });
+  }
+  for (const c of categories) {
+    activeChips.push({ key: `c:${c}`, label: c, clear: () => toggleCategory(c) });
+  }
 
   return (
     <>
@@ -290,19 +311,31 @@ export function BrowseBriefs({ onRoute, initialFilter }: Props) {
 
           <span style={{ width: 1, height: 22, background: 'var(--v2-line)', margin: '0 4px' }} aria-hidden="true" />
 
-          <ChipDropdown
+          <MultiChipDropdown
             label="Budget"
-            value={budget === 'any' ? null : BUDGET_BANDS.find((b) => b.id === budget)?.label ?? null}
+            values={budgets}
             options={BUDGET_BANDS.map((b) => ({ id: b.id, label: b.label }))}
-            onChange={(id) => setBudget(id as BudgetBand)}
+            onToggle={(id) => toggleBudget(id as BudgetBand)}
+            onClear={() => setBudgets([])}
+            summary={
+              budgets.length === 0 ? 'Any'
+              : budgets.length === 1 ? BUDGET_BANDS.find((b) => b.id === budgets[0])?.label ?? ''
+              : `${budgets.length} bands`
+            }
           />
 
           {categoryOptions.length > 0 && (
-            <ChipDropdown
+            <MultiChipDropdown
               label="Category"
-              value={category === 'any' ? null : category}
-              options={[{ id: 'any', label: 'All categories' }, ...categoryOptions.map((c) => ({ id: c, label: c }))]}
-              onChange={(id) => setCategory(id)}
+              values={categories}
+              options={categoryOptions.map((c) => ({ id: c, label: c }))}
+              onToggle={toggleCategory}
+              onClear={() => setCategories([])}
+              summary={
+                categories.length === 0 ? 'All'
+                : categories.length === 1 ? categories[0]
+                : `${categories.length} selected`
+              }
             />
           )}
 
@@ -559,19 +592,21 @@ function Segment<T extends string>({ options, value, onChange }: {
   );
 }
 
-// Compact filter chip that doubles as a dropdown trigger. Closed state
-// shows "Budget" when nothing's selected, "Under $5K" when something
-// is. Opens a small floating menu of options. Replaces the wall-of-
-// chips treatment for any filter dimension with more than ~4 options.
-function ChipDropdown({ label, value, options, onChange }: {
+// Multi-select dropdown chip — same shape as the brand-side Discover
+// MultiChipDropdown. Each option is a checkbox row; click toggles it
+// in/out of `values` without closing the panel. Closed-state shows
+// "<label> · <summary>" where summary is "Any" when empty, the single
+// option's label when one is picked, or "N selected" for many.
+function MultiChipDropdown({ label, values, options, onToggle, onClear, summary }: {
   label: string;
-  value: string | null;
+  values: string[];
   options: { id: string; label: string }[];
-  onChange: (id: string) => void;
+  onToggle: (id: string) => void;
+  onClear: () => void;
+  summary: string;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
-  // Click-outside dismiss
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
@@ -580,7 +615,7 @@ function ChipDropdown({ label, value, options, onChange }: {
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, [open]);
-  const active = value !== null;
+  const active = values.length > 0;
   return (
     <div ref={ref} style={{ position: 'relative' }}>
       <button
@@ -604,7 +639,9 @@ function ChipDropdown({ label, value, options, onChange }: {
           transition: 'all 120ms ease',
         }}
       >
-        <span>{active ? value : label}</span>
+        <span>{label}</span>
+        <span style={{ fontWeight: 500, opacity: 0.85 }}>·</span>
+        <span style={{ fontWeight: active ? 700 : 500 }}>{summary}</span>
         <span
           aria-hidden="true"
           style={{
@@ -616,38 +653,44 @@ function ChipDropdown({ label, value, options, onChange }: {
             borderTop: `4px solid ${active ? 'var(--v2-accent)' : 'var(--v2-ink-3)'}`,
             transform: open ? 'rotate(180deg)' : 'none',
             transition: 'transform 120ms ease',
+            marginLeft: 2,
           }}
         />
       </button>
       {open && (
         <div
           role="listbox"
+          aria-multiselectable="true"
           style={{
             position: 'absolute',
             top: 'calc(100% + 4px)',
             left: 0,
             zIndex: 30,
-            minWidth: 200,
+            minWidth: 220,
+            maxHeight: 340,
+            overflowY: 'auto',
             background: 'var(--v2-paper)',
             border: '1px solid var(--v2-line)',
             borderRadius: 'var(--v2-r-md)',
             boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
             padding: 4,
-            display: 'flex',
-            flexDirection: 'column',
           }}
         >
           {options.map((opt) => {
-            const selected = opt.id === (value ?? 'any');
+            const selected = values.includes(opt.id);
             return (
               <button
                 key={opt.id}
                 type="button"
                 role="option"
                 aria-selected={selected}
-                onClick={() => { onChange(opt.id); setOpen(false); }}
+                onClick={() => onToggle(opt.id)}
                 style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
                   textAlign: 'left',
+                  width: '100%',
                   padding: '8px 10px',
                   background: selected ? 'var(--v2-accent-soft)' : 'transparent',
                   color: selected ? 'var(--v2-accent)' : 'var(--v2-ink)',
@@ -657,21 +700,59 @@ function ChipDropdown({ label, value, options, onChange }: {
                   fontWeight: selected ? 600 : 500,
                   cursor: 'pointer',
                   fontFamily: 'inherit',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 8,
                 }}
                 onMouseEnter={(e) => { if (!selected) e.currentTarget.style.background = 'var(--v2-bg-1)'; }}
                 onMouseLeave={(e) => { if (!selected) e.currentTarget.style.background = 'transparent'; }}
               >
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: 16,
+                    height: 16,
+                    borderRadius: 4,
+                    border: `1.5px solid ${selected ? 'var(--v2-accent)' : 'var(--v2-line-2)'}`,
+                    background: selected ? 'var(--v2-accent)' : 'transparent',
+                    color: 'var(--v2-paper)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 11,
+                    lineHeight: 1,
+                    flexShrink: 0,
+                  }}
+                >
+                  {selected ? '✓' : ''}
+                </span>
                 <span>{opt.label}</span>
-                {selected && (
-                  <span aria-hidden="true" style={{ display: 'flex' }}>{Icon.check}</span>
-                )}
               </button>
             );
           })}
+          {active && (
+            <>
+              <hr style={{ border: 'none', borderTop: '1px solid var(--v2-line)', margin: '4px 0' }} />
+              <button
+                type="button"
+                onClick={onClear}
+                style={{
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: '7px 10px',
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--v2-ink-2)',
+                  fontSize: 12.5,
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  borderRadius: 6,
+                  fontFamily: 'inherit',
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--v2-bg-1)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                Clear {values.length}
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
