@@ -573,6 +573,27 @@ export interface Campaign {
    *  primary categories ∩ campaign category) ≥ `threshold` are auto-shortlisted
    *  on submit. `null` (the default) keeps the manual review flow. */
   autoShortlist?: { enabled: boolean; threshold: number } | null;
+
+  /** Phase 13 — brand-uploaded brief assets (PDFs, mood-board images,
+   *  reference videos). Stored as a jsonb array on the campaign for
+   *  demo simplicity — separate table not justified at this scale. */
+  assets?: CampaignAsset[];
+}
+
+/** A single brand-uploaded asset attached to a campaign brief. */
+export interface CampaignAsset {
+  id: string;
+  name: string;
+  url: string;
+  /** File size in bytes — formatted at render time. */
+  sizeBytes: number;
+  /** MIME type from the browser at upload time. Empty when unknown. */
+  mimeType: string;
+  /** ISO timestamp of upload. */
+  uploadedAt: string;
+  /** User id who uploaded — used for audit / future per-asset
+   *  permissions; not displayed in the demo UI. */
+  uploadedByUserId?: string;
 }
 
 // =====================================================================

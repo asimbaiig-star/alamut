@@ -9,7 +9,7 @@
 // in Phase 3. Phase 4 will migrate those tables and the arrays will
 // then point at real DB rows.
 
-import type { Campaign, CampaignStage } from '@/lib/api/types';
+import type { Campaign, CampaignAsset, CampaignStage } from '@/lib/api/types';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
 
 type Row = {
@@ -39,6 +39,7 @@ type Row = {
   auto_shortlist: Campaign['autoShortlist'] | null;
   kind: Campaign['kind'] | null;
   editors_pick: boolean | null;
+  assets: CampaignAsset[] | null;
   created_at: string;
   updated_at: string;
 };
@@ -47,7 +48,7 @@ const COLUMNS =
   'id, brand_id, title, pitch, brief, cover, budget, spent, escrow_held, ' +
   'region, category, stage, deliverables_text, deliverable_ids, deadline, ' +
   'posted_at, reach, engagement, history, milestones, applications, offers, ' +
-  'rights, auto_shortlist, kind, editors_pick, created_at, updated_at';
+  'rights, auto_shortlist, kind, editors_pick, assets, created_at, updated_at';
 
 function toCampaign(row: Row): Campaign {
   return {
@@ -78,6 +79,7 @@ function toCampaign(row: Row): Campaign {
     autoShortlist: row.auto_shortlist ?? null,
     kind: row.kind ?? undefined,
     editorsPick: row.editors_pick ?? undefined,
+    assets: row.assets ?? [],
   };
 }
 
@@ -129,6 +131,7 @@ type UpdatablePatch = Partial<{
   reach: number;
   engagement: number;
   postedAt: string;
+  assets: CampaignAsset[];
 }>;
 
 function toUpdateRowPatch(patch: UpdatablePatch): Record<string, unknown> {
@@ -144,7 +147,48 @@ function toUpdateRowPatch(patch: UpdatablePatch): Record<string, unknown> {
   if (patch.reach !== undefined)             out.reach = patch.reach;
   if (patch.engagement !== undefined)        out.engagement = patch.engagement;
   if (patch.postedAt !== undefined)          out.posted_at = patch.postedAt;
+  if (patch.assets !== undefined)            out.assets = patch.assets;
   return out;
+}
+
+/** Upload an asset file to the campaign-assets Storage bucket. Returns
+ *  the public URL + the safe-path id used as the asset's stable
+ *  identifier across remove/replace flows. Path convention:
+ *  <campaignId>/<assetId>-<safeName> so we can delete by prefix later. */
+export async function uploadCampaignAssetFile(
+  campaignId: string,
+  file: File,
+): Promise<{ assetId: string; publicUrl: string }> {
+  if (!isSupabaseConfigured()) throw new Error('Supabase not configured');
+  const sb = getSupabase();
+  const assetId = `ast_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
+  const path = `${campaignId}/${assetId}-${safeName}`;
+  const { error: uploadError } = await sb
+    .storage
+    .from('campaign-assets')
+    .upload(path, file, {
+      cacheControl: '3600',
+      upsert: false,
+      contentType: file.type || undefined,
+    });
+  if (uploadError) throw new Error(uploadError.message);
+  const { data } = sb.storage.from('campaign-assets').getPublicUrl(path);
+  return { assetId, publicUrl: data.publicUrl };
+}
+
+/** Remove an asset's underlying file from Storage. Best-effort — silent
+ *  on not-found so calling this after a partial state is safe. */
+export async function removeCampaignAssetFile(
+  campaignId: string,
+  assetId: string,
+  fileName: string,
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  const sb = getSupabase();
+  const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
+  const path = `${campaignId}/${assetId}-${safeName}`;
+  await sb.storage.from('campaign-assets').remove([path]);
 }
 
 /** Fetch every campaign visible to the current session. Public SELECT

@@ -633,6 +633,104 @@ export function v2RequestWithdrawal(amount: number): boolean {
   return ok;
 }
 
+/** Phase 13 — upload an asset to a campaign's brief. Writes the file
+ *  to Storage, then appends a CampaignAsset record to campaign.assets
+ *  and mirrors the patch to Postgres. Returns the new asset (caller
+ *  shows a toast or surfaces an error). */
+export async function v2AddCampaignAsset(
+  campaignId: string,
+  file: File,
+): Promise<import('@/lib/api/types').CampaignAsset | null> {
+  try {
+    const { uploadCampaignAssetFile } = await import('@/lib/data/campaignsRepo');
+    const { assetId, publicUrl } = await uploadCampaignAssetFile(campaignId, file);
+    const session = useStore.getState().session;
+    const me = session ? useStore.getState().db.users.find((u) => u.id === session.userId) : null;
+    const asset: import('@/lib/api/types').CampaignAsset = {
+      id: assetId,
+      name: file.name,
+      url: publicUrl,
+      sizeBytes: file.size,
+      mimeType: file.type ?? '',
+      uploadedAt: new Date().toISOString(),
+      uploadedByUserId: me?.id,
+    };
+    let mirrored = false;
+    tx((db) => {
+      const idx = db.campaigns.findIndex((c) => c.id === campaignId);
+      if (idx === -1) return;
+      const prev = db.campaigns[idx];
+      db.campaigns[idx] = { ...prev, assets: [...(prev.assets ?? []), asset] };
+      mirrored = true;
+    });
+    if (mirrored && typeof window !== 'undefined') {
+      void (async () => {
+        try {
+          const { isSupabaseConfigured } = await import('@/lib/supabase');
+          if (!isSupabaseConfigured()) return;
+          const { updateCampaignInSupabase } = await import('@/lib/data/campaignsRepo');
+          const camp = useStore.getState().db.campaigns.find((c) => c.id === campaignId);
+          if (!camp) return;
+          await updateCampaignInSupabase(campaignId, { assets: camp.assets ?? [] });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (/row-level security|no rows|0 rows|not found/i.test(msg)) return;
+          // eslint-disable-next-line no-console
+          console.warn('[asset add mirror] failed:', msg);
+        }
+      })();
+    }
+    return asset;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[v2AddCampaignAsset] failed:', err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+/** Phase 13 — remove an asset from a campaign. Strips the entry from
+ *  campaign.assets, mirrors the patch, and best-effort deletes the
+ *  underlying file from Storage. */
+export async function v2RemoveCampaignAsset(
+  campaignId: string,
+  assetId: string,
+): Promise<boolean> {
+  let removedAsset: import('@/lib/api/types').CampaignAsset | undefined;
+  tx((db) => {
+    const idx = db.campaigns.findIndex((c) => c.id === campaignId);
+    if (idx === -1) return;
+    const prev = db.campaigns[idx];
+    removedAsset = (prev.assets ?? []).find((a) => a.id === assetId);
+    db.campaigns[idx] = {
+      ...prev,
+      assets: (prev.assets ?? []).filter((a) => a.id !== assetId),
+    };
+  });
+  if (!removedAsset) return false;
+  if (typeof window !== 'undefined') {
+    void (async () => {
+      try {
+        const { isSupabaseConfigured } = await import('@/lib/supabase');
+        if (!isSupabaseConfigured()) return;
+        const { updateCampaignInSupabase, removeCampaignAssetFile } = await import('@/lib/data/campaignsRepo');
+        const camp = useStore.getState().db.campaigns.find((c) => c.id === campaignId);
+        if (camp) {
+          await updateCampaignInSupabase(campaignId, { assets: camp.assets ?? [] });
+        }
+        if (removedAsset) {
+          await removeCampaignAssetFile(campaignId, removedAsset.id, removedAsset.name);
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (/row-level security|no rows|0 rows|not found/i.test(msg)) return;
+        // eslint-disable-next-line no-console
+        console.warn('[asset remove mirror] failed:', msg);
+      }
+    })();
+  }
+  return true;
+}
+
 /** Helper for Spark: sync its shortlist into the brand's saved list. */
 export function v2SyncSparkShortlist(creatorIds: string[]) {
   tx((db) => {

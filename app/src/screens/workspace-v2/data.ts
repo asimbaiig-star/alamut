@@ -110,6 +110,10 @@ export interface V2Campaign {
    *  indicator on the CampaignTile — green dot when > 0, muted when
    *  unfunded so creators see the difference at a glance. */
   escrowHeld: number;
+  /** Phase 13 — brand-uploaded brief assets. Passed through from the
+   *  underlying Campaign so CampaignDetail's Brief tab can render the
+   *  real list instead of a hardcoded placeholder set. */
+  assets?: import('@/lib/api/types').CampaignAsset[];
 }
 
 export interface V2Conversation {

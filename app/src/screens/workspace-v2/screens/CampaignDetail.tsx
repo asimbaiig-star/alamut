@@ -19,10 +19,11 @@
 // a card with a review opens the ContentReviewModal; otherwise drills
 // into the creator profile.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { fmtUSD, fmtFollowers, Icon, StagePill, Topbar } from '../lib';
 import {
   useV2CampaignById, useV2CollabsForCampaign, useV2Creators,
+  v2AddCampaignAsset, v2RemoveCampaignAsset,
 } from '../v2Hooks';
 import { V2_PIPELINE_STAGES } from '../v2Adapters';
 import type {
@@ -1089,35 +1090,124 @@ function BriefView({ campaign, onEditSettings }: { campaign: V2Campaign; onEditS
 
       <aside className="v2-card v2-card-pad" style={{ flex: '1 1 280px' }}>
         <div className="v2-eyebrow" style={{ marginBottom: 12 }}>Brief assets</div>
-        {[
-          { name: 'Brand guidelines.pdf', size: '2.4 MB' },
-          { name: 'Product shot pack.zip', size: '18 MB' },
-          { name: 'Caption examples.docx', size: '84 KB' },
-        ].map((f) => (
-          <div key={f.name} className="v2-row v2-asset-row">
-            <div className="v2-asset-icon">PDF</div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="v2-asset-name">{f.name}</div>
-              <div className="v2-muted" style={{ fontSize: 11 }}>{f.size}</div>
-            </div>
+        <CampaignAssetsBlock campaign={campaign} />
+      </aside>
+    </div>
+  );
+}
+
+/** Brief-assets block — uploads + lists campaign.assets, with remove
+ *  controls visible to the brand owner only. Read-only for everyone
+ *  else (creators viewing the brief just see + download). */
+function CampaignAssetsBlock({ campaign }: { campaign: V2Campaign }) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const session = useStore.getState().session;
+  const me = session ? useStore.getState().db.users.find((u) => u.id === session.userId) : null;
+  // Brand-owner gate — only the brand whose campaign this is can
+  // mutate assets. Creators viewing the same brief see + download.
+  const isBrandOwner = !!me && (() => {
+    const db = useStore.getState().db;
+    const camp = db.campaigns.find((c) => c.id === campaign.id);
+    return !!(camp && me.brandId && camp.brandId === me.brandId);
+  })();
+
+  const assets = campaign.assets ?? [];
+
+  async function onPick(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    try {
+      let added = 0;
+      for (const file of Array.from(files)) {
+        const result = await v2AddCampaignAsset(campaign.id, file);
+        if (result) added++;
+      }
+      pushToast(added > 0 ? `${added} asset${added === 1 ? '' : 's'} uploaded` : 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function fmtSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  }
+  function shortType(mime: string, name: string): string {
+    if (mime.includes('pdf') || /\.pdf$/i.test(name)) return 'PDF';
+    if (mime.startsWith('image/')) return 'IMG';
+    if (mime.startsWith('video/')) return 'VID';
+    if (mime.includes('zip') || /\.zip$/i.test(name)) return 'ZIP';
+    const m = name.match(/\.([a-z0-9]{2,5})$/i);
+    return m ? m[1].toUpperCase().slice(0, 4) : 'FILE';
+  }
+
+  return (
+    <>
+      {assets.length === 0 && (
+        <p className="v2-muted" style={{ fontSize: 12.5, lineHeight: 1.5, margin: '0 0 10px' }}>
+          {isBrandOwner
+            ? 'No assets uploaded yet. Brand guidelines, mood-board images, and reference PDFs help creators get the brief right.'
+            : 'No brief assets attached.'}
+        </p>
+      )}
+      {assets.map((f) => (
+        <div key={f.id} className="v2-row v2-asset-row">
+          <div className="v2-asset-icon">{shortType(f.mimeType, f.name)}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="v2-asset-name">{f.name}</div>
+            <div className="v2-muted" style={{ fontSize: 11 }}>{fmtSize(f.sizeBytes)}</div>
+          </div>
+          <a
+            className="v2-icon-btn"
+            href={f.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Open ${f.name}`}
+            title="Open / download"
+          >{Icon.external}</a>
+          {isBrandOwner && (
             <button
               className="v2-icon-btn"
               type="button"
-              aria-label={`Open ${f.name}`}
-              onClick={() => pushToast(`Asset preview not wired in demo · ${f.name}`, 'default')}
-            >{Icon.external}</button>
-          </div>
-        ))}
-        <button
-          className="v2-btn v2-btn-sm v2-btn-outline"
-          type="button"
-          style={{ width: '100%', marginTop: 10 }}
-          onClick={() => pushToast('Asset upload coming soon — paste a Drive / Dropbox link in the brief for now', 'default')}
-        >
-          {Icon.plus} Upload asset
-        </button>
-      </aside>
-    </div>
+              aria-label={`Remove ${f.name}`}
+              title="Remove"
+              onClick={async () => {
+                if (!confirm(`Remove "${f.name}" from this campaign?`)) return;
+                const ok = await v2RemoveCampaignAsset(campaign.id, f.id);
+                if (ok) pushToast('Asset removed');
+              }}
+              style={{ color: 'var(--v2-ink-3)' }}
+            >×</button>
+          )}
+        </div>
+      ))}
+      {isBrandOwner && (
+        <>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              void onPick(e.target.files);
+              e.target.value = '';
+            }}
+            aria-hidden="true"
+          />
+          <button
+            className="v2-btn v2-btn-sm v2-btn-outline"
+            type="button"
+            style={{ width: '100%', marginTop: 10 }}
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+          >
+            {uploading ? '…uploading' : <>{Icon.plus} Upload asset</>}
+          </button>
+        </>
+      )}
+    </>
   );
 }
 
