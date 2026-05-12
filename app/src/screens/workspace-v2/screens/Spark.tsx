@@ -665,6 +665,11 @@ function BriefDraftBlock({ block, onRoute }: {
   onRoute: (r: string) => void;
 }) {
   const creator = getCreator(block.creatorId);
+  // Inline editing: keep the draft text in component state so the user
+  // can tweak the AI-generated copy before sending. Wired to a real
+  // textarea instead of the prior 'coming soon' toast.
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(block.copy);
   if (!creator) return null;
   return (
     <div className="v2-spark-block v2-spark-block-brief">
@@ -682,22 +687,73 @@ function BriefDraftBlock({ block, onRoute }: {
           </div>
         </div>
       </div>
-      <pre className="v2-spark-brief-body">{block.copy}</pre>
+      {editing ? (
+        <textarea
+          className="v2-spark-brief-body"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          rows={Math.min(20, Math.max(6, draft.split('\n').length))}
+          style={{
+            width: '100%',
+            border: 'none',
+            outline: 'none',
+            resize: 'vertical',
+            padding: 14,
+            fontFamily: 'inherit',
+            fontSize: 13.5,
+            lineHeight: 1.5,
+            background: 'var(--v2-paper)',
+            color: 'var(--v2-ink)',
+            minHeight: 120,
+          }}
+          aria-label="Brief draft text"
+          autoFocus
+        />
+      ) : (
+        <pre className="v2-spark-brief-body">{draft}</pre>
+      )}
       <div className="v2-row" style={{ gap: 8, padding: 12, justifyContent: 'flex-end', borderTop: '1px solid var(--v2-line)', background: 'var(--v2-bg-1)' }}>
-        <button
-          type="button"
-          className="v2-btn v2-btn-sm v2-btn-outline"
-          onClick={() => pushToast('Inline brief editing coming soon — copy this draft and tweak in the campaign wizard for now', 'default')}
-        >
-          Edit copy
-        </button>
-        <button
-          type="button"
-          className="v2-btn v2-btn-sm v2-btn-primary"
-          onClick={() => onRoute('inbox')}
-        >
-          {Icon.send} Send through Inbox
-        </button>
+        {editing ? (
+          <>
+            <button
+              type="button"
+              className="v2-btn v2-btn-sm v2-btn-ghost"
+              onClick={() => {
+                setDraft(block.copy);
+                setEditing(false);
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="v2-btn v2-btn-sm v2-btn-primary"
+              onClick={() => {
+                setEditing(false);
+                pushToast('Draft updated · ready to send');
+              }}
+            >
+              Save edits
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="v2-btn v2-btn-sm v2-btn-outline"
+              onClick={() => setEditing(true)}
+            >
+              Edit copy
+            </button>
+            <button
+              type="button"
+              className="v2-btn v2-btn-sm v2-btn-primary"
+              onClick={() => onRoute('inbox')}
+            >
+              {Icon.send} Send through Inbox
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
