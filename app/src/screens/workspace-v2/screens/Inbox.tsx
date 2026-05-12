@@ -80,7 +80,15 @@ export function Inbox({ onRoute, persona, forceThreadId, forcePanelMode }: Props
     if (activeId) v2MarkThreadRead(activeId);
   }, [activeId]);
 
-  const active = conversations.find((c) => c.id === activeId) ?? conversations[0];
+  // Filter: 'all' / 'unread'. Single-toggle today; can expand to a
+  // dropdown of saved searches if we add muting / archive flags.
+  const [filter, setFilter] = useState<'all' | 'unread'>('all');
+  const filteredConversations = useMemo(
+    () => filter === 'unread' ? conversations.filter((c) => c.unread > 0) : conversations,
+    [conversations, filter],
+  );
+
+  const active = filteredConversations.find((c) => c.id === activeId) ?? filteredConversations[0] ?? conversations[0];
 
   // Counterparty resolution depends on viewer persona:
   //   - brand viewer  → counterparty is the creator (active.creatorId)
@@ -151,14 +159,20 @@ export function Inbox({ onRoute, persona, forceThreadId, forcePanelMode }: Props
         title="Inbox"
         crumb={`${conversations.length} conversations · ${totalUnread} unread`}
         actions={
-          <button className="v2-btn v2-btn-outline" type="button">
-            {Icon.filter} Filter
+          <button
+            className={`v2-btn ${filter === 'unread' ? 'v2-btn-primary' : 'v2-btn-outline'}`}
+            type="button"
+            onClick={() => setFilter((f) => f === 'unread' ? 'all' : 'unread')}
+            aria-pressed={filter === 'unread'}
+            title={filter === 'unread' ? 'Show all conversations' : 'Show only unread'}
+          >
+            {Icon.filter} {filter === 'unread' ? `Unread (${filteredConversations.length})` : 'All'}
           </button>
         }
       />
       <div className="v2-inbox">
         <ConversationList
-          conversations={conversations}
+          conversations={filteredConversations}
           activeId={activeId}
           onSelect={setActiveId}
           creators={creators}

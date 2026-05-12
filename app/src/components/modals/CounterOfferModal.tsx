@@ -15,7 +15,12 @@ interface CounterOfferModalProps {
 }
 
 export function CounterOfferModal({ open, onClose, offer, campaign }: CounterOfferModalProps) {
-  const [rate, setRate] = useState(Math.round(offer.rate * 1.2));
+  // Creator counters UP by 10% by default (matches CounterOfferModal in
+  // WorkflowModals.tsx). Rounded to nearest $50 so the suggestion looks
+  // like a reasonable negotiation step, not arithmetic noise.
+  const [rate, setRate] = useState(
+    Math.round((offer.rate * 1.1) / 50) * 50 || Math.round(offer.rate * 1.1),
+  );
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
 
