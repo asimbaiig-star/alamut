@@ -266,13 +266,87 @@ function EarningsHero({ wallet, onRoute }: {
   wallet: ReturnType<typeof useV2CreatorWallet>;
   onRoute: (r: string) => void;
 }) {
-  // Simple sparkline points scaled to the "available" balance
+  const db = useStore((s) => s.db);
+  const session = useStore((s) => s.session);
+
+  // Derive month-over-month earnings + recent activity from the
+  // transactions ledger instead of the prior `wallet.available * %`
+  // placeholders. All values reflect real db state.
+  const stats = useMemo(() => {
+    const me = session ? db.users.find((u) => u.id === session.userId) : null;
+    const myUserId = me?.id;
+    const now = new Date();
+    const thisMonthStart = +new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastMonthStart = +new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const weekStart = Date.now() - 7 * 24 * 3600_000;
+    const todayStart = +new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    let thisMonth = 0, lastMonth = 0, week = 0, today = 0;
+    const payoutLags: number[] = []; // ms between submitted_at and payout
+    const monthly = new Array(6).fill(0); // 6-month sparkline
+
+    for (const t of db.transactions) {
+      if (t.kind !== 'payout' || t.status !== 'cleared') continue;
+      if (myUserId && t.userId !== myUserId) continue;
+      const at = +new Date(t.at);
+      const amt = Math.abs(t.amount);
+      if (at >= thisMonthStart) thisMonth += amt;
+      if (at >= lastMonthStart && at < thisMonthStart) lastMonth += amt;
+      if (at >= weekStart) week += amt;
+      if (at >= todayStart) today += amt;
+      // Monthly bucket — 0 = 5 months ago, 5 = current month.
+      const ageMonths = (now.getFullYear() - new Date(t.at).getFullYear()) * 12
+        + (now.getMonth() - new Date(t.at).getMonth());
+      if (ageMonths >= 0 && ageMonths < 6) monthly[5 - ageMonths] += amt;
+      // Payout lag — find the matching submission's submittedAt for this campaign/user.
+      const sub = db.submissions.find((s) =>
+        s.campaignId === t.campaignId &&
+        s.status === 'approved' &&
+        db.creators.find((c) => c.id === s.creatorId)?.userId === t.userId,
+      );
+      if (sub) payoutLags.push(at - +new Date(sub.submittedAt));
+    }
+
+    const delta = lastMonth > 0 ? Math.round(((thisMonth - lastMonth) / lastMonth) * 100) : null;
+    const avgLagMs = payoutLags.length > 0
+      ? payoutLags.reduce((s, x) => s + x, 0) / payoutLags.length
+      : 0;
+    const avgLagHours = Math.round(avgLagMs / 3600_000);
+
+    // Month labels — rolling 6, ending on current month.
+    const months = Array.from({ length: 6 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+      return d.toLocaleString('en-US', { month: 'short' });
+    });
+
+    return {
+      thisMonthDelta: delta,
+      releasedToday: today,
+      releasesThisWeek: week,
+      avgLagHours,
+      sparkData: monthly,
+      monthLabels: months,
+    };
+  }, [db, session]);
+
+  // Sparkline points — fall back to scaled wallet preview if there's
+  // no real payout history yet (fresh accounts).
   const sparkData = useMemo(() => {
+    if (stats.sparkData.some((v) => v > 0)) return stats.sparkData;
     const peak = Math.max(wallet.available, 1500);
     return [0.4, 0.55, 0.72, 0.66, 0.85, 1.0].map((f) => Math.round(peak * f));
-  }, [wallet.available]);
-  const releasedToday = Math.round(wallet.available * 0.12);
-  const releasesThisWeek = Math.round(wallet.available * 0.4);
+  }, [stats.sparkData, wallet.available]);
+
+  const deltaCopy = stats.thisMonthDelta === null
+    ? 'no prior data yet'
+    : stats.thisMonthDelta >= 0
+      ? `↑ ${stats.thisMonthDelta}% vs last month`
+      : `↓ ${Math.abs(stats.thisMonthDelta)}% vs last month`;
+  const lagCopy = stats.avgLagHours === 0
+    ? '—'
+    : stats.avgLagHours < 48
+      ? `< 48hr`
+      : `${Math.round(stats.avgLagHours / 24)}d`;
   return (
     <div className="v2-card v2-home-earnings-hero">
       <div className="v2-home-earnings-glow" aria-hidden="true" />
@@ -285,7 +359,7 @@ function EarningsHero({ wallet, onRoute }: {
             <div className="v2-tabular v2-home-earnings-amount">
               {fmtUSDfull(wallet.available)}
             </div>
-            <div className="v2-home-earnings-delta">↑ 28% vs last month</div>
+            <div className="v2-home-earnings-delta">{deltaCopy}</div>
           </div>
           <p className="v2-home-earnings-sub">
             ready to withdraw · {fmtUSD(wallet.pending)} pending in escrow
@@ -307,16 +381,16 @@ function EarningsHero({ wallet, onRoute }: {
             </button>
           </div>
           <div className="v2-row v2-home-earnings-stats">
-            <MiniStatLight label="Released today" value={fmtUSD(releasedToday)} sub={wallet.ledger[0]?.desc?.slice(0, 32) ?? '—'} />
-            <MiniStatLight label="Releases this week" value={fmtUSD(releasesThisWeek)} sub={`${myDeliverableCount(wallet)} pending`} />
-            <MiniStatLight label="Avg release time" value="< 48hr" sub="↑ from 5d last quarter" />
+            <MiniStatLight label="Released today" value={fmtUSD(stats.releasedToday)} sub={wallet.ledger[0]?.desc?.slice(0, 32) ?? '—'} />
+            <MiniStatLight label="Releases this week" value={fmtUSD(stats.releasesThisWeek)} sub={`${myDeliverableCount(wallet)} pending`} />
+            <MiniStatLight label="Avg release time" value={lagCopy} sub={stats.avgLagHours > 0 ? 'submission → payout' : 'no payouts yet'} />
           </div>
         </div>
         <div className="v2-home-earnings-sparkline-pane">
           <div className="v2-eyebrow" style={{ color: 'rgba(251,247,238,0.65)', marginBottom: 14 }}>
             Last 6 months
           </div>
-          <EarningsSparkline data={sparkData} />
+          <EarningsSparkline data={sparkData} monthLabels={stats.monthLabels} />
           <div style={{ marginTop: 18, fontSize: 12.5, color: 'rgba(251,247,238,0.65)' }}>
             Lifetime: <strong style={{ color: 'white' }}>{fmtUSDfull(wallet.lifetime)}</strong> across collabs
           </div>
@@ -341,7 +415,7 @@ function MiniStatLight({ label, value, sub }: { label: string; value: string; su
   );
 }
 
-function EarningsSparkline({ data }: { data: number[] }) {
+function EarningsSparkline({ data, monthLabels }: { data: number[]; monthLabels: string[] }) {
   const max = Math.max(...data, 1);
   const w = 240;
   const h = 80;
@@ -351,7 +425,7 @@ function EarningsSparkline({ data }: { data: number[] }) {
         const x = (i / Math.max(data.length - 1, 1)) * w;
         const y = h - (v / max) * (h - 10);
         const barH = h - y;
-        const month = ['Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May'][i] ?? '';
+        const month = monthLabels[i] ?? '';
         return (
           <g key={i}>
             <rect
@@ -751,6 +825,23 @@ function CreatorGoals({ wallet, onRoute }: {
   const target = 2500; // synthetic monthly target
   const earned = wallet.available + wallet.pending;
   const pct = Math.min(100, Math.round((earned / target) * 100));
+
+  // Tier derived from lifetime earnings — replaces the static "Silver
+  // tier" pill that ignored actual progression.
+  const tier = wallet.lifetime >= 15_000 ? 'Platinum tier'
+    : wallet.lifetime >= 5_000 ? 'Gold tier'
+    : wallet.lifetime >= 1_000 ? 'Silver tier'
+    : 'Bronze tier';
+  // Next tier threshold for the "X to unlock" subline.
+  const nextThreshold = wallet.lifetime >= 15_000 ? null
+    : wallet.lifetime >= 5_000 ? 15_000
+    : wallet.lifetime >= 1_000 ? 5_000
+    : 1_000;
+  const nextTierLabel = wallet.lifetime >= 15_000 ? null
+    : wallet.lifetime >= 5_000 ? 'Platinum'
+    : wallet.lifetime >= 1_000 ? 'Gold'
+    : 'Silver';
+  const toUnlock = nextThreshold ? Math.max(0, nextThreshold - wallet.lifetime) : 0;
   return (
     <div className="v2-card v2-card-pad-lg">
       <div className="v2-row" style={{ justifyContent: 'space-between', marginBottom: 16 }}>
@@ -773,7 +864,7 @@ function CreatorGoals({ wallet, onRoute }: {
           style={{ fontSize: 11, border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
           title="View your earnings + tier progress"
         >
-          Silver tier
+          {tier}
         </button>
       </div>
       <div className="v2-home-goal-card">
@@ -796,13 +887,12 @@ function CreatorGoals({ wallet, onRoute }: {
       <div className="v2-grid-3" style={{ gap: 8 }}>
         <Achievement icon="✦" label="3 collabs" sub="this month" done />
         <Achievement icon="↑" label="11% ER" sub="hit target" done />
-        <Achievement icon="◆" label="Gold tier" sub={`${fmtUSD(Math.max(0, target - earned))} to unlock`} />
-      </div>
-      <div className="v2-home-streak">
-        <strong>Streak: 4 weeks</strong>
-        <span className="v2-muted">
-          {' '}· Replied to all briefs within 24h. Keep it up to unlock Pro Replies.
-        </span>
+        <Achievement
+          icon="◆"
+          label={nextTierLabel ? `${nextTierLabel} tier` : 'Top tier'}
+          sub={nextTierLabel ? `${fmtUSD(toUnlock)} lifetime to unlock` : 'reached'}
+          done={!nextTierLabel}
+        />
       </div>
     </div>
   );

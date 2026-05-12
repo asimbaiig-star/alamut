@@ -390,7 +390,12 @@ function SparkComposer({ onRoute, value, setValue }: {
           }}
         />
         <div className="v2-row" style={{ justifyContent: 'space-between', marginTop: 4 }}>
-          <button type="button" className="v2-home-spark-attach">
+          <button
+            type="button"
+            className="v2-home-spark-attach"
+            onClick={() => onRoute('campaigns')}
+            title="Pick an existing campaign brief to attach"
+          >
             {Icon.edit} Attach brief
           </button>
           <button
@@ -713,10 +718,42 @@ function PacingStrip({ wallet, campaigns }: {
   const totalBudget = campaigns.reduce((s, c) => s + c.budget, 0);
   const totalSpent = campaigns.reduce((s, c) => s + c.spent, 0);
   const pct = totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0;
+
+  // Avg ER + cost-per-engagement derived from live campaigns' accepted
+  // creators. Computed values replace the hardcoded "$43" / "11.5%"
+  // demo placeholders that lied to the user regardless of state.
+  const db = useStore.getState().db;
+  const liveCampaignIds = new Set(
+    campaigns.filter((c) => c.status === 'Live').map((c) => c.id),
+  );
+  const acceptedCreatorIds = new Set<string>();
+  for (const offer of db.offers) {
+    if (offer.status === 'accepted' && liveCampaignIds.has(offer.campaignId)) {
+      acceptedCreatorIds.add(offer.creatorId);
+    }
+  }
+  const acceptedCreators = db.creators.filter((c) => acceptedCreatorIds.has(c.id));
+  // ER is each channel's engagement averaged across channels, then
+  // averaged across creators.
+  const avgER = acceptedCreators.length === 0 ? 0
+    : acceptedCreators.reduce((s, c) => {
+        const er = c.platforms.length === 0 ? 0
+          : c.platforms.reduce((p, ch) => p + ch.engagement, 0) / c.platforms.length;
+        return s + er;
+      }, 0) / acceptedCreators.length;
+  // Cost per engaged impression: spent ÷ Σ(reach × ER) across accepted creators.
+  const totalEngagedReach = acceptedCreators.reduce((s, c) => {
+    const reach = c.platforms.reduce((p, ch) => p + ch.followers, 0);
+    const er = c.platforms.length === 0 ? 0
+      : c.platforms.reduce((p, ch) => p + ch.engagement, 0) / c.platforms.length;
+    return s + reach * (er / 100);
+  }, 0);
+  const costPerEng = totalEngagedReach > 0 ? totalSpent / totalEngagedReach : 0;
+
   return (
     <div>
       <div className="v2-home-pacing-stats">
-        <PacingStat label="Wallet" value={fmtUSD(wallet.available)} sub="3 top-up methods" />
+        <PacingStat label="Wallet" value={fmtUSD(wallet.available)} sub="Top up or withdraw" />
         <PacingStat
           label="In escrow"
           value={fmtUSD(wallet.reserved)}
@@ -727,8 +764,18 @@ function PacingStrip({ wallet, campaigns }: {
           value={fmtUSD(totalBudget)}
           sub={`${fmtUSD(totalSpent)} spent · ${pct}%`}
         />
-        <PacingStat label="Avg cost / engagement" value="$43" sub="↓ 12% vs Q1" accent />
-        <PacingStat label="Avg ER" value="11.5%" sub="vs 4.2% category" accent />
+        <PacingStat
+          label="Avg cost / engagement"
+          value={costPerEng > 0 ? `$${costPerEng.toFixed(2)}` : '—'}
+          sub={acceptedCreators.length > 0 ? `${acceptedCreators.length} accepted creators` : 'no live data yet'}
+          accent
+        />
+        <PacingStat
+          label="Avg ER"
+          value={avgER > 0 ? `${avgER.toFixed(1)}%` : '—'}
+          sub={avgER > 0 ? 'across live collabs' : 'no live data yet'}
+          accent
+        />
       </div>
       <div className="v2-home-pacing-bar">
         <div style={{ width: `${pct}%` }} />
