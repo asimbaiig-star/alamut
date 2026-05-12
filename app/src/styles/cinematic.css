@@ -94,7 +94,13 @@
    solid CTA's intentional color (var(--cn-bg)) wins. Without the
    :not(.cn-btn) escape, the more-specific `.cinematic a` rule beat
    `.cn-btn-solid` and rendered white text on a white pill. */
-.cinematic a:not(.cn-btn) { color: inherit; }
+/* Body links inherit color so they pick up the cinematic ink palette.
+ * Excluded: `.cn-btn` (button styling owns its own color) and
+ * `.cn-topnav-cta` (the topnav CTA is themed by the landing-light
+ * surface override at landing.css ~6480 — without this exclusion the
+ * (0,0,2,1)-specificity inherit-rule beats the (0,0,2,0) override and
+ * the button renders as near-black text on its dark background). */
+.cinematic a:not(.cn-btn):not(.cn-topnav-cta) { color: inherit; }
 
 /* ===== Atmospheric backdrop ===== */
 /* Two radial gradients = the two-sided lighting. They sit fixed behind

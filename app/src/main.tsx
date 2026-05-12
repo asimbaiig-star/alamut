@@ -40,6 +40,19 @@ if (typeof window !== 'undefined') {
   });
 }
 
+// Sync the local session with Supabase auth at boot + on every auth
+// state change. Without this, a stale localStorage entry from a prior
+// test run lets the app act as if someone is signed in indefinitely.
+void (async () => {
+  try {
+    const { mountSessionSync } = await import('./lib/auth/sessionSync');
+    await mountSessionSync();
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[main] sessionSync skipped:', err);
+  }
+})();
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />
