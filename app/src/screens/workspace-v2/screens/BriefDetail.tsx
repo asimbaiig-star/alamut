@@ -86,37 +86,69 @@ export function BriefDetail({ campaignId, onRoute }: Props) {
   }, [existingApplication, existingCollab]);
 
   const myCats = me?.categories ?? [];
-  // Per-facet match scores. Synthesized for the demo — same overall
-  // story as the design but driven by the data we have. A real
-  // implementation would wire each facet to a derived signal:
-  //   audience  = creator vs campaign demographics overlap
-  //   niche     = category overlap (categories ∩ campaign.category)
-  //   ER        = creator's top-channel ER vs niche median
-  //   geo       = creator.city ∈ campaign target markets
-  //   history   = past collabs with this brand
+  // Per-facet match scores derived from real Creator + Campaign signals:
+  //   audience  = creator audience match for campaign's preferred age band
+  //   niche     = fraction of creator categories matching campaign category
+  //   ER        = creator's avg ER scaled (12% = 100, 4% = 33)
+  //   geo       = exact city in placement (100) / partial (70) / neither (40)
+  //   history   = past collabs with this brand on platform (any record = 95)
+  //   overall   = mean of the five facets
   const facets = useMemo(() => {
-    const baseAudience = me ? Math.min(98, 75 + myCats.length * 2) : 70;
-    const baseNiche = me && campaign?.category && myCats.some((c) =>
-      c.toLowerCase() === (campaign.category ?? '').toLowerCase(),
-    ) ? 92 : 70;
-    const baseER = me?.platforms?.[0]?.engagement
-      ? Math.min(96, 60 + Math.round(me.platforms[0].engagement * 6))
-      : 75;
-    const baseGeo = me?.city && (campaign?.placement ?? '').toLowerCase().includes((me.city ?? '').toLowerCase())
-      ? 90
-      : 78;
-    const baseHistory = (me?.pastClients ?? []).includes(campaign?.brand ?? '')
-      ? 95
-      : 60;
+    if (!campaign || !me) {
+      return { audience: 0, niche: 0, er: 0, geo: 0, history: 0, overall: 0 };
+    }
+    // Audience: use the V2 projection (V2Creator has the typed
+    // age/gender breakdown; raw Creator stores it elsewhere). Scale
+    // age2534 share to [40, 98] as the proxy for "young-adult fit"
+    // most brand briefs target.
+    const audienceCore = meV2?.audience?.age2534 ?? 0;
+    const audience = Math.max(40, Math.min(98, 40 + audienceCore));
+
+    // Niche: 100 when campaign category is in creator's categories;
+    // 80 when at least one shared word matches; 50 otherwise. Empty
+    // categories on either side → 50.
+    const campaignCat = (campaign.category ?? '').toLowerCase();
+    const niche = !campaignCat || myCats.length === 0 ? 50
+      : myCats.some((c) => c.toLowerCase() === campaignCat) ? 100
+      : myCats.some((c) => campaignCat.split(/\s+/).some((w) => w && c.toLowerCase().includes(w))) ? 80
+      : 50;
+
+    // ER: linear from 4% (mediocre, ~33) to 12% (excellent, ~100).
+    const myER = me.platforms?.[0]?.engagement ?? 0;
+    const er = Math.max(20, Math.min(100, Math.round(((myER - 2) / 10) * 100)));
+
+    // Geo: exact city match in placement copy → 100, region keyword match
+    // → 70, neither → 40.
+    const placement = (campaign.placement ?? '').toLowerCase();
+    const city = (me.city ?? '').toLowerCase();
+    const country = (me.country ?? '').toLowerCase();
+    const geo = !placement || !city ? 40
+      : placement.includes(city) ? 100
+      : country && placement.includes(country) ? 70
+      : 40;
+
+    // History: check the local store for past offers between this brand
+    // + creator on any campaign (accepted, declined, or even pending).
+    // The `>=1 prior record` signal is the trust artefact.
+    const rawCreator = db.creators.find((c) => c.id === me.id);
+    const brand = db.brands.find((b) => b.name === campaign.brand);
+    const hasPriorHistory = rawCreator && brand
+      ? db.offers.some((o) =>
+          o.creatorId === rawCreator.id &&
+          db.campaigns.find((c) => c.id === o.campaignId)?.brandId === brand.id,
+        )
+      : false;
+    const history = hasPriorHistory ? 95 : 50;
+
     return {
-      audience: baseAudience,
-      niche: baseNiche,
-      er: baseER,
-      geo: baseGeo,
-      history: baseHistory,
-      overall: Math.round((baseAudience + baseNiche + baseER + baseGeo + baseHistory) / 5),
+      audience,
+      niche,
+      er,
+      geo,
+      history,
+      overall: Math.round((audience + niche + er + geo + history) / 5),
     };
-  }, [campaign, me, myCats]);
+  }, [campaign, me, myCats, db]);
 
   if (!campaign) {
     return (
