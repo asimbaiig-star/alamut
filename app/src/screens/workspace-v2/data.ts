@@ -126,6 +126,10 @@ export interface V2Conversation {
   lastAt: string;
   preview: string;
   messages: { from: 'brand' | 'creator'; text: string; time: string }[];
+  /** Phase 11 — viewer's mute/archive state on this thread. Computed
+   *  by threadToV2 against the requesting `viewerUserId`. */
+  isMutedForViewer?: boolean;
+  isArchivedForViewer?: boolean;
 }
 
 export interface V2WalletLedgerEntry {

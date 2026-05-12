@@ -18,7 +18,7 @@
 // the rich detailed view via `CollabSidePanel`. No separate surface
 // to drift against.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { fmtUSD, fmtFollowers, Icon, Topbar } from '../lib';
 import {
   type V2Conversation,
@@ -28,6 +28,7 @@ import {
 import {
   useV2Conversations, useV2Creators, useV2AllCampaigns,
   v2MarkThreadRead, v2SendMessage,
+  v2MuteThread, v2ArchiveThread, v2ReportThread,
 } from '../v2Hooks';
 import { deriveCollab, V2_PIPELINE_STAGES } from '../v2Adapters';
 import { useStore } from '@/lib/api/store';
@@ -80,13 +81,17 @@ export function Inbox({ onRoute, persona, forceThreadId, forcePanelMode }: Props
     if (activeId) v2MarkThreadRead(activeId);
   }, [activeId]);
 
-  // Filter: 'all' / 'unread'. Single-toggle today; can expand to a
-  // dropdown of saved searches if we add muting / archive flags.
-  const [filter, setFilter] = useState<'all' | 'unread'>('all');
-  const filteredConversations = useMemo(
-    () => filter === 'unread' ? conversations.filter((c) => c.unread > 0) : conversations,
-    [conversations, filter],
-  );
+  // Filter: 'all' (hides archived) / 'unread' (subset of all) /
+  // 'archived' (the inverse — only shows archived). Archived threads
+  // bounce back to 'all' when the other party messages (v2SendMessage
+  // un-archives for non-sender participants).
+  const [filter, setFilter] = useState<'all' | 'unread' | 'archived'>('all');
+  const filteredConversations = useMemo(() => {
+    if (filter === 'archived') return conversations.filter((c) => c.isArchivedForViewer);
+    const visible = conversations.filter((c) => !c.isArchivedForViewer);
+    if (filter === 'unread') return visible.filter((c) => c.unread > 0);
+    return visible;
+  }, [conversations, filter]);
 
   const active = filteredConversations.find((c) => c.id === activeId) ?? filteredConversations[0] ?? conversations[0];
 
@@ -159,15 +164,24 @@ export function Inbox({ onRoute, persona, forceThreadId, forcePanelMode }: Props
         title="Inbox"
         crumb={`${conversations.length} conversations · ${totalUnread} unread`}
         actions={
-          <button
-            className={`v2-btn ${filter === 'unread' ? 'v2-btn-primary' : 'v2-btn-outline'}`}
-            type="button"
-            onClick={() => setFilter((f) => f === 'unread' ? 'all' : 'unread')}
-            aria-pressed={filter === 'unread'}
-            title={filter === 'unread' ? 'Show all conversations' : 'Show only unread'}
+          <select
+            className="v2-select"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value as 'all' | 'unread' | 'archived')}
+            aria-label="Filter conversations"
+            style={{
+              fontFamily: 'inherit', fontSize: 13,
+              padding: '6px 12px', borderRadius: 'var(--v2-r-pill)',
+              border: `1px solid ${filter === 'all' ? 'var(--v2-line)' : 'var(--v2-accent)'}`,
+              background: filter === 'all' ? 'var(--v2-paper)' : 'var(--v2-accent-soft)',
+              color: filter === 'all' ? 'var(--v2-ink-2)' : 'var(--v2-accent)',
+              fontWeight: filter === 'all' ? 500 : 600,
+            }}
           >
-            {Icon.filter} {filter === 'unread' ? `Unread (${filteredConversations.length})` : 'All'}
-          </button>
+            <option value="all">All conversations</option>
+            <option value="unread">Unread only</option>
+            <option value="archived">Archived</option>
+          </select>
         }
       />
       <div className="v2-inbox">
@@ -266,6 +280,19 @@ function ConversationList({
               </div>
               <div className="v2-inbox-row-meta">
                 <span className="v2-inbox-row-time">{c.lastAt}</span>
+                {c.isMutedForViewer && (
+                  <span
+                    title="Muted"
+                    aria-label="Muted"
+                    style={{
+                      fontSize: 11,
+                      color: 'var(--v2-ink-3)',
+                      lineHeight: 1,
+                    }}
+                  >
+                    🔕
+                  </span>
+                )}
                 {c.unread > 0 && <span className="v2-inbox-unread">{c.unread}</span>}
               </div>
             </button>
@@ -303,8 +330,47 @@ function Thread({
     : null;
   const stageMeta = collab ? V2_PIPELINE_STAGES.find((s) => s.id === collab.stage) : null;
 
+  // Phase 11 — More menu state + viewer-aware mute/archive flags.
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!moreRef.current?.contains(e.target as Node)) setMoreOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [moreOpen]);
+  // Read viewer's flags off the raw thread (V2Conversation doesn't carry these).
+  const rawThread = db.threads.find((t) => t.id === conversation.id);
+  const viewerUserId = (() => {
+    // Same resolution path the outer Inbox uses; duplicated to keep
+    // this component self-contained.
+    const me = db.users.find((u) =>
+      persona === 'brand' ? u.brandId : u.creatorId,
+    );
+    return me?.id ?? '';
+  })();
+  const isMuted = (rawThread?.mutedFor ?? []).includes(viewerUserId);
+  const isArchived = (rawThread?.archivedFor ?? []).includes(viewerUserId);
+
   return (
     <section className="v2-inbox-thread" aria-label="Message thread">
+      {reportOpen && (
+        <ReportThreadModal
+          onClose={() => setReportOpen(false)}
+          onSubmit={(reason) => {
+            const ok = v2ReportThread(conversation.id, reason);
+            if (ok) {
+              pushToast('Reported — admin will review');
+              setReportOpen(false);
+            } else {
+              pushToast('Add a short reason and try again');
+            }
+          }}
+        />
+      )}
       <header className="v2-inbox-thread-head">
         <div
           className="v2-avatar v2-avatar-md"
@@ -330,14 +396,61 @@ function Thread({
         >
           Open deal room
         </button>
-        <button
-          className="v2-icon-btn"
-          type="button"
-          aria-label="More options"
-          onClick={() => pushToast('Mute / archive / report — menu coming soon', 'default')}
-        >
-          {Icon.more}
-        </button>
+        <div ref={moreRef} style={{ position: 'relative' }}>
+          <button
+            className="v2-icon-btn"
+            type="button"
+            aria-label="More options"
+            aria-haspopup="menu"
+            aria-expanded={moreOpen}
+            onClick={() => setMoreOpen((v) => !v)}
+          >
+            {Icon.more}
+          </button>
+          {moreOpen && (
+            <div
+              role="menu"
+              style={{
+                position: 'absolute',
+                right: 0,
+                top: 'calc(100% + 6px)',
+                zIndex: 30,
+                minWidth: 180,
+                background: 'var(--v2-paper)',
+                border: '1px solid var(--v2-line)',
+                borderRadius: 'var(--v2-r-md)',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
+                padding: 4,
+              }}
+            >
+              <MoreMenuItem
+                label={isMuted ? 'Unmute conversation' : 'Mute conversation'}
+                onClick={() => {
+                  v2MuteThread(conversation.id);
+                  pushToast(isMuted ? 'Conversation unmuted' : 'Conversation muted');
+                  setMoreOpen(false);
+                }}
+              />
+              <MoreMenuItem
+                label={isArchived ? 'Unarchive' : 'Archive'}
+                onClick={() => {
+                  v2ArchiveThread(conversation.id);
+                  pushToast(isArchived ? 'Conversation restored' : 'Conversation archived');
+                  setMoreOpen(false);
+                }}
+              />
+              <hr style={{ border: 0, borderTop: '1px solid var(--v2-line)', margin: '4px 0' }} />
+              <MoreMenuItem
+                label="Report conversation…"
+                danger
+                onClick={() => {
+                  setMoreOpen(false);
+                  setReportOpen(true);
+                }}
+              />
+            </div>
+          )}
+        </div>
       </header>
 
       {/* Workflow context band — shows the current collab stage so you
@@ -453,4 +566,91 @@ function contextHint(stage: string, persona: 'brand' | 'creator'): string {
     if (stage === 'paid')         return 'Paid · all done';
   }
   return '';
+}
+
+/** Small modal for reporting a thread. The viewer types a short reason;
+ *  v2ReportThread stamps reportedAt/by/reason on the thread + pushes a
+ *  notification to every admin so it shows up in the admin queue. */
+function ReportThreadModal({ onClose, onSubmit }: {
+  onClose: () => void;
+  onSubmit: (reason: string) => void;
+}) {
+  const [reason, setReason] = useState('');
+  const valid = reason.trim().length >= 6;
+  return (
+    <div
+      className="v2-modal-overlay"
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <div
+        className="v2-card v2-card-pad-lg v2-modal"
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: 460 }}
+      >
+        <h2 style={{
+          fontFamily: 'var(--v2-font-display)', fontSize: 22, fontWeight: 500,
+          margin: '0 0 6px', letterSpacing: '-0.02em',
+        }}>Report this conversation</h2>
+        <p className="v2-muted" style={{ margin: '0 0 14px', fontSize: 13 }}>
+          Send a short note to the moderation team. They'll review the thread
+          and decide if action is needed.
+        </p>
+        <label className="v2-eyebrow" style={{ display: 'block', marginBottom: 6 }}>Reason</label>
+        <textarea
+          className="v2-input"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="What's going wrong here? (≥6 characters)"
+          rows={4}
+          style={{ width: '100%', fontFamily: 'inherit', fontSize: 13.5, padding: 10, marginBottom: 14 }}
+        />
+        <div className="v2-row" style={{ justifyContent: 'flex-end', gap: 8 }}>
+          <button className="v2-btn v2-btn-ghost" type="button" onClick={onClose}>Cancel</button>
+          <button
+            className="v2-btn v2-btn-primary"
+            type="button"
+            disabled={!valid}
+            onClick={() => onSubmit(reason.trim())}
+          >
+            Send report
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Single-line dropdown menu item used by the thread More menu. */
+function MoreMenuItem({ label, onClick, danger }: {
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={onClick}
+      style={{
+        display: 'block',
+        width: '100%',
+        textAlign: 'left',
+        padding: '8px 10px',
+        background: 'transparent',
+        border: 'none',
+        borderRadius: 6,
+        color: danger ? 'var(--v2-accent)' : 'var(--v2-ink)',
+        fontSize: 13,
+        fontWeight: 500,
+        cursor: 'pointer',
+        fontFamily: 'inherit',
+      }}
+      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--v2-bg-1)'}
+      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+    >
+      {label}
+    </button>
+  );
 }

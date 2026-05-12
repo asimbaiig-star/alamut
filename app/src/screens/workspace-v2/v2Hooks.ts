@@ -355,11 +355,16 @@ export function v2MarkThreadRead(threadId: string) {
   if (nextUnreadFor) mirrorThreadPatch(threadId, { unreadFor: nextUnreadFor });
 }
 
-/** Send a message in a thread, from the current viewer. */
+/** Send a message in a thread, from the current viewer.
+ *  Phase 11 — new messages clear the recipient(s) from the thread's
+ *  `archivedFor` so an archived conversation comes back to their inbox
+ *  when the other party speaks up (standard Gmail-style behaviour). */
 export function v2SendMessage(threadId: string, text: string) {
   if (!text.trim()) return;
   let newMsg: import('@/lib/api/types').Message | null = null;
-  let threadPatch: { lastMessageAt: string; unreadFor: string[] } | null = null;
+  let threadPatch:
+    | { lastMessageAt: string; unreadFor: string[]; archivedFor?: string[] }
+    | null = null;
   tx((db) => {
     const session = useStore.getState().session;
     const persona = readPersona();
@@ -380,16 +385,116 @@ export function v2SendMessage(threadId: string, text: string) {
       // Mark unread for everyone except sender
       const others = thread.participants.filter((p) => p !== viewerId);
       const nextUnreadFor = Array.from(new Set([...thread.unreadFor.filter((u) => u !== viewerId), ...others]));
-      threadPatch = { lastMessageAt: now, unreadFor: nextUnreadFor };
+      // Un-archive for non-sender participants. The sender's own
+      // archive state survives — they archived it intentionally and a
+      // self-reply shouldn't un-archive (they're catching up on their
+      // own end, not getting a new ping).
+      const prevArchived = thread.archivedFor ?? [];
+      const nextArchived = prevArchived.filter((u) => u === viewerId);
+      const archivedChanged = prevArchived.length !== nextArchived.length;
+      threadPatch = {
+        lastMessageAt: now,
+        unreadFor: nextUnreadFor,
+        ...(archivedChanged ? { archivedFor: nextArchived } : {}),
+      };
       db.threads[idx] = {
         ...thread,
         lastMessageAt: now,
         unreadFor: nextUnreadFor,
+        archivedFor: nextArchived,
       };
     }
   });
   if (newMsg) mirrorMessageInsert(newMsg);
   if (threadPatch) mirrorThreadPatch(threadId, threadPatch);
+}
+
+/** Phase 11 — toggle viewer membership in `thread.mutedFor`. Notification
+ *  delivery should check this list (the bell + recent-activity feed
+ *  read it) — for the demo we just persist the flag; consumers can
+ *  honour it as they migrate. */
+export function v2MuteThread(threadId: string): boolean {
+  let nextMuted: string[] | null = null;
+  tx((db) => {
+    const session = useStore.getState().session;
+    const persona = readPersona();
+    const viewerId = getViewerUserId(db, session?.userId ?? null, persona);
+    const idx = db.threads.findIndex((t) => t.id === threadId);
+    if (idx === -1) return;
+    const prev = db.threads[idx].mutedFor ?? [];
+    nextMuted = prev.includes(viewerId)
+      ? prev.filter((u) => u !== viewerId)
+      : [...prev, viewerId];
+    db.threads[idx] = { ...db.threads[idx], mutedFor: nextMuted };
+  });
+  if (nextMuted) mirrorThreadPatch(threadId, { mutedFor: nextMuted });
+  return nextMuted !== null;
+}
+
+/** Phase 11 — toggle viewer membership in `thread.archivedFor`. The
+ *  inbox filters out archived threads by default; the dropdown's
+ *  "Archived" filter brings them back. */
+export function v2ArchiveThread(threadId: string): boolean {
+  let nextArchived: string[] | null = null;
+  tx((db) => {
+    const session = useStore.getState().session;
+    const persona = readPersona();
+    const viewerId = getViewerUserId(db, session?.userId ?? null, persona);
+    const idx = db.threads.findIndex((t) => t.id === threadId);
+    if (idx === -1) return;
+    const prev = db.threads[idx].archivedFor ?? [];
+    nextArchived = prev.includes(viewerId)
+      ? prev.filter((u) => u !== viewerId)
+      : [...prev, viewerId];
+    db.threads[idx] = { ...db.threads[idx], archivedFor: nextArchived };
+  });
+  if (nextArchived) mirrorThreadPatch(threadId, { archivedFor: nextArchived });
+  return nextArchived !== null;
+}
+
+/** Phase 11 — report a thread to admin. Stamps reportedAt/by/reason on
+ *  the thread + pushes a notification to every admin user so it lands
+ *  in the admin queue. Re-reporting overwrites the previous report
+ *  (single-row model for the demo; a full implementation would have a
+ *  separate `thread_reports` table). */
+export function v2ReportThread(threadId: string, reason: string): boolean {
+  const trimmed = reason.trim();
+  if (!trimmed) return false;
+  let patch: {
+    reportedAt: number;
+    reportedByUserId: string;
+    reportedReason: string;
+  } | null = null;
+  tx((db) => {
+    const session = useStore.getState().session;
+    const persona = readPersona();
+    const viewerId = getViewerUserId(db, session?.userId ?? null, persona);
+    const idx = db.threads.findIndex((t) => t.id === threadId);
+    if (idx === -1) return;
+    const now = Date.now();
+    patch = { reportedAt: now, reportedByUserId: viewerId, reportedReason: trimmed };
+    db.threads[idx] = {
+      ...db.threads[idx],
+      reportedAt: now,
+      reportedByUserId: viewerId,
+      reportedReason: trimmed,
+    };
+    // Notify admins so the case lands in the admin queue.
+    const previewReason = trimmed.length > 80 ? trimmed.slice(0, 80) + '…' : trimmed;
+    db.users.filter((u) => u.role === 'admin').forEach((adm) => {
+      db.notifications.push({
+        id: `n_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        userId: adm.id,
+        text: `Thread reported — "${previewReason}"`,
+        href: '/admin/queue?type=threads',
+        at: new Date(now).toISOString(),
+        read: false,
+        meta: { },
+      });
+    });
+  });
+  if (patch) mirrorThreadPatch(threadId, patch);
+  return patch !== null;
 }
 
 /** Find-or-create the thread between the brand owner and the creator

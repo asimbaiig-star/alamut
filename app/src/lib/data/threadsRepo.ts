@@ -15,13 +15,20 @@ type Row = {
   last_message_at: string;
   unread_for: string[];
   collaboration_id: string | null;
+  muted_for: string[] | null;
+  archived_for: string[] | null;
+  reported_at: string | null;
+  reported_by_user_id: string | null;
+  reported_reason: string | null;
   created_at: string;
   updated_at: string;
 };
 
 const COLUMNS =
   'id, participants, campaign_id, subject, last_message_at, ' +
-  'unread_for, collaboration_id, created_at, updated_at';
+  'unread_for, collaboration_id, muted_for, archived_for, ' +
+  'reported_at, reported_by_user_id, reported_reason, ' +
+  'created_at, updated_at';
 
 function toThread(row: Row): Thread {
   return {
@@ -32,6 +39,11 @@ function toThread(row: Row): Thread {
     lastMessageAt: row.last_message_at,
     unreadFor: row.unread_for ?? [],
     collaborationId: row.collaboration_id ?? null,
+    mutedFor: row.muted_for ?? [],
+    archivedFor: row.archived_for ?? [],
+    reportedAt: row.reported_at ? +new Date(row.reported_at) : undefined,
+    reportedByUserId: row.reported_by_user_id ?? undefined,
+    reportedReason: row.reported_reason ?? undefined,
   };
 }
 
@@ -44,6 +56,11 @@ function toInsertRow(t: Thread): Record<string, unknown> {
     last_message_at: t.lastMessageAt,
     unread_for: t.unreadFor,
     collaboration_id: t.collaborationId,
+    muted_for: t.mutedFor ?? [],
+    archived_for: t.archivedFor ?? [],
+    reported_at: t.reportedAt ? new Date(t.reportedAt).toISOString() : null,
+    reported_by_user_id: t.reportedByUserId ?? null,
+    reported_reason: t.reportedReason ?? null,
   };
 }
 
@@ -51,6 +68,11 @@ type UpdatablePatch = Partial<{
   lastMessageAt: string;
   unreadFor: string[];
   collaborationId: string | null;
+  mutedFor: string[];
+  archivedFor: string[];
+  reportedAt: number | null;
+  reportedByUserId: string | null;
+  reportedReason: string | null;
 }>;
 
 function toUpdateRowPatch(patch: UpdatablePatch): Record<string, unknown> {
@@ -58,6 +80,13 @@ function toUpdateRowPatch(patch: UpdatablePatch): Record<string, unknown> {
   if (patch.lastMessageAt !== undefined) out.last_message_at = patch.lastMessageAt;
   if (patch.unreadFor !== undefined) out.unread_for = patch.unreadFor;
   if (patch.collaborationId !== undefined) out.collaboration_id = patch.collaborationId;
+  if (patch.mutedFor !== undefined) out.muted_for = patch.mutedFor;
+  if (patch.archivedFor !== undefined) out.archived_for = patch.archivedFor;
+  if (patch.reportedAt !== undefined) {
+    out.reported_at = patch.reportedAt ? new Date(patch.reportedAt).toISOString() : null;
+  }
+  if (patch.reportedByUserId !== undefined) out.reported_by_user_id = patch.reportedByUserId;
+  if (patch.reportedReason !== undefined) out.reported_reason = patch.reportedReason;
   return out;
 }
 

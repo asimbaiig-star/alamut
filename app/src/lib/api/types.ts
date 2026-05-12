@@ -818,6 +818,20 @@ export interface Thread {
    *  thread with `null` is a pre-collab DM (e.g. brand pinged from
    *  Discover before any application). */
   collaborationId: string | null;
+  // ===== Phase 11 (inbox moderation) =====
+  /** User IDs who've muted this thread — notifications are suppressed
+   *  for them but the thread still shows in their inbox list. */
+  mutedFor?: string[];
+  /** User IDs who've archived this thread. Filters the thread out of
+   *  the default inbox view; new messages from peers clear the sender
+   *  from non-sender participants' archived_for, pulling it back in. */
+  archivedFor?: string[];
+  /** When the last report was filed against this thread. */
+  reportedAt?: number;
+  /** User who filed the last report. */
+  reportedByUserId?: string;
+  /** Free-text reason captured at report time. */
+  reportedReason?: string;
 }
 
 export interface MessageAttachment {

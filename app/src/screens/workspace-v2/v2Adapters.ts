@@ -283,6 +283,8 @@ export function threadToV2(t: Thread, db: Database, viewerUserId: string): V2Con
     lastAt: last ? relativeTime(last.at) : 'no messages',
     preview: last?.text ?? '',
     messages: v2Messages,
+    isMutedForViewer: (t.mutedFor ?? []).includes(viewerUserId),
+    isArchivedForViewer: (t.archivedFor ?? []).includes(viewerUserId),
   };
 }
 
