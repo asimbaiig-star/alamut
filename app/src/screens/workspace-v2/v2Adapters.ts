@@ -636,8 +636,19 @@ export function deriveCollab(campaignId: string, creatorId: string, db: Database
   else if (allLive) stage = 'live';
   else if (allApproved) stage = 'approved';
 
-  // Paid — terminal — when a payout went out and the campaign is closed
-  if (hasPayout && camp.stage === 'closed') stage = 'paid';
+  // Paid — terminal. MUST stay in lockstep with `computeCollabStage`
+  // (see `collabSync.ts:93`), which requires `latestSub.status === 'approved'
+  // && isLive && hasPayout && campIsClosed`. Pre-fix the read side
+  // dropped the `isLive` (and approved) check, so a closed campaign with
+  // a cleared payout but no permalink would render `paid` in the kanban
+  // while the stored Collaboration row stayed at `approved` — same shape
+  // as the original "approving content jumps straight to live" bug.
+  const submissionIsLive = allLive || allApproved
+    ? slotStatuses.some((s) => s === 'live')
+    : false;
+  if (allApproved && submissionIsLive && hasPayout && camp.stage === 'closed') {
+    stage = 'paid';
+  }
 
   // Use a double-underscore separator so the regex parser can split
   // back unambiguously even when campaign or creator ids contain a

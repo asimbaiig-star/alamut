@@ -2,6 +2,7 @@
 
 import type { Submission, SubmissionStatus } from '@/lib/api/types';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
+import { StaleVersionError, isNoRowsError } from './optimisticLock';
 
 type Row = {
   id: string;
@@ -16,6 +17,7 @@ type Row = {
   permalink: string | null;
   collaboration_id: string | null;
   deliverable_id: string | null;
+  version: number;
   created_at: string;
   updated_at: string;
 };
@@ -23,7 +25,7 @@ type Row = {
 const COLUMNS =
   'id, campaign_id, creator_id, round, files, notes, status, ' +
   'submitted_at, feedback, permalink, collaboration_id, deliverable_id, ' +
-  'created_at, updated_at';
+  'version, created_at, updated_at';
 
 function toSubmission(row: Row): Submission {
   return {
@@ -39,6 +41,7 @@ function toSubmission(row: Row): Submission {
     permalink: row.permalink ?? undefined,
     collaborationId: row.collaboration_id ?? undefined,
     deliverableId: row.deliverable_id ?? undefined,
+    version: row.version,
   };
 }
 
@@ -105,17 +108,31 @@ export async function insertSubmissionInSupabase(s: Submission): Promise<Submiss
 export async function updateSubmissionInSupabase(
   submissionId: string,
   patch: UpdatablePatch,
+  expectedVersion?: number,
 ): Promise<Submission> {
   if (!isSupabaseConfigured()) throw new Error('Supabase not configured');
   const sb = getSupabase();
   const rowPatch = toUpdateRowPatch(patch);
-  const { data, error } = await sb
+  let q = sb
     .from('submissions')
-    .update(rowPatch)
-    .eq('id', submissionId)
-    .select(COLUMNS)
-    .single();
-  if (error) throw new Error(error.message);
-  if (!data) throw new Error('Submission not found');
-  return toSubmission(data as unknown as Row);
+    .update({ ...rowPatch, version: (expectedVersion ?? 0) + 1 })
+    .eq('id', submissionId);
+  if (expectedVersion !== undefined) q = q.eq('version', expectedVersion);
+  try {
+    const { data, error } = await q.select(COLUMNS).single();
+    if (error) {
+      if (expectedVersion !== undefined && isNoRowsError(error)) {
+        throw new StaleVersionError('submission', submissionId);
+      }
+      throw new Error(error.message);
+    }
+    if (!data) throw new Error('Submission not found');
+    return toSubmission(data as unknown as Row);
+  } catch (err) {
+    if (err instanceof StaleVersionError) throw err;
+    if (expectedVersion !== undefined && isNoRowsError(err)) {
+      throw new StaleVersionError('submission', submissionId);
+    }
+    throw err;
+  }
 }

@@ -63,10 +63,25 @@ interface SignUpInput {
 /** Deterministic User.id from email. Matches the synthesizer in
  *  resolveUserFromSupabaseByEmail so a user who signs up on Device A
  *  and signs in on Device B ends up with the same User.id both
- *  places — Brand.userId / Creator.userId pointers stay valid. */
+ *  places — Brand.userId / Creator.userId pointers stay valid.
+ *
+ *  Pre-fix this used djb2 (32-bit output, ~4B values). At ~77K users
+ *  the birthday-bound 50% collision probability hits — a real-world
+ *  account-takeover surface if the platform ever scaled. Upgraded to
+ *  FNV-1a 64-bit (~18 quintillion values, collision-free at any
+ *  realistic platform scale). Output is still base36 but ~12 chars
+ *  instead of ~7. Backwards-incompatible with existing `u_x_*` rows
+ *  in localStorage; old sessions get re-synthesized on next sign-in
+ *  via the resolveUserFromSupabaseByEmail fallback. */
 function deterministicUserId(email: string): string {
-  const hash = email.split('').reduce((h, c) => ((h * 33 + c.charCodeAt(0)) >>> 0), 5381).toString(36);
-  return `u_x_${hash}`;
+  // FNV-1a 64-bit via BigInt — synchronous, no Web Crypto async.
+  const FNV_PRIME = 0x100000001b3n;
+  let hash = 0xcbf29ce484222325n;
+  const MASK64 = 0xffffffffffffffffn;
+  for (let i = 0; i < email.length; i++) {
+    hash = ((hash ^ BigInt(email.charCodeAt(i))) * FNV_PRIME) & MASK64;
+  }
+  return `u_x_${hash.toString(36)}`;
 }
 
 async function signUp(input: SignUpInput) {
@@ -422,7 +437,30 @@ async function updateCampaign(id: string, patch: Partial<Campaign>) {
   return tx<Campaign>((d) => {
     const i = d.campaigns.findIndex((c) => c.id === id);
     if (i < 0) throw new ApiError('not_found', 'Campaign not found.');
-    d.campaigns[i] = { ...d.campaigns[i], ...patch };
+    const current = d.campaigns[i];
+
+    // BUDGET FLOOR — pre-fix the brand could set `budget` below the
+    // already-committed sum (spent + escrowHeld + still-pending offer
+    // rates), which made the UI render nonsensical "120%+ deployed"
+    // and broke the budget-cap math in v2SendOffer. Reject any patch
+    // whose proposed budget is below current commitments.
+    if (typeof patch.budget === 'number') {
+      const committedOffers = d.offers
+        .filter((o) =>
+          o.campaignId === id &&
+          (o.status === 'pending' || o.status === 'countered'),
+        )
+        .reduce((sum, o) => sum + o.rate, 0);
+      const floor = current.spent + current.escrowHeld + committedOffers;
+      if (patch.budget < floor) {
+        throw new ApiError(
+          'budget_below_floor',
+          `Budget cannot be lower than $${floor.toLocaleString()} (already spent + held in escrow + open offers).`,
+        );
+      }
+    }
+
+    d.campaigns[i] = { ...current, ...patch };
     return d.campaigns[i];
   });
 }

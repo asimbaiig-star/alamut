@@ -69,13 +69,38 @@ function mirrorDisputeUpdateToSupabase(
   patch: Parameters<typeof import('@/lib/data/disputesRepo').updateDisputeInSupabase>[1],
 ): void {
   if (!isSupabaseConfigured()) return;
+  // Read pre-mutation version off local state — the local tx doesn't
+  // touch `version` (only writeBack from a successful mirror does).
+  const expectedVersion = useStore.getState().db.disputes
+    .find((d) => d.id === disputeId)?.version;
   void (async () => {
     try {
       const { updateDisputeInSupabase } = await import('@/lib/data/disputesRepo');
-      await updateDisputeInSupabase(disputeId, patch);
+      const updated = await updateDisputeInSupabase(disputeId, patch, expectedVersion);
+      // Write the new version back to local store so subsequent
+      // UPDATEs on the same dispute pass the right expectedVersion.
+      // Same shape as v2CampaignActions.writeBackVersion but inlined
+      // to avoid a circular import.
+      if (typeof updated.version === 'number') {
+        useStore.setState((s) => {
+          const idx = s.db.disputes.findIndex((d) => d.id === disputeId);
+          if (idx === -1 || s.db.disputes[idx].version === updated.version) return s;
+          const next = s.db.disputes.slice();
+          next[idx] = { ...next[idx], version: updated.version };
+          return { ...s, db: { ...s.db, disputes: next } };
+        });
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (/row-level security|no rows|0 rows|not found/i.test(msg)) return;
+      if (err instanceof Error && err.name === 'StaleVersionError') {
+        const { pushToast } = await import('@/lib/utils/toast');
+        pushToast(
+          `Couldn't save dispute — another tab updated it. Refresh to see the latest.`,
+          'bad',
+        );
+        return;
+      }
       // eslint-disable-next-line no-console
       console.warn('[dispute update mirror] failed:', msg);
     }
@@ -124,6 +149,19 @@ export function v2RaiseDispute(input: {
     const raiser = findUserId(db, input.raisedByUserId);
     if (!raiser) return null;
     const raisedByRole: 'brand' | 'creator' = raiser.isCreator ? 'creator' : 'brand';
+
+    // IDEMPOTENCY GUARD — pre-fix a fast double-submit on the dispute
+    // modal could push two open Dispute rows on the same collab. Both
+    // would set `escrowFrozen = true` (a no-op the second time), but
+    // the admin queue would show two cases for one issue, and resolve
+    // flows for either could move the same escrow twice. Returns the
+    // existing open dispute on collision so the caller knows it landed.
+    const existing = db.disputes.find(
+      (d) =>
+        d.collaborationId === collab.id &&
+        (d.status === 'open' || d.status === 'in-review'),
+    );
+    if (existing) return existing;
 
     const now = nowMs();
     const dispute: Dispute = {

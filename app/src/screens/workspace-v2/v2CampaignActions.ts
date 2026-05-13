@@ -76,6 +76,62 @@ function isNotFoundError(msg: string): boolean {
   return /no rows|0 rows|not found|JSON object requested/i.test(msg);
 }
 
+/** Stale-version detection — translates a thrown StaleVersionError
+ *  (from migration 020 optimistic-lock writes) into a boolean the
+ *  fire-and-forget mirrors can branch on. Async because the helper
+ *  module is dynamic-imported to keep the v2 actions bundle lean. */
+async function isStaleVersion(err: unknown): Promise<boolean> {
+  if (!(err instanceof Error)) return false;
+  if (err.name !== 'StaleVersionError') return false;
+  // Defensive runtime check — we don't want a stale class shape from
+  // a stale module to false-positive other errors.
+  const { StaleVersionError } = await import('@/lib/data/optimisticLock');
+  return err instanceof StaleVersionError;
+}
+
+/** Single toast helper so every mirror surfaces the same recoverable
+ *  copy on a stale-version write. The next read pulls canonical state
+ *  from Postgres + storage-event sync rolls it into the local store. */
+function toastStaleVersion(entity: string): void {
+  void (async () => {
+    const { pushToast } = await import('@/lib/utils/toast');
+    pushToast(
+      `Couldn't save ${entity} — another tab updated it. Refresh to see the latest.`,
+      'bad',
+    );
+  })();
+}
+
+/** Write the post-UPDATE version (returned by the repo) back to the
+ *  local store so the NEXT mirror call passes the right expectedVersion.
+ *  Without this, the local store's `version` would freeze at the
+ *  hydration-time value and every subsequent mutation would race-fail
+ *  because we'd send a stale expectedVersion to Postgres.
+ *
+ *  Updates the matching row by id; no-op if the row was deleted
+ *  between mirror dispatch and writeback. Doesn't trigger any
+ *  downstream effect (it's a synthetic local-only field bump). */
+type VersionableTable = 'campaigns' | 'offers' | 'applications' | 'submissions' | 'disputes';
+function writeBackVersion(table: VersionableTable, id: string, version: number): void {
+  // Use setState directly rather than going through tx() — we don't
+  // want this to count as a tx-diffable transaction event (which would
+  // re-trigger mirror loops). Same shape as the cross-tab `storage`
+  // event sync, which also bypasses tx().
+  useStore.setState((s) => {
+    const rows = s.db[table];
+    if (!Array.isArray(rows)) return s;
+    const idx = rows.findIndex((r: { id: string }) => r.id === id);
+    if (idx === -1) return s;
+    const current = rows[idx];
+    // Skip if already up to date (idempotent — handles double-call from
+    // multi-mirror-per-mutation tx patterns).
+    if (current.version === version) return s;
+    const next = rows.slice();
+    next[idx] = { ...current, version };
+    return { ...s, db: { ...s.db, [table]: next } };
+  });
+}
+
 /** Fire-and-forget Supabase mirror for a campaign UPDATE. Local
  *  state has already been updated; this hands off the same change
  *  to Postgres. Failures are logged but never propagate. */
@@ -84,13 +140,34 @@ function mirrorCampaignToSupabase(
   patch: Parameters<typeof import('@/lib/data/campaignsRepo').updateCampaignInSupabase>[1],
 ): void {
   if (!isSupabaseConfigured()) return;
+  // Read version off the just-committed local state. The local tx
+  // doesn't mutate `version` (only the writeBackVersion helper or a
+  // server fetch does), so this is the version we believe Postgres
+  // currently holds. Pass as expectedVersion to the optimistic-lock
+  // UPDATE; if it's stale we get StaleVersionError + toast below.
+  const expectedVersion = useStore.getState().db.campaigns
+    .find((c) => c.id === campaignId)?.version;
   void (async () => {
     try {
       const { updateCampaignInSupabase } = await import('@/lib/data/campaignsRepo');
-      await updateCampaignInSupabase(campaignId, patch);
+      const updated = await updateCampaignInSupabase(campaignId, patch, expectedVersion);
+      // Write the new version back to local store so the next mirror
+      // call passes the right expectedVersion. Without this, every
+      // subsequent UPDATE would race-fail because we'd still send the
+      // pre-mutation version while Postgres has already bumped.
+      if (typeof updated.version === 'number') {
+        writeBackVersion('campaigns', campaignId, updated.version);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (isNotFoundError(msg)) return;
+      // Stale-version conflict (migration 020) — another writer
+      // updated this row while we were buffering the mirror. Toast
+      // the user; the next read will pull canonical state.
+      if (await isStaleVersion(err)) {
+        toastStaleVersion('campaign');
+        return;
+      }
       // eslint-disable-next-line no-console
       console.warn('[campaign mirror] failed:', msg);
     }
@@ -121,13 +198,22 @@ function mirrorOfferUpdateToSupabase(
   patch: Parameters<typeof import('@/lib/data/offersRepo').updateOfferInSupabase>[1],
 ): void {
   if (!isSupabaseConfigured()) return;
+  const expectedVersion = useStore.getState().db.offers
+    .find((o) => o.id === offerId)?.version;
   void (async () => {
     try {
       const { updateOfferInSupabase } = await import('@/lib/data/offersRepo');
-      await updateOfferInSupabase(offerId, patch);
+      const updated = await updateOfferInSupabase(offerId, patch, expectedVersion);
+      if (typeof updated.version === 'number') {
+        writeBackVersion('offers', offerId, updated.version);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (isNotFoundError(msg)) return;
+      if (await isStaleVersion(err)) {
+        toastStaleVersion('offer');
+        return;
+      }
       // eslint-disable-next-line no-console
       console.warn('[offer update mirror] failed:', msg);
     }
@@ -156,13 +242,22 @@ function mirrorApplicationUpdateToSupabase(
   patch: Parameters<typeof import('@/lib/data/applicationsRepo').updateApplicationInSupabase>[1],
 ): void {
   if (!isSupabaseConfigured()) return;
+  const expectedVersion = useStore.getState().db.applications
+    .find((a) => a.id === applicationId)?.version;
   void (async () => {
     try {
       const { updateApplicationInSupabase } = await import('@/lib/data/applicationsRepo');
-      await updateApplicationInSupabase(applicationId, patch);
+      const updated = await updateApplicationInSupabase(applicationId, patch, expectedVersion);
+      if (typeof updated.version === 'number') {
+        writeBackVersion('applications', applicationId, updated.version);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (isNotFoundError(msg)) return;
+      if (await isStaleVersion(err)) {
+        toastStaleVersion('application');
+        return;
+      }
       // eslint-disable-next-line no-console
       console.warn('[application update mirror] failed:', msg);
     }
@@ -191,13 +286,22 @@ function mirrorSubmissionUpdateToSupabase(
   patch: Parameters<typeof import('@/lib/data/submissionsRepo').updateSubmissionInSupabase>[1],
 ): void {
   if (!isSupabaseConfigured()) return;
+  const expectedVersion = useStore.getState().db.submissions
+    .find((s) => s.id === submissionId)?.version;
   void (async () => {
     try {
       const { updateSubmissionInSupabase } = await import('@/lib/data/submissionsRepo');
-      await updateSubmissionInSupabase(submissionId, patch);
+      const updated = await updateSubmissionInSupabase(submissionId, patch, expectedVersion);
+      if (typeof updated.version === 'number') {
+        writeBackVersion('submissions', submissionId, updated.version);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (isNotFoundError(msg) || /row-level security/i.test(msg)) return;
+      if (await isStaleVersion(err)) {
+        toastStaleVersion('submission');
+        return;
+      }
       // eslint-disable-next-line no-console
       console.warn('[submission update mirror] failed:', msg);
     }
@@ -339,6 +443,13 @@ export function v2ApplyToCampaign(
     const creator = db.creators.find((c) => c.id === creatorId);
     if (!creator) return null;
 
+    // STAGE GATE — only live campaigns accept new applications.
+    // Pre-fix a creator could apply to a draft / paused / closed
+    // campaign by calling this mutation directly from BriefDetail
+    // (which had no UI gate), materializing a Collaboration row on
+    // a campaign that's no longer accepting work.
+    if (camp.stage !== 'live') return null;
+
     // Idempotent — return existing if creator already pitched
     const existing = db.applications.find(
       (a) => a.campaignId === campaignId && a.creatorId === creatorId &&
@@ -440,6 +551,36 @@ export function v2SendOffer(
     if (!creator) return null;
     const brand = db.brands.find((b) => b.id === camp.brandId);
     if (!brand) return null;
+
+    // CAMPAIGN-STAGE GATE — only live campaigns send new offers.
+    // Paused / draft / closed all refuse so brands don't accidentally
+    // commit wallet against a campaign they paused or never published.
+    if (camp.stage !== 'live') return null;
+
+    // IDEMPOTENCY / DUPE-OFFER GUARD — refuse if there's already a
+    // live offer for this (campaign, creator) pair. Pre-fix a brand
+    // could send a second offer while the first was still pending,
+    // creating two parallel negotiations on the same deal. The brand
+    // can withdraw the existing offer first if they want to re-pitch.
+    const liveOffer = db.offers.find((o) =>
+      o.campaignId === campaignId &&
+      o.creatorId === creatorId &&
+      (o.status === 'pending' || o.status === 'countered' || o.status === 'accepted'),
+    );
+    if (liveOffer) return liveOffer;
+
+    // BUDGET CAP — pre-fix a brand could send unlimited offers each at
+    // rate > camp.budget; two creators accepting at full budget was
+    // fully allowed. Reject sends that would push committed-spend
+    // (existing pending+accepted offers + this rate) above the budget.
+    // Closed/declined/withdrawn/expired offers don't count.
+    const committed = db.offers
+      .filter((o) =>
+        o.campaignId === campaignId &&
+        (o.status === 'pending' || o.status === 'countered' || o.status === 'accepted'),
+      )
+      .reduce((sum, o) => sum + o.rate, 0);
+    if (committed + rate > camp.budget) return null;
 
     const sentAtIso = nowIso();
     const offer: Offer = {
@@ -639,14 +780,27 @@ export function v2AcceptOffer(offerId: string): Offer | null {
     const creator = db.creators.find((c) => c.id === offer.creatorId);
     if (!camp || !brand || !creator) return null;
 
+    // CAMPAIGN-STAGE GATE — pause / closed campaigns don't accept
+    // commitments. The offer stays in its current status; the creator
+    // can accept once the brand resumes the campaign.
+    if (camp.stage !== 'live') return offer;
+
+    // FUNDS GUARD — pre-fix this used Math.max(0, walletBalance - rate)
+    // which silently clamped underfunded brands to a $0 wallet while
+    // crediting the creator's pendingBalance + brand's escrowHeld with
+    // the FULL rate. The creator could then withdraw real cash that
+    // was never funded by the brand. Refuse the accept instead so the
+    // creator sees an error and the brand has to top up first.
+    if (brand.walletBalance < offer.rate) return offer;
+
     db.offers[offerIdx] = { ...offer, status: 'accepted', respondedAt: nowIso() };
 
-    // Reserve funds: brand wallet -> escrow
+    // Reserve funds: brand wallet -> escrow (full debit; guarded above).
     db.brands = db.brands.map((b) =>
       b.id === brand.id
         ? {
             ...b,
-            walletBalance: Math.max(0, b.walletBalance - offer.rate),
+            walletBalance: b.walletBalance - offer.rate,
             escrowHeld: b.escrowHeld + offer.rate,
           }
         : b,
@@ -813,6 +967,21 @@ export function v2SubmitContent(
     const creator = db.creators.find((c) => c.id === creatorId);
     if (!creator) return null;
 
+    // OFFER GATE — submissions are only allowed for creators with an
+    // accepted offer on this campaign. Pre-fix anyone holding the
+    // `content.submit` capability could post a submission against a
+    // campaign they only applied to (or never touched). v2ApproveContent
+    // would then pay them via a `camp.budget / acceptedCreatorCount`
+    // fallback, draining escrow on unrelated parties.
+    const hasAcceptedOffer = db.offers.some(
+      (o) => o.campaignId === campaignId && o.creatorId === creatorId && o.status === 'accepted',
+    );
+    if (!hasAcceptedOffer) return null;
+
+    // CAMPAIGN-STAGE GATE — paused / closed / draft campaigns don't
+    // accept new work. Only `live` is active.
+    if (camp.stage !== 'live') return null;
+
     // Resolve the deliverable. Pass-through when caller supplied a real
     // id; fall back to the campaign's first Deliverable if blank.
     let resolvedDelId = deliverableId;
@@ -899,6 +1068,12 @@ export function v2ApproveContent(submissionId: string): Submission | null {
     const brand = camp ? db.brands.find((b) => b.id === camp.brandId) : undefined;
     if (!camp || !creator || !brand) return null;
 
+    // CAMPAIGN-STAGE GATE — paused / closed campaigns don't release
+    // escrow. The submission stays in_review; brand must resume the
+    // campaign before approving. (closed never resumes; that's an
+    // explicit terminal state the brand chose.)
+    if (camp.stage !== 'live') return sub;
+
     // P2 §1.4 — block approval if there's an open dispute on this collab.
     // The Collaboration's `escrowFrozen` flag is set when a dispute is
     // raised (and cleared on resolve / withdraw). We surface the block
@@ -912,12 +1087,27 @@ export function v2ApproveContent(submissionId: string): Submission | null {
       return sub;
     }
 
-    // Find the agreed offer rate (latest accepted offer)
+    // Find the agreed offer rate (latest accepted offer).
+    //
+    // PRE-FIX FALLBACK REMOVED — the code previously defaulted to
+    // `camp.budget / acceptedCreatorCount` when no accepted offer
+    // existed (a race could happen if the offer was withdrawn between
+    // submit and approve). That fallback could pay a creator a random
+    // share of the campaign budget — drainage of escrow on unrelated
+    // parties. The v2SubmitContent stage-gate I added earlier already
+    // requires an accepted offer before any submission exists, but the
+    // defense-in-depth check stays here: if for any reason we can't
+    // find the accepted offer at approve-time, refuse the release.
     const acceptedOffer = db.offers
       .filter((o) => o.campaignId === sub.campaignId && o.creatorId === sub.creatorId && o.status === 'accepted')
       .sort((a, b) => new Date(b.respondedAt ?? b.sentAt).getTime() - new Date(a.respondedAt ?? a.sentAt).getTime())[0];
-    const acceptedCreatorCount = getAcceptedCreators(camp.id, db).length;
-    const gross = acceptedOffer?.rate ?? Math.round(camp.budget / Math.max(acceptedCreatorCount || 1, 1));
+    if (!acceptedOffer) {
+      // No accepted offer = no rate to release against. Leave the
+      // submission in_review and let the caller toast the unchanged
+      // return. (Same soft-fail shape as escrowFrozen above.)
+      return sub;
+    }
+    const gross = acceptedOffer.rate;
     const fee = Math.round(gross * PLATFORM_FEE);
     const tax = Math.round(gross * WHT);
     const net = gross - fee - tax;
@@ -1082,7 +1272,15 @@ export function v2ApproveContent(submissionId: string): Submission | null {
 /**
  * Brand sends content back. Submission.status → 'revisions' with the
  * brand's note appended to the feedback log.
+ *
+ * Revision cap: a single submission cannot be revised more than
+ * MAX_REVISIONS times. Each successful `v2RequestRevision` appends one
+ * brand-from feedback entry, so we count those to enforce. Pre-fix the
+ * brand could grind a creator through unlimited revision cycles on the
+ * same escrow.
  */
+const MAX_REVISIONS = 3;
+
 export function v2RequestRevision(submissionId: string, note: string): Submission | null {
   const result = tx((db) => {
     // P5 §4.1 — same role set as content.approve; the brand team that
@@ -1093,7 +1291,25 @@ export function v2RequestRevision(submissionId: string, note: string): Submissio
     if (subIdx === -1) return null;
     const sub = db.submissions[subIdx];
     const camp = db.campaigns.find((c) => c.id === sub.campaignId);
-    const brandUser = camp ? findUserByBrand(db, camp.brandId) : null;
+    if (!camp) return null;
+    // CAMPAIGN-STAGE GATE — paused / closed campaigns can't request
+    // new revisions. Submission stays in its current state.
+    if (camp.stage !== 'live') return sub;
+    const brandUser = findUserByBrand(db, camp.brandId);
+    // REVISION CAP — count prior brand feedback entries on this
+    // submission. brandUser.id may be unstable across team members,
+    // so we count "non-creator from" instead — every revision request
+    // emits a feedback entry where `from` is a brand-team user id.
+    const creatorUserForCount = findUserByCreator(db, sub.creatorId);
+    const priorRevisions = sub.feedback.filter(
+      (f) => f.from !== creatorUserForCount?.id,
+    ).length;
+    if (priorRevisions >= MAX_REVISIONS) {
+      // Hit the cap. Don't append a fresh revision; return the
+      // submission unchanged. UI surfaces a toast based on the
+      // unchanged feedback count.
+      return sub;
+    }
     db.submissions[subIdx] = {
       ...sub,
       status: 'revisions',
@@ -1242,6 +1458,15 @@ export function v2CounterOffer(offerId: string, rate: number, message: string): 
     const lastRound = offer.rounds[offer.rounds.length - 1];
     if (lastRound && lastRound.by === 'creator') return offer;
 
+    // RATE SANITY BOUND — pre-fix a creator could counter $1M on a $500
+    // offer with no warning. The brand would see the absolute number
+    // with no context. 10x of the original (round 0) rate is generous
+    // enough for legitimate scope-correction counters but rejects
+    // typos / abuse. Original rate is offer.rounds[0].rate (always the
+    // brand's initial send).
+    const originalRate = offer.rounds[0]?.rate ?? offer.rate;
+    if (rate <= 0 || rate > originalRate * 10) return offer;
+
     // Cap check — if we'd exceed MAX_OFFER_ROUNDS, expire instead.
     if (offer.rounds.length >= MAX_OFFER_ROUNDS) {
       db.offers[idx] = {
@@ -1255,6 +1480,38 @@ export function v2CounterOffer(offerId: string, rate: number, message: string): 
         db.applications = db.applications.map((a) =>
           a.id === offer.applicationId ? { ...a, status: 'submitted', decidedAt: undefined } : a,
         );
+      }
+      // Notify BOTH sides so the cap-exceeded state isn't silent.
+      // Pre-fix the brand had no signal when an invite-flow offer
+      // expired due to too many counters; the creator just stopped
+      // hearing back and the brand never knew they could re-engage.
+      const campNotify = db.campaigns.find((c) => c.id === offer.campaignId);
+      const creatorNotify = db.creators.find((c) => c.id === offer.creatorId);
+      const brandUserCap = campNotify ? findUserByBrand(db, campNotify.brandId) : null;
+      const creatorUserCap = creatorNotify ? findUserByCreator(db, creatorNotify.id) : null;
+      if (brandUserCap && campNotify && creatorNotify) {
+        db.notifications.push({
+          id: newId('n'),
+          userId: brandUserCap.id,
+          text: offer.applicationId
+            ? `Negotiation with ${creatorNotify.name} hit the counter cap on ${campNotify.title}. Their application is open — re-engage with a fresh offer if you still want them.`
+            : `Outreach to ${creatorNotify.name} hit the counter cap on ${campNotify.title}. No pending application — send a new invite if you want to re-engage.`,
+          href: `/v2`,
+          at: nowIso(),
+          read: false,
+          meta: { campaignId: campNotify.id, offerId: offer.id },
+        });
+      }
+      if (creatorUserCap && campNotify) {
+        db.notifications.push({
+          id: newId('n'),
+          userId: creatorUserCap.id,
+          text: `Offer on ${campNotify.title} closed — too many counters. The brand can re-send if they want to continue.`,
+          href: `/v2`,
+          at: nowIso(),
+          read: false,
+          meta: { campaignId: campNotify.id, offerId: offer.id },
+        });
       }
       ensureCollabState(offer.campaignId, offer.creatorId, db, '', 'counter-cap-exceeded');
       return db.offers[idx];
@@ -1320,12 +1577,49 @@ export function v2CounterCounter(offerId: string, rate: number, message: string)
     const lastRound = offer.rounds[offer.rounds.length - 1];
     if (!lastRound || lastRound.by !== 'creator') return offer;
 
+    // RATE SANITY BOUND — symmetric to v2CounterOffer. Brand can't
+    // counter-back at $1 (≤0 rejected) or at 10x the original brief
+    // (no extreme reverse moves).
+    const originalRate = offer.rounds[0]?.rate ?? offer.rate;
+    if (rate <= 0 || rate > originalRate * 10) return offer;
+
     if (offer.rounds.length >= MAX_OFFER_ROUNDS) {
       db.offers[idx] = { ...offer, status: 'expired', respondedAt: nowIso() };
       if (offer.applicationId) {
         db.applications = db.applications.map((a) =>
           a.id === offer.applicationId ? { ...a, status: 'submitted', decidedAt: undefined } : a,
         );
+      }
+      // Same dual notification as v2CounterOffer's cap branch — surface
+      // the cap-exceeded state to both sides regardless of whether the
+      // offer was application-backed or invite-flow.
+      const campNotify = db.campaigns.find((c) => c.id === offer.campaignId);
+      const creatorNotify = db.creators.find((c) => c.id === offer.creatorId);
+      const brandUserCap = campNotify ? findUserByBrand(db, campNotify.brandId) : null;
+      const creatorUserCap = creatorNotify ? findUserByCreator(db, creatorNotify.id) : null;
+      if (brandUserCap && campNotify && creatorNotify) {
+        db.notifications.push({
+          id: newId('n'),
+          userId: brandUserCap.id,
+          text: offer.applicationId
+            ? `Counter-negotiation with ${creatorNotify.name} hit the cap on ${campNotify.title}. Application reopened — send a fresh offer if you want them.`
+            : `Counter-negotiation with ${creatorNotify.name} hit the cap on ${campNotify.title}. Outreach has no pending application — send a new invite to re-engage.`,
+          href: `/v2`,
+          at: nowIso(),
+          read: false,
+          meta: { campaignId: campNotify.id, offerId: offer.id },
+        });
+      }
+      if (creatorUserCap && campNotify) {
+        db.notifications.push({
+          id: newId('n'),
+          userId: creatorUserCap.id,
+          text: `Offer on ${campNotify.title} closed — too many counters. The brand can re-send if they want to continue.`,
+          href: `/v2`,
+          at: nowIso(),
+          read: false,
+          meta: { campaignId: campNotify.id, offerId: offer.id },
+        });
       }
       ensureCollabState(offer.campaignId, offer.creatorId, db, '', 'counter-cap-exceeded');
       return db.offers[idx];
@@ -1390,16 +1684,25 @@ export function v2AcceptCounter(offerId: string): Offer | null {
     if (!lastRound) return offer;
 
     const newRate = lastRound.rate;
-    db.offers[idx] = { ...offer, rate: newRate, status: 'accepted', respondedAt: nowIso() };
 
     const camp = db.campaigns.find((c) => c.id === offer.campaignId);
     const brand = camp ? db.brands.find((b) => b.id === camp.brandId) : null;
     const creator = db.creators.find((c) => c.id === offer.creatorId);
     if (!camp || !brand || !creator) return null;
 
+    // CAMPAIGN-STAGE GATE — pause / closed campaigns don't accept
+    // commitments (parallel to v2AcceptOffer).
+    if (camp.stage !== 'live') return offer;
+
+    // FUNDS GUARD — same rule as v2AcceptOffer. Refuse to flip the
+    // offer to 'accepted' if the brand can't cover the counter rate.
+    if (brand.walletBalance < newRate) return offer;
+
+    db.offers[idx] = { ...offer, rate: newRate, status: 'accepted', respondedAt: nowIso() };
+
     db.brands = db.brands.map((b) =>
       b.id === brand.id
-        ? { ...b, walletBalance: Math.max(0, b.walletBalance - newRate), escrowHeld: b.escrowHeld + newRate }
+        ? { ...b, walletBalance: b.walletBalance - newRate, escrowHeld: b.escrowHeld + newRate }
         : b,
     );
     const netToCreator = Math.round(newRate * (1 - PLATFORM_FEE - WHT));
@@ -1561,6 +1864,10 @@ export function v2WithdrawApplication(applicationId: string): Application | null
     const idx = db.applications.findIndex((a) => a.id === applicationId);
     if (idx === -1) return null;
     const app = db.applications[idx];
+    // IDEMPOTENCY GUARD — pre-fix a double-click would push a fresh
+    // brand notification + run ensureCollabState a second time, so two
+    // tabs racing the withdraw button left noise in the brand's inbox.
+    if (app.status === 'withdrawn' || app.status === 'rejected') return app;
     db.applications[idx] = { ...app, status: 'withdrawn', decidedAt: nowIso() };
 
     const creator = db.creators.find((c) => c.id === app.creatorId);
@@ -1667,6 +1974,14 @@ export function v2MarkContentLive(submissionId: string): Submission | null {
     if (sub.status !== 'approved') return sub;
     // P3 §2.2 — must have a permalink set by the creator.
     if (!sub.permalink) throw new Error('mark-live requires submission.permalink to be set by the creator first');
+
+    // IDEMPOTENCY GUARD — if a LIVE: feedback entry already exists, the
+    // submission has already been marked live. Pre-fix a double-click
+    // pushed two LIVE: entries + two creator notifications. computeCollabStage
+    // checks `feedback.some(f => f.text.startsWith('LIVE: '))`, so the
+    // duplicate didn't break stage logic — but it polluted the feedback
+    // audit log and double-notified the creator.
+    if (sub.feedback.some((f) => f.text.startsWith('LIVE: '))) return sub;
 
     // Append a feedback entry recording the action — the feedback log
     // is the audit trail; `permalink` is the queryable field used by
@@ -1937,6 +2252,52 @@ export function v2EndCampaign(campaignId: string): Campaign | null {
         });
       }
     }
+
+    // PRE-FIX GAP — `pitched` (creator applied) and `negotiating` (offer
+    // out) collabs were left intact when the campaign closed. The
+    // creator's MyCollabs continued to show them as "awaiting brand
+    // response" forever even though the brand had walked away. Now we
+    // resolve those rows too:
+    //   - Open applications (submitted / shortlisted) → 'rejected'
+    //     with reason 'campaign-ended'
+    //   - In-flight offers (pending / countered) → 'withdrawn'
+    //   - Each creator gets a single notification per campaign
+    const notifiedCreatorIds = new Set<string>();
+    db.applications = db.applications.map((a) => {
+      if (a.campaignId !== camp.id) return a;
+      if (a.status !== 'submitted' && a.status !== 'shortlisted') return a;
+      notifiedCreatorIds.add(a.creatorId);
+      return { ...a, status: 'rejected', decidedAt: nowIso() };
+    });
+    db.offers = db.offers.map((o) => {
+      if (o.campaignId !== camp.id) return o;
+      if (o.status !== 'pending' && o.status !== 'countered') return o;
+      notifiedCreatorIds.add(o.creatorId);
+      return { ...o, status: 'withdrawn', respondedAt: nowIso() };
+    });
+    if (brand && notifiedCreatorIds.size > 0) {
+      for (const creatorId of notifiedCreatorIds) {
+        // Don't double-notify accepted creators (the accepted-creator
+        // loop above already handled them with deliverable-aware copy).
+        const isAccepted = getAcceptedCreators(camp.id, db).includes(creatorId);
+        if (isAccepted) continue;
+        const creatorUser = findUserByCreator(db, creatorId);
+        if (!creatorUser) continue;
+        db.notifications.push({
+          id: newId('n'),
+          userId: creatorUser.id,
+          text: `${brand.name} ended ${camp.title} — your application or offer is closed`,
+          href: `/v2`,
+          at: nowIso(),
+          read: false,
+          meta: { campaignId: camp.id },
+        });
+        // Recompute the Collaboration stage so it stops reading as
+        // 'pitched' / 'negotiating' on the creator's MyCollabs.
+        ensureCollabState(camp.id, creatorId, db, brand.userId, 'campaign-ended');
+      }
+    }
+
     return db.campaigns.find((c) => c.id === campaignId) ?? null;
   });
   // Mirror stage + history + escrow to Supabase (Phase 3).
@@ -2299,15 +2660,27 @@ export async function v2UpdateBrand(
   //    network error) we surface — the caller's UI will show the
   //    failure toast. Only "row not in Supabase yet" falls through
   //    silently so generated demo brands stay editable in-store.
+  //
+  //    Migration 021: pass `brand.version` as expectedVersion. On
+  //    stale-version the StaleVersionError propagates to the caller's
+  //    try/catch (BrandProfile / BrandOnboardingV2 both wrap in
+  //    try/catch and toast on error), and the user is prompted to
+  //    refresh.
   let serverResult: Brand | null = null;
+  // Read expected version off pre-mutation local state.
+  const expectedVersion = useStore.getState().db.brands
+    .find((b) => b.id === brandId)?.version;
   if (isSupabaseConfigured()) {
     try {
       const { updateBrandInSupabase } = await import('@/lib/data/brandsRepo');
-      serverResult = await updateBrandInSupabase(brandId, patch);
+      serverResult = await updateBrandInSupabase(brandId, patch, expectedVersion);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       // PostgREST shapes "no rows updated" as a generic error; we
       // detect it via the message text and the count check below.
+      // StaleVersionError comes through as its own class — let it
+      // propagate so the caller can surface a refresh-prompt toast.
+      if (err instanceof Error && err.name === 'StaleVersionError') throw err;
       if (!/no rows|0 rows|not found|JSON object requested/i.test(msg)) {
         throw err;
       }
@@ -2334,4 +2707,122 @@ export async function v2UpdateBrand(
     db.brands[idx] = next;
     return next;
   });
+}
+
+/**
+ * Mutate identity-level fields on a campaign record. Settings tab on
+ * CampaignDetail wires uncontrolled-input fields through here.
+ *
+ * Pre-fix, the Settings inputs had no `onChange` handler so they
+ * accepted typing but never persisted; the brand could not change a
+ * campaign's name post-publish without leaving the tab. Same Supabase-
+ * mirror-with-local-fallback pattern as v2UpdateBrand.
+ */
+export async function v2UpdateCampaign(
+  campaignId: string,
+  patch: Partial<Pick<Campaign, 'title' | 'pitch' | 'autoShortlist' | 'category' | 'region'>>,
+): Promise<Campaign | null> {
+  let serverResult: Campaign | null = null;
+  if (isSupabaseConfigured()) {
+    try {
+      const { updateCampaignInSupabase } = await import('@/lib/data/campaignsRepo');
+      serverResult = await updateCampaignInSupabase(campaignId, patch);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!/no rows|0 rows|not found|JSON object requested/i.test(msg)) {
+        throw err;
+      }
+      // Local-only write — generated cmp_g* rows aren't in Supabase.
+    }
+  }
+  return tx((db) => {
+    requireCapability(getActorUserId(), 'campaign.update', db);
+    const idx = db.campaigns.findIndex((c) => c.id === campaignId);
+    if (idx === -1) return null;
+    const current = db.campaigns[idx];
+    const next: Campaign = serverResult ?? { ...current, ...patch };
+    db.campaigns[idx] = next;
+    return next;
+  });
+}
+
+// =====================================================================
+// Stale-offer sweep
+// =====================================================================
+
+/**
+ * One-shot sweep that expires pending/countered offers older than the
+ * TTL. Pre-fix offers sat in those statuses forever — clutters the
+ * creator's inbox, skews `getActiveOfferFor` (which returns the latest
+ * offer regardless of status), and lets a brand "ghost" indefinitely
+ * with no signal to the creator that the deal is effectively dead.
+ *
+ * Called from Workspace.tsx on mount (once per session). Idempotent —
+ * safe to call repeatedly; offers already past the TTL still flip to
+ * 'expired' if a previous run was interrupted.
+ */
+const OFFER_TTL_DAYS = 14;
+
+export function v2SweepStaleOffers(): { swept: number } {
+  let swept = 0;
+  tx((db) => {
+    const cutoffMs = Date.now() - OFFER_TTL_DAYS * 24 * 60 * 60 * 1000;
+    const expiredIds = new Set<string>();
+    db.offers = db.offers.map((offer) => {
+      if (offer.status !== 'pending' && offer.status !== 'countered') return offer;
+      const sentMs = new Date(offer.sentAt).getTime();
+      if (!Number.isFinite(sentMs) || sentMs > cutoffMs) return offer;
+      expiredIds.add(offer.id);
+      swept++;
+      return { ...offer, status: 'expired' as const, respondedAt: nowIso() };
+    });
+    if (expiredIds.size === 0) return;
+
+    // Roll back any application-backed offers so the brand can re-engage.
+    db.applications = db.applications.map((a) => {
+      const matchingOffer = db.offers.find((o) =>
+        expiredIds.has(o.id) && o.applicationId === a.id,
+      );
+      if (!matchingOffer) return a;
+      // Only roll back to 'submitted' if the application was advanced
+      // (shortlisted). Withdrawn / rejected applications stay terminal.
+      if (a.status !== 'shortlisted') return a;
+      return { ...a, status: 'submitted' as const, decidedAt: undefined };
+    });
+
+    // Notify both sides on each expired offer.
+    for (const offer of db.offers) {
+      if (!expiredIds.has(offer.id)) continue;
+      const camp = db.campaigns.find((c) => c.id === offer.campaignId);
+      const brand = camp ? db.brands.find((b) => b.id === camp.brandId) : undefined;
+      const creator = db.creators.find((c) => c.id === offer.creatorId);
+      const brandUser = brand ? findUserByBrand(db, brand.id) : null;
+      const creatorUser = creator ? findUserByCreator(db, creator.id) : null;
+      if (brandUser && camp && creator) {
+        db.notifications.push({
+          id: newId('n'),
+          userId: brandUser.id,
+          text: `Offer to ${creator.name} on ${camp.title} expired after ${OFFER_TTL_DAYS} days. Send a fresh offer if you still want them.`,
+          href: `/v2`,
+          at: nowIso(),
+          read: false,
+          meta: { campaignId: camp.id, offerId: offer.id },
+        });
+      }
+      if (creatorUser && camp && brand) {
+        db.notifications.push({
+          id: newId('n'),
+          userId: creatorUser.id,
+          text: `${brand.name}'s offer on ${camp.title} expired after ${OFFER_TTL_DAYS} days. The brand can re-send any time.`,
+          href: `/v2`,
+          at: nowIso(),
+          read: false,
+          meta: { campaignId: camp.id, offerId: offer.id },
+        });
+      }
+      // Recompute collab stage so kanbans stop showing this as negotiating.
+      ensureCollabState(offer.campaignId, offer.creatorId, db, '', 'offer-ttl-expired');
+    }
+  });
+  return { swept };
 }

@@ -7,16 +7,22 @@
 
 import { useEffect, useState } from 'react';
 import { fmtUSD, Icon, StagePill, Topbar } from '../lib';
-import { useV2AllCampaigns, useV2CollabById, v2EnsureThreadFor } from '../v2Hooks';
+import { useV2AllCampaigns, useV2CollabById, useV2CurrentCreator, v2EnsureThreadFor } from '../v2Hooks';
 import { V2_PIPELINE_STAGES } from '../v2Adapters';
 import type { V2Collab, V2CollabStage, V2Deliverable } from '../data';
 import { ContentUploadModal } from './ContentUploadModal';
 import { CounterOfferModal, CreatorMarkLiveModal } from './WorkflowModals';
 import {
   v2AcceptOffer, v2WithdrawApplication, getApplicationFor, getActiveOfferFor,
-  getLatestSubmissionFor, v2SetSubmissionPermalink,
+  getLatestSubmissionFor, v2SetSubmissionPermalink, v2LeaveReview,
 } from '../v2CampaignActions';
+import { v2RaiseDispute } from '../v2DisputeActions';
+import { v2AgreeCollabCancel, v2DeclineCollabCancel } from '../v2CollabActions';
 import { useStore } from '@/lib/api/store';
+import { pushToast } from '@/lib/utils/toast';
+import { LeaveReviewModal } from './LeaveReviewModal';
+import { RaiseDisputeModal } from './RaiseDisputeModal';
+import { StageActionBanner } from './StageActionBanner';
 
 interface Props {
   collabId: string;
@@ -35,6 +41,7 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
   const collab = useV2CollabById(collabId);
   const campaigns = useV2AllCampaigns();
   const db = useStore((s) => s.db);
+  const currentCreator = useV2CurrentCreator();
 
   // Resolve "Message brand" → deal:<threadId> so the Inbox auto-selects
   // the right conversation. If no thread exists yet (creator hasn't
@@ -52,6 +59,12 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
   // adapter from platform/format and passed through for the modal title.
   const [uploadSlot, setUploadSlot] = useState<{ deliverableId: string; label: string; isResubmit: boolean } | null>(null);
   const [counterOpen, setCounterOpen] = useState(false);
+  // Paid-stage review modal. Pre-fix the "Leave review" button in the
+  // banner just opened the inbox (v2LeaveReview existed but wasn't
+  // reachable from any v2 surface). Now wired through this state.
+  const [reviewOpen, setReviewOpen] = useState(false);
+  // Money-at-stake dispute modal. Pre-fix v2RaiseDispute had no v2 caller.
+  const [disputeOpen, setDisputeOpen] = useState(false);
   // Creator-side mark-live modal target. Set by the `?action=mark-live`
   // route param (CreatorHome's Today tile) or by the inline action on
   // an approved-but-not-yet-live deliverable.
@@ -147,6 +160,20 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
       </>
     );
   }
+  // Ownership gate — only the creator who owns the collab can see this
+  // mutation surface (upload draft, accept offer, mark live). A brand
+  // deep-linking here via stale state would otherwise hit creator-only
+  // handlers.
+  if (!currentCreator || collab.creatorId !== currentCreator.id) {
+    return (
+      <>
+        <Topbar title="Collaboration" crumb="Access" />
+        <div className="v2-content">
+          <p className="v2-muted">You don't have access to this collaboration.</p>
+        </div>
+      </>
+    );
+  }
   const camp = campaigns.find((c) => c.id === collab.campaignId);
   const stageMeta = V2_PIPELINE_STAGES.find((s) => s.id === collab.stage);
   if (!camp || !stageMeta) {
@@ -162,6 +189,14 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
   const platformFee = Math.round(collab.price * 0.05);
   const wht = Math.round(collab.price * 0.05);
   const net = collab.price - platformFee - wht;
+
+  // Pending mutual-cancel request from the brand. Pre-fix the creator
+  // had no UI affordance to respond; the brand's v2RequestCollabCancel
+  // wrote `Collaboration.cancellationRequest` but no surface read it.
+  const collabRow = db.collaborations.find(
+    (c) => c.campaignId === collab.campaignId && c.creatorId === collab.creatorId,
+  );
+  const cancelRequest = collabRow?.cancellationRequest ?? null;
 
   return (
     <>
@@ -197,6 +232,47 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
         }
       />
       <div className="v2-content">
+        {cancelRequest && collabRow && currentCreator && (
+          <div
+            className="v2-card v2-card-pad"
+            style={{
+              marginBottom: 14,
+              borderLeft: '3px solid var(--v2-accent)',
+              background: 'var(--v2-accent-soft)',
+            }}
+            role="status"
+          >
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>
+              {camp.brand} requested to cancel this collab
+            </div>
+            <div className="v2-muted" style={{ fontSize: 12.5, marginBottom: 8 }}>
+              "{cancelRequest.reason}" — agree to release the held escrow back to the brand; decline to keep working.
+            </div>
+            <div className="v2-row" style={{ gap: 8 }}>
+              <button
+                className="v2-btn v2-btn-sm v2-btn-outline"
+                type="button"
+                onClick={() => {
+                  const meUser = db.users.find((u) => u.id === currentCreator.userId);
+                  if (!meUser) return;
+                  v2DeclineCollabCancel(collabRow.id, meUser.id);
+                  pushToast('Cancel request declined · collab continues');
+                }}
+              >Decline</button>
+              <button
+                className="v2-btn v2-btn-sm v2-btn-primary"
+                type="button"
+                onClick={() => {
+                  const meUser = db.users.find((u) => u.id === currentCreator.userId);
+                  if (!meUser) return;
+                  if (!window.confirm('Agree to cancel? Escrow returns to the brand. This cannot be undone.')) return;
+                  v2AgreeCollabCancel(collabRow.id, meUser.id);
+                  pushToast('Collab cancelled · escrow returned to brand', 'good');
+                }}
+              >Agree &amp; cancel</button>
+            </div>
+          </div>
+        )}
         <div className="v2-row" style={{ gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <div style={{ flex: '2 1 480px', minWidth: 0 }}>
             {/* Status hero with timeline */}
@@ -222,11 +298,35 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
                 onUpload={() => nextSlot && setUploadSlot(nextSlot)}
                 onWithdraw={() => myApplication && v2WithdrawApplication(myApplication.id)}
                 onMessageBrand={openConversationForCollab}
+                onLeaveReview={() => setReviewOpen(true)}
                 activeOfferRate={activeOffer?.rate}
                 latestRevisionNote={
                   collab.deliverables.find((d) => d.status === 'revision')?.notes
                 }
               />
+              {/* Dispute escape hatch — visible in money-at-stake stages
+                  so the creator can flag an issue with the brand. Pre-fix
+                  v2RaiseDispute was unreachable from any v2 surface. */}
+              {['confirmed', 'submitted', 'approved', 'live'].includes(collab.stage) && (
+                <div style={{ marginTop: 10, textAlign: 'right' }}>
+                  <button
+                    type="button"
+                    onClick={() => setDisputeOpen(true)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--v2-ink-3)',
+                      fontSize: 12,
+                      fontFamily: 'inherit',
+                      cursor: 'pointer',
+                      textDecoration: 'underline',
+                      padding: 4,
+                    }}
+                  >
+                    Issue with this collab? Raise a dispute
+                  </button>
+                </div>
+              )}
             </section>
 
             {/* Deliverables — per-slot rows with progress summary +
@@ -396,190 +496,76 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
           onClose={() => setMarkLiveTarget(null)}
         />
       )}
+      {disputeOpen && currentCreator && (
+        <RaiseDisputeModal
+          brandName={camp.brand}
+          campaignName={camp.name}
+          onClose={() => setDisputeOpen(false)}
+          onSubmit={(category, description) => {
+            const creatorUser = db.users.find((u) => u.id === currentCreator.userId);
+            if (!creatorUser) {
+              pushToast('Could not identify your account', 'bad');
+              return;
+            }
+            // Find or skip — collab row should exist by now (every
+            // mutation runs ensureCollabState). If somehow null we
+            // can't raise the dispute against an unspecific id.
+            const collabRow = db.collaborations.find(
+              (c) => c.campaignId === collab.campaignId && c.creatorId === collab.creatorId,
+            );
+            if (!collabRow) {
+              pushToast('Collab record missing — try refreshing', 'bad');
+              return;
+            }
+            const result = v2RaiseDispute({
+              collaborationId: collabRow.id,
+              raisedByUserId: creatorUser.id,
+              category,
+              description,
+            });
+            if (result) {
+              pushToast('Dispute filed — escrow frozen pending review', 'good');
+              setDisputeOpen(false);
+            } else {
+              pushToast('Could not file dispute', 'bad');
+            }
+          }}
+        />
+      )}
+      {reviewOpen && currentCreator && (
+        <LeaveReviewModal
+          brandName={camp.brand}
+          campaignName={camp.name}
+          onClose={() => setReviewOpen(false)}
+          onSubmit={(rating, text) => {
+            const creatorUser = db.users.find((u) => u.id === currentCreator.userId);
+            if (!creatorUser) {
+              pushToast('Could not identify your account', 'bad');
+              return;
+            }
+            // brand userId for targetId — review is OF the brand,
+            // BY the creator.
+            const brandRecord = db.brands.find((b) =>
+              db.campaigns.some((c) => c.id === collab.campaignId && c.brandId === b.id),
+            );
+            if (!brandRecord) {
+              pushToast('Brand record missing', 'bad');
+              return;
+            }
+            v2LeaveReview({
+              campaignId: collab.campaignId,
+              fromUserId: creatorUser.id,
+              reviewType: 'brand',
+              targetId: brandRecord.id,
+              rating,
+              text,
+            });
+            pushToast('Review submitted', 'good');
+            setReviewOpen(false);
+          }}
+        />
+      )}
     </>
-  );
-}
-
-// =====================================================================
-// StageActionBanner — the comprehensive stage-aware action band
-// shown right below the timeline. Tells the creator exactly what's
-// happening and what they can do next.
-// =====================================================================
-
-function StageActionBanner({
-  stage, pendingOffer, campaignBrand, campaignName, campaignPlacement,
-  myApplicationId, myApplicationStatus, latestSubmissionStatus, livePermalink,
-  activeOfferRate, latestRevisionNote, onAccept, onCounter, onUpload, onWithdraw, onMessageBrand,
-}: {
-  stage: V2CollabStage;
-  pendingOffer?: { id: string; rate: number; message: string };
-  campaignBrand: string;
-  campaignName: string;
-  campaignPlacement: string;
-  myApplicationId?: string;
-  myApplicationStatus?: string;
-  latestSubmissionStatus?: string;
-  livePermalink?: string;
-  activeOfferRate?: number;
-  latestRevisionNote?: string;
-  onAccept: () => void;
-  onCounter: () => void;
-  onUpload: () => void;
-  onWithdraw: () => void;
-  onMessageBrand: () => void;
-}) {
-  // Each stage gets its own banner content. The container uses the same
-  // soft-accent gradient so the visual rhythm stays consistent.
-  let title = '';
-  let body = '';
-  let actions: React.ReactNode = null;
-  let tone: 'accent' | 'moss' | 'ink' = 'accent';
-
-  if (stage === 'invited' && pendingOffer) {
-    title = `${campaignBrand} invited you to ${campaignName}`;
-    body = `Offered ${fmtUSD(pendingOffer.rate)} for ${campaignPlacement}. ${pendingOffer.message ? `"${pendingOffer.message}"` : ''}`;
-    actions = (
-      <>
-        <button className="v2-btn v2-btn-outline v2-btn-sm" type="button" onClick={onMessageBrand}>
-          Message brand
-        </button>
-        <button className="v2-btn v2-btn-outline v2-btn-sm" type="button" onClick={onCounter}>
-          Counter
-        </button>
-        <button className="v2-btn v2-btn-primary v2-btn-sm" type="button" onClick={onAccept}>
-          {Icon.check} Accept invitation
-        </button>
-      </>
-    );
-  } else if (stage === 'pitched') {
-    title = 'Application sent — awaiting brand response';
-    body = `${campaignBrand} typically replies within 48 hours. We'll notify you in Inbox when they respond.`;
-    actions = (
-      <>
-        {myApplicationId && myApplicationStatus !== 'withdrawn' && (
-          <button className="v2-btn v2-btn-outline v2-btn-sm" type="button" onClick={onWithdraw}>
-            Withdraw application
-          </button>
-        )}
-        <button className="v2-btn v2-btn-outline v2-btn-sm" type="button" onClick={onMessageBrand}>
-          Message brand
-        </button>
-      </>
-    );
-  } else if (stage === 'negotiating' && pendingOffer) {
-    title = `${campaignBrand} sent an offer`;
-    body = `${fmtUSD(pendingOffer.rate)} for ${campaignPlacement}. ${pendingOffer.message ? `"${pendingOffer.message}"` : ''} Your net after fees: ${fmtUSD(Math.round(pendingOffer.rate * 0.85))}.`;
-    actions = (
-      <>
-        <button className="v2-btn v2-btn-outline v2-btn-sm" type="button" onClick={onCounter}>
-          Counter
-        </button>
-        <button className="v2-btn v2-btn-primary v2-btn-sm" type="button" onClick={onAccept}>
-          {Icon.check} Accept ({fmtUSD(pendingOffer.rate)})
-        </button>
-      </>
-    );
-  } else if (stage === 'confirmed') {
-    title = 'Confirmed — start creating';
-    body = `${activeOfferRate ? `${fmtUSD(activeOfferRate)} secured in escrow. ` : ''}When your draft is ready, upload it for review.`;
-    tone = 'moss';
-    actions = (
-      <button className="v2-btn v2-btn-primary v2-btn-sm" type="button" onClick={onUpload}>
-        {Icon.plus} Upload content
-      </button>
-    );
-  } else if (stage === 'submitted') {
-    if (latestRevisionNote) {
-      title = `${campaignBrand} requested changes`;
-      body = `"${latestRevisionNote}" — address the feedback and resubmit the revised slot.`;
-      tone = 'accent';
-      actions = (
-        <button className="v2-btn v2-btn-primary v2-btn-sm" type="button" onClick={onUpload}>
-          {Icon.plus} Resubmit
-        </button>
-      );
-    } else if (latestSubmissionStatus === 'revisions') {
-      title = `${campaignBrand} requested changes`;
-      body = 'Address the feedback in the deliverables list below and resubmit.';
-      tone = 'accent';
-      actions = (
-        <button className="v2-btn v2-btn-primary v2-btn-sm" type="button" onClick={onUpload}>
-          {Icon.plus} Resubmit
-        </button>
-      );
-    } else {
-      title = 'Submitted — awaiting brand review';
-      body = `${campaignBrand} typically reviews within 24 hours. We'll notify you when they respond.`;
-      tone = 'accent';
-      actions = (
-        <button className="v2-btn v2-btn-outline v2-btn-sm" type="button" onClick={onMessageBrand}>
-          Message brand
-        </button>
-      );
-    }
-  } else if (stage === 'approved') {
-    title = 'Approved — awaiting publishing';
-    body = `${campaignBrand} approved your work. Funds will release to your wallet once it's marked live.`;
-    tone = 'moss';
-    actions = (
-      <button className="v2-btn v2-btn-outline v2-btn-sm" type="button" onClick={onMessageBrand}>
-        Message brand
-      </button>
-    );
-  } else if (stage === 'live') {
-    title = 'Your post is live';
-    body = livePermalink ? `Live at ${livePermalink}` : 'Tracking impressions, engagement, and saves now.';
-    tone = 'moss';
-    actions = livePermalink ? (
-      <a
-        className="v2-btn v2-btn-outline v2-btn-sm"
-        href={livePermalink}
-        target="_blank"
-        rel="noopener noreferrer"
-      >{Icon.external} View post</a>
-    ) : null;
-  } else if (stage === 'paid') {
-    title = `Paid — ${activeOfferRate ? fmtUSD(Math.round(activeOfferRate * 0.85)) : ''} received`;
-    body = 'Funds are in your wallet. Withdraw to bank anytime.';
-    tone = 'moss';
-    actions = (
-      <button className="v2-btn v2-btn-outline v2-btn-sm" type="button" onClick={onMessageBrand}>
-        Leave review
-      </button>
-    );
-  }
-
-  if (!title) return null;
-
-  const bg = tone === 'moss' ? 'var(--v2-moss-soft)' : 'var(--v2-accent-soft)';
-  const accentColor = tone === 'moss' ? 'var(--v2-moss)' : 'var(--v2-accent)';
-
-  return (
-    <div
-      className="v2-card v2-card-pad"
-      style={{
-        marginTop: 18,
-        background: bg,
-        borderColor: bg,
-      }}
-    >
-      <div className="v2-row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-        <div style={{ flex: 1, minWidth: 240 }}>
-          <div className="v2-eyebrow" style={{ marginBottom: 4, color: accentColor }}>
-            What's next
-          </div>
-          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>{title}</div>
-          {body && (
-            <p className="v2-muted" style={{ margin: 0, fontSize: 13, lineHeight: 1.5 }}>
-              {body}
-            </p>
-          )}
-        </div>
-        <div className="v2-row" style={{ gap: 8 }}>
-          {actions}
-        </div>
-      </div>
-    </div>
   );
 }
 

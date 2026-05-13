@@ -9,6 +9,7 @@ import { fmtUSD, fmtUSDfull, Icon, Topbar } from '../lib';
 import { useV2BrandWallet, useV2CurrentBrand } from '../v2Hooks';
 import { pushToast } from '@/lib/utils/toast';
 import { downloadCSV } from '@/lib/utils/csv';
+import { parseNumberInput } from '@/lib/utils/format';
 import { useCapability } from '@/lib/permissions';
 
 interface Props {
@@ -331,7 +332,7 @@ function TopupModal({ onClose }: { onClose: () => void }) {
           <input
             type="number"
             value={amount}
-            onChange={(e) => setAmount(parseInt(e.target.value || '0'))}
+            onChange={(e) => setAmount(parseNumberInput(e.target.value, { min: 0 }))}
             className="v2-input"
             style={{
               paddingLeft: 28,

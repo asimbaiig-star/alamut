@@ -6,6 +6,7 @@
 
 import type { Offer, OfferRound, OfferSource, OfferStatus } from '@/lib/api/types';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
+import { StaleVersionError, isNoRowsError } from './optimisticLock';
 
 type Row = {
   id: string;
@@ -20,6 +21,7 @@ type Row = {
   source: OfferSource;
   rounds: OfferRound[];
   collaboration_id: string | null;
+  version: number;
   created_at: string;
   updated_at: string;
 };
@@ -27,7 +29,7 @@ type Row = {
 const COLUMNS =
   'id, campaign_id, creator_id, rate, message, status, sent_at, ' +
   'responded_at, application_id, source, rounds, collaboration_id, ' +
-  'created_at, updated_at';
+  'version, created_at, updated_at';
 
 function toOffer(row: Row): Offer {
   return {
@@ -43,6 +45,7 @@ function toOffer(row: Row): Offer {
     applicationId: row.application_id,
     source: row.source,
     collaborationId: row.collaboration_id ?? undefined,
+    version: row.version,
   };
 }
 
@@ -111,17 +114,32 @@ export async function insertOfferInSupabase(o: Offer): Promise<Offer> {
 export async function updateOfferInSupabase(
   offerId: string,
   patch: UpdatablePatch,
+  expectedVersion?: number,
 ): Promise<Offer> {
   if (!isSupabaseConfigured()) throw new Error('Supabase not configured');
   const sb = getSupabase();
   const rowPatch = toUpdateRowPatch(patch);
-  const { data, error } = await sb
+  // Optimistic locking — see optimisticLock.ts for the pattern.
+  let q = sb
     .from('offers')
-    .update(rowPatch)
-    .eq('id', offerId)
-    .select(COLUMNS)
-    .single();
-  if (error) throw new Error(error.message);
-  if (!data) throw new Error('Offer not found');
-  return toOffer(data as unknown as Row);
+    .update({ ...rowPatch, version: (expectedVersion ?? 0) + 1 })
+    .eq('id', offerId);
+  if (expectedVersion !== undefined) q = q.eq('version', expectedVersion);
+  try {
+    const { data, error } = await q.select(COLUMNS).single();
+    if (error) {
+      if (expectedVersion !== undefined && isNoRowsError(error)) {
+        throw new StaleVersionError('offer', offerId);
+      }
+      throw new Error(error.message);
+    }
+    if (!data) throw new Error('Offer not found');
+    return toOffer(data as unknown as Row);
+  } catch (err) {
+    if (err instanceof StaleVersionError) throw err;
+    if (expectedVersion !== undefined && isNoRowsError(err)) {
+      throw new StaleVersionError('offer', offerId);
+    }
+    throw err;
+  }
 }

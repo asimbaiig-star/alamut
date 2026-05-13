@@ -7,6 +7,7 @@
 
 import type { Availability, Creator, CreatorTier, Platform } from '@/lib/api/types';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
+import { StaleVersionError, isNoRowsError } from './optimisticLock';
 
 type Row = {
   id: string;
@@ -43,6 +44,7 @@ type Row = {
   availability: Availability | null;
   featured_review_ids: string[];
   saved_briefs: string[];
+  version: number;
   created_at: string;
   updated_at: string;
 };
@@ -53,7 +55,7 @@ const COLUMNS =
   'reach, engagement, rating, tier, response_hrs, rate_card, rate_cards, ' +
   'payout, wallet_balance, pending_balance, lifetime_earnings, verified, ' +
   'kyc_verified_at, editors_pick, press_mentions, availability, ' +
-  'featured_review_ids, saved_briefs, created_at, updated_at';
+  'featured_review_ids, saved_briefs, version, created_at, updated_at';
 
 function toCreator(row: Row): Creator {
   return {
@@ -90,6 +92,7 @@ function toCreator(row: Row): Creator {
     availability: row.availability ?? undefined,
     featuredReviewIds: row.featured_review_ids ?? undefined,
     savedBriefs: row.saved_briefs ?? undefined,
+    version: row.version,
   };
 }
 
@@ -210,6 +213,7 @@ export async function fetchAllCreatorsFromSupabase(): Promise<Creator[]> {
 export async function updateCreatorInSupabase(
   creatorId: string,
   patch: UpdatablePatch,
+  expectedVersion?: number,
 ): Promise<Creator> {
   if (!isSupabaseConfigured()) throw new Error('Supabase not configured');
   const sb = getSupabase();
@@ -219,15 +223,28 @@ export async function updateCreatorInSupabase(
     if (error) throw new Error(error.message);
     return toCreator(data as unknown as Row);
   }
-  const { data, error } = await sb
+  let q = sb
     .from('creators')
-    .update(rowPatch)
-    .eq('id', creatorId)
-    .select(COLUMNS)
-    .single();
-  if (error) throw new Error(error.message);
-  if (!data) throw new Error('Creator not found or not editable by this user');
-  return toCreator(data as unknown as Row);
+    .update({ ...rowPatch, version: (expectedVersion ?? 0) + 1 })
+    .eq('id', creatorId);
+  if (expectedVersion !== undefined) q = q.eq('version', expectedVersion);
+  try {
+    const { data, error } = await q.select(COLUMNS).single();
+    if (error) {
+      if (expectedVersion !== undefined && isNoRowsError(error)) {
+        throw new StaleVersionError('creator', creatorId);
+      }
+      throw new Error(error.message);
+    }
+    if (!data) throw new Error('Creator not found or not editable by this user');
+    return toCreator(data as unknown as Row);
+  } catch (err) {
+    if (err instanceof StaleVersionError) throw err;
+    if (expectedVersion !== undefined && isNoRowsError(err)) {
+      throw new StaleVersionError('creator', creatorId);
+    }
+    throw err;
+  }
 }
 
 /** Upload a portrait image to the `creator-portraits` Storage bucket

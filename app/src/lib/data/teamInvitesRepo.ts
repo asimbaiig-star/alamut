@@ -18,6 +18,7 @@ type Row = {
   role: TeamRole;
   token: string;
   created_at: string;
+  expires_at: string | null;
   accepted_at: string | null;
   accepted_by_user_id: string | null;
   revoked_at: string | null;
@@ -26,7 +27,7 @@ type Row = {
 
 const COLUMNS =
   'id, brand_id, invited_by_user_id, invited_email, role, token, ' +
-  'created_at, accepted_at, accepted_by_user_id, revoked_at, updated_at';
+  'created_at, expires_at, accepted_at, accepted_by_user_id, revoked_at, updated_at';
 
 function toInvite(row: Row): TeamInvite {
   return {
@@ -37,6 +38,7 @@ function toInvite(row: Row): TeamInvite {
     role: row.role,
     token: row.token,
     createdAt: row.created_at,
+    expiresAt: row.expires_at ?? undefined,
     acceptedAt: row.accepted_at ?? undefined,
     acceptedByUserId: row.accepted_by_user_id ?? undefined,
     revokedAt: row.revoked_at ?? undefined,
@@ -52,6 +54,7 @@ function toInsertRow(t: TeamInvite): Record<string, unknown> {
     role: t.role,
     token: t.token,
     created_at: t.createdAt,
+    expires_at: t.expiresAt ?? null,
     accepted_at: t.acceptedAt ?? null,
     accepted_by_user_id: t.acceptedByUserId ?? null,
     revoked_at: t.revokedAt ?? null,

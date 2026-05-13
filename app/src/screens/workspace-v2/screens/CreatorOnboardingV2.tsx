@@ -14,6 +14,10 @@
 
 import { useState } from 'react';
 import { Icon, fmtUSD, fmtFollowers, PLATFORM_META } from '../lib';
+import { useV2CurrentCreator } from '../v2Hooks';
+import { v2UpdateCreatorIdentity, v2AddCreatorChannel } from '../v2CreatorActions';
+import { pushToast } from '@/lib/utils/toast';
+import { parseNumberInput } from '@/lib/utils/format';
 
 interface Props {
   onRoute: (r: string) => void;
@@ -58,21 +62,78 @@ const PLATFORMS: { id: Platform; tagline: string }[] = [
 const CATEGORIES = ['Fashion', 'Beauty', 'Food', 'Tech', 'Travel', 'Fitness', 'Parenting', 'Finance', 'B2B'];
 
 export function CreatorOnboardingV2({ onRoute }: Props) {
+  const currentCreator = useV2CurrentCreator();
+  const [submitting, setSubmitting] = useState(false);
   const [step, setStep] = useState<StepId>('platform');
   const [s, setS] = useState<State>({
+    // Pre-fill from any existing creator record so partial returns
+    // don't blank everything out.
     platform: null,
-    handle: '',
+    handle: currentCreator?.handle?.replace(/^@/, '') ?? '',
     followers: '',
     engagement: '',
-    city: 'Lahore',
-    bio: '',
-    category: '',
-    reelRate: '250',
-    storyRate: '180',
-    comboRate: '380',
+    city: currentCreator?.city || 'Lahore',
+    bio: currentCreator?.bio ?? '',
+    category: currentCreator?.categories?.[0] ?? '',
+    reelRate: currentCreator?.rateCard?.reel ?? '250',
+    storyRate: currentCreator?.rateCard?.story ?? '180',
+    comboRate: currentCreator?.rateCard?.post ?? '380',
     payoutMethod: null,
     agreedTerms: false,
   });
+
+  // Persist all five steps' inputs onto the creator record before
+  // routing into the workspace. Pre-fix the wizard discarded everything;
+  // CreatorHome immediately reported ~0% profile completion + a fake
+  // storefront preview because nothing landed in the store.
+  async function persistAndRoute() {
+    if (!currentCreator?.id) {
+      onRoute('creator-home');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      // 1. Identity (handle / city / bio / category / rates / payout method)
+      v2UpdateCreatorIdentity(currentCreator.id, {
+        handle: s.handle,
+        city: s.city,
+        bio: s.bio,
+        categories: s.category ? [s.category] : currentCreator.categories,
+        rateCard: {
+          reel: s.reelRate,
+          story: s.storyRate,
+          post: s.comboRate,
+        },
+        payout: s.payoutMethod ? { method: s.payoutMethod } : undefined,
+      });
+      // 2. Primary channel — only add if the creator picked a platform
+      //    AND it isn't already configured. v2AddCreatorChannel is
+      //    idempotent on (platform, handle) so re-runs won't duplicate.
+      if (s.platform && s.handle.trim()) {
+        const followersN = parseNumberInput(s.followers, { min: 0 });
+        const engagementN = parseNumberInput(s.engagement, { min: 0, integer: false });
+        // Map the wizard's lower-case platform key to the canonical
+        // capitalized union the Platform type uses.
+        const PLATFORM_NAME_MAP = {
+          instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube',
+          linkedin: 'LinkedIn', x: 'X', newsletter: 'Newsletter',
+        } as const;
+        v2AddCreatorChannel(currentCreator.id, {
+          name: PLATFORM_NAME_MAP[s.platform],
+          handle: s.handle.startsWith('@') ? s.handle : `@${s.handle}`,
+          followers: followersN,
+          engagement: engagementN,
+          verified: false,
+        });
+      }
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : 'Could not save your storefront');
+      setSubmitting(false);
+      return;
+    }
+    setSubmitting(false);
+    onRoute('creator-home');
+  }
 
   const idx = STEPS.findIndex((x) => x.id === step);
   const next = () => idx < STEPS.length - 1 && setStep(STEPS[idx + 1].id);
@@ -376,10 +437,10 @@ export function CreatorOnboardingV2({ onRoute }: Props) {
             <button
               className="v2-btn v2-btn-primary"
               type="button"
-              disabled={!canProceed}
-              onClick={() => onRoute('creator-home')}
+              disabled={!canProceed || submitting}
+              onClick={persistAndRoute}
             >
-              {Icon.check} Publish storefront
+              {Icon.check} {submitting ? 'Saving…' : 'Publish storefront'}
             </button>
           ) : (
             <button

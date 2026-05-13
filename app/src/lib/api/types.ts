@@ -55,6 +55,12 @@ export interface TeamInvite {
    *  from a modal; production would email via SES/SendGrid). */
   token: string;
   createdAt: string;
+  /** ISO timestamp at which the token stops being redeemable. Set
+   *  to createdAt + 14 days by `v2SendTeamInvite`. Pre-fix tokens
+   *  never expired — a leaked never-accepted token was a forever
+   *  liability for the brand owner. The accept path rejects with
+   *  reason='expired' once `Date.now() > new Date(expiresAt).getTime()`. */
+  expiresAt?: string;
   acceptedAt?: string;
   acceptedByUserId?: string;
   revokedAt?: string;
@@ -277,6 +283,9 @@ export interface Creator {
   // Tier 4+: managed-by-an-agent. When set, the creator's account is operated
   // by a separate User who has role='creator' and managesCreatorIds[] including this id.
   managedByUserId?: string;
+  /** Migration 021 optimistic lock — see Dispute.version for the rationale.
+   *  Creator-profile edits and wallet/pending balance updates flow through this lock. */
+  version?: number;
 }
 
 // Lightweight brand-side social presence. No audience demographics — brands don't typically
@@ -312,6 +321,9 @@ export interface Brand {
   verified: boolean;
   savedCreators: string[];   // brand-level shortlist (creator IDs saved for later)
   socialPlatforms?: BrandSocial[];
+  /** Migration 021 optimistic lock — see Dispute.version for the rationale.
+   *  Brand-profile edits and wallet balance updates flow through this lock. */
+  version?: number;
 }
 
 // P1b §1.2 — Campaign stage represents the campaign's own lifecycle, NOT
@@ -489,6 +501,12 @@ export interface Dispute {
   raisedAt: number;
   updatedAt: number;
   messages: DisputeMessage[];
+  /** Migration 020 optimistic lock — server row version. Bumped on
+   *  every UPDATE; mirror functions pass the prior version as
+   *  `expectedVersion` so a cross-tab race lands a StaleVersionError
+   *  instead of silently overwriting. Optional on the type so legacy
+   *  / generated rows without a server counterpart still type-check. */
+  version?: number;
 }
 
 // =====================================================================
@@ -618,6 +636,8 @@ export interface Campaign {
    *  reference videos). Stored as a jsonb array on the campaign for
    *  demo simplicity — separate table not justified at this scale. */
   assets?: CampaignAsset[];
+  /** Migration 020 optimistic lock — see Dispute.version for the rationale. */
+  version?: number;
 }
 
 /** A single brand-uploaded asset attached to a campaign brief. */
@@ -690,6 +710,8 @@ export interface Application {
   decidedAt?: string;
   /** P1c §1.1 — backfilled by migrator 3 + every mutation via ensureCollabState. */
   collaborationId?: string;
+  /** Migration 020 optimistic lock — see Dispute.version for the rationale. */
+  version?: number;
 }
 
 // =====================================================================
@@ -819,6 +841,8 @@ export interface Offer {
   source: OfferSource;
   /** P1c §1.1 — backfilled by migrator 3 + every mutation via ensureCollabState. */
   collaborationId?: string;
+  /** Migration 020 optimistic lock — see Dispute.version for the rationale. */
+  version?: number;
 }
 
 export type SubmissionStatus = 'in_review' | 'revisions' | 'approved';
@@ -863,6 +887,8 @@ export interface Submission {
    *  problems before escrow auto-locks. Always undefined for
    *  `in_review` / `revisions` submissions. */
   disputeWindowClosesAt?: number;
+  /** Migration 020 optimistic lock — see Dispute.version for the rationale. */
+  version?: number;
 }
 
 export interface Thread {
@@ -1169,6 +1195,13 @@ export interface Collaboration {
   cancellationRequest?: { by: string; at: number; reason: string } | null;
   // P2 §1.4 — escrow freeze flag for active disputes:
   escrowFrozen?: boolean;
+  /** Migration 020 optimistic lock — see Dispute.version for the rationale.
+   *  Bumped on every successful UPDATE to Postgres. Used by the
+   *  collabSync mirror to gate UPDATEs on `version = expectedVersion`
+   *  so cross-tab races land a typed StaleVersionError instead of
+   *  silently overwriting. The repo's writeCollabInSupabase falls back
+   *  to INSERT when no version is known (first-write path). */
+  version?: number;
 }
 
 export interface Session {

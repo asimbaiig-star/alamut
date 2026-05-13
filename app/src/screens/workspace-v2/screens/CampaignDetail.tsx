@@ -23,6 +23,7 @@ import { useEffect, useRef, useState } from 'react';
 import { fmtUSD, fmtFollowers, Icon, StagePill, Topbar } from '../lib';
 import {
   useV2CampaignById, useV2CollabsForCampaign, useV2Creators,
+  useV2CurrentBrand,
   v2AddCampaignAsset, v2RemoveCampaignAsset,
 } from '../v2Hooks';
 import { V2_PIPELINE_STAGES } from '../v2Adapters';
@@ -33,9 +34,10 @@ import { ContentReviewModal } from './ContentReviewModal';
 import { SendOfferModal, MarkLiveModal, CounterOfferModal, InviteCreatorsModal } from './WorkflowModals';
 import {
   v2EndCampaign, v2PauseCampaign, v2RejectApplication, v2ResumeCampaign,
-  v2WithdrawOffer, v2AcceptCounter, v2DeclineOffer,
+  v2WithdrawOffer, v2AcceptCounter, v2DeclineOffer, v2UpdateCampaign,
   getApplicationFor, getActiveOfferFor, getLatestSubmissionFor,
 } from '../v2CampaignActions';
+import { v2RequestCollabCancel } from '../v2CollabActions';
 import { useStore } from '@/lib/api/store';
 import { pushToast } from '@/lib/utils/toast';
 // P7 — UI gating for campaign-lifecycle buttons.
@@ -70,6 +72,14 @@ export function CampaignDetail({
   const collabs = useV2CollabsForCampaign(campaignId);
   const creators = useV2Creators();
   const db = useStore((s) => s.db);
+  const currentBrand = useV2CurrentBrand();
+  // Ownership gate — this surface mutates campaign state (pause/end,
+  // accept-counter, mark-live, etc.). Only the brand that owns the
+  // campaign should be able to see it. A creator deep-linking here via
+  // a stale notification href would otherwise hit mutation handlers
+  // that operate on someone else's campaign.
+  const rawCampaignForGate = db.campaigns.find((c) => c.id === campaignId);
+  const isOwner = !!currentBrand && !!rawCampaignForGate && rawCampaignForGate.brandId === currentBrand.id;
   const [tab, setTab] = useState<TabId>(
     initialTab && VALID_TABS.includes(initialTab) ? initialTab : 'pipeline',
   );
@@ -113,6 +123,27 @@ export function CampaignDetail({
       <>
         <Topbar title="Campaign" crumb="Not found" />
         <div className="v2-content"><p className="v2-muted">No campaign with that id.</p></div>
+      </>
+    );
+  }
+  if (!isOwner) {
+    // Authenticated user is not the brand owner. Don't render the
+    // mutation surface; offer the creator-side brief view as a fallback
+    // since that's the read-only surface for the same campaign.
+    return (
+      <>
+        <Topbar title="Campaign" crumb="Access" />
+        <div className="v2-content">
+          <p className="v2-muted">You don't have access to this campaign's management view.</p>
+          <button
+            className="v2-btn v2-btn-primary"
+            type="button"
+            style={{ marginTop: 12 }}
+            onClick={() => onRoute(`brief:${campaignId}`)}
+          >
+            View public brief
+          </button>
+        </div>
       </>
     );
   }
@@ -998,8 +1029,17 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
     );
   } else if (collab.stage === 'confirmed') {
     stageAction = (
-      <div className="v2-muted" style={{ fontSize: 11, marginTop: 8, textAlign: 'center', fontStyle: 'italic' }}>
-        Awaiting upload
+      <div className="v2-col" style={{ gap: 4, marginTop: 8 }}>
+        <div className="v2-muted" style={{ fontSize: 11, textAlign: 'center', fontStyle: 'italic' }}>
+          Awaiting upload
+        </div>
+        {/* CANCEL-COLLAB request — escape hatch for the brand when an
+            accepted offer needs to unwind (creator stopped responding,
+            scope changed, etc.). Pre-fix the brand had no path here;
+            v2WithdrawOffer rejects accepted offers. Now requests a
+            mutual cancel via v2RequestCollabCancel — escrow returns
+            once the creator agrees. */}
+        <CancelCollabButton collab={collab} />
       </div>
     );
   }
@@ -1035,6 +1075,49 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
       {hasReview && <div className="v2-kanban-review-pill">Review pending</div>}
       {stageAction}
     </article>
+  );
+}
+
+/**
+ * CancelCollabButton — brand-side affordance for requesting mutual
+ * cancellation on an accepted/confirmed collab. v2WithdrawOffer
+ * early-returns on accepted offers, so pre-fix the brand had no UX
+ * path to unwind. This wraps v2RequestCollabCancel + a small reason
+ * prompt.
+ */
+function CancelCollabButton({ collab }: { collab: V2Collab }) {
+  const db = useStore((s) => s.db);
+  // Look up the real Collaboration row to feed v2RequestCollabCancel —
+  // the V2Collab.id is the synthetic `collab__<...>__<...>` form.
+  const collabRow = db.collaborations.find(
+    (c) => c.campaignId === collab.campaignId && c.creatorId === collab.creatorId,
+  );
+  const me = db.users.find((u) => !!u.brandId);
+  const pending = collabRow?.cancellationRequest != null;
+  return (
+    <button
+      type="button"
+      className="v2-btn v2-btn-sm v2-btn-outline"
+      style={{ width: '100%', justifyContent: 'center', fontSize: 11 }}
+      disabled={!collabRow || !me || pending}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (!collabRow || !me) return;
+        const reason = window.prompt(
+          'Why are you canceling this collab? The creator must agree before escrow is refunded.',
+        );
+        if (!reason || reason.trim().length < 6) return;
+        const result = v2RequestCollabCancel(collabRow.id, me.id, reason.trim());
+        if (result?.cancellationRequest) {
+          pushToast('Cancel requested — awaiting creator agreement', 'good');
+        } else {
+          pushToast('Could not request cancel (stage may have changed)', 'bad');
+        }
+      }}
+      title={pending ? 'Cancel request already pending' : undefined}
+    >
+      {pending ? 'Cancel pending…' : 'Request cancel'}
+    </button>
   );
 }
 
@@ -2010,11 +2093,37 @@ export function ContentTypeTile({
 // =====================================================================
 
 function SettingsTab({ campaign }: { campaign: V2Campaign }) {
-  // Local UI state for the form. Visibility + auto-shortlist are demo
-  // controls (no backing field on the seed Campaign yet) but at minimum
-  // the buttons need to actually toggle so the surface doesn't read inert.
-  const [visibility, setVisibility] = useState<'public' | 'private'>('public');
-  const [autoShortlist, setAutoShortlist] = useState(true);
+  // Read the raw Campaign so we can persist via v2UpdateCampaign. The
+  // V2Campaign adapter renames `title → name`, but the underlying
+  // mutation writes `title`.
+  const rawCampaign = useStore((s) => s.db.campaigns.find((c) => c.id === campaign.id));
+  const [name, setName] = useState(campaign.name);
+  const [autoShortlist, setAutoShortlist] = useState<boolean>(rawCampaign?.autoShortlist?.enabled ?? false);
+  // Threshold isn't exposed in the UI yet; preserve existing value so
+  // re-enabling auto-shortlist doesn't reset it.
+  const autoShortlistThreshold = rawCampaign?.autoShortlist?.threshold ?? 0.5;
+  const [busy, setBusy] = useState(false);
+  const dirty = name.trim() !== campaign.name ||
+    autoShortlist !== (rawCampaign?.autoShortlist?.enabled ?? false);
+
+  async function save() {
+    if (!dirty || busy) return;
+    setBusy(true);
+    try {
+      await v2UpdateCampaign(campaign.id, {
+        title: name.trim() || campaign.name,
+        autoShortlist: autoShortlist
+          ? { enabled: true, threshold: autoShortlistThreshold }
+          : null,
+      });
+      pushToast('Campaign settings saved', 'good');
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : 'Could not save settings', 'bad');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="v2-row" style={{ gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
       <section className="v2-card v2-card-pad-lg" style={{ flex: '2 1 480px' }}>
@@ -2026,27 +2135,16 @@ function SettingsTab({ campaign }: { campaign: V2Campaign }) {
         </h3>
         <div style={{ marginBottom: 18 }}>
           <label className="v2-eyebrow" style={{ display: 'block', marginBottom: 6 }}>Campaign name</label>
-          <input className="v2-input" defaultValue={campaign.name} />
+          <input
+            className="v2-input"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
         </div>
         <div style={{ marginBottom: 18 }}>
           <label className="v2-eyebrow" style={{ display: 'block', marginBottom: 6 }}>Visibility</label>
-          <div className="v2-segmented">
-            <button
-              className={`v2-segmented-btn ${visibility === 'public' ? 'is-on' : ''}`}
-              type="button"
-              onClick={() => {
-                setVisibility('public');
-                pushToast('Visibility set to public', 'good');
-              }}
-            >Public — listed in briefs</button>
-            <button
-              className={`v2-segmented-btn ${visibility === 'private' ? 'is-on' : ''}`}
-              type="button"
-              onClick={() => {
-                setVisibility('private');
-                pushToast('Visibility set to private — invite only', 'good');
-              }}
-            >Private — invite only</button>
+          <div className="v2-muted" style={{ fontSize: 12, padding: 12, background: 'var(--v2-bg-1)', borderRadius: 'var(--v2-r-md)' }}>
+            Campaigns are currently public on Discover by default. Private (invite-only) campaigns will land in a future release; this toggle is read-only for now.
           </div>
         </div>
         <div style={{ marginBottom: 18 }}>
@@ -2062,6 +2160,16 @@ function SettingsTab({ campaign }: { campaign: V2Campaign }) {
               <div className="v2-muted" style={{ fontSize: 12 }}>Spark will move strong matches to "Pitched" automatically.</div>
             </div>
           </label>
+        </div>
+        <div className="v2-row" style={{ justifyContent: 'flex-end', marginBottom: 18 }}>
+          <button
+            className="v2-btn v2-btn-primary"
+            type="button"
+            disabled={!dirty || busy}
+            onClick={save}
+          >
+            {busy ? 'Saving…' : dirty ? 'Save changes' : 'No changes'}
+          </button>
         </div>
         <hr style={{ border: 0, borderTop: '1px solid var(--v2-line)', margin: '20px 0' }} />
         <h4 style={{

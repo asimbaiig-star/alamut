@@ -19,6 +19,7 @@ import { useV2CampaignById, useV2CurrentCreator } from '../v2Hooks';
 import { creatorToV2 } from '../v2Adapters';
 import { v2ApplyToCampaign } from '../v2CampaignActions';
 import { useStore } from '@/lib/api/store';
+import { parseNumberInput } from '@/lib/utils/format';
 import type { V2Campaign } from '../data';
 
 interface Props {
@@ -418,7 +419,7 @@ export function BriefDetail({ campaignId, onRoute }: Props) {
                     <input
                       type="number"
                       value={price}
-                      onChange={(e) => setPrice(parseInt(e.target.value || '0', 10))}
+                      onChange={(e) => setPrice(parseNumberInput(e.target.value, { min: 0 }))}
                     />
                     <span className="v2-onboarding-rate-sub">total</span>
                   </div>

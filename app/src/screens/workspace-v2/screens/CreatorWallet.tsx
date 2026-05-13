@@ -6,8 +6,11 @@
 import { useState } from 'react';
 import { fmtUSD, fmtUSDfull, Icon, Topbar } from '../lib';
 import { useV2CreatorWallet, useV2CurrentCreator, v2RequestWithdrawal } from '../v2Hooks';
+import { useStore } from '@/lib/api/store';
+import { api } from '@/lib/api/client';
 import { pushToast } from '@/lib/utils/toast';
 import { downloadCSV } from '@/lib/utils/csv';
+import { parseNumberInput } from '@/lib/utils/format';
 
 interface Props {
   onRoute: (r: string) => void;
@@ -15,8 +18,17 @@ interface Props {
 
 export function CreatorWallet({ onRoute }: Props) {
   const [showWithdraw, setShowWithdraw] = useState(false);
+  const [showAdvance, setShowAdvance] = useState(false);
   const W = useV2CreatorWallet();
   const creator = useV2CurrentCreator();
+  const db = useStore((s) => s.db);
+  const activeAdvance = creator
+    ? db.advances?.find((a) => a.creatorId === creator.id && a.status === 'active')
+    : undefined;
+  const advanceCapacity = creator
+    ? Math.floor(creator.pendingBalance * 0.8)
+    : 0;
+  const canRequestAdvance = !!creator && !activeAdvance && advanceCapacity >= 100;
 
   return (
     <>
@@ -24,14 +36,26 @@ export function CreatorWallet({ onRoute }: Props) {
         title="Wallet"
         crumb={`${creator?.name ?? 'Creator'} · USD account`}
         actions={
-          <button
-            className="v2-btn v2-btn-accent"
-            type="button"
-            onClick={() => setShowWithdraw(true)}
-            disabled={W.available === 0}
-          >
-            {Icon.send}<span>Withdraw</span>
-          </button>
+          <div className="v2-row" style={{ gap: 8 }}>
+            {canRequestAdvance && (
+              <button
+                className="v2-btn v2-btn-outline"
+                type="button"
+                onClick={() => setShowAdvance(true)}
+                title={`Borrow up to ${fmtUSD(advanceCapacity)} against pending escrow · 3% fee · auto-repays`}
+              >
+                {Icon.spark}<span>Request advance</span>
+              </button>
+            )}
+            <button
+              className="v2-btn v2-btn-accent"
+              type="button"
+              onClick={() => setShowWithdraw(true)}
+              disabled={W.available === 0}
+            >
+              {Icon.send}<span>Withdraw</span>
+            </button>
+          </div>
         }
       />
       <div className="v2-content">
@@ -205,7 +229,104 @@ export function CreatorWallet({ onRoute }: Props) {
           }}
         />
       )}
+      {showAdvance && creator && (
+        <AdvanceModal
+          pendingBalance={creator.pendingBalance}
+          maxAdvance={advanceCapacity}
+          onClose={() => setShowAdvance(false)}
+          onConfirm={async (amount) => {
+            try {
+              await api.advances.request(amount);
+              pushToast(`Advance of $${amount.toLocaleString()} disbursed · auto-repays from next payout`, 'good');
+              setShowAdvance(false);
+            } catch (err) {
+              pushToast(err instanceof Error ? err.message : 'Could not request advance', 'bad');
+            }
+          }}
+        />
+      )}
     </>
+  );
+}
+
+function AdvanceModal({ pendingBalance, maxAdvance, onClose, onConfirm }: {
+  pendingBalance: number;
+  maxAdvance: number;
+  onClose: () => void;
+  onConfirm: (amount: number) => Promise<void>;
+}) {
+  const [amount, setAmount] = useState<number>(Math.min(maxAdvance, 1000));
+  const [busy, setBusy] = useState(false);
+  const fee = Math.round(amount * 0.03);
+  const net = amount - fee;
+  const valid = amount >= 100 && amount <= maxAdvance && !busy;
+
+  async function submit() {
+    if (!valid) return;
+    setBusy(true);
+    try {
+      await onConfirm(amount);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="v2-modal-overlay" role="dialog" aria-modal="true" onClick={onClose}>
+      <div
+        className="v2-card v2-card-pad-lg v2-modal"
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: 480 }}
+      >
+        <h2 style={{
+          fontFamily: 'var(--v2-font-display)', fontSize: 22, fontWeight: 500,
+          margin: '0 0 6px', letterSpacing: '-0.02em',
+        }}>Request an advance</h2>
+        <p className="v2-muted" style={{ margin: '0 0 14px', fontSize: 13 }}>
+          Borrow against pending escrow on accepted offers. 3% flat fee, repays automatically from your next payouts. Max is 80% of pending balance.
+        </p>
+        <div style={{ marginBottom: 16, padding: 12, background: 'var(--v2-bg-1)', borderRadius: 'var(--v2-r-md)', fontSize: 12.5 }}>
+          <div className="v2-row" style={{ justifyContent: 'space-between', marginBottom: 4 }}>
+            <span className="v2-muted">In escrow (pending)</span>
+            <span className="v2-tabular">{fmtUSDfull(pendingBalance)}</span>
+          </div>
+          <div className="v2-row" style={{ justifyContent: 'space-between' }}>
+            <span className="v2-muted">Max advance (80%)</span>
+            <span className="v2-tabular">{fmtUSDfull(maxAdvance)}</span>
+          </div>
+        </div>
+        <label className="v2-eyebrow" style={{ display: 'block', marginBottom: 6 }}>Amount (USD)</label>
+        <div className="v2-onboarding-rate" style={{ marginBottom: 12 }}>
+          <span className="v2-onboarding-rate-prefix">$</span>
+          <input
+            type="number"
+            value={amount}
+            min={100}
+            max={maxAdvance}
+            onChange={(e) => setAmount(parseNumberInput(e.target.value, { min: 0, max: maxAdvance }))}
+          />
+        </div>
+        <div style={{ marginBottom: 16, fontSize: 12.5 }}>
+          <div className="v2-row" style={{ justifyContent: 'space-between', marginBottom: 2 }}>
+            <span className="v2-muted">3% fee</span>
+            <span className="v2-tabular">−{fmtUSDfull(fee)}</span>
+          </div>
+          <div className="v2-row" style={{ justifyContent: 'space-between', fontWeight: 600 }}>
+            <span>Net to wallet</span>
+            <span className="v2-tabular">{fmtUSDfull(net)}</span>
+          </div>
+        </div>
+        <div className="v2-row" style={{ justifyContent: 'flex-end', gap: 8 }}>
+          <button className="v2-btn v2-btn-ghost" type="button" onClick={onClose} disabled={busy}>Cancel</button>
+          <button
+            className="v2-btn v2-btn-primary"
+            type="button"
+            disabled={!valid}
+            onClick={submit}
+          >{busy ? 'Processing…' : `Disburse ${fmtUSDfull(net)}`}</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -252,7 +373,7 @@ function WithdrawModal({ available, onClose, onConfirm }: {
           <input
             type="number"
             value={amount}
-            onChange={(e) => setAmount(parseInt(e.target.value || '0'))}
+            onChange={(e) => setAmount(parseNumberInput(e.target.value, { min: 0, max: available }))}
             max={available}
             className="v2-input"
             style={{ paddingLeft: 28, fontSize: 22, fontWeight: 500, padding: '14px 14px 14px 28px' }}

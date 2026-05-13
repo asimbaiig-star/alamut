@@ -12,6 +12,7 @@ import '@/styles/workspace-v2-campaign-mgmt.css';
 import '@/styles/workspace-v2-home.css';
 import { Icon } from './lib';
 import { useV2CurrentBrand, useV2CurrentCreator } from './v2Hooks';
+import { v2SweepStaleOffers } from './v2CampaignActions';
 import { useAuth } from '@/lib/auth/useAuth';
 import { api } from '@/lib/api/client';
 import { BrandHome } from './screens/BrandHome';
@@ -72,18 +73,25 @@ const ROUTE_KEY = 'alamut.v2.route';
 /**
  * Reject creator-only routes for a brand persona (and vice versa) so a
  * stale localStorage value from a previous user's session doesn't leak
- * into a fresh sign-in. Shared routes (`inbox`, `wallet`, `home`) and
- * drilldown prefixes (which are valid for whichever side initiated them)
- * fall through to the brand-vs-creator check on each side. Returns
- * `true` for routes that fit either persona; `false` blocks the
+ * into a fresh sign-in. Drilldown prefixes are SHARED — `deal:` opens
+ * the same Inbox surface from either side, and a creator clicking a
+ * notification linking to `campaign:` should not be teleported into
+ * Hannah's brand workspace via the demo fallback in `getViewerUserId`.
+ * Returns `true` for routes that fit either persona; `false` blocks the
  * Workspace from booting into a mismatched dashboard. */
 export function routeFitsPersona(route: string, persona: Persona): boolean {
-  // Drilldown prefixes — valid for the persona that originated them.
-  if (route.startsWith('creator:') || route.startsWith('campaign:') || route.startsWith('deal:')) {
-    return persona === 'brand';
-  }
-  if (route.startsWith('collab:') || route.startsWith('brief:')) {
-    return persona === 'creator';
+  // Drilldown prefixes — shared across personas. The route handler
+  // (RouteOutlet) renders the appropriate component for the current
+  // persona; auto-flipping persona on a drilldown click would cause
+  // a creator to be silently switched to the demo brand owner.
+  if (
+    route.startsWith('creator:') ||
+    route.startsWith('campaign:') ||
+    route.startsWith('deal:') ||
+    route.startsWith('collab:') ||
+    route.startsWith('brief:')
+  ) {
+    return true;
   }
   // Public storefront preview is cross-persona.
   if (route.startsWith('public:')) return true;
@@ -170,6 +178,16 @@ export function WorkspaceV2() {
     }
   }, [user?.id, isBrand, isCreator, persona]);
 
+  // Stale-offer sweep on workspace mount — one-shot. Flips pending/
+  // countered offers older than the TTL to 'expired' so the kanban
+  // and inbox don't accumulate dead-deal clutter forever, and both
+  // sides get a notification that the brand can re-engage fresh.
+  // Idempotent; running once per page-load is fine.
+  useEffect(() => {
+    v2SweepStaleOffers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Persist
   useEffect(() => {
     try { localStorage.setItem(PERSONA_KEY, persona); } catch { /* no-op */ }
@@ -220,34 +238,30 @@ export function WorkspaceV2() {
 
   function go(next: string) {
     setRouteState(next);
-    // Auto-flip persona based on route prefix
+    // Auto-flip persona ONLY for explicit top-level nav clicks. Drilldown
+    // routes (`deal:`, `campaign:`, `creator:`, `collab:`, `brief:`,
+    // `public:`) preserve the current persona — a creator clicking
+    // "Open deal room" from her inbox must not be teleported into the
+    // demo brand workspace via `getViewerUserId`'s fallback. The route
+    // handler (RouteOutlet) passes `persona` through to surfaces that
+    // care (Inbox renders persona-aware bubbles + counterparty resolution).
     if (
       next.startsWith('creator-') ||
       next === 'storefront' ||
       next === 'kyc' ||
       next === 'analytics' ||
-      next === 'onboarding-creator' ||
-      next.startsWith('collab:') ||
-      next.startsWith('brief:')
+      next === 'onboarding-creator'
     ) {
-      // collab:/brief: are creator-side drilldowns; creator-collabs uses
-      // the creator- prefix above.
       setPersonaState('creator');
     } else if (
       BRAND_ROUTES.some((r) => r.id === next) ||
       next === 'discover' ||
       next === 'campaigns' ||
       next === 'campaign-new' ||
-      next === 'onboarding-brand' ||
-      next.startsWith('creator:') ||
-      next.startsWith('campaign:') ||
-      next.startsWith('deal:')
+      next === 'onboarding-brand'
     ) {
-      // creator:, campaign:, deal: prefixes are brand-side drilldowns
       setPersonaState('brand');
     }
-    // public: routes don't flip persona — they're a read-only preview
-    // accessible from either side.
     window.scrollTo(0, 0);
   }
 

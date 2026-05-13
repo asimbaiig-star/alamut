@@ -13,6 +13,7 @@
 
 import type { Brand } from '@/lib/api/types';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
+import { StaleVersionError, isNoRowsError } from './optimisticLock';
 
 type Row = {
   id: string;
@@ -32,6 +33,7 @@ type Row = {
   verified: boolean;
   saved_creators: string[];
   social_platforms: Brand['socialPlatforms'] | null;
+  version: number;
 };
 
 // Public-API column list — used for `select('...')`. Centralised so
@@ -39,7 +41,7 @@ type Row = {
 const COLUMNS =
   'id, user_id, owner_email, name, industry, hq, website, about, logo_mark, logo_url, ' +
   'preferred_categories, preferred_regions, wallet_balance, escrow_held, verified, ' +
-  'saved_creators, social_platforms';
+  'saved_creators, social_platforms, version';
 
 function toBrand(row: Row): Brand {
   return {
@@ -59,6 +61,7 @@ function toBrand(row: Row): Brand {
     verified: row.verified,
     savedCreators: row.saved_creators ?? [],
     socialPlatforms: row.social_platforms ?? undefined,
+    version: row.version,
   };
 }
 
@@ -142,10 +145,15 @@ export async function fetchAllBrandsFromSupabase(): Promise<Brand[]> {
 
 /** Update a single brand. Caller must be the auth-session owner of the
  *  row (RLS enforces this). Returns the updated row mapped back to the
- *  TypeScript Brand shape. Throws on RLS rejection / network error. */
+ *  TypeScript Brand shape. Throws on RLS rejection / network error.
+ *
+ *  Optimistic locking (migration 021): same pattern as the other 6
+ *  versioned repos. See `optimisticLock.ts` for the rationale + the
+ *  `StaleVersionError` shape. */
 export async function updateBrandInSupabase(
   brandId: string,
   patch: Partial<Pick<Brand, EditableFields>>,
+  expectedVersion?: number,
 ): Promise<Brand> {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase not configured');
@@ -158,15 +166,28 @@ export async function updateBrandInSupabase(
     if (error) throw new Error(error.message);
     return toBrand(data as unknown as Row);
   }
-  const { data, error } = await sb
+  let q = sb
     .from('brands')
-    .update(rowPatch)
-    .eq('id', brandId)
-    .select(COLUMNS)
-    .single();
-  if (error) throw new Error(error.message);
-  if (!data) throw new Error('Brand not found or not editable by this user');
-  return toBrand(data as unknown as Row);
+    .update({ ...rowPatch, version: (expectedVersion ?? 0) + 1 })
+    .eq('id', brandId);
+  if (expectedVersion !== undefined) q = q.eq('version', expectedVersion);
+  try {
+    const { data, error } = await q.select(COLUMNS).single();
+    if (error) {
+      if (expectedVersion !== undefined && isNoRowsError(error)) {
+        throw new StaleVersionError('brand', brandId);
+      }
+      throw new Error(error.message);
+    }
+    if (!data) throw new Error('Brand not found or not editable by this user');
+    return toBrand(data as unknown as Row);
+  } catch (err) {
+    if (err instanceof StaleVersionError) throw err;
+    if (expectedVersion !== undefined && isNoRowsError(err)) {
+      throw new StaleVersionError('brand', brandId);
+    }
+    throw err;
+  }
 }
 
 /** Upload a logo image to the `brand-logos` Storage bucket and return

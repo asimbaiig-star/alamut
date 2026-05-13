@@ -223,6 +223,8 @@ export function Inbox({ onRoute, persona, forceThreadId, forcePanelMode }: Props
           onSelect={setActiveId}
           creators={creators}
           campaigns={campaigns}
+          persona={persona}
+          brands={db.brands}
         />
         {active && counterparty ? (
           <Thread
@@ -265,13 +267,15 @@ export function Inbox({ onRoute, persona, forceThreadId, forcePanelMode }: Props
 // Conversation list (left pane)
 // =====================================================================
 function ConversationList({
-  conversations, activeId, onSelect, creators, campaigns,
+  conversations, activeId, onSelect, creators, campaigns, persona, brands,
 }: {
   conversations: V2Conversation[];
   activeId: string;
   onSelect: (id: string) => void;
   creators: V2Creator[];
   campaigns: V2Campaign[];
+  persona: 'brand' | 'creator';
+  brands: import('@/lib/api/types').Brand[];
 }) {
   return (
     <aside className="v2-inbox-list" aria-label="Conversations">
@@ -291,9 +295,25 @@ function ConversationList({
       </header>
       <div role="list">
         {conversations.map((c) => {
-          const creator = creators.find((cr) => cr.id === c.creatorId);
+          // Row label is the COUNTERPARTY, not "always the creator". For
+          // a brand viewer the counterparty is the creator on the thread;
+          // for a creator viewer the counterparty is the brand. Without
+          // this, Sarah (creator) saw "Sarah" as the row title on every
+          // thread because every thread has her as the creator participant.
           const campaign = campaigns.find((cmp) => cmp.id === c.campaignId);
-          if (!creator) return null;
+          let cpName: string;
+          let cpAvatar: string;
+          if (persona === 'brand') {
+            const creator = creators.find((cr) => cr.id === c.creatorId);
+            if (!creator) return null;
+            cpName = creator.name;
+            cpAvatar = creator.avatar;
+          } else {
+            const brand = brands.find((b) => b.id === c.brandId);
+            if (!brand) return null;
+            cpName = brand.name;
+            cpAvatar = brand.logoUrl ?? brand.logoMark ?? '';
+          }
           return (
             <button
               key={c.id}
@@ -304,11 +324,11 @@ function ConversationList({
             >
               <div
                 className="v2-avatar v2-avatar-md"
-                style={{ backgroundImage: `url(${creator.avatar})` }}
+                style={{ backgroundImage: `url(${cpAvatar})` }}
                 aria-hidden="true"
               />
               <div style={{ minWidth: 0 }}>
-                <div className="v2-inbox-row-name">{creator.name}</div>
+                <div className="v2-inbox-row-name">{cpName}</div>
                 <div className="v2-inbox-row-preview">{c.preview}</div>
                 {campaign && (
                   <div className="v2-muted" style={{ fontSize: 11, marginTop: 4 }}>
@@ -427,13 +447,27 @@ function Thread({
             @{counterparty.handle} · {fmtFollowers(counterparty.channels.reduce((s, ch) => s + ch.followers, 0))} reach
           </div>
         </div>
-        <button
-          className="v2-btn v2-btn-outline v2-btn-sm"
-          type="button"
-          onClick={() => onRoute(`creator:${counterparty.id}`)}
-        >
-          View profile
-        </button>
+        {persona === 'brand' ? (
+          <button
+            className="v2-btn v2-btn-outline v2-btn-sm"
+            type="button"
+            onClick={() => onRoute(`creator:${counterparty.id}`)}
+          >
+            View profile
+          </button>
+        ) : conversation.campaignId ? (
+          // Creator viewer — no brand-profile surface exists in v2, so
+          // route to the brief where brand context is displayed instead.
+          // (Synthesized `counterparty.id` here is a brand id; routing
+          // `creator:<brandId>` would 404.)
+          <button
+            className="v2-btn v2-btn-outline v2-btn-sm"
+            type="button"
+            onClick={() => onRoute(`brief:${conversation.campaignId}`)}
+          >
+            View brief
+          </button>
+        ) : null}
         <button
           className="v2-btn v2-btn-primary v2-btn-sm"
           type="button"

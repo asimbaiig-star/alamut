@@ -48,33 +48,23 @@ describe('routeFitsPersona', () => {
     });
   });
 
-  describe('drilldown prefixes', () => {
-    it('creator: profile drilldowns are brand-only', () => {
-      expect(routeFitsPersona('creator:cr_sarah', 'brand')).toBe(true);
-      expect(routeFitsPersona('creator:cr_sarah', 'creator')).toBe(false);
-    });
-
-    it('campaign: drilldowns are brand-only', () => {
-      expect(routeFitsPersona('campaign:cmp_1', 'brand')).toBe(true);
-      expect(routeFitsPersona('campaign:cmp_1', 'creator')).toBe(false);
-    });
-
-    it('deal: drilldowns are brand-only', () => {
-      // Deal routes resolve through Inbox post-§2.5 collapse, but the
-      // entry-point is brand-side (the brand owns the campaign-creator
-      // pair the deal page represents).
-      expect(routeFitsPersona('deal:conv_1', 'brand')).toBe(true);
-      expect(routeFitsPersona('deal:conv_1', 'creator')).toBe(false);
-    });
-
-    it('collab: drilldowns are creator-only', () => {
-      expect(routeFitsPersona('collab:col_1', 'creator')).toBe(true);
-      expect(routeFitsPersona('collab:col_1', 'brand')).toBe(false);
-    });
-
-    it('brief: drilldowns are creator-only', () => {
-      expect(routeFitsPersona('brief:cmp_1', 'creator')).toBe(true);
-      expect(routeFitsPersona('brief:cmp_1', 'brand')).toBe(false);
+  describe('drilldown prefixes (shared across personas)', () => {
+    // Drilldown prefixes are SHARED — they're contextual to whoever
+    // clicked them. Pre-fix these were partitioned by persona which
+    // forced an auto-flip in Workspace.go() — a creator clicking
+    // "Open deal room" would teleport into Hannah's brand workspace
+    // via getViewerUserId's demo fallback. The route handler renders
+    // the correct surface for the current persona; the helper stays
+    // permissive so a stale localStorage drilldown is honored.
+    it.each([
+      'creator:cr_sarah',
+      'campaign:cmp_1',
+      'deal:conv_1',
+      'collab:col_1',
+      'brief:cmp_1',
+    ])('%s is valid for either persona', (route) => {
+      expect(routeFitsPersona(route, 'brand')).toBe(true);
+      expect(routeFitsPersona(route, 'creator')).toBe(true);
     });
   });
 

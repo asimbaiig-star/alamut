@@ -51,6 +51,21 @@ export function v2InviteCreator(
     const creator = db.creators.find((c) => c.id === creatorId);
     if (!camp || !creator) return null;
 
+    // IDEMPOTENCY GUARD — pre-fix a double-click on Invite pushed a
+    // fresh notification + a duplicate `brand-invite` history entry on
+    // every call. The collab row itself is found-or-created by
+    // ensureCollabState, but the side effects (notification, history)
+    // accumulated. Refuse if the collab already exists and has a
+    // brand-invite history entry to its name.
+    const existingCollab = db.collaborations.find(
+      (c) => c.campaignId === campaignId && c.creatorId === creatorId,
+    );
+    if (existingCollab && existingCollab.history.some(
+      (h) => typeof h.reason === 'string' && h.reason.startsWith('brand-invite'),
+    )) {
+      return existingCollab;
+    }
+
     // ensureCollabState computes stage from existing artifacts. With no
     // application or offer yet, it defaults to 'invited'. We pass the
     // brand user as actor so the history entry attributes correctly.
@@ -142,6 +157,15 @@ function cancelCollabInternal(
   if (brand && refundAmount > 0) {
     // Pull escrow back to brand wallet — mirror of v2EndCampaign's
     // per-campaign refund logic but scoped to this single collab.
+    //
+    // BUG FIX: pre-fix this credited `walletBalance += refundAmount`
+    // (full rate) but debited `escrowHeld -= fromCampaign` (potentially
+    // smaller when escrow was partially drained — e.g. multi-collab
+    // campaign with mis-accounted state, or dispute partial resolution
+    // edge cases). The asymmetry created phantom dollars in the brand
+    // wallet — credit > debit. Both legs now use `fromCampaign` so the
+    // refund matches the actual recoverable amount. The creator's
+    // pendingBalance reversal uses the same actual amount.
     const fromCampaign = camp ? Math.min(camp.escrowHeld, refundAmount) : 0;
     if (camp) {
       db.campaigns = db.campaigns.map((c) =>
@@ -152,17 +176,18 @@ function cancelCollabInternal(
       b.id === brand.id
         ? {
             ...b,
-            walletBalance: b.walletBalance + refundAmount,
+            walletBalance: b.walletBalance + fromCampaign,
             escrowHeld: Math.max(0, b.escrowHeld - fromCampaign),
           }
         : b,
     );
-    // Reverse the creator's pending balance hold (mirrors v2AcceptOffer's
-    // pendingBalance += netToCreator on accept).
+    // Reverse the creator's pending balance hold using the SAME actual
+    // refundable amount so the creator's pending drops match what the
+    // brand recovered.
     if (creator) {
       const PLATFORM_FEE = 0.10;
       const WHT = 0.05;
-      const netHeld = Math.round(refundAmount * (1 - PLATFORM_FEE - WHT));
+      const netHeld = Math.round(fromCampaign * (1 - PLATFORM_FEE - WHT));
       db.creators = db.creators.map((c) =>
         c.id === creator.id
           ? { ...c, pendingBalance: Math.max(0, c.pendingBalance - netHeld) }
@@ -174,7 +199,7 @@ function cancelCollabInternal(
       at: nowIso(),
       userId: brand.userId,
       kind: 'refund',
-      amount: refundAmount,
+      amount: fromCampaign,
       status: 'cleared',
       campaignId: collab.campaignId,
       counterpartyUserId: creator?.userId,

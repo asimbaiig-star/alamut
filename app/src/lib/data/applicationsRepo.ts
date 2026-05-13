@@ -6,6 +6,7 @@
 
 import type { Application, ApplicationStatus } from '@/lib/api/types';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
+import { StaleVersionError, isNoRowsError } from './optimisticLock';
 
 type Row = {
   id: string;
@@ -17,13 +18,14 @@ type Row = {
   submitted_at: string;
   decided_at: string | null;
   collaboration_id: string | null;
+  version: number;
   created_at: string;
   updated_at: string;
 };
 
 const COLUMNS =
   'id, campaign_id, creator_id, pitch, proposed_rate, status, ' +
-  'submitted_at, decided_at, collaboration_id, created_at, updated_at';
+  'submitted_at, decided_at, collaboration_id, version, created_at, updated_at';
 
 function toApplication(row: Row): Application {
   return {
@@ -36,6 +38,7 @@ function toApplication(row: Row): Application {
     submittedAt: row.submitted_at,
     decidedAt: row.decided_at ?? undefined,
     collaborationId: row.collaboration_id ?? undefined,
+    version: row.version,
   };
 }
 
@@ -99,17 +102,31 @@ export async function insertApplicationInSupabase(a: Application): Promise<Appli
 export async function updateApplicationInSupabase(
   applicationId: string,
   patch: UpdatablePatch,
+  expectedVersion?: number,
 ): Promise<Application> {
   if (!isSupabaseConfigured()) throw new Error('Supabase not configured');
   const sb = getSupabase();
   const rowPatch = toUpdateRowPatch(patch);
-  const { data, error } = await sb
+  let q = sb
     .from('applications')
-    .update(rowPatch)
-    .eq('id', applicationId)
-    .select(COLUMNS)
-    .single();
-  if (error) throw new Error(error.message);
-  if (!data) throw new Error('Application not found');
-  return toApplication(data as unknown as Row);
+    .update({ ...rowPatch, version: (expectedVersion ?? 0) + 1 })
+    .eq('id', applicationId);
+  if (expectedVersion !== undefined) q = q.eq('version', expectedVersion);
+  try {
+    const { data, error } = await q.select(COLUMNS).single();
+    if (error) {
+      if (expectedVersion !== undefined && isNoRowsError(error)) {
+        throw new StaleVersionError('application', applicationId);
+      }
+      throw new Error(error.message);
+    }
+    if (!data) throw new Error('Application not found');
+    return toApplication(data as unknown as Row);
+  } catch (err) {
+    if (err instanceof StaleVersionError) throw err;
+    if (expectedVersion !== undefined && isNoRowsError(err)) {
+      throw new StaleVersionError('application', applicationId);
+    }
+    throw err;
+  }
 }

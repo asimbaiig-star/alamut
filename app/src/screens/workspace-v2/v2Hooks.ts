@@ -70,23 +70,44 @@ function mirrorMessageInsert(message: import('@/lib/api/types').Message): void {
 const DEMO_BRAND_USER_ID = 'u_hannah';      // hannah@aesop.test
 const DEMO_CREATOR_USER_ID = 'u_sarah';     // sarah@alamut.test
 
+/**
+ * Resolve the user id that owns the current persona view.
+ *
+ * Auth rules:
+ *  1. If a session exists and the user has the matching profile (brand
+ *     for brand persona, creator for creator persona), return the
+ *     session id. This is the authenticated happy path.
+ *  2. If a session exists but the persona doesn't match the user's role
+ *     (e.g. a creator session viewing under brand persona — should not
+ *     normally happen after the Workspace persona-sync useEffect, but
+ *     can transiently during route changes), return EMPTY so downstream
+ *     selectors render an empty workspace. Falling back to the demo
+ *     account here would expose another real user's data — the bug
+ *     that caused "Sarah teleports to Aesop" when persona auto-flipped.
+ *  3. Only when there is NO session at all do we use the demo fallback
+ *     so unauthenticated preview / development still renders.
+ */
 function getViewerUserId(db: Database, sessionUserId: string | null, persona: 'brand' | 'creator'): string {
-  // 1. If we have a session AND the user has the right kind of profile for
-  //    the active persona, use the session identity.
   if (sessionUserId) {
     const me = db.users.find((u) => u.id === sessionUserId);
     if (me) {
       if (persona === 'brand' && me.brandId) return sessionUserId;
       if (persona === 'creator' && me.creatorId) return sessionUserId;
+      // MANAGER / AGENT — a user with no own creatorId but who acts on
+      // behalf of one or more creators via managesCreatorIds is a
+      // legitimate creator-persona viewer. Pre-fix this branch fell
+      // through to demo fallback, returning Sarah's userId for every
+      // manager session and silently swapping the viewer's identity.
+      if (persona === 'creator' && me.managesCreatorIds && me.managesCreatorIds.length > 0) {
+        return sessionUserId;
+      }
     }
-    // Session exists but the persona doesn't match the role (cross-persona
-    // preview — e.g. a brand user flipped to "creator" view). Fall through
-    // to the demo identity for that persona so the surfaces still render.
+    // Session present but persona doesn't match — don't leak another
+    // user's account. Empty string causes lookups to return null and
+    // surfaces render their empty states.
+    return '';
   }
-  // 2. Demo fallback by persona — only reachable in unauthenticated dev
-  //    contexts or during cross-persona view. After Phase C lands real
-  //    auth, the unauthenticated branch never fires because the route is
-  //    gated by ProtectedRoute.
+  // Unauthenticated — demo fallback so the workspace renders for dev.
   if (persona === 'creator') {
     return db.users.find((u) => u.id === DEMO_CREATOR_USER_ID)?.id ?? DEMO_CREATOR_USER_ID;
   }
@@ -177,13 +198,28 @@ export function useV2CurrentBrand(): Brand | null {
   return me?.brandId ? db.brands.find((b) => b.id === me.brandId) ?? null : null;
 }
 
-/** Current creator record (resolved from session or demo fallback). */
+/** Current creator record (resolved from session or demo fallback).
+ *
+ * Manager / agent path: when the signed-in user has no own creatorId
+ * but has `managesCreatorIds[]`, return the FIRST managed creator so
+ * the workspace renders something. A future "switch which creator
+ * I'm acting for" picker can promote the selection out of this hook;
+ * for now first-managed is the right default. */
 export function useV2CurrentCreator(): Creator | null {
   const db = useDB();
   const session = useStore((s) => s.session);
   const viewerUserId = getViewerUserId(db, session?.userId ?? null, 'creator');
   const me = db.users.find((u) => u.id === viewerUserId);
-  return me?.creatorId ? db.creators.find((c) => c.id === me.creatorId) ?? null : null;
+  if (!me) return null;
+  if (me.creatorId) {
+    return db.creators.find((c) => c.id === me.creatorId) ?? null;
+  }
+  // Manager / agent — fall back to the first managed creator.
+  if (me.managesCreatorIds && me.managesCreatorIds.length > 0) {
+    const managedId = me.managesCreatorIds[0];
+    return db.creators.find((c) => c.id === managedId) ?? null;
+  }
+  return null;
 }
 
 /** Brand wallet shape derived from the current brand and ledger. */
@@ -280,6 +316,7 @@ export function useV2BrandShortlist(): string[] {
 export function v2ToggleSavedBrief(campaignId: string) {
   let nextSavedBriefs: string[] | undefined;
   let creatorId: string | undefined;
+  let expectedVersion: number | undefined;
   tx((db) => {
     const session = useStore.getState().session;
     const viewerId = getViewerUserId(db, session?.userId ?? null, 'creator');
@@ -294,16 +331,37 @@ export function v2ToggleSavedBrief(campaignId: string) {
     db.creators[idx] = { ...creator, savedBriefs: next };
     nextSavedBriefs = next;
     creatorId = creator.id;
+    expectedVersion = creator.version;
   });
   // Phase 5 — mirror the savedBriefs column to Supabase. RLS gates
   // by auth.email() = owner_email so only the right creator can
   // land the write.
+  //
+  // Migration 021 — pass expectedVersion for optimistic locking. On
+  // StaleVersionError we silently drop the mirror (the next toggle
+  // will re-fetch a fresh version). savedBriefs is a low-stakes
+  // bookmark list — no toast needed for a race.
   if (creatorId && nextSavedBriefs !== undefined) {
     void (async () => {
       try {
         const { updateCreatorInSupabase } = await import('@/lib/data/creatorsRepo');
-        await updateCreatorInSupabase(creatorId!, { savedBriefs: nextSavedBriefs });
+        const updated = await updateCreatorInSupabase(
+          creatorId!,
+          { savedBriefs: nextSavedBriefs },
+          expectedVersion,
+        );
+        // Write the bumped version back to the local store so the next
+        // toggle uses fresh state. Bypass tx() to avoid mirror-loop.
+        useStore.setState((s) => ({
+          db: {
+            ...s.db,
+            creators: s.db.creators.map((c) =>
+              c.id === creatorId ? { ...c, version: updated.version } : c,
+            ),
+          },
+        }));
       } catch (err) {
+        if (err instanceof Error && err.name === 'StaleVersionError') return;
         const msg = err instanceof Error ? err.message : String(err);
         if (/no rows|0 rows|not found|new row violates|row-level security/i.test(msg)) return;
         // eslint-disable-next-line no-console
@@ -613,6 +671,44 @@ export function v2RequestWithdrawal(amount: number): boolean {
     const creator = db.creators[idx];
     if (amount > creator.walletBalance) return;
 
+    // CLEARANCE GATE — pre-fix the creator could withdraw any
+    // walletBalance the moment it landed, including funds in the
+    // 7-day post-approval dispute window. If a dispute landed within
+    // that window the platform owed money it had already paid out.
+    //
+    // Rules:
+    //   1. No open disputes the creator is party to.
+    //   2. No payouts that cleared within the last 7 days where the
+    //      brand could still raise a dispute (submission.disputeWindowClosesAt > now).
+    //      Held funds = sum of those payout amounts.
+    const nowMs = Date.now();
+    const hasOpenDispute = db.disputes.some(
+      (d) => d.status === 'open' && d.collaborationId &&
+        db.collaborations.some((c) => c.id === d.collaborationId && c.creatorId === creator.id),
+    );
+    if (hasOpenDispute) return;
+
+    // Sum payouts in the still-open dispute window. These dollars
+    // are real but contingently reclaimable, so they can't leave.
+    const inWindowHold = db.submissions
+      .filter((s) =>
+        s.creatorId === creator.id &&
+        s.status === 'approved' &&
+        typeof s.disputeWindowClosesAt === 'number' &&
+        s.disputeWindowClosesAt > nowMs,
+      )
+      .reduce((sum, s) => {
+        // Match the payout transaction by submissionId / campaignId.
+        // payouts are positive amounts on the creator's user id.
+        const matching = db.transactions.find(
+          (t) => t.kind === 'payout' && t.userId === me.id &&
+            t.campaignId === s.campaignId && t.amount > 0,
+        );
+        return sum + (matching?.amount ?? 0);
+      }, 0);
+    const withdrawable = Math.max(0, creator.walletBalance - inWindowHold);
+    if (amount > withdrawable) return;
+
     db.creators[idx] = {
       ...creator,
       walletBalance: creator.walletBalance - amount,
@@ -761,6 +857,15 @@ export function v2SendTeamInvite(input: {
         && !i.revokedAt,
     );
     if (existing) { created = existing; return; }
+    // 14-day expiry window — long enough for a casual recipient, short
+    // enough that a leaked unaccepted token doesn't stay redeemable
+    // forever. Brand owner can revoke earlier; expired invites cannot
+    // be redeemed via v2AcceptTeamInvite.
+    const TEAM_INVITE_TTL_DAYS = 14;
+    const createdAtIso = new Date().toISOString();
+    const expiresAtIso = new Date(
+      Date.now() + TEAM_INVITE_TTL_DAYS * 24 * 60 * 60 * 1000,
+    ).toISOString();
     const invite: import('@/lib/api/types').TeamInvite = {
       id: `inv_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       brandId: input.brandId,
@@ -768,7 +873,8 @@ export function v2SendTeamInvite(input: {
       invitedEmail: cleanEmail,
       role: input.role,
       token: `tk_${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`,
-      createdAt: new Date().toISOString(),
+      createdAt: createdAtIso,
+      expiresAt: expiresAtIso,
     };
     db.teamInvites = [...(db.teamInvites ?? []), invite];
     created = invite;
@@ -845,6 +951,13 @@ export function v2AcceptTeamInvite(token: string): { ok: boolean; reason?: strin
     const invite = db.teamInvites![idx];
     if (invite.revokedAt) { result = { ok: false, reason: 'revoked' }; return; }
     if (invite.acceptedAt) { result = { ok: true }; return; } // idempotent
+    // EXPIRY GATE — invites older than their 14-day window can't be
+    // redeemed. Pre-fix tokens were forever-valid; a leaked never-
+    // accepted invite was a permanent liability.
+    if (invite.expiresAt && Date.now() > new Date(invite.expiresAt).getTime()) {
+      result = { ok: false, reason: 'expired' };
+      return;
+    }
     if (invite.invitedEmail.toLowerCase() !== me.email.toLowerCase()) {
       result = { ok: false, reason: 'wrong-account' };
       return;

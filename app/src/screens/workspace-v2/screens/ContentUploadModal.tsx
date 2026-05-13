@@ -3,10 +3,11 @@
 // Two-step flow: drag-and-drop (or click-to-upload) + caption editor
 // with Spark pre-flight checks → success state. Wired in CollabDetail.
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Icon } from '../lib';
 import type { V2Campaign, V2Collab } from '../data';
 import { v2SubmitContent } from '../v2CampaignActions';
+import { pushToast } from '@/lib/utils/toast';
 
 interface Props {
   collab: V2Collab;
@@ -22,10 +23,53 @@ interface Props {
   onClose: () => void;
 }
 
+// File constraints — server / Storage would enforce these in production.
+// For the demo we cap on the client at submit time. Allowlist covers the
+// formats every supported platform (Instagram/TikTok/YouTube/X/Substack
+// /LinkedIn/Newsletter) actually accepts as a draft.
+const MAX_FILE_SIZE_MB = 200;
+const ALLOWED_MIME_PREFIXES = ['video/', 'image/', 'application/pdf'];
+const ALLOWED_EXT = ['.mp4', '.mov', '.webm', '.png', '.jpg', '.jpeg', '.heic', '.gif', '.pdf'];
+
+function isAllowedFile(f: File): { ok: true } | { ok: false; reason: string } {
+  if (f.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+    return { ok: false, reason: `File is ${(f.size / 1024 / 1024).toFixed(1)}MB — limit is ${MAX_FILE_SIZE_MB}MB.` };
+  }
+  const mimeOk = ALLOWED_MIME_PREFIXES.some((p) => f.type.startsWith(p));
+  const extOk = ALLOWED_EXT.some((ext) => f.name.toLowerCase().endsWith(ext));
+  // MIME alone is unreliable on some platforms (e.g. iOS HEIC); accept
+  // if EITHER MIME prefix matches OR the extension does.
+  if (!mimeOk && !extOk) {
+    return { ok: false, reason: 'Only video, image, or PDF files are accepted.' };
+  }
+  return { ok: true };
+}
+
+function fmtFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
 export function ContentUploadModal({ collab, campaign, deliverableId, deliverableLabel, isResubmit, onClose }: Props) {
   const [step, setStep] = useState<0 | 1>(0);
   const [caption, setCaption] = useState('');
   const [file, setFile] = useState<{ name: string; size: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  function handleFilePicked(picked: FileList | null) {
+    const f = picked?.[0];
+    if (!f) return;
+    const check = isAllowedFile(f);
+    if (!check.ok) {
+      pushToast(check.reason, 'bad');
+      // Clear so re-picking the same file fires onChange again.
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    setFile({ name: f.name, size: fmtFileSize(f.size) });
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
 
   // Brand-safe pre-flight check primitives — synthesized for the demo.
   // Real implementation would parse the uploaded media + caption to set
@@ -66,10 +110,23 @@ export function ContentUploadModal({ collab, campaign, deliverableId, deliverabl
           {step === 0 && (
             <>
               <div className="v2-eyebrow" style={{ marginBottom: 8 }}>Upload your draft</div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={ALLOWED_EXT.join(',')}
+                style={{ display: 'none' }}
+                onChange={(e) => handleFilePicked(e.target.files)}
+                aria-hidden="true"
+              />
               <button
                 type="button"
                 className={`v2-upload-dropzone ${file ? 'is-loaded' : ''}`}
-                onClick={() => setFile({ name: 'draft_v1.mp4', size: '24 MB' })}
+                onClick={() => fileInputRef.current?.click()}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  handleFilePicked(e.dataTransfer.files);
+                }}
               >
                 {file ? (
                   <>
@@ -81,7 +138,9 @@ export function ContentUploadModal({ collab, campaign, deliverableId, deliverabl
                   <>
                     <div style={{ fontSize: 28, marginBottom: 8 }}>{Icon.plus}</div>
                     <div style={{ fontWeight: 600, marginBottom: 4 }}>Drop file or click to upload</div>
-                    <div className="v2-muted" style={{ fontSize: 12 }}>MP4, MOV up to 200MB</div>
+                    <div className="v2-muted" style={{ fontSize: 12 }}>
+                      Video / image / PDF · up to {MAX_FILE_SIZE_MB}MB
+                    </div>
                   </>
                 )}
               </button>

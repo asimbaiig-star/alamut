@@ -199,18 +199,51 @@ export function ensureCollabState(
   // so the local tx() commits regardless of network conditions.
   // Wrapped in dynamic import to avoid pulling Supabase into hot paths
   // when env vars aren't set (the helper short-circuits anyway).
+  //
+  // Migration 020 (slice 8 follow-up): the repo now uses an explicit
+  // update-with-version → insert-on-miss two-step instead of a blind
+  // upsert. We pass the local row's `version` (read after the local tx
+  // committed) as `expectedVersion`; on stale-version a StaleVersionError
+  // surfaces a toast. Successful writes write the bumped version back
+  // into the local store so subsequent mirrors stay in sync.
   if (typeof window !== 'undefined') {
+    const collabSnapshot = collab; // captured for the closure
+    const expectedVersion = collabSnapshot.version;
     void (async () => {
       try {
         const { isSupabaseConfigured } = await import('@/lib/supabase');
         if (!isSupabaseConfigured()) return;
-        const { upsertCollabInSupabase } = await import('@/lib/data/collaborationsRepo');
-        await upsertCollabInSupabase(collab!);
+        const { writeCollabInSupabase } = await import('@/lib/data/collaborationsRepo');
+        const updated = await writeCollabInSupabase(collabSnapshot, expectedVersion);
+        // Write the bumped version back to local state so the next
+        // mirror call sends the right expectedVersion. Bypass tx() —
+        // this is a synthetic field bump, not a workflow event.
+        if (typeof updated.version === 'number') {
+          const { useStore } = await import('@/lib/api/store');
+          useStore.setState((s) => {
+            const idx = s.db.collaborations.findIndex((c) => c.id === collabSnapshot.id);
+            if (idx === -1 || s.db.collaborations[idx].version === updated.version) return s;
+            const next = s.db.collaborations.slice();
+            next[idx] = { ...next[idx], version: updated.version };
+            return { ...s, db: { ...s.db, collaborations: next } };
+          });
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         // Silence RLS rejections (not the row's owner) + FK violations
         // (campaign/creator not in Postgres yet for generated cmp_g* etc.)
         if (/row-level security|new row violates|foreign key|no rows|0 rows|not found/i.test(msg)) return;
+        // Stale-version conflict — another tab/device updated this
+        // collab while we were buffering. Toast + the next read pulls
+        // canonical state.
+        if (err instanceof Error && err.name === 'StaleVersionError') {
+          const { pushToast } = await import('@/lib/utils/toast');
+          pushToast(
+            `Couldn't save collaboration — another tab updated it. Refresh to see the latest.`,
+            'bad',
+          );
+          return;
+        }
         // eslint-disable-next-line no-console
         console.warn('[collab mirror] failed:', msg);
       }

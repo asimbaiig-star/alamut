@@ -46,3 +46,35 @@ export function cn(...classes: (string | false | null | undefined)[]): string {
 export function initials(name: string): string {
   return name.split(/\s+/).slice(0, 2).map((n) => n[0]).join('').toUpperCase();
 }
+
+/**
+ * Safe numeric coercion for `<input type="number">` onChange handlers.
+ *
+ * Pre-fix many sites used `parseInt(e.target.value || '0', 10)` or
+ * `Number(e.target.value)` directly. Both produce `NaN` on partial-
+ * scientific input ('1e'), which then propagates to wallet balances,
+ * escrow amounts, and transactions. The downstream `Math.max`,
+ * `+=`, and JSON serialization all silently accept NaN, so a brand
+ * could end up with `walletBalance: NaN` after a single bad keystroke
+ * — the wallet display then breaks entirely.
+ *
+ * This helper:
+ *   - returns `min` (defaults to 0) for empty, NaN, or non-finite input
+ *   - clamps to `[min, max]` when those are provided
+ *   - rounds to integer when `integer` is true (default)
+ *
+ * Usage:
+ *   onChange={(e) => setRate(parseNumberInput(e.target.value, { min: 0 }))}
+ */
+export function parseNumberInput(
+  raw: string,
+  opts: { min?: number; max?: number; integer?: boolean } = {},
+): number {
+  const { min = 0, max = Number.MAX_SAFE_INTEGER, integer = true } = opts;
+  if (raw == null || raw === '') return min;
+  const n = integer ? parseInt(raw, 10) : Number(raw);
+  if (!Number.isFinite(n)) return min;
+  if (n < min) return min;
+  if (n > max) return max;
+  return n;
+}

@@ -12,6 +12,9 @@
 
 import { useState } from 'react';
 import { Icon, fmtUSD } from '../lib';
+import { useV2CurrentBrand } from '../v2Hooks';
+import { v2UpdateBrand } from '../v2CampaignActions';
+import { pushToast } from '@/lib/utils/toast';
 
 interface Props {
   onRoute: (r: string) => void;
@@ -52,15 +55,19 @@ const TIERS: { id: NonNullable<State['creatorTier']>; label: string; range: stri
 ];
 
 export function BrandOnboardingV2({ onRoute }: Props) {
+  const currentBrand = useV2CurrentBrand();
   const [step, setStep] = useState<StepId>('company');
+  const [submitting, setSubmitting] = useState(false);
   const [s, setS] = useState<State>({
-    companyName: '',
-    industry: '',
-    hq: 'Lahore',
-    website: '',
-    about: '',
-    categories: [],
-    regions: [],
+    // Pre-fill from any existing brand record (re-entering the wizard
+    // after a partial fill should not blank everything out).
+    companyName: currentBrand?.name ?? '',
+    industry: currentBrand?.industry ?? '',
+    hq: currentBrand?.hq || 'Lahore',
+    website: currentBrand?.website ?? '',
+    about: currentBrand?.about ?? '',
+    categories: currentBrand?.preferredCategories ?? [],
+    regions: currentBrand?.preferredRegions ?? [],
     creatorTier: null,
     monthlyBudget: '5000',
     firstBriefMode: null,
@@ -70,6 +77,47 @@ export function BrandOnboardingV2({ onRoute }: Props) {
   const next = () => idx < STEPS.length - 1 && setStep(STEPS[idx + 1].id);
   const back = () => idx > 0 && setStep(STEPS[idx - 1].id);
   const update = (patch: Partial<State>) => setS((prev) => ({ ...prev, ...patch }));
+
+  // Persist the wizard's seven mappable fields onto the current brand
+  // record before routing into the workspace. Pre-fix the wizard
+  // discarded everything — fresh signups landed in /v2 with empty
+  // brand rows and had to re-enter every field via Brand Profile.
+  // creatorTier + monthlyBudget have no place in the Brand schema yet,
+  // so they're dropped (acceptable — they're matching hints, not
+  // identity); a future migration could add them.
+  async function persistAndRoute() {
+    if (!currentBrand?.id) {
+      // No brand on this session — nothing to persist against.
+      // Skip the write and route as before so the wizard isn't a dead
+      // end during local-only / unauth preview.
+      routeAfterFinish();
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await v2UpdateBrand(currentBrand.id, {
+        name: s.companyName.trim(),
+        industry: s.industry,
+        hq: s.hq,
+        website: s.website.trim(),
+        about: s.about.trim(),
+        preferredCategories: s.categories,
+        preferredRegions: s.regions,
+      });
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : 'Could not save your brand profile');
+      setSubmitting(false);
+      return;
+    }
+    setSubmitting(false);
+    routeAfterFinish();
+  }
+
+  function routeAfterFinish() {
+    if (s.firstBriefMode === 'spark') onRoute('spark');
+    else if (s.firstBriefMode === 'brief') onRoute('campaigns');
+    else onRoute('discover');
+  }
 
   const toggleArr = <T extends string>(arr: T[], v: T): T[] =>
     arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v];
@@ -380,14 +428,10 @@ export function BrandOnboardingV2({ onRoute }: Props) {
             <button
               className="v2-btn v2-btn-primary"
               type="button"
-              disabled={!canProceed}
-              onClick={() => {
-                if (s.firstBriefMode === 'spark') onRoute('spark');
-                else if (s.firstBriefMode === 'brief') onRoute('campaigns');
-                else onRoute('discover');
-              }}
+              disabled={!canProceed || submitting}
+              onClick={persistAndRoute}
             >
-              {Icon.check} Get started
+              {Icon.check} {submitting ? 'Saving…' : 'Get started'}
             </button>
           ) : (
             <button className="v2-btn v2-btn-primary" type="button" disabled={!canProceed} onClick={next}>

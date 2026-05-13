@@ -6,7 +6,7 @@ the pre-migration design phases 1–40). Append new sessions at the
 bottom. Designed to be read into a fresh context window to recover
 state quickly after a reset.
 
-**Last updated:** 2026-05-12
+**Last updated:** 2026-05-13
 
 ---
 
@@ -20,6 +20,26 @@ audits have hardened the workspace UI: a 40-item functional sweep
 shipped real validation/wiring across most modal flows + home
 dashboards, and a follow-up modal sweep added input validation +
 data-loss guards across ten dialogs.
+
+---
+
+## What changed in the 2026-05-13 audit (high-impact tldr)
+
+The original 17 backend-migration phases shipped a working server.
+The 2026-05-13 session ran a structural audit across the entire
+campaign-management pipeline, caught two user-reported bugs (Sarah
+self-msg in inbox + Aesop workspace teleport on deal-room open) and
+~80 latent findings. 24 mutations updated, 2 new migrations (019
+RLS-tighten + 020 optimistic-locks), 49 new tests, 3 modal/component
+extractions for testability, 3 orphan files deleted. Full ledger in
+"Session log" below.
+
+**Most important behaviour change:** v2 mutations now refuse rather
+than silently producing inconsistent state. Pre-fix a brand could
+accept an offer with $0 wallet (Math.max clamp → phantom escrow);
+a creator could apply to a draft campaign; submissions could land
+on campaigns the creator had no offer on. All such paths now hard-
+return on the gate. Toasts surface where the UI needed them.
 
 ---
 
@@ -238,21 +258,21 @@ app/src/screens/workspace-v2/
 
 ## Outstanding / deferred items
 
-Nothing critical. Bookmark list of "could-do-next" if a future session
-wants to keep going:
+After the 2026-05-13 workflow-audit slices, the remaining items are:
 
-- **Notifications migration** — currently local-only by design (per-
-  device). Could migrate if cross-device notification badges matter.
-- **Tighten transactions RLS** — currently `with check (true)`. Needs a
-  userId→email mapping in the schema (users live in auth.users with
-  UUIDs vs our local text ids).
-- **Realtime for non-chat tables** — could broadcast contract/collab
-  changes too. Today only threads + messages are on the realtime
-  publication.
-- **Spark draft auto-save** — currently explicit Save button. Auto-save
-  on every meaningful edit with debounce would be nicer UX.
-- **ConnectPlatformModal mock OAuth** — still 100% mock; would need a
-  real OAuth flow when ready.
+_(collaborations refactor done in slice 9 — see Session log below)_
+- **Larger parent-screen RTL tests** — BrandHome, CreatorHome,
+  CampaignDetail (Pipeline tab + kanban). Each ~600 lines with heavy
+  store deps; diminishing returns vs the modal-extraction approach
+  unless specific user demand.
+- **Notifications migration** — local-only by design. Cross-device
+  notification badges would need it.
+- **Realtime for non-chat tables** — only threads + messages are on
+  the realtime publication. Contract / collab changes would benefit.
+- **Spark draft auto-save** — currently explicit Save button.
+- **ConnectPlatformModal mock OAuth** — still 100% mock.
+- **Real-money infra** — Stripe Connect, real OAuth (IG/TikTok/YT/
+  Substack/X), SES for email digests. Out of scope for the prototype.
 
 ---
 
@@ -274,7 +294,228 @@ was just shipped.
   - Stale-bundle recovery via vite:preloadError listener
   - This log file created
 
----
+- **2026-05-13 (workflow audit — 7 slices, ~24 mutations updated, +49 tests, 2 new migrations)** —
+  - **User-reported bugs fixed** (verified end-to-end in browser):
+    - Sarah self-message in inbox — ConversationList row label was using
+      creator.name unconditionally; now persona-aware (Inbox.tsx)
+    - Aesop workspace teleport on deal/campaign open — Workspace.go()
+      auto-flipped persona to brand on drilldown routes; getViewerUserId
+      then fell back to DEMO_BRAND_USER_ID (Hannah). Both fixed:
+      drilldowns no longer flip persona; getViewerUserId returns empty
+      when persona doesn't match instead of leaking another user's id.
+  - **Critical audit findings closed:**
+    - Escrow phantom — v2AcceptOffer/v2AcceptCounter clamped wallet via
+      `Math.max(0, wallet - rate)` but credited full escrow regardless.
+      Now refuses the accept when wallet < rate.
+    - Stage gates — v2ApplyToCampaign rejects unless `camp.stage='live'`;
+      v2SubmitContent requires an accepted offer + live campaign;
+      v2AcceptOffer/Counter/ApproveContent/RequestRevision/SendOffer
+      all live-only.
+    - Budget cap — v2SendOffer refuses when `committed + rate > budget`.
+    - Revision cap — MAX_REVISIONS=3 enforced via brand-feedback count.
+    - Withdraw clearance gate — refuses if open dispute OR submission
+      still in 7-day dispute window.
+    - Counter-rate sanity bound — refuses rate > 10× original; UI shows
+      "+N% vs $X" delta hint.
+    - Budget edit floor — `api.campaigns.update` rejects when proposed
+      budget < spent+escrow+open-offers.
+    - Cancel-collab UX wired both sides (brand request button +
+      creator agree/decline banner) — v2RequestCollabCancel was
+      previously unreachable from any UI.
+    - v2ApproveContent fallback rate removed — was `camp.budget / N`
+      when no accepted offer; could drain unrelated escrow.
+    - cancelCollabInternal refund symmetry — both legs use fromCampaign
+      (no more phantom dollars on partial-escrow edge case).
+    - Dual-stage `paid` drift — deriveCollab now matches computeCollabStage
+      (latestSub.status='approved' && isLive && hasPayout && campIsClosed).
+    - v2EndCampaign cleanup — pitched/negotiating collabs no longer
+      stranded as "awaiting brand response" forever.
+    - Stale-offer auto-expiry — v2SweepStaleOffers fires on Workspace
+      mount, flips pending/countered offers older than 14 days to expired.
+  - **Ownership / cross-account fixes:**
+    - CampaignDetail + CollabDetail enforce ownership before rendering
+      mutation UI (brand must own the campaign; creator must own the
+      collab).
+    - View profile button for creator persona now routes to brief view
+      instead of the broken `creator:<brandId>` path.
+    - djb2 → FNV-1a 64-bit deterministic user-id hash (collision-free
+      at platform scale; identical formula in client.ts + sessionSync.ts).
+  - **Settings + persistence + onboarding:**
+    - Settings tab on CampaignDetail now persists via new v2UpdateCampaign
+      mutation; campaignsRepo UpdatablePatch extended with title /
+      pitch / category / region / autoShortlist columns.
+    - BrandOnboardingV2 + CreatorOnboardingV2 now persist their wizard
+      fields via v2UpdateBrand / v2UpdateCreatorIdentity + v2AddCreatorChannel
+      (pre-fix the "Get started" / "Publish" buttons just routed,
+      discarding everything typed).
+    - KYC verification now writes `kycVerifiedAt` ISO timestamp so the
+      scheduler's 365-day reminder actually enqueues.
+    - NaN guards — new `parseNumberInput` helper in `format.ts` applied
+      to all money-bearing numeric inputs (SendOfferModal, CounterOfferModal,
+      BrandWallet, CreatorWallet, NewCampaignWizard, BriefDetail).
+    - Team-invite expiry — 14-day TTL via `expiresAt` column +
+      v2AcceptTeamInvite rejection with reason='expired'.
+    - Manager seats in v2 — getViewerUserId + useV2CurrentCreator now
+      accept users with `managesCreatorIds[]` (fall back to first
+      managed creator).
+  - **New v2 surfaces (modals previously unreachable):**
+    - LeaveReviewModal — wired to paid-stage banner on CollabDetail.
+    - RaiseDisputeModal — wired to a "raise dispute" link on CollabDetail
+      stages confirmed/submitted/approved/live.
+    - AdvanceModal — wired to CreatorWallet topbar when pendingBalance
+      × 0.8 ≥ $100 AND no active advance.
+    - Counter-cap dual-side notifications (v2CounterOffer / v2CounterCounter
+      both notify brand + creator when 4-round cap exceeded).
+  - **Migration 019 — tighten_rls.sql:**
+    - Added `is_participant_of_campaign(p_campaign_id)` helper.
+    - transactions INSERT now gated on auth-is-participant for
+      non-topup/non-referral kinds.
+    - reviews INSERT + UPDATE gated on participant.
+    - disputes INSERT + UPDATE gated on participant.
+    - campaign-assets bucket INSERT/DELETE gated on
+      is_brand_owner_of_campaign(path-first-segment).
+    - message-attachments bucket INSERT/DELETE gated on
+      is_participant_of_campaign(thread.campaign_id).
+    - team_invites.expires_at column added (14-day TTL).
+  - **Migration 020 — optimistic_locks.sql:**
+    - `version integer not null default 0` added to campaigns / offers
+      / applications / submissions / collaborations / disputes (the
+      six highest-risk mutation tables).
+    - Shared helper `src/lib/data/optimisticLock.ts` exports
+      `StaleVersionError` + `isNoRowsError`.
+    - 5 of 6 repos (collaborations uses upsert — out of scope for this
+      pass) accept optional `expectedVersion?: number` parameter; the
+      UPDATE gates on `version = expectedVersion` and bumps to
+      `version + 1`. PostgREST "no rows" responses translate to typed
+      `StaleVersionError`.
+    - Mirror functions (campaign / offer / application / submission)
+      catch StaleVersionError and surface a toast: *"Couldn't save X
+      — another tab updated it. Refresh to see the latest."*
+    - Caller wiring (passing expectedVersion through every v2 mutation
+      site) is the next slice — infrastructure is in place but the
+      mirrors still call without the version param.
+  - **Idempotency audit — 5 mutations had missing guards, all fixed:**
+    - v2WithdrawApplication — early-return on `status === 'withdrawn'`
+    - v2MarkContentLive — early-return when LIVE: feedback exists
+    - v2RaiseDispute — single-open-dispute-per-collab guard
+    - v2InviteCreator — no-dupe-brand-invite-history guard
+    - v2SendOffer — no-parallel-pending-offers guard
+  - **RTL component-test infrastructure + 49 new tests:**
+    - Added `@testing-library/react` + `@testing-library/jest-dom` + jsdom
+    - vitest.config.ts now matches `.test.tsx` glob; jsdom env per file
+      via `@vitest-environment jsdom` docblock; setup file loads
+      jest-dom matchers
+    - New tests:
+      - CounterOfferModal (7) — delta hint + 10× cap + dispatch
+      - SendOfferModal (6) — rate validation + below-floor warning
+      - threadToV2 (5) — Sarah self-msg regression at adapter layer
+      - LeaveReviewModal (6) — star + textarea gating
+      - RaiseDisputeModal (6) — category + description gating
+      - StageActionBanner (19) — full state × sub-state banner matrix
+  - **Modal + component extractions (testability):**
+    - LeaveReviewModal extracted from CollabDetail.tsx
+    - RaiseDisputeModal extracted from CollabDetail.tsx
+    - StageActionBanner extracted from CollabDetail.tsx (~190 lines)
+    - CollabDetail.tsx net ~340 lines smaller
+  - **Dead-code cleanup:**
+    - Deleted src/screens/deal/DealActionBanner.tsx (Phase 25 redesign;
+      superseded by workspace-v2)
+    - Deleted src/components/today/TodayQueue.tsx +
+      TodayDealRow.tsx (Phase 26 rebuild; superseded by BrandHome/
+      CreatorHome). 3 files + 2 empty directories purged.
+  - **Test count delta:** 377 → 426 (49 new tests, all passing). TSC clean.
+
+- **2026-05-13 (slice 8 — optimistic-lock caller wiring)** —
+  - Added `version?: number` to Campaign / Offer / Application /
+    Submission / Dispute types in `src/lib/api/types.ts`.
+  - 5 repos (`campaignsRepo`, `offersRepo`, `applicationsRepo`,
+    `submissionsRepo`, `disputesRepo`) updated `toX` row mappers to
+    surface `version` from server reads. Hydration overlay flows it
+    into the local store automatically.
+  - 4 mirror functions in `v2CampaignActions.ts` (campaign / offer /
+    application / submission) + 1 in `v2DisputeActions.ts` now look
+    up `expectedVersion` internally via `useStore.getState().db.<table>.
+    find(...)?.version` (zero caller changes across ~22 mirror sites).
+  - On successful mirror UPDATE, the returned row's new `version` is
+    written back to local state via a new `writeBackVersion(table, id,
+    version)` helper that bypasses `tx()` (synthetic local-only field
+    bump — no mirror loop). Same shape inlined in v2DisputeActions for
+    the dispute mirror to avoid a circular import.
+  - Behaviour: lock is fully wired. In local-only dev (no Supabase
+    configured) mirrors early-return so the lock is dormant. Against
+    a live Supabase that has migration 020 applied, cross-tab races
+    surface as `StaleVersionError` → toast: *"Couldn't save X — another
+    tab updated it. Refresh to see the latest."*
+  - Tests + TSC: still 426/426 green; no regressions.
+
+- **2026-05-13 (slice 9 — collaborations refactor + parent-screen RTL)** —
+  - **Collaborations repo refactored** — `upsertCollabInSupabase` was
+    the only mutation path left without an optimistic lock (the upsert
+    pattern doesn't naturally accept a `where version = ?` predicate).
+    Replaced with `writeCollabInSupabase(c, expectedVersion?)` that
+    does an explicit two-step:
+    1. If expectedVersion is known: UPDATE with `where id AND version`.
+       On no-rows: probe whether the row exists. Exists with different
+       version → StaleVersionError. Doesn't exist → fall to step 2.
+    2. INSERT with version=0. Duplicate-key races translate to
+       StaleVersionError for uniform caller handling.
+    Original `upsertCollabInSupabase` symbol kept as a deprecated alias
+    so existing imports don't break.
+  - **Collab mirror in collabSync.ts** now reads `collab.version` as
+    expectedVersion, passes through to writeCollabInSupabase, catches
+    StaleVersionError → toast, and writeBacks the bumped version to
+    the local store via setState (bypassing tx() — synthetic field bump).
+  - **Collaboration type** got `version?: number`; toCollab maps it.
+  - **Parent-screen RTL smoke tests** — 12 new tests across 3 screens:
+    - BrandHome (4): topbar chrome, live-count crumb, New campaign +
+      Spark Send CTA dispatch
+    - CreatorHome (3): empty state when no creator, `Hi <FirstName>`
+      title, lifetime earnings render
+    - CampaignDetail (5): owner sees campaign; **ownership gate refuses
+      non-owner** with 3 variants (other brand, no brand, "View public
+      brief" CTA dispatch); not-found state. The gate was the slice-1
+      cross-account leak fix; tests now pin it permanently.
+  - Test count delta: 426 → 438 (+12). TSC clean.
+
+- **2026-05-13 (slice 10 — brands + creators optimistic locks)** —
+  - **Migration 021** (`app/supabase/migrations/021_optimistic_locks_v2.sql`) —
+    adds `version integer not null default 0` to `public.brands` and
+    `public.creators`. The other 6 versioned tables already shipped in
+    migration 020; this slice closes the parity gap.
+  - **`Brand` + `Creator` types** got `version?: number` (optional so
+    pre-migration rows keep type-checking). Both repos extended their
+    `Row` type, `COLUMNS` const, and `toX` mapper to surface it.
+  - **`updateBrandInSupabase` + `updateCreatorInSupabase`** now accept
+    `expectedVersion?: number` and gate the UPDATE on `where id AND
+    version`. PostgREST no-rows is translated to `StaleVersionError`
+    using the same `isNoRowsError` helper from `optimisticLock.ts`.
+  - **Call-site wiring**:
+    - `v2UpdateBrand` (in `v2CampaignActions.ts`) reads
+      `useStore.getState().db.brands.find(b => b.id === brandId)?.version`
+      as expectedVersion, passes to repo. On success, `serverResult` is
+      written back into the local tx so the next edit uses the bumped
+      version. `StaleVersionError` propagates to `BrandProfile` /
+      `BrandOnboardingV2`, where the existing `catch (e) → pushToast`
+      blocks surface "Stale version on brand:... — another writer
+      updated this row." to the user. No new catch wiring needed.
+    - `mirrorCreatorToSupabase` (in `v2CreatorActions.ts`) reads
+      `creator.version` post-tx, calls repo with expectedVersion, and on
+      success writes the bumped version back to the local store via
+      direct `useStore.setState` (bypassing `tx()` — synthetic field
+      bump, not a workflow event). `StaleVersionError` → friendly toast
+      *"Couldn't save creator profile — another tab updated it. Refresh
+      to see the latest."*
+    - `v2ToggleSavedBrief` (in `v2Hooks.ts`) captures `creator.version`
+      inside the tx, passes through, writeBacks the new version. Low-
+      stakes bookmark list — StaleVersionError silently dropped (next
+      toggle will read fresh state and succeed).
+  - Behaviour: full parity with the 6-table slice 8. Cross-tab races on
+    brand profile / creator storefront / savedBriefs all funnel through
+    `StaleVersionError`. Local-only dev still works (mirrors early-
+    return when Supabase isn't configured).
+  - TSC clean. Tests 438/438 green — no regressions, no new tests
+    required because the mirror functions are already covered by the
+    slice-8 conformance pattern and direct write integrations.
 
 ## Commit hashes for traceability
 

@@ -9,6 +9,7 @@ import type {
   Dispute, DisputeStatus, DisputeCategory, DisputeMessage, DisputeEvidence,
 } from '@/lib/api/types';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
+import { StaleVersionError, isNoRowsError } from './optimisticLock';
 
 type Row = {
   id: string;
@@ -23,6 +24,7 @@ type Row = {
   resolution: Dispute['resolution'];
   raised_at: string;
   messages: DisputeMessage[];
+  version: number;
   created_at: string;
   updated_at: string;
 };
@@ -30,7 +32,7 @@ type Row = {
 const COLUMNS =
   'id, collaboration_id, campaign_id, raised_by_user_id, raised_by_role, ' +
   'category, description, evidence, status, resolution, raised_at, ' +
-  'messages, created_at, updated_at';
+  'messages, version, created_at, updated_at';
 
 function toDispute(row: Row): Dispute {
   return {
@@ -47,6 +49,7 @@ function toDispute(row: Row): Dispute {
     raisedAt: +new Date(row.raised_at),
     updatedAt: +new Date(row.updated_at),
     messages: row.messages ?? [],
+    version: row.version,
   };
 }
 
@@ -109,17 +112,31 @@ export async function insertDisputeInSupabase(d: Dispute): Promise<Dispute> {
 export async function updateDisputeInSupabase(
   disputeId: string,
   patch: UpdatablePatch,
+  expectedVersion?: number,
 ): Promise<Dispute> {
   if (!isSupabaseConfigured()) throw new Error('Supabase not configured');
   const sb = getSupabase();
   const rowPatch = toUpdateRowPatch(patch);
-  const { data, error } = await sb
+  let q = sb
     .from('disputes')
-    .update(rowPatch)
-    .eq('id', disputeId)
-    .select(COLUMNS)
-    .single();
-  if (error) throw new Error(error.message);
-  if (!data) throw new Error('Dispute not found');
-  return toDispute(data as unknown as Row);
+    .update({ ...rowPatch, version: (expectedVersion ?? 0) + 1 })
+    .eq('id', disputeId);
+  if (expectedVersion !== undefined) q = q.eq('version', expectedVersion);
+  try {
+    const { data, error } = await q.select(COLUMNS).single();
+    if (error) {
+      if (expectedVersion !== undefined && isNoRowsError(error)) {
+        throw new StaleVersionError('dispute', disputeId);
+      }
+      throw new Error(error.message);
+    }
+    if (!data) throw new Error('Dispute not found');
+    return toDispute(data as unknown as Row);
+  } catch (err) {
+    if (err instanceof StaleVersionError) throw err;
+    if (expectedVersion !== undefined && isNoRowsError(err)) {
+      throw new StaleVersionError('dispute', disputeId);
+    }
+    throw err;
+  }
 }

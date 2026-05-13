@@ -9,6 +9,7 @@
 
 import { useMemo, useState } from 'react';
 import { fmtUSD, Icon } from '../lib';
+import { parseNumberInput } from '@/lib/utils/format';
 import {
   v2CounterOffer, v2CounterCounter, v2DeclineOffer, v2MarkContentLive,
   v2SendOffer, v2SetSubmissionPermalink,
@@ -90,7 +91,7 @@ export function SendOfferModal({ campaignId, creator, defaultRate, onClose }: Se
               <input
                 type="number"
                 value={rate}
-                onChange={(e) => setRate(parseInt(e.target.value || '0', 10))}
+                onChange={(e) => setRate(parseNumberInput(e.target.value, { min: 0 }))}
               />
             </div>
             {minRate !== undefined && (
@@ -239,16 +240,39 @@ export function CounterOfferModal(
               <input
                 type="number"
                 value={rate}
-                onChange={(e) => setRate(parseInt(e.target.value || '0', 10))}
+                onChange={(e) => setRate(parseNumberInput(e.target.value, { min: 0 }))}
               />
             </div>
+            {(() => {
+              // Delta-vs-current hint. Pre-fix the counter input showed
+              // only the absolute number; a creator typing $1M on a $500
+              // offer had no visual signal that the counter was extreme.
+              // Now we show "+ N%" or "− N%" so both sides can sanity-
+              // check before sending.
+              const pct = currentRate > 0
+                ? Math.round(((rate - currentRate) / currentRate) * 100)
+                : 0;
+              const extreme = currentRate > 0 && rate > currentRate * 10;
+              const direction = pct > 0 ? `+${pct}%` : pct < 0 ? `${pct}%` : '0%';
+              const color = extreme
+                ? 'var(--v2-accent)'
+                : Math.abs(pct) > 100
+                  ? 'var(--v2-gold)'
+                  : 'var(--v2-ink-3)';
+              return (
+                <div style={{ fontSize: 11.5, marginTop: 6, color }}>
+                  <strong>{direction}</strong> vs {fmtUSD(currentRate)}{' '}
+                  {extreme && '· over 10× — rejected on submit'}
+                </div>
+              );
+            })()}
             {side === 'creator' && (
-              <div className="v2-muted" style={{ fontSize: 11.5, marginTop: 6 }}>
+              <div className="v2-muted" style={{ fontSize: 11.5, marginTop: 4 }}>
                 Net to you after fees: <strong>{fmtUSD(Math.round(rate * 0.85))}</strong>
               </div>
             )}
             {side === 'brand' && (
-              <div className="v2-muted" style={{ fontSize: 11.5, marginTop: 6 }}>
+              <div className="v2-muted" style={{ fontSize: 11.5, marginTop: 4 }}>
                 Escrow held on accept: <strong>{fmtUSD(rate)}</strong>
               </div>
             )}
@@ -280,7 +304,7 @@ export function CounterOfferModal(
               className="v2-btn v2-btn-primary"
               type="button"
               style={{ flex: 2 }}
-              disabled={rate <= 0}
+              disabled={rate <= 0 || (currentRate > 0 && rate > currentRate * 10)}
               onClick={() => {
                 if (side === 'brand') v2CounterCounter(offerId, rate, message);
                 else v2CounterOffer(offerId, rate, message);

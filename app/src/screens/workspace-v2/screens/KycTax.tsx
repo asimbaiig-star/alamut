@@ -165,13 +165,26 @@ export function KycTax({ onRoute, initialAction }: Props) {
       case 'identity':
       case 'address': {
         // Mark creator verified — in production this'd be a Persona /
-        // Onfido handoff. For demo, flip the flag locally + toast.
+        // Onfido handoff. Demo path mocks the doc upload via toast +
+        // ISO timestamp so the scheduler's 365-day kyc-expired
+        // reminder fires correctly. Pre-fix `verified` flipped to true
+        // without `kycVerifiedAt`, so the reminder logic at
+        // v2ApproveContent:1058 never enqueued.
         if (!rawCreator) return;
+        const nowIso = new Date().toISOString();
         tx((d) => {
           const idx = d.creators.findIndex((c) => c.id === rawCreator.id);
-          if (idx !== -1) d.creators[idx] = { ...d.creators[idx], verified: true };
+          if (idx !== -1) {
+            d.creators[idx] = {
+              ...d.creators[idx],
+              verified: true,
+              kycVerifiedAt: nowIso,
+            };
+          }
         });
-        pushToast(step.id === 'identity' ? 'Identity verified' : 'Address verified');
+        pushToast(step.id === 'identity'
+          ? 'Identity verified — re-verification reminder in 365 days'
+          : 'Address verified — re-verification reminder in 365 days');
         break;
       }
       case 'tax-form':

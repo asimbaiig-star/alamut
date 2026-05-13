@@ -108,8 +108,17 @@ async function resolveAndSetSession(email: string | undefined): Promise<void> {
     if (!brand && !creator) return;
 
     // Same deterministic id helper as client.ts:deterministicUserId.
-    const hash = cleanEmail.split('').reduce((h, c) => ((h * 33 + c.charCodeAt(0)) >>> 0), 5381).toString(36);
-    const userId = `u_x_${hash}`;
+    // FNV-1a 64-bit — see client.ts for the rationale. MUST stay
+    // identical to the client.ts helper so the same email resolves
+    // to the same User.id from both sign-up and cross-device sign-in
+    // paths.
+    const FNV_PRIME = 0x100000001b3n;
+    const MASK64 = 0xffffffffffffffffn;
+    let h = 0xcbf29ce484222325n;
+    for (let i = 0; i < cleanEmail.length; i++) {
+      h = ((h ^ BigInt(cleanEmail.charCodeAt(i))) * FNV_PRIME) & MASK64;
+    }
+    const userId = `u_x_${h.toString(36)}`;
     const now = new Date().toISOString();
 
     const synth = creator

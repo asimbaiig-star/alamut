@@ -28,13 +28,21 @@ import { isSupabaseConfigured } from '@/lib/supabase';
  *  Sends the full editable surface so the helper doesn't need to
  *  know which mutation called it. RLS on the table enforces that
  *  only the creator (auth.email() = owner_email) can land the
- *  write — anyone else's mirror silently no-ops at the DB layer. */
+ *  write — anyone else's mirror silently no-ops at the DB layer.
+ *
+ *  Migration 021: passes `creator.version` as expectedVersion so a
+ *  cross-tab race lands a StaleVersionError → toast. On success
+ *  writes the bumped version back to the local store. */
 function mirrorCreatorToSupabase(creator: Creator): void {
   if (!isSupabaseConfigured()) return;
+  // Read pre-mutation version off the just-committed local state.
+  // The local tx doesn't touch `version`, so this is the version we
+  // believe Postgres currently holds.
+  const expectedVersion = creator.version;
   void (async () => {
     try {
       const { updateCreatorInSupabase } = await import('@/lib/data/creatorsRepo');
-      await updateCreatorInSupabase(creator.id, {
+      const updated = await updateCreatorInSupabase(creator.id, {
         name: creator.name,
         handle: creator.handle,
         tagline: creator.tagline,
@@ -54,13 +62,34 @@ function mirrorCreatorToSupabase(creator: Creator): void {
         availability: creator.availability ?? null,
         featuredReviewIds: creator.featuredReviewIds,
         savedBriefs: creator.savedBriefs,
-      });
+      }, expectedVersion);
+      // Write the bumped version back to the local store so the next
+      // mirror call sends the right expectedVersion. Bypass tx() —
+      // synthetic field bump, not a workflow event.
+      if (typeof updated.version === 'number') {
+        const { useStore } = await import('@/lib/api/store');
+        useStore.setState((s) => {
+          const idx = s.db.creators.findIndex((c) => c.id === creator.id);
+          if (idx === -1 || s.db.creators[idx].version === updated.version) return s;
+          const next = s.db.creators.slice();
+          next[idx] = { ...next[idx], version: updated.version };
+          return { ...s, db: { ...s.db, creators: next } };
+        });
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       // Silence "row not found" (generated creators not in Supabase)
       // and RLS rejections (not the row's owner — e.g. brand-side
       // helpers that touch creator data they don't own).
       if (/no rows|0 rows|not found|JSON object requested|new row violates|row-level security/i.test(msg)) return;
+      if (err instanceof Error && err.name === 'StaleVersionError') {
+        const { pushToast } = await import('@/lib/utils/toast');
+        pushToast(
+          `Couldn't save creator profile — another tab updated it. Refresh to see the latest.`,
+          'bad',
+        );
+        return;
+      }
       // eslint-disable-next-line no-console
       console.warn('[creator mirror] failed:', msg);
     }
@@ -91,6 +120,14 @@ export interface IdentityPatch {
   languages?: string[];
   portrait?: string;   // avatar image URL
   cover?: string;      // banner image URL
+  /** Optional rate card patch — partial fields supported.
+   *  Used by CreatorOnboardingV2 to persist the wizard's per-format
+   *  rates without needing a separate mutation. */
+  rateCard?: Partial<{ post: string; reel: string; story: string; longform: string }>;
+  /** Optional payout method patch (method + currency). The masked
+   *  account number is left to the bank-link flow; onboarding only
+   *  captures the user's intent for which rail to wire up. */
+  payout?: Partial<{ method: string; currency: string }>;
 }
 
 /**
@@ -117,6 +154,10 @@ export function v2UpdateCreatorIdentity(creatorId: string, patch: IdentityPatch)
       languages: patch.languages ?? c.languages,
       portrait: patch.portrait?.trim() || c.portrait,
       cover: patch.cover !== undefined ? patch.cover.trim() || undefined : c.cover,
+      rateCard: patch.rateCard ? { ...c.rateCard, ...patch.rateCard } : c.rateCard,
+      payout: patch.payout
+        ? { ...c.payout, ...patch.payout, account: c.payout.account }
+        : c.payout,
     };
     return db.creators[idx];
   });

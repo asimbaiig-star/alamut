@@ -9,6 +9,7 @@ import { fmtUSD, Icon, Topbar } from '../lib';
 import { useV2BrandWallet, useV2Creators, useV2CurrentBrand } from '../v2Hooks';
 import { v2LaunchCampaign } from '../v2CampaignActions';
 import { pushToast } from '@/lib/utils/toast';
+import { parseNumberInput } from '@/lib/utils/format';
 
 interface Props {
   onRoute: (r: string) => void;
@@ -358,7 +359,7 @@ function PlacementsEditor({
               min={1}
               max={10}
               value={p.count}
-              onChange={(e) => setRow(i, { count: Math.max(1, Math.min(10, parseInt(e.target.value || '1', 10))) })}
+              onChange={(e) => setRow(i, { count: parseNumberInput(e.target.value, { min: 1, max: 10 }) })}
               style={{ width: 64 }}
               aria-label="Count"
             />
@@ -475,7 +476,7 @@ function StepBudget({ draft, update }: { draft: Draft; update: (p: Partial<Draft
           <input
             type="number"
             value={draft.budget}
-            onChange={(e) => update({ budget: parseInt(e.target.value || '0', 10) })}
+            onChange={(e) => update({ budget: parseNumberInput(e.target.value, { min: 0 }) })}
           />
         </div>
         <div className="v2-row" style={{ gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
@@ -496,7 +497,7 @@ function StepBudget({ draft, update }: { draft: Draft; update: (p: Partial<Draft
           <input
             type="number"
             value={draft.perCreator}
-            onChange={(e) => update({ perCreator: parseInt(e.target.value || '0', 10) })}
+            onChange={(e) => update({ perCreator: parseNumberInput(e.target.value, { min: 0 }) })}
           />
         </div>
         <div className="v2-muted" style={{ fontSize: 12, marginTop: 6 }}>
