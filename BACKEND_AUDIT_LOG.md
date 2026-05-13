@@ -258,21 +258,29 @@ app/src/screens/workspace-v2/
 
 ## Outstanding / deferred items
 
-After the 2026-05-13 workflow-audit slices, the remaining items are:
+After the 2026-05-13 audit + post-audit batch (slices 1-10 + items
+1-4), the remaining items are:
 
-_(collaborations refactor done in slice 9 — see Session log below)_
-- **Larger parent-screen RTL tests** — BrandHome, CreatorHome,
-  CampaignDetail (Pipeline tab + kanban). Each ~600 lines with heavy
-  store deps; diminishing returns vs the modal-extraction approach
-  unless specific user demand.
-- **Notifications migration** — local-only by design. Cross-device
-  notification badges would need it.
-- **Realtime for non-chat tables** — only threads + messages are on
-  the realtime publication. Contract / collab changes would benefit.
-- **Spark draft auto-save** — currently explicit Save button.
-- **ConnectPlatformModal mock OAuth** — still 100% mock.
-- **Real-money infra** — Stripe Connect, real OAuth (IG/TikTok/YT/
-  Substack/X), SES for email digests. Out of scope for the prototype.
+_(parent-screen RTL + collaborations refactor done in slice 9)_
+_(Spark auto-save shipped — see Session log "post-audit item 1")_
+_(realtime non-chat shipped — migration 022, item 2)_
+_(notifications migration shipped — migration 023, item 3)_
+_(ConnectPlatformModal OAuth scaffolding shipped — migration 024 +
+Edge Function + client helper. Real flow waits on dev-portal app
+registration per platform — see oauth-callback/README.md)_
+
+- **OAuth flow wiring** — scaffolding is in place but
+  `ConnectPlatformModal` still calls `v2VerifyChannel` (the mock).
+  Once a platform's app is registered + secrets set + Edge Function
+  deployed, replace the mock call with `connectPlatform()` from
+  `src/lib/oauth/connectPlatform.ts`. Each platform can land
+  independently.
+- **scheduledNotifications migration** — the heartbeat queue is still
+  local-only. Lower priority than notifications proper because the
+  queue is regenerated from current state on every boot.
+- **Real-money infra** — Stripe Connect for actual escrow + payouts,
+  SES/SendGrid for real email delivery. Out of scope for the
+  prototype.
 
 ---
 
@@ -517,6 +525,96 @@ was just shipped.
     required because the mirror functions are already covered by the
     slice-8 conformance pattern and direct write integrations.
 
+- **2026-05-13 (post-audit item 1 — Spark draft auto-save)** —
+  `Spark.tsx` previously only persisted on explicit "Save draft"
+  click; tab-close lost in-progress plans. Added a 1500ms-debounced
+  auto-save that fires `v2SaveSparkDraft` silently after the last
+  history/context mutation. New helpers:
+  - `runSave(showToast: boolean)` factors the save logic so both the
+    manual button (toasts) and the auto-save (silent) share the path
+  - `lastSavedSignatureRef` (JSON of `{history, context}`) suppresses
+    redundant writes after a load
+  - `mountedRef` skips the very first effect run so the welcome
+    message doesn't auto-save itself
+  - Topbar shows a `Saving… / Saved · just now` pill that auto-reverts
+    to idle 3s after success
+  - `handleSaveDraft` cancels any pending debounce so an explicit
+    click takes precedence
+  - `handleLoadDraft` + `handleReset` seed/clear the signature so
+    cross-load behaviour stays clean
+
+  Commit `f2437a4`. Browser-verified: send a message, draft persists
+  in the dropdown within ~2-3s without clicking Save.
+
+- **2026-05-13 (post-audit item 2 — realtime for workflow tables)** —
+  Migration `022_realtime_workflow.sql` adds campaigns / offers /
+  applications / submissions / collaborations / disputes to the
+  `supabase_realtime` publication. Companion `realtimeWorkflow.ts`
+  subscribes via `supabase.channel('workflow').on('postgres_changes',
+  ...)` for each table, normalises rows through the (newly exported)
+  `toX` mappers, and overlays into useStore by id. Includes a
+  version-aware overlay (`incoming.version <= existing.version` →
+  skip) so an out-of-order broadcast can't clobber a freshly applied
+  optimistic-lock writeBack. Mounted at boot in `store.ts` alongside
+  `mountChatRealtime`. RLS still gates which rows each subscriber
+  receives, so broadcasts respect the SELECT policies.
+
+  Commit `8ead617`. 438/438 tests passing.
+
+- **2026-05-13 (post-audit item 3 — notifications migration)** —
+  Migration `023_notifications.sql` ports `db.notifications` from
+  Zustand-only to Postgres. Schema mirrors the TS Notification type
+  with `owner_email` as the RLS gate (same pattern as brands /
+  creators). INSERT is permissive (any authenticated session) because
+  user A sending an offer needs to write a notification row for user
+  B; SELECT/UPDATE are restricted to the owner. Realtime added so a
+  notification written on Device A reaches Device B without a reload.
+  Wiring:
+  - `notificationsRepo.ts` with `toNotification`,
+    `fetchAllNotificationsFromSupabase`, `insertNotificationInSupabase`,
+    `markNotificationsReadInSupabase`
+  - `client.ts pushNotification`: queueMicrotask mirror after the
+    parent `tx()` commits, so all 25+ call sites get cross-device
+    notifications for free
+  - `client.ts markAllNotificationsRead` + `NotificationsBell.tsx
+    onItem` / `ackOne`: mirror the read-state flip
+  - `realtimeWorkflow.ts` subscribes to notifications too (no version
+    check — append-only + idempotent read flip)
+  - `store.ts` hydration joins notifications in the boot Promise.all
+    + overlay
+
+  Commit `35fb76f`. 438/438 tests passing.
+
+- **2026-05-13 (post-audit item 4 — OAuth scaffolding)** —
+  Infrastructure-only — real flow needs the user to register apps on
+  each dev portal. Delivered:
+  - Migration `024_platform_tokens.sql`: per-creator-per-platform
+    token storage with RLS (SELECT own only; INSERT blocked from
+    non-service-role since the Edge Function uses service_role).
+    Includes a read-only `creator_channel_verified` view that
+    exposes a verified-boolean without leaking tokens
+  - `supabase/functions/oauth-callback/index.ts`: Deno Edge Function
+    that handles the redirect, exchanges the auth code for tokens
+    per platform (IG / TikTok / YouTube / X fleshed out; newsletter
+    stubbed — Substack has no public OAuth), upserts into
+    platform_tokens via service_role, then postMessages
+    success/failure back to the opener window
+  - `oauth-callback/README.md`: step-by-step per-platform dev-portal
+    setup, secret-key names, authorize-URL templates,
+    token-rotation guidance
+  - `src/lib/oauth/connectPlatform.ts`: client-side popup helper
+    that opens the platform's authorize URL with base64-encoded
+    state, listens for the postMessage. Throws
+    `OAuthNotConfiguredError` when the client_id env var isn't set
+    so `ConnectPlatformModal` can fall back to the mock
+    `v2VerifyChannel` path
+
+  Not yet wired into `ConnectPlatformModal` (still calling the mock).
+  Each platform can land independently once its dev-portal app is
+  registered + secrets set + Edge Function deployed.
+
+  Commit `b5e0dc7`. 438/438 tests passing.
+
 ## Commit hashes for traceability
 
 Recent commits in chronological order — all on origin/main:
@@ -552,3 +650,8 @@ Recent commits in chronological order — all on origin/main:
 | `c3a49f6` | 15 | Spark drafts |
 | `cf7c105` | Modal batch 1 | Validation hints |
 | `c6239ef` | Modal batch 2 | Data preservation + smart validation |
+| `c8e80e1` | Audit | 2026-05-13 slices 1-10 (RLS + locks + extractions + RTL) |
+| `f2437a4` | Post-audit 1 | Spark auto-save |
+| `8ead617` | Post-audit 2 | Migration 022 — realtime for 6 workflow tables |
+| `35fb76f` | Post-audit 3 | Migration 023 — cross-device notifications |
+| `b5e0dc7` | Post-audit 4 | Migration 024 — OAuth scaffolding (platform_tokens + Edge Function) |
