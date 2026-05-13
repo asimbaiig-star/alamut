@@ -799,6 +799,31 @@ function progressToStage(progress: InternalProgress): CampaignStage {
   return 'live'; // live | shortlist | offer | production | posted | reporting
 }
 
+/** Count the deliverable slots that migrator 4 will materialize from a
+ *  free-form deliverables string ("1 Reel + 2 stories" → 3). Mirrors
+ *  `_legacyParseDeliverableSlots` in migrations.ts — only the count
+ *  matters here, not the labels, so we keep this minimal instead of
+ *  importing the full parser. Used by the posted/reporting/closed
+ *  submission seeder to emit one approved submission per slot. */
+function countDeliverableSlots(deliv: string | undefined): number {
+  if (!deliv) return 1;
+  const segments = deliv.split(/\s*\+\s*|\s+and\s+/i);
+  let total = 0;
+  for (const raw of segments) {
+    const seg = raw.trim();
+    if (!seg) continue;
+    const leading = seg.match(/^(\d+)\s+/);
+    const trailing = seg.match(/[×x]\s*(\d+)$/i);
+    const parens = seg.match(/\(\s*(\d+)\s+[a-z]+s?\s*\)$/i);
+    const count = leading ? parseInt(leading[1], 10)
+                : trailing ? parseInt(trailing[1], 10)
+                : parens ? parseInt(parens[1], 10)
+                : 1;
+    total += Math.min(Math.max(count, 1), 10);
+  }
+  return Math.max(total, 1);
+}
+
 function genCampaign(
   idx: number,
   stage: CampaignStage,
@@ -1018,6 +1043,60 @@ function genCampaign(
   if (stageIdx >= 6) {
     reach = range(80_000, 3_500_000);
     engagement = +(2.5 + rng() * 6).toFixed(1);
+  }
+
+  // ============ SUBMISSIONS — posted / reporting / closed (Phase 49) ============
+  //
+  // Pre-fix, only `production`-stage campaigns got seeded submissions
+  // (in_review / revisions). Anything past that — posted / reporting /
+  // closed — had accepted offers + payouts but ZERO submissions,
+  // which left `deriveCollab` rolling up to `confirmed` instead of
+  // `live` / `paid`. Result: Aesop's 14 closed campaigns showed as
+  // "Analytics unlock once content goes live" because no collab ever
+  // crossed the live threshold.
+  //
+  // For each accepted creator on a posted/reporting/closed campaign,
+  // emit ONE approved submission per deliverable slot, with a
+  // permalink for stageIdx >= 6 (where escrow has been released, so
+  // `hasPayout` is true → deliverable.status rolls up to 'live' →
+  // collab.stage = 'live' for reporting, 'paid' for closed).
+  if (stageIdx >= 5 && acceptedCreators.length > 0) {
+    const slotCount = countDeliverableSlots(deliv);
+    acceptedCreators.forEach((cid, i) => {
+      for (let slot = 0; slot < slotCount; slot++) {
+        const submittedAge = Math.max(2, createdAtAge - range(8, 25));
+        const approvedAge = Math.max(1, submittedAge - range(2, 6));
+        submissions.push({
+          id: `sub_g${idx}_${i}_done_s${slot}`,
+          campaignId: `cmp_g${idx}`,
+          creatorId: cid,
+          round: 1,
+          files: [
+            { name: `Final_s${slot}.mp4`, url: upx(COVERS[(idx + i + slot) % COVERS.length], 400, 400) },
+            { name: `Final_s${slot}_alt`,  url: upx(COVERS[(idx + i + slot + 4) % COVERS.length], 400, 400) },
+          ],
+          // `[slot:N]` prefix wires the submission to deliverable index N
+          // via migrator 4's matcher. Standard convention used by the
+          // production-stage block above.
+          notes: `[slot:${slot}] Final cut — approved & live.`,
+          status: 'approved',
+          submittedAt: dayAgo(submittedAge),
+          feedback: [
+            {
+              from: brand.userId,
+              text: 'Looks great — approving for live.',
+              at: dayAgo(approvedAge),
+            },
+          ],
+          // Permalink only for stageIdx >= 6 (reporting, closed). For
+          // posted (stageIdx === 5) the content is approved but not
+          // yet pointed at a live URL — keeps the collab at 'approved'.
+          permalink: stageIdx >= 6
+            ? `https://www.instagram.com/p/D_g${idx}_${i}_${slot}/`
+            : undefined,
+        });
+      }
+    });
   }
 
   // ============ REVIEWS — closed campaigns get reviews from both sides ============

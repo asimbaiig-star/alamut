@@ -74,12 +74,12 @@ export const useStore = create<StoreState>()(
     {
       name: STORAGE_KEY,
       storage: createJSONStorage(() => safeStorage),
-      // 12 — Phase 48 added `testimonials[]` to Database. Old persisted
-      // state from v11 doesn't include this field, so any code reading
-      // db.testimonials crashes with "Cannot read properties of undefined
-      // (reading 'filter')". Bumping the version flushes old state and
-      // rehydrates from the current SEED.
-      version: 12,
+      // 13 — Phase 49 added approved submissions for posted / reporting /
+      // closed campaigns in the seed (so brand Analytics actually has
+      // live + paid collabs to render against). Existing v12 state
+      // doesn't have those rows; bumping flushes the cache and
+      // rehydrates the richer demo state. (12 was Phase 48 testimonials.)
+      version: 13,
       // Forward-only data migrations layered on top of Zustand's persist
       // versioning. After rehydration, walk `db.migrationVersion + 1` to
       // CURRENT_MIGRATION_VERSION and run each migrator. Idempotent;
