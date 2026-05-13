@@ -57,6 +57,16 @@ export function Spark({ onRoute }: Props) {
   const [thinking, setThinking] = useState(false);
   const threadRef = useRef<HTMLDivElement | null>(null);
 
+  // Auto-save (Phase 15.1) — debounce 1500ms after the last
+  // history/context change. Skips on initial mount + when the only
+  // message is the welcome (no real user input yet) + when the
+  // serialised state matches what was last persisted.
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [savedTick, setSavedTick] = useState(0);
+  const autoSaveTimerRef = useRef<number | null>(null);
+  const mountedRef = useRef(false);
+  const lastSavedSignatureRef = useRef<string>('');
+
   // Sync brand savedCreators → context.shortlist once on mount so Spark
   // starts pre-populated with whatever the brand has shortlisted in
   // Discover or saved historically.
@@ -116,6 +126,10 @@ export function Spark({ onRoute }: Props) {
     setHistory([welcomeMessage()]);
     setContext(emptyContext());
     setActiveDraftId(null);
+    // Reset the signature so a brand-new session can auto-save once the
+    // user types their first message.
+    lastSavedSignatureRef.current = '';
+    setAutoSaveStatus('idle');
   }
 
   // Phase 15 — saved drafts state.
@@ -140,33 +154,105 @@ export function Spark({ onRoute }: Props) {
     return words.length < text.length ? `${words}…` : words;
   }
 
-  function handleSaveDraft() {
+  /** Shared save path used by both the manual button and auto-save.
+   *  `showToast=true` is the manual surface — it shows the user-visible
+   *  confirmation. The auto-save path runs silently and only updates
+   *  the inline status pill. Returns the saved draft (or null when
+   *  preconditions fail / nothing changed). */
+  function runSave(showToast: boolean): SparkDraft | null {
     if (!brand) {
-      pushToast('Sign in as a brand to save drafts');
-      return;
+      if (showToast) pushToast('Sign in as a brand to save drafts');
+      return null;
     }
-    const name = activeDraftId
-      ? drafts.find((d) => d.id === activeDraftId)?.name ?? autoNameFromHistory(history)
+    if (history.length < 2 || !history.some((m) => m.from === 'user')) {
+      return null;
+    }
+    const signature = JSON.stringify({ h: history, c: context });
+    if (!showToast && signature === lastSavedSignatureRef.current) {
+      // No-op auto-save: nothing's changed since the last successful write.
+      return null;
+    }
+    const currentId = activeDraftId;
+    const name = currentId
+      ? drafts.find((d) => d.id === currentId)?.name ?? autoNameFromHistory(history)
       : autoNameFromHistory(history);
+    setAutoSaveStatus('saving');
     const saved = v2SaveSparkDraft({
       brandId: brand.id,
-      draftId: activeDraftId ?? undefined,
+      draftId: currentId ?? undefined,
       name,
       history: history as unknown[],
       context: context as unknown as Record<string, unknown>,
     });
     if (saved) {
-      setActiveDraftId(saved.id);
-      pushToast(`Draft saved · "${name}"`);
+      if (!currentId) setActiveDraftId(saved.id);
+      lastSavedSignatureRef.current = signature;
+      setSavedTick((n) => n + 1);
+      setAutoSaveStatus('saved');
+      if (showToast) pushToast(`Draft saved · "${name}"`);
     } else {
-      pushToast('Could not save draft');
+      setAutoSaveStatus('idle');
+      if (showToast) pushToast('Could not save draft');
     }
+    return saved;
   }
+
+  function handleSaveDraft() {
+    // Cancel any pending auto-save — the explicit click takes precedence.
+    if (autoSaveTimerRef.current !== null) {
+      window.clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+    runSave(true);
+  }
+
+  // Debounced auto-save. The same dep set as the localStorage persistence
+  // effect — every history/context mutation reschedules a 1500ms timer.
+  // Skips the very first render (the mount sets history → welcome) and
+  // the welcome-only state (no real user input yet).
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    if (!brand) return;
+    if (history.length < 2) return;
+    if (!history.some((m) => m.from === 'user')) return;
+    if (autoSaveTimerRef.current !== null) {
+      window.clearTimeout(autoSaveTimerRef.current);
+    }
+    autoSaveTimerRef.current = window.setTimeout(() => {
+      autoSaveTimerRef.current = null;
+      runSave(false);
+    }, 1500);
+    return () => {
+      if (autoSaveTimerRef.current !== null) {
+        window.clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
+    };
+  // runSave intentionally excluded — captured at schedule time; including
+  // it would re-fire on every render and never let the timer settle.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history, context, brand?.id]);
+
+  // Auto-revert the "Saved · just now" pill back to idle after 3s.
+  useEffect(() => {
+    if (autoSaveStatus !== 'saved') return;
+    const t = window.setTimeout(() => setAutoSaveStatus('idle'), 3000);
+    return () => window.clearTimeout(t);
+  }, [autoSaveStatus, savedTick]);
 
   function handleLoadDraft(draft: SparkDraft) {
     setHistory((draft.history as SparkMessage[]) ?? []);
     setContext((draft.context as unknown as SparkContext) ?? emptyContext());
     setActiveDraftId(draft.id);
+    // Seed the signature with the loaded state so the next auto-save
+    // schedule doesn't fire a redundant write 1.5s after a load.
+    lastSavedSignatureRef.current = JSON.stringify({
+      h: (draft.history as SparkMessage[]) ?? [],
+      c: (draft.context as unknown as SparkContext) ?? emptyContext(),
+    });
     pushToast(`Loaded "${draft.name ?? 'Untitled draft'}"`);
   }
 
@@ -230,6 +316,15 @@ export function Spark({ onRoute }: Props) {
               onLoad={handleLoadDraft}
               onDelete={handleDeleteDraft}
             />
+            {autoSaveStatus !== 'idle' && (
+              <span
+                className="v2-muted"
+                aria-live="polite"
+                style={{ fontSize: 12, alignSelf: 'center' }}
+              >
+                {autoSaveStatus === 'saving' ? 'Saving…' : 'Saved · just now'}
+              </span>
+            )}
             <button
               className="v2-btn v2-btn-outline"
               type="button"
