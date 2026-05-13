@@ -1,0 +1,41 @@
+# Vercel Speed Insights Installation
+
+Successfully installed and configured Vercel Speed Insights for the Alamut React + Vite project.
+
+## Changes Made
+
+### 1. Installed Package
+- Added `@vercel/speed-insights` version 2.0.0 to dependencies
+- Used npm to install the package (matching the project's existing package manager)
+
+### 2. Modified Files
+- **app/package.json**: Added `@vercel/speed-insights@^2.0.0` to dependencies
+- **app/package-lock.json**: Updated lockfile with new dependency tree
+- **app/src/App.tsx**: 
+  - Added import: `import { SpeedInsights } from '@vercel/speed-insights/react';`
+  - Added `<SpeedInsights />` component inside the ErrorBoundary, after ToastHost and ConfirmHost
+
+## Implementation Details
+
+The implementation follows the official Vercel Speed Insights quickstart documentation (fetched from https://vercel.com/docs/speed-insights/quickstart):
+
+- Used the React-specific entry point (`@vercel/speed-insights/react`)
+- Placed the SpeedInsights component at the root app level for proper tracking across all routes
+- The component acts as a wrapper around the tracking script for seamless framework integration
+
+## Testing & Verification
+
+✅ **TypeScript type checking**: Passed without errors
+✅ **Build**: Successfully compiled (3.36s)
+✅ **Tests**: All 377 tests passed in 20 test files
+✅ **No regressions**: Existing functionality preserved
+
+## Next Steps
+
+To enable Speed Insights in production:
+1. Deploy to Vercel
+2. Enable Speed Insights in the Vercel dashboard (Project Settings → Speed Insights)
+3. After the next deployment, the tracking script will be automatically injected
+4. Data collection will begin once users visit the deployed site
+
+The tracking routes (`/_vercel/speed-insights/*`) will be automatically added upon deployment.

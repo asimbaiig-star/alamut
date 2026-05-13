@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { RouterProvider } from 'react-router-dom';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { router } from './router';
 import { ToastHost } from './components/ui/ToastHost';
 import { ConfirmHost } from './components/ui/ConfirmHost';
@@ -18,6 +19,7 @@ export default function App() {
       <RouterProvider router={router} />
       <ToastHost />
       <ConfirmHost />
+      <SpeedInsights />
     </ErrorBoundary>
   );
 }
