@@ -163,11 +163,29 @@ export function NotificationsBell() {
     return url.pathname + (url.search || '') + (url.hash || '');
   };
 
+  // Migration 023 — fire-and-forget mirror of the read-state flip so
+  // a second device's bell badge clears too. Best-effort; local store
+  // is canonical for the immediate UI.
+  const mirrorReadFlip = (ids: string[]) => {
+    if (ids.length === 0 || typeof window === 'undefined') return;
+    void (async () => {
+      try {
+        const { isSupabaseConfigured } = await import('@/lib/supabase');
+        if (!isSupabaseConfigured()) return;
+        const { markNotificationsReadInSupabase } = await import('@/lib/data/notificationsRepo');
+        await markNotificationsReadInSupabase(ids);
+      } catch {
+        /* ignore */
+      }
+    })();
+  };
+
   const onItem = (n: Notification) => {
     useStore.getState().setDB((d) => ({
       ...d,
       notifications: d.notifications.map((x) => x.id === n.id ? { ...x, read: true } : x),
     }));
+    mirrorReadFlip([n.id]);
     const href = resolveHref(n);
     if (href) navigate(href);
     setOpen(false);
@@ -178,6 +196,7 @@ export function NotificationsBell() {
       ...d,
       notifications: d.notifications.map((x) => x.id === id ? { ...x, read: true } : x),
     }));
+    mirrorReadFlip([id]);
   };
 
   const markAll = async () => {

@@ -227,7 +227,7 @@ if (typeof window !== 'undefined') {
 if (typeof window !== 'undefined') {
   void (async () => {
     try {
-      const [brandsMod, campaignsMod, applicationsMod, offersMod, creatorsMod, collabsMod, submissionsMod, deliverablesMod, contractsMod, transactionsMod, reviewsMod, disputesMod, outreachMod, threadsMod, messagesMod, teamInvitesMod, sparkDraftsMod] = await Promise.all([
+      const [brandsMod, campaignsMod, applicationsMod, offersMod, creatorsMod, collabsMod, submissionsMod, deliverablesMod, contractsMod, transactionsMod, reviewsMod, disputesMod, outreachMod, threadsMod, messagesMod, teamInvitesMod, sparkDraftsMod, notificationsMod] = await Promise.all([
         import('@/lib/data/brandsRepo'),
         import('@/lib/data/campaignsRepo'),
         import('@/lib/data/applicationsRepo'),
@@ -245,8 +245,9 @@ if (typeof window !== 'undefined') {
         import('@/lib/data/messagesRepo'),
         import('@/lib/data/teamInvitesRepo'),
         import('@/lib/data/sparkDraftsRepo'),
+        import('@/lib/data/notificationsRepo'),
       ]);
-      const [brands, campaigns, applications, offers, creators, collaborations, submissions, deliverables, contracts, transactions, reviews, disputes, outreach, threads, messages, teamInvites, sparkDrafts] = await Promise.all([
+      const [brands, campaigns, applications, offers, creators, collaborations, submissions, deliverables, contracts, transactions, reviews, disputes, outreach, threads, messages, teamInvites, sparkDrafts, notifications] = await Promise.all([
         brandsMod.fetchAllBrandsFromSupabase(),
         campaignsMod.fetchAllCampaignsFromSupabase(),
         applicationsMod.fetchAllApplicationsFromSupabase(),
@@ -264,6 +265,7 @@ if (typeof window !== 'undefined') {
         messagesMod.fetchAllMessagesFromSupabase(),
         teamInvitesMod.fetchAllTeamInvitesFromSupabase(),
         sparkDraftsMod.fetchAllSparkDraftsFromSupabase(),
+        notificationsMod.fetchAllNotificationsFromSupabase(),
       ]);
       // Phase 10 — mount the realtime chat subscription once initial
       // hydration is complete. The subscription itself is idempotent
@@ -299,7 +301,8 @@ if (typeof window !== 'undefined') {
         contracts.length === 0 && transactions.length === 0 &&
         reviews.length === 0 && disputes.length === 0 &&
         outreach.length === 0 &&
-        threads.length === 0 && messages.length === 0
+        threads.length === 0 && messages.length === 0 &&
+        notifications.length === 0
       ) return;
       useStore.setState((s) => {
         // Overlay helper — same pattern for every table.
@@ -331,6 +334,7 @@ if (typeof window !== 'undefined') {
             messages: overlay(s.db.messages, messages),
             teamInvites: overlay(s.db.teamInvites ?? [], teamInvites),
             sparkDrafts: overlay(s.db.sparkDrafts ?? [], sparkDrafts),
+            notifications: overlay(s.db.notifications, notifications),
           },
         };
       });

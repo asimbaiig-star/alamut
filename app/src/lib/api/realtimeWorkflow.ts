@@ -20,7 +20,7 @@
 import { useStore } from '@/lib/api/store';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
 import type {
-  Application, Campaign, Collaboration, Dispute, Offer, Submission,
+  Application, Campaign, Collaboration, Dispute, Notification, Offer, Submission,
 } from '@/lib/api/types';
 
 type ChannelHandle = { unsubscribe: () => void } | null;
@@ -137,6 +137,25 @@ export function mountWorkflowRealtime(): void {
         }
       },
     )
+    // ─── notifications (migration 023) ────────────────────────────────
+    // Notifications aren't versioned (append-only + idempotent read flip),
+    // so the overlay just replace-or-appends by id. RLS already gates
+    // visibility to the recipient.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .on('postgres_changes' as any,
+      { event: '*', schema: 'public', table: 'notifications' },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      async (payload: any) => {
+        try {
+          const { toNotification } = await import('@/lib/data/notificationsRepo');
+          const next: Notification = toNotification(payload.new);
+          useStore.setState((s) => overlay(s, 'notifications', next));
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn('[realtimeWorkflow] notifications overlay failed:', err);
+        }
+      },
+    )
     .subscribe();
 
   activeChannel = {
@@ -164,7 +183,7 @@ export function unmountWorkflowRealtime(): void {
  *  protects the local optimistic-lock writeBack from being clobbered
  *  by an out-of-order broadcast. */
 type Versioned = { id: string; version?: number };
-type WorkflowKey = 'campaigns' | 'offers' | 'applications' | 'submissions' | 'collaborations' | 'disputes';
+type WorkflowKey = 'campaigns' | 'offers' | 'applications' | 'submissions' | 'collaborations' | 'disputes' | 'notifications';
 
 function overlay<K extends WorkflowKey>(
   state: ReturnType<typeof useStore.getState>,

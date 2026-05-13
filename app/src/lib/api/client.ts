@@ -39,10 +39,32 @@ export class ApiError extends Error {
 function pushNotification(d: Database, userId: string, kind: keyof NotificationPrefs, text: string, href?: string, meta?: import('./types').Notification['meta']) {
   const u = d.users.find((x) => x.id === userId);
   if (u?.notificationPrefs && u.notificationPrefs[kind] === false) return;
-  d.notifications.push({
+  const n = {
     id: id('n'), userId, text, href, meta,
     at: nowISO(), read: false,
-  });
+  };
+  d.notifications.push(n);
+  // Migration 023 — fire-and-forget Supabase mirror so the bell on a
+  // second device picks up this event. Microtask so the parent tx()
+  // is fully committed by the time we hit the network. RLS INSERT
+  // policy is permissive (any authenticated session) because user A
+  // sending an offer needs to write a notification for user B.
+  const ownerEmail = u?.email;
+  if (typeof window !== 'undefined' && ownerEmail) {
+    queueMicrotask(() => {
+      void (async () => {
+        try {
+          const { isSupabaseConfigured } = await import('@/lib/supabase');
+          if (!isSupabaseConfigured()) return;
+          const { insertNotificationInSupabase } = await import('@/lib/data/notificationsRepo');
+          await insertNotificationInSupabase(n, ownerEmail);
+        } catch {
+          // Swallow — RLS rejection, offline, etc. Local store keeps
+          // the notification so the user still sees it on this device.
+        }
+      })();
+    });
+  }
 }
 
 // ============ AUTH ============
@@ -1561,9 +1583,31 @@ async function markAllNotificationsRead() {
   await sleep(40);
   const me = currentUser();
   if (!me) return;
+  let touched: string[] = [];
   tx((d) => {
-    d.notifications.forEach((n) => { if (n.userId === me.id) n.read = true; });
+    touched = [];
+    d.notifications.forEach((n) => {
+      if (n.userId === me.id && !n.read) {
+        n.read = true;
+        touched.push(n.id);
+      }
+    });
   });
+  // Migration 023 — mirror the read-state flip so a second device's
+  // bell badge clears too.
+  if (touched.length > 0 && typeof window !== 'undefined') {
+    void (async () => {
+      try {
+        const { isSupabaseConfigured } = await import('@/lib/supabase');
+        if (!isSupabaseConfigured()) return;
+        const { markNotificationsReadInSupabase } = await import('@/lib/data/notificationsRepo');
+        await markNotificationsReadInSupabase(touched);
+      } catch {
+        // Read-state is best-effort — failure here doesn't roll back
+        // the local flip.
+      }
+    })();
+  }
 }
 
 // ============ EXPORT ============
