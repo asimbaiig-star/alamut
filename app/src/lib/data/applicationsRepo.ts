@@ -27,7 +27,7 @@ const COLUMNS =
   'id, campaign_id, creator_id, pitch, proposed_rate, status, ' +
   'submitted_at, decided_at, collaboration_id, version, created_at, updated_at';
 
-function toApplication(row: Row): Application {
+export function toApplication(row: Row): Application {
   return {
     id: row.id,
     campaignId: row.campaign_id,

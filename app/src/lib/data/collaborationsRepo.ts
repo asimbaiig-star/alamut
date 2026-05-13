@@ -34,7 +34,7 @@ const COLUMNS =
   'accepted_offer_id, contract_id, cancelled_at, cancellation_reason, ' +
   'history, cancellation_request, escrow_frozen, version, created_at, updated_at';
 
-function toCollab(row: Row): Collaboration {
+export function toCollab(row: Row): Collaboration {
   return {
     id: row.id,
     campaignId: row.campaign_id,

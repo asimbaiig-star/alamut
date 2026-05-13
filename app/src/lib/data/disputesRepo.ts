@@ -34,7 +34,7 @@ const COLUMNS =
   'category, description, evidence, status, resolution, raised_at, ' +
   'messages, version, created_at, updated_at';
 
-function toDispute(row: Row): Dispute {
+export function toDispute(row: Row): Dispute {
   return {
     id: row.id,
     collaborationId: row.collaboration_id,

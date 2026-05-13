@@ -27,7 +27,7 @@ const COLUMNS =
   'submitted_at, feedback, permalink, collaboration_id, deliverable_id, ' +
   'version, created_at, updated_at';
 
-function toSubmission(row: Row): Submission {
+export function toSubmission(row: Row): Submission {
   return {
     id: row.id,
     campaignId: row.campaign_id,

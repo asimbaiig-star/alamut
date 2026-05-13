@@ -31,7 +31,7 @@ const COLUMNS =
   'responded_at, application_id, source, rounds, collaboration_id, ' +
   'version, created_at, updated_at';
 
-function toOffer(row: Row): Offer {
+export function toOffer(row: Row): Offer {
   return {
     id: row.id,
     campaignId: row.campaign_id,

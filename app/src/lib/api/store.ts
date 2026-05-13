@@ -277,6 +277,20 @@ if (typeof window !== 'undefined') {
           console.warn('[realtimeChat] mount skipped:', err);
         }
       })();
+      // Migration 022 — same pattern for the 6 workflow tables
+      // (campaigns / offers / applications / submissions /
+      // collaborations / disputes). Closes the read-side gap so a
+      // brand-side acceptance reaches the creator's open tab without
+      // a reload.
+      void (async () => {
+        try {
+          const { mountWorkflowRealtime } = await import('@/lib/api/realtimeWorkflow');
+          mountWorkflowRealtime();
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn('[realtimeWorkflow] mount skipped:', err);
+        }
+      })();
       if (
         brands.length === 0 && campaigns.length === 0 &&
         applications.length === 0 && offers.length === 0 &&

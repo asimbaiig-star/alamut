@@ -52,7 +52,7 @@ const COLUMNS =
   'posted_at, reach, engagement, history, milestones, applications, offers, ' +
   'rights, auto_shortlist, kind, editors_pick, assets, version, created_at, updated_at';
 
-function toCampaign(row: Row): Campaign {
+export function toCampaign(row: Row): Campaign {
   return {
     id: row.id,
     brandId: row.brand_id,
