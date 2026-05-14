@@ -68,9 +68,12 @@ export function CreatorHome({ onRoute }: Props) {
     // 1. Deliverables in revision (highest priority).
     //    Direct-jump to upload modal on the relevant collab so the
     //    creator can resubmit in one click from the Today tile.
+    // Phase 51 — pre-fix this generator capped at 4 items per-source,
+    // hiding genuine work from creators with active pipelines. Cap
+    // removed; TodayList renders all items in a scrollable container.
     for (const c of myCollabs) {
       const rev = c.deliverables.find((d) => d.status === 'revision');
-      if (rev && items.length < 4) {
+      if (rev) {
         const camp = allCampaigns.find((x) => x.id === c.campaignId);
         items.push({
           id: `rev_${c.id}`,
@@ -88,7 +91,7 @@ export function CreatorHome({ onRoute }: Props) {
     for (const c of myCollabs) {
       if (c.stage !== 'confirmed' && c.stage !== 'pitched') continue;
       const pending = c.deliverables.find((d) => d.status === 'pending');
-      if (pending && items.length < 4) {
+      if (pending) {
         const camp = allCampaigns.find((x) => x.id === c.campaignId);
         items.push({
           id: `pen_${c.id}`,
@@ -109,7 +112,6 @@ export function CreatorHome({ onRoute }: Props) {
     //    Routes to CollabDetail where the StageActionBanner surfaces
     //    Accept / Counter / Decline.
     for (const c of myCollabs) {
-      if (items.length >= 4) break;
       if (c.stage !== 'invited' && c.stage !== 'negotiating') continue;
       const camp = allCampaigns.find((x) => x.id === c.campaignId);
       if (!camp) continue;
@@ -145,7 +147,6 @@ export function CreatorHome({ onRoute }: Props) {
     //    no permalink yet; once the creator pastes a URL the brand owns
     //    the next action (verify + confirm live).
     for (const c of myCollabs) {
-      if (items.length >= 4) break;
       const hasApprovedAwaitingPost = db.submissions.some((s) =>
         s.campaignId === c.campaignId &&
         s.creatorId === c.creatorId &&
@@ -169,7 +170,7 @@ export function CreatorHome({ onRoute }: Props) {
     //    with `?action=next-step` which scrolls to + pulse-highlights
     //    the first incomplete step — distinct from the sidebar entry
     //    that just opens the page header.
-    if (creator && items.length < 4) {
+    if (creator) {
       // The KycTax page currently uses static step data; surface the
       // tile whenever the creator hasn't fully completed all steps.
       // Wired off creator presence as a proxy until step state moves
@@ -518,23 +519,27 @@ function TodayList({ items, onRoute }: { items: TodoItem[]; onRoute: (r: string)
         <div className="v2-muted" style={{ padding: '32px 20px', textAlign: 'center', fontSize: 13 }}>
           You're all set. Browse new briefs to keep momentum.
         </div>
-      ) : items.map((it) => (
-        <button
-          key={it.id}
-          type="button"
-          className="v2-home-today-row"
-          onClick={() => onRoute(it.route)}
-        >
-          <div className={`v2-home-today-icon ${it.urgent ? 'is-urgent' : ''}`}>
-            {it.icon}
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 2 }}>{it.title}</div>
-            <div className="v2-muted" style={{ fontSize: 12 }}>{it.sub}</div>
-          </div>
-          <span style={{ color: 'var(--v2-ink-3)' }}>{Icon.arrow}</span>
-        </button>
-      ))}
+      ) : (
+        <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+          {items.map((it) => (
+            <button
+              key={it.id}
+              type="button"
+              className="v2-home-today-row"
+              onClick={() => onRoute(it.route)}
+            >
+              <div className={`v2-home-today-icon ${it.urgent ? 'is-urgent' : ''}`}>
+                {it.icon}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 2 }}>{it.title}</div>
+                <div className="v2-muted" style={{ fontSize: 12 }}>{it.sub}</div>
+              </div>
+              <span style={{ color: 'var(--v2-ink-3)' }}>{Icon.arrow}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -28,8 +28,31 @@ interface Props {
 // formats every supported platform (Instagram/TikTok/YouTube/X/Substack
 // /LinkedIn/Newsletter) actually accepts as a draft.
 const MAX_FILE_SIZE_MB = 200;
+// Larger files don't fit in the data-URL inline storage path the
+// prototype uses (localStorage cap + base64 inflation). Anything bigger
+// than this is held in memory only — it'll preview during the same
+// session but won't survive a reload until Storage upload lands.
+const MAX_INLINE_SIZE_MB = 25;
 const ALLOWED_MIME_PREFIXES = ['video/', 'image/', 'application/pdf'];
 const ALLOWED_EXT = ['.mp4', '.mov', '.webm', '.png', '.jpg', '.jpeg', '.heic', '.gif', '.pdf'];
+
+/** Read a File as a base64 data URL. Used to persist the bytes inline so
+ *  the brand-side review modal can actually render what the creator sent.
+ *  Production: replace with a Supabase Storage upload to `submission-files`
+ *  bucket (see migrations/007_submissions_deliverables.sql:120) — the
+ *  RLS policy requires the submission row to exist first, so the order is:
+ *    1. Insert submission (placeholder url)
+ *    2. Upload to <campaign_id>/<submission_id>/<filename>
+ *    3. Update submission with the public URL.
+ *  For the demo, inline data URLs work end-to-end on a single browser. */
+function readAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
 
 function isAllowedFile(f: File): { ok: true } | { ok: false; reason: string } {
   if (f.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
@@ -54,7 +77,11 @@ function fmtFileSize(bytes: number): string {
 export function ContentUploadModal({ collab, campaign, deliverableId, deliverableLabel, isResubmit, onClose }: Props) {
   const [step, setStep] = useState<0 | 1>(0);
   const [caption, setCaption] = useState('');
-  const [file, setFile] = useState<{ name: string; size: string } | null>(null);
+  // Pre-fix this stored only `{name, size}` (a derived label). The actual
+  // File bytes were dropped on the floor — submission.files[0].url ended
+  // up '#' and the brand-side review modal had nothing to render.
+  const [file, setFile] = useState<File | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   function handleFilePicked(picked: FileList | null) {
@@ -67,8 +94,35 @@ export function ContentUploadModal({ collab, campaign, deliverableId, deliverabl
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
-    setFile({ name: f.name, size: fmtFileSize(f.size) });
+    setFile(f);
     if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  async function handleSubmit() {
+    if (!file || submitting) return;
+    setSubmitting(true);
+    try {
+      // For files within the inline cap, encode as a data URL so the
+      // brand-side review modal can render an actual preview. Beyond
+      // the cap, persist the filename only (review modal will show a
+      // "preview unavailable — file too large for inline storage" hint).
+      let url = '';
+      if (file.size <= MAX_INLINE_SIZE_MB * 1024 * 1024) {
+        url = await readAsDataUrl(file);
+      }
+      v2SubmitContent(
+        collab.campaignId,
+        collab.creatorId,
+        caption,
+        { name: file.name, url, mime: file.type, size: file.size },
+        deliverableId,
+      );
+      setStep(1);
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : 'Upload failed', 'bad');
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   // Brand-safe pre-flight check primitives — synthesized for the demo.
@@ -132,7 +186,12 @@ export function ContentUploadModal({ collab, campaign, deliverableId, deliverabl
                   <>
                     <div style={{ fontSize: 28, marginBottom: 8, color: 'var(--v2-moss)' }}>{Icon.check}</div>
                     <div style={{ fontWeight: 600 }}>{file.name}</div>
-                    <div className="v2-muted" style={{ fontSize: 12 }}>{file.size}</div>
+                    <div className="v2-muted" style={{ fontSize: 12 }}>
+                      {fmtFileSize(file.size)}
+                      {file.size > MAX_INLINE_SIZE_MB * 1024 * 1024 && (
+                        <> · large file — preview will not be available after reload</>
+                      )}
+                    </div>
                   </>
                 ) : (
                   <>
@@ -217,15 +276,10 @@ export function ContentUploadModal({ collab, campaign, deliverableId, deliverabl
                 className="v2-btn v2-btn-primary"
                 type="button"
                 style={{ flex: 2 }}
-                disabled={!file}
-                onClick={() => {
-                  if (file) {
-                    v2SubmitContent(collab.campaignId, collab.creatorId, caption, file.name, deliverableId);
-                  }
-                  setStep(1);
-                }}
+                disabled={!file || submitting}
+                onClick={handleSubmit}
               >
-                Submit for review
+                {submitting ? 'Uploading…' : 'Submit for review'}
               </button>
             </div>
           ) : (

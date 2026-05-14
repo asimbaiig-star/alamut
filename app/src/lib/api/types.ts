@@ -897,7 +897,11 @@ export interface Submission {
    *  pass since 5+ surfaces still display "Round N" (Analytics, DealRoom,
    *  trust score, adapter labels). Keeping it stored for now. */
   round: number;
-  files: { name: string; url: string }[];
+  /** Submitted files. `url` is a data URL for inline-stored uploads
+   *  (≤25MB) or a Supabase Storage URL once we wire that path. `mime`
+   *  + `size` are optional metadata that the brand-side review modal
+   *  uses to pick the right preview (image / video / pdf / download). */
+  files: { name: string; url: string; mime?: string; size?: number }[];
   notes: string;
   status: SubmissionStatus;
   submittedAt: string;

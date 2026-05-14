@@ -14,11 +14,28 @@ import { v2ApproveContent, v2RequestRevision } from '../v2CampaignActions';
 // can't fire them. The mutations themselves still throw via
 // `requireCapability` (P5) — this is the UI-side feedback layer.
 import { useCapability } from '@/lib/permissions';
+// Phase 51 — render real files. Pre-fix the modal only showed
+// `deliverable.thumb` — for live submissions where files store a
+// data URL, we look up the source submission and pick the best preview
+// (video / image / pdf / download).
+import { useStore } from '@/lib/api/store';
 
 interface Props {
   collab: V2Collab;
   creators: V2Creator[];
   onClose: () => void;
+}
+
+/** Pick a preview kind for a file — drives whether we render a <video>,
+ *  <img>, <iframe>, or just a download link. Falls back to inferring
+ *  from the file extension when MIME isn't carried (legacy submissions). */
+function previewKind(file: { name: string; mime?: string }): 'video' | 'image' | 'pdf' | 'other' {
+  const mime = (file.mime ?? '').toLowerCase();
+  const ext = file.name.toLowerCase().split('.').pop() ?? '';
+  if (mime.startsWith('video/') || ['mp4','mov','webm'].includes(ext)) return 'video';
+  if (mime.startsWith('image/') || ['png','jpg','jpeg','heic','gif','webp'].includes(ext)) return 'image';
+  if (mime === 'application/pdf' || ext === 'pdf') return 'pdf';
+  return 'other';
 }
 
 export function ContentReviewModal({ collab, creators, onClose }: Props) {
@@ -28,6 +45,16 @@ export function ContentReviewModal({ collab, creators, onClose }: Props) {
   const [feedback, setFeedback] = useState('');
   const canApprove = useCapability('content.approve');
   const canRevise = useCapability('content.revise');
+
+  // Pull the underlying submission so we can render files[] — V2Deliverable
+  // only carries a flattened `thumb` URL, which falls flat for video/PDF.
+  const submission = useStore((s) =>
+    deliverable ? s.db.submissions.find((sub) => sub.id === deliverable.id) : undefined,
+  );
+  const files = submission?.files ?? [];
+  const primaryFile = files[0];
+  const primaryUsable = !!primaryFile && primaryFile.url && primaryFile.url !== '#';
+  const kind = primaryFile ? previewKind(primaryFile) : 'other';
 
   if (!creator || !deliverable) {
     return null;
@@ -40,8 +67,44 @@ export function ContentReviewModal({ collab, creators, onClose }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         {/* Left: media preview */}
-        <div className="v2-review-modal-media">
-          {deliverable.thumb ? (
+        <div className="v2-review-modal-media" style={{ position: 'relative' }}>
+          {primaryUsable && kind === 'video' && (
+            <video
+              src={primaryFile!.url}
+              controls
+              style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }}
+            />
+          )}
+          {primaryUsable && kind === 'image' && (
+            <img
+              src={primaryFile!.url}
+              alt={primaryFile!.name}
+              style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }}
+            />
+          )}
+          {primaryUsable && kind === 'pdf' && (
+            <iframe
+              src={primaryFile!.url}
+              title={primaryFile!.name}
+              style={{ width: '100%', height: '100%', border: 0, background: '#fff' }}
+            />
+          )}
+          {primaryUsable && kind === 'other' && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, color: 'rgba(255,255,255,0.85)', padding: 24, textAlign: 'center' }}>
+              <div style={{ fontSize: 14 }}>{primaryFile!.name}</div>
+              <a
+                href={primaryFile!.url}
+                download={primaryFile!.name}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="v2-btn v2-btn-primary v2-btn-sm"
+                style={{ color: 'white', textDecoration: 'none' }}
+              >
+                Open file
+              </a>
+            </div>
+          )}
+          {!primaryUsable && deliverable.thumb && (
             <div
               className="v2-review-modal-video"
               style={{ backgroundImage: `url(${deliverable.thumb})` }}
@@ -56,8 +119,41 @@ export function ContentReviewModal({ collab, creators, onClose }: Props) {
                 </svg>
               </button>
             </div>
-          ) : (
-            <div style={{ color: 'rgba(255,255,255,0.5)' }}>No preview available</div>
+          )}
+          {!primaryUsable && !deliverable.thumb && (
+            <div style={{ color: 'rgba(255,255,255,0.6)', padding: 24, textAlign: 'center', fontSize: 13, lineHeight: 1.5 }}>
+              {primaryFile
+                ? <>Preview unavailable for <strong>{primaryFile.name}</strong>.<br />File was too large for inline storage at submit time.</>
+                : <>No file attached to this submission.</>}
+            </div>
+          )}
+          {/* Multi-file thumbnail strip when more than one file. */}
+          {files.length > 1 && (
+            <div
+              style={{
+                position: 'absolute', bottom: 8, left: 8, right: 56,
+                display: 'flex', gap: 6, overflowX: 'auto',
+                background: 'rgba(0,0,0,0.55)', padding: 6, borderRadius: 6,
+              }}
+            >
+              {files.map((f, i) => (
+                <a
+                  key={i}
+                  href={f.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  download={f.name}
+                  style={{
+                    fontSize: 11, padding: '3px 8px', borderRadius: 4,
+                    background: 'rgba(255,255,255,0.92)', color: '#111',
+                    textDecoration: 'none', whiteSpace: 'nowrap',
+                  }}
+                  title={f.name}
+                >
+                  {i + 1}. {f.name.length > 18 ? f.name.slice(0, 18) + '…' : f.name}
+                </a>
+              ))}
+            </div>
           )}
           <button
             type="button"

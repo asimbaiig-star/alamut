@@ -67,8 +67,12 @@ export function BrandHome({ onRoute }: Props) {
       // Skip if already confirmed live (LIVE: feedback row exists).
       return !s.feedback?.some((f) => f.text?.startsWith('LIVE: '));
     });
+    // Phase 51 — pre-fix this generator capped at 4 items per-source,
+    // hiding genuine work from brands with active pipelines. The cap is
+    // gone; ActionInbox handles overflow with a scrollable list. Order
+    // is intentional: urgent verifications + counters first, then
+    // reviews + pitches, then wallet at the bottom.
     for (const sub of liveUrlsAwaitingConfirm) {
-      if (items.length >= 4) break;
       const creator = creators.find((cr) => cr.id === sub.creatorId);
       const camp = campaigns.find((c) => c.id === sub.campaignId);
       if (!creator || !camp) continue;
@@ -87,9 +91,7 @@ export function BrandHome({ onRoute }: Props) {
     }
 
     // Counter offers from the creator come next — they're the most
-    // time-sensitive (creator is waiting on the brand) so we surface
-    // them before in-review submissions and pitches that can otherwise
-    // crowd them out of the 4-item cap.
+    // time-sensitive (creator is waiting on the brand).
     const counterOffers = db.offers.filter((o) => {
       if (!campIds.has(o.campaignId)) return false;
       if (o.status !== 'countered') return false;
@@ -97,7 +99,6 @@ export function BrandHome({ onRoute }: Props) {
       return last?.by === 'creator';
     });
     for (const offer of counterOffers) {
-      if (items.length >= 4) break;
       const creator = creators.find((cr) => cr.id === offer.creatorId);
       const camp = campaigns.find((c) => c.id === offer.campaignId);
       if (!creator || !camp) continue;
@@ -118,7 +119,7 @@ export function BrandHome({ onRoute }: Props) {
       for (const c of collabs) {
         const reviewing = c.deliverables.find((d) => d.status === 'in_review');
         const creator = creators.find((cr) => cr.id === c.creatorId);
-        if (reviewing && creator && items.length < 4) {
+        if (reviewing && creator) {
           items.push({
             id: c.id,
             urgent: true,
@@ -135,7 +136,7 @@ export function BrandHome({ onRoute }: Props) {
         // an event, not an action: the brand has nothing to do until the
         // creator submits content. We surface it in Recent activity
         // instead so the Needs-you list stays strictly action-required.
-        if (c.stage === 'pitched' && creator && items.length < 4) {
+        if (c.stage === 'pitched' && creator) {
           items.push({
             id: `pitch_${c.id}`,
             urgent: false,
@@ -149,7 +150,7 @@ export function BrandHome({ onRoute }: Props) {
         }
       }
     }
-    if (wallet.available < 5000 && items.length < 4) {
+    if (wallet.available < 5000) {
       items.push({
         id: 'wallet',
         urgent: false,
@@ -162,7 +163,7 @@ export function BrandHome({ onRoute }: Props) {
         route: 'wallet?action=topup',
       });
     }
-    return items.slice(0, 4);
+    return items;
   }, [campaigns, creators, db, wallet.available]);
 
   // Recent activity — chronological feed from notifications targeted at
@@ -459,7 +460,10 @@ function ActionInbox({ items, onRoute }: { items: InboxItem[]; onRoute: (r: stri
           </span>
         )}
       </header>
-      <div className="v2-home-inbox-list">
+      <div
+        className="v2-home-inbox-list"
+        style={{ maxHeight: 360, overflowY: 'auto' }}
+      >
         {items.length === 0 ? (
           <div className="v2-muted" style={{ padding: '32px 20px', textAlign: 'center', fontSize: 13 }}>
             Inbox-zero. Take a moment.

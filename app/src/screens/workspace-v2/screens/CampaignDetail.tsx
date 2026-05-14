@@ -86,24 +86,40 @@ export function CampaignDetail({
   const [reviewing, setReviewing] = useState<V2Collab | null>(null);
 
   // §needs-you-direct-jump — when a home tile passes `?review=<collabId>`,
-  // open the corresponding ContentReviewModal on mount. Runs once when
-  // the prop is first present so reopening the same campaign without
-  // the suffix doesn't re-pop the modal.
+  // open the corresponding ContentReviewModal on mount.
+  //
+  // Phase 51 fix: same modal-reopen-loop the verify-live effect had —
+  // `collabs` reactivity meant approving content re-fired this and
+  // popped the review modal back open. Ref-guard pins one auto-open
+  // per ?review= value.
+  const reviewAutoOpened = useRef<string | null>(null);
   useEffect(() => {
     if (!initialReviewCollabId) return;
+    if (reviewAutoOpened.current === initialReviewCollabId) return;
     const target = collabs.find((c) => c.id === initialReviewCollabId);
-    if (target) setReviewing(target);
+    if (target) {
+      reviewAutoOpened.current = initialReviewCollabId;
+      setReviewing(target);
+    }
   }, [initialReviewCollabId, collabs]);
   const [offering, setOffering] = useState<{ creator: V2Creator; defaultRate: number } | null>(null);
   const [markingLive, setMarkingLive] = useState<{ submissionId: string; campaignName: string } | null>(null);
   // §needs-you-direct-jump — when BrandHome's "posted live — verify and
   // confirm" tile passes `?action=verify-live&sub=<id>`, pop the
-  // MarkLiveModal for that submission on mount. Reads campaign.name once
-  // collab data is available so the modal title is correct.
+  // MarkLiveModal for that submission on mount.
+  //
+  // Phase 51 fix: pre-fix this effect re-fired every time db.submissions
+  // changed — and v2MarkContentLive mutates db.submissions. So the user
+  // confirmed → state changed → effect re-ran → modal popped right back
+  // open. The ref guards "I've already auto-opened for this submission";
+  // closing it stays closed until the URL param actually changes.
+  const verifyLiveAutoOpened = useRef<string | null>(null);
   useEffect(() => {
     if (!initialVerifyLiveSubmissionId || !campaign) return;
+    if (verifyLiveAutoOpened.current === initialVerifyLiveSubmissionId) return;
     const sub = db.submissions.find((s) => s.id === initialVerifyLiveSubmissionId);
     if (!sub || sub.campaignId !== campaignId) return;
+    verifyLiveAutoOpened.current = initialVerifyLiveSubmissionId;
     setMarkingLive({ submissionId: sub.id, campaignName: campaign.name });
   }, [initialVerifyLiveSubmissionId, campaign, campaignId, db.submissions]);
   // Brand-side counter response — when the creator counters an offer,

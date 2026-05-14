@@ -955,9 +955,17 @@ export function v2SubmitContent(
   campaignId: string,
   creatorId: string,
   caption: string,
-  fileName: string,
+  /** Pre-fix this was just `fileName: string`, with the actual bytes
+   *  dropped on the floor and the URL persisted as the placeholder '#'.
+   *  Now an object with the real (data-URL or Storage URL) so the brand
+   *  can preview the file in the review modal. Backwards-compat: a bare
+   *  string is treated as just the filename with no URL. */
+  fileMeta: string | { name: string; url: string; mime?: string; size?: number },
   deliverableId: string,
 ): Submission | null {
+  const fileObj = typeof fileMeta === 'string'
+    ? { name: fileMeta, url: '' }
+    : fileMeta;
   const result = tx((db) => {
     // P5 §4.1 — creator-side capability.
     requireCapability(getActorUserId(), 'content.submit', db);
@@ -1003,7 +1011,7 @@ export function v2SubmitContent(
       campaignId,
       creatorId,
       round,
-      files: [{ name: fileName, url: '#' }],
+      files: [fileObj],
       notes: caption,
       status: 'in_review',
       submittedAt: nowIso(),
