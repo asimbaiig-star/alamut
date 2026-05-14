@@ -1,0 +1,1412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Alamut · Architecture Map</title>
+<style>
+  :root {
+    --bg:#0F0F0F; --panel:#161616; --panel-2:#1c1c1c; --border:#2a2a2a;
+    --text:#e8e8e8; --muted:#8a8a8a;
+    --client:#4ea1ff; --route:#7bd389; --service:#c792ea; --db:#ffb86b;
+    --external:#ff6b9d; --critical:#ff3860; --accent:#f5b942; --accent-2:#ff7a45;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; height:100%; background:var(--bg); color:var(--text);
+    font:13px/1.45 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  #app { display:grid; grid-template-columns: 1fr 380px; height:100vh; }
+  #canvas-wrap { position:relative; overflow:hidden; background:
+    radial-gradient(ellipse at 20% 10%, #14181d 0%, #0f0f0f 60%) no-repeat; }
+  #canvas { width:100%; height:100%; cursor:grab; user-select:none; }
+  #canvas.dragging { cursor:grabbing; }
+  #side { background:var(--panel); border-left:1px solid var(--border); overflow-y:auto;
+    padding:18px 20px 36px; }
+  /* Top toolbar */
+  #toolbar { position:absolute; top:14px; left:14px; right:14px; display:flex;
+    flex-wrap:wrap; gap:8px; align-items:center; pointer-events:none; }
+  #toolbar > * { pointer-events:auto; }
+  .chip { padding:5px 11px; border-radius:999px; font-size:12px;
+    background:rgba(28,28,28,0.85); color:var(--text); border:1px solid var(--border);
+    cursor:pointer; backdrop-filter: blur(6px); transition: background .15s, border-color .15s; }
+  .chip:hover { background:#1f2329; border-color:#3a3a3a; }
+  .chip.active { background:#2a2f37; border-color:#4ea1ff; color:#cfe6ff; }
+  .chip.danger.active { border-color:#ff3860; color:#ffd4d4; }
+  .legend { margin-left:auto; display:flex; gap:12px; align-items:center;
+    background:rgba(22,22,22,0.85); border:1px solid var(--border); padding:5px 12px;
+    border-radius:10px; font-size:11px; color:var(--muted); backdrop-filter: blur(6px); }
+  .legend .sw { display:inline-block; width:10px; height:10px; border-radius:2px;
+    vertical-align:middle; margin-right:4px; }
+  /* Zoom controls */
+  #zoom { position:absolute; bottom:14px; left:14px; display:flex; gap:6px; }
+  .zbtn { width:30px; height:30px; border-radius:6px; background:rgba(22,22,22,0.85);
+    border:1px solid var(--border); color:var(--text); cursor:pointer; font-size:14px;
+    line-height:1; backdrop-filter: blur(6px); }
+  .zbtn:hover { background:#1f2329; }
+  /* SVG node styling */
+  .node rect { fill:var(--panel-2); stroke-width:1.4; transition: opacity .18s; }
+  .node.crit rect { stroke-width:2.4; }
+  .node text.label { font-size:13px; font-weight:600; fill:var(--text); pointer-events:none; }
+  .node text.sub { font-size:11px; fill:var(--muted); pointer-events:none; }
+  .node { cursor:pointer; }
+  .node:hover rect { fill:#22272d; }
+  .node.selected rect { fill:#262d36; }
+  .node.dim rect, .node.dim text { opacity:0.18; }
+  .edge { fill:none; stroke-width:1.3; pointer-events:none; transition: opacity .18s; }
+  .edge.dim { opacity:0.07; }
+  .edge.k-critical { stroke:var(--critical); stroke-width:1.8; }
+  .edge.k-api      { stroke:var(--accent-2); }
+  .edge.k-db       { stroke:var(--db); stroke-dasharray:4 3; }
+  .edge.k-mount    { stroke:var(--client); }
+  .edge.k-normal   { stroke:#5a6068; }
+  .edge-hit { stroke:transparent; stroke-width:14; fill:none; cursor:pointer; pointer-events:all; }
+  .edge-label { font-size:10px; fill:var(--muted); pointer-events:none;
+    paint-order:stroke; stroke:#0f0f0f; stroke-width:3; }
+  .cluster rect { fill:#13161a; stroke:#1f242a; stroke-width:1; }
+  .cluster text { fill:#5a6068; font-size:11px; font-weight:600;
+    text-transform:uppercase; letter-spacing:.16em; }
+  .badge { pointer-events:none; }
+  .badge text { font-size:9px; font-weight:700; fill:#0f0f0f; text-anchor:middle; }
+  /* Sidebar */
+  #side h2 { margin:0 0 6px; font-size:15px; font-weight:600; }
+  #side h3 { margin:18px 0 6px; font-size:11px; color:var(--muted);
+    text-transform:uppercase; letter-spacing:.14em; font-weight:600; }
+  #side .pill { display:inline-block; font-size:10px; padding:2px 8px; border-radius:999px;
+    background:#22272d; color:#cfe6ff; margin-right:6px; vertical-align:middle; }
+  #side .pill.crit { background:#3a1218; color:#ffb6b6; }
+  #side .path { font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:11.5px; color:#9ec6ff; word-break:break-all; }
+  #side .role { color:var(--text); margin:6px 0 4px; }
+  #side .plain { color:#cfd2d7; background:#13161a; border-left:2px solid #4ea1ff;
+    padding:8px 10px; border-radius:4px; margin:4px 0 8px; font-size:12.5px; }
+  #side ul { margin:4px 0 0; padding-left:18px; }
+  #side ul li { margin:3px 0; color:#cdd0d4; font-size:12px; }
+  #side .edges-list { font-size:12px; color:#cdd0d4; }
+  #side .edges-list .e { padding:5px 0; border-bottom:1px solid #1f242a; }
+  #side .edges-list .e:last-child { border-bottom:none; }
+  #side .edges-list b { color:var(--text); font-weight:500; }
+  #side .findings { background:#13161a; border:1px solid #1f242a; border-radius:6px;
+    padding:12px 14px; }
+  #side .findings .item { padding:10px 0; border-bottom:1px solid #1f242a; }
+  #side .findings .item:last-child { border-bottom:none; }
+  #side .findings .item b { color:#f5b942; font-weight:600; }
+  #side .findings .item p { margin:4px 0 0; color:#cdd0d4; font-size:12px; }
+  #side .bug, #side .fix { padding:6px 8px; border-radius:4px; margin:4px 0; font-size:11.5px; }
+  #side .bug { background:#2a1218; color:#ffc4c4; border-left:2px solid #ff3860; }
+  #side .fix { background:#16241a; color:#cce4cf; border-left:2px solid #58c08e; }
+  #side .bug .sev { font-weight:700; text-transform:uppercase; font-size:9px;
+    letter-spacing:.1em; margin-right:6px; }
+  #side a.code { font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:11px; color:#9ec6ff; text-decoration:none; }
+  /* Title block */
+  #title { position:absolute; top:14px; left:14px; padding:8px 14px;
+    background:rgba(22,22,22,0.85); border:1px solid var(--border); border-radius:8px;
+    backdrop-filter: blur(6px); pointer-events:auto; display:flex; flex-direction:column; gap:1px; }
+  #title b { font-size:13px; }
+  #title span { font-size:10.5px; color:var(--muted); }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="canvas-wrap">
+    <div id="toolbar">
+      <div id="title"><b>Alamut · architecture map</b><span>React + Vite + Zustand + Supabase · 24 migrations · ~50 nodes</span></div>
+      <span style="flex:1"></span>
+      <button class="chip active" data-filter="overview">Overview</button>
+      <button class="chip" data-filter="workflow">Offer→Live spine</button>
+      <button class="chip" data-filter="auth">Auth</button>
+      <button class="chip" data-filter="discover">Discover</button>
+      <button class="chip" data-filter="inbox">Inbox · Chat</button>
+      <button class="chip" data-filter="analytics">Analytics</button>
+      <button class="chip" data-filter="spark">Spark</button>
+      <button class="chip" data-filter="wallet">Wallet</button>
+      <button class="chip" data-filter="realtime">Realtime</button>
+      <button class="chip" data-filter="all">All wires</button>
+      <button class="chip danger" data-filter="roadmap">Roadmap &amp; bugs</button>
+      <div class="legend">
+        <span><span class="sw" style="background:#ff3860"></span>critical</span>
+        <span><span class="sw" style="background:#ff7a45"></span>api</span>
+        <span><span class="sw" style="background:#ffb86b"></span>db</span>
+        <span><span class="sw" style="background:#4ea1ff"></span>mount</span>
+        <span><span class="sw" style="background:#5a6068"></span>normal</span>
+      </div>
+    </div>
+    <svg id="canvas" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div id="zoom">
+      <button class="zbtn" id="zin">+</button>
+      <button class="zbtn" id="zout">−</button>
+      <button class="zbtn" id="zfit">Fit</button>
+    </div>
+  </div>
+  <aside id="side"></aside>
+</div>
+
+<script>
+/* ====================================================================
+ * CLUSTERS
+ * ==================================================================== */
+const clusters = [
+  { id:'client',     label:'CLIENT UI · workspace-v2 + landing',  x:20,   y:20, w:380, h:1660 },
+  { id:'state',      label:'STATE + ADAPTERS',                    x:420,  y:20, w:270, h:1660 },
+  { id:'mutations',  label:'V2 MUTATIONS · tx() wrappers',        x:710,  y:20, w:320, h:1660 },
+  { id:'foundation', label:'STORE + FOUNDATION',                  x:1050, y:20, w:280, h:1660 },
+  { id:'repos',      label:'SUPABASE REPOS · 18',                 x:1350, y:20, w:320, h:1660 },
+  { id:'external',   label:'REALTIME · AUTH · EXTERNAL',          x:1690, y:20, w:370, h:1660 },
+];
+
+/* ====================================================================
+ * NODES
+ * ==================================================================== */
+const N = (id, cluster, label, sub, x, y, w, h, color, opts = {}) => ({
+  id, cluster, label, sub, x, y, w, h, color, ...opts
+});
+
+const nodes = [
+  /* ─── Client UI ──────────────────────────────────────────────────── */
+  N('public-landing','client','Cover.tsx · landing','marketing surface',                40, 70,340,52,'client',{
+    role:'Top-level marketing landing pages mounted at `/`, `/for-brands`, etc.',
+    plain:'The pages a stranger lands on before they sign up. Pure marketing — no app.',
+    path:'app/src/screens/public/Cover.tsx',
+    notes:['router.tsx:96 mounts at /', 'lazyRoute() chunked', 'Phase 32-40 cinematic rebuild'],
+    tag:['overview','auth','all'],
+  }),
+  N('signin-signup','client','SignIn / SignUp','auth surface',                          40,140,340,52,'client',{
+    role:'Email + password and magic-link auth screens; demo "Brand/Creator/Admin" one-click buttons.',
+    plain:'Where you log in or create an account. Includes one-click demo logins for the three personas.',
+    path:'app/src/screens/auth/SignIn.tsx + SignUp.tsx',
+    notes:['router.tsx:107-108', 'Demo buttons fill seeded credentials', 'Real Supabase Auth wired'],
+    tag:['overview','auth','all'],
+  }),
+  N('workspace-v2','client','Workspace.tsx','v2 shell + persona resolver',              40,210,340,56,'client',{
+    role:'Top-level v2 workspace shell — owns persona toggle, routing, sidebar, and ProtectedRoute gate.',
+    plain:'The wrapper around every signed-in screen. Decides whether you see the brand or creator side based on your role.',
+    path:'app/src/screens/workspace-v2/Workspace.tsx:111',
+    notes:['line:170-179 forces persona from auth role', 'BRAND_ROUTES vs CREATOR_ROUTES at top', 'routeFitsPersona gates each tab'],
+    tag:['overview','auth','all'],
+    critical:true,
+  }),
+  N('brand-home','client','BrandHome.tsx','brand persona dashboard',                    40,285,340,52,'client',{
+    role:'Brand-side dashboard: live campaigns, kanban, today queue, Spark-composer entry.',
+    plain:"Hannah's home screen. Shows her live campaigns, what needs attention today, and a way to start a new one.",
+    path:'app/src/screens/workspace-v2/screens/BrandHome.tsx',
+    notes:['Reads useV2AllCampaigns + useV2BrandWallet', 'Smoke-tested in __tests__/BrandHome.test.tsx', 'Spark composer Send dispatches v2 action'],
+    tag:['overview','workflow','spark','all'],
+    critical:true,
+  }),
+  N('creator-home','client','CreatorHome.tsx','creator persona dashboard',              40,355,340,52,'client',{
+    role:'Creator-side dashboard: open offers, in-flight collabs, lifetime earnings, recent activity.',
+    plain:"Sarah's home screen. Shows offers waiting for her, collabs in progress, and how much she's earned.",
+    path:'app/src/screens/workspace-v2/screens/CreatorHome.tsx',
+    notes:['Topbar reads "Hi <FirstName>"', 'Empty state when no creator linked', 'Smoke-tested in __tests__/CreatorHome.test.tsx'],
+    tag:['overview','workflow','all'],
+  }),
+  N('discover','client','Discover.tsx','brand → creator search',                        40,425,340,52,'client',{
+    role:'Brand-side creator search/filter; tile clicks open creator drilldown + Send Offer.',
+    plain:'Where a brand searches for creators by category, region, follower size, etc.',
+    path:'app/src/screens/workspace-v2/screens/Discover.tsx',
+    notes:['Multi-select filters (Phase post-10)', 'CreatorTile has Save chip → v2ToggleSavedCreator', 'Routes to creator:<id> drilldown'],
+    tag:['overview','discover','all'],
+  }),
+  N('browse-briefs','client','BrowseBriefs.tsx','creator → brief search',               40,495,340,48,'client',{
+    role:'Creator-side campaign brief search/filter — what brands are open and matching the creator.',
+    plain:'Where a creator browses open campaign briefs to apply to.',
+    path:'app/src/screens/workspace-v2/screens/BrowseBriefs.tsx',
+    notes:['Tile click → BriefDetail', 'Save chip → v2ToggleSavedBrief'],
+    tag:['discover','all'],
+  }),
+  N('brief-detail','client','BriefDetail.tsx','brief read + Apply',                     40,560,340,48,'client',{
+    role:'Single-brief deep view; Apply button dispatches v2ApplyToCampaign.',
+    plain:'The detail page for one campaign brief. Read the brief, then apply.',
+    path:'app/src/screens/workspace-v2/screens/BriefDetail.tsx',
+    notes:['Renders StageActionBanner', 'Apply → v2ApplyToCampaign'],
+    tag:['workflow','discover','all'],
+  }),
+  N('new-campaign','client','NewCampaignWizard.tsx','brand publishes campaign',         40,625,340,48,'client',{
+    role:'4-step wizard for a brand to define + publish a new campaign.',
+    plain:'The form a brand fills out to launch a new campaign — title, brief, budget, deliverables.',
+    path:'app/src/screens/workspace-v2/screens/NewCampaignWizard.tsx',
+    notes:['Final step → v2LaunchCampaign', 'Materializes deliverables on create'],
+    tag:['workflow','all'],
+  }),
+  N('campaign-detail','client','CampaignDetail.tsx','brand campaign workspace',         40,690,340,56,'client',{
+    role:'Brand-side campaign workspace: kanban + applications + offers + Settings tab.',
+    plain:'A brand opens this to manage one campaign — see who applied, who got offered, what stage everyone is at.',
+    path:'app/src/screens/workspace-v2/screens/CampaignDetail.tsx:1457',
+    notes:['Owns derivePerf() at line:1457', 'Ownership gate fix (slice-1) refuses non-owners', 'Settings tab → v2UpdateCampaign'],
+    tag:['overview','workflow','analytics','all'],
+    critical:true,
+  }),
+  N('send-offer-modal','client','SendOfferModal','brand sends offer',                   40,765,340,52,'client',{
+    role:'Modal for entering rate + message and dispatching v2SendOffer.',
+    plain:'The popup a brand fills out when sending a paid offer to a creator.',
+    path:'app/src/screens/workspace-v2/screens/WorkflowModals.tsx',
+    notes:['Validation: rate>0, ≤10× current', '__tests__/SendOfferModal.test.tsx'],
+    tag:['overview','workflow','all'],
+    critical:true,
+  }),
+  N('content-upload','client','ContentUploadModal','creator submits draft',             40,835,340,48,'client',{
+    role:'Modal for a creator to upload draft files + notes for one deliverable slot.',
+    plain:'How a creator hands in their draft for the brand to review.',
+    path:'app/src/screens/workspace-v2/screens/ContentUploadModal.tsx',
+    notes:['Per-slot file picker', '→ v2SubmitContent'],
+    tag:['workflow','all'],
+    critical:true,
+  }),
+  N('content-review','client','ContentReviewModal','brand approves / requests revision',40,900,340,48,'client',{
+    role:'Modal for a brand to approve or request revisions on a submission.',
+    plain:'The popup where a brand says "approved" or "please change X".',
+    path:'app/src/screens/workspace-v2/screens/ContentReviewModal.tsx',
+    notes:['Approve → v2ApproveContent (releases escrow)', 'Revision → v2RequestRevision'],
+    tag:['workflow','all'],
+    critical:true,
+  }),
+  N('collab-detail','client','CollabDetail.tsx','single deal-room',                     40,965,340,52,'client',{
+    role:'Two-sided deal-room — both brand and creator see the same screen with role-aware actions.',
+    plain:'The room where a single deal lives. Both parties see what stage it is in and what to do next.',
+    path:'app/src/screens/workspace-v2/screens/CollabDetail.tsx',
+    notes:['Renders StageActionBanner', 'Per-deliverable upload + permalink rows', 'Raises LeaveReview + RaiseDispute modals'],
+    tag:['overview','workflow','all'],
+    critical:true,
+  }),
+  N('inbox','client','Inbox.tsx','threads + chat',                                      40,1035,340,52,'client',{
+    role:'Inbox list + active thread; mute/archive/report from More menu; attachments.',
+    plain:'The chat surface. Like Gmail or Slack, but scoped to one collab at a time.',
+    path:'app/src/screens/workspace-v2/screens/Inbox.tsx',
+    notes:['Phase 10 wired Supabase Realtime', 'Phase 11 mute/archive/report', 'Phase 12 attachments'],
+    tag:['overview','inbox','realtime','all'],
+  }),
+  N('spark','client','Spark.tsx','conversational planner',                              40,1105,340,56,'client',{
+    role:'Brand-side scripted "Spark" planner — chat-style flow, shortlist canvas, draft auto-save.',
+    plain:'A demo of an AI-style planner. Brand types what they want, Spark suggests creators and assembles a brief. (Scripted, not a real model.)',
+    path:'app/src/screens/workspace-v2/screens/Spark.tsx:143',
+    notes:['Engine in sparkEngine.ts (scripted)', 'Phase 49 — 1.5s debounced auto-save', 'Phase 15 multi-draft persistence'],
+    tag:['spark','all'],
+  }),
+  N('brand-analytics','client','BrandAnalytics.tsx','aggregated KPIs',                  40,1180,340,52,'client',{
+    role:'Aggregates derivePerf() across all brand campaigns into KPIs + per-creator leaderboard.',
+    plain:'The brand-side analytics tab. Shows total reach, engagement, top-performing creators, etc.',
+    path:'app/src/screens/workspace-v2/screens/BrandAnalytics.tsx:59',
+    notes:['Empty state if no live collab', 'Phase 49 seed fix added live data', 'Reads useStore → collabsForCampaign'],
+    tag:['overview','analytics','all'],
+    critical:true,
+  }),
+  N('brand-wallet','client','BrandWallet.tsx','escrow + spend',                         40,1245,340,48,'client',{
+    role:'Brand wallet: top-up, escrow held, spent, payout ledger.',
+    plain:'Where a brand sees their balance, what is locked in escrow, and what they have spent.',
+    path:'app/src/screens/workspace-v2/screens/BrandWallet.tsx',
+    notes:['Top-up adds local credit (no Stripe)', 'Reads transactions for ledger'],
+    tag:['wallet','all'],
+  }),
+  N('creator-wallet','client','CreatorWallet.tsx','earnings + advances',                40,1305,340,48,'client',{
+    role:'Creator wallet: lifetime earnings, withdraw, request-advance flow.',
+    plain:'Where a creator sees what they have earned and can request a withdraw or advance.',
+    path:'app/src/screens/workspace-v2/screens/CreatorWallet.tsx',
+    notes:['Withdraw → v2RequestWithdrawal', 'Advance → spark icon CTA'],
+    tag:['wallet','all'],
+  }),
+  N('onboarding','client','BrandOnboardingV2 / CreatorOnboardingV2','first-run wizards',40,1370,340,52,'client',{
+    role:'Two parallel wizards (brand + creator) that run after signup; persists profile fields.',
+    plain:'The "set up your profile" flow new users walk through right after signing up.',
+    path:'app/src/screens/workspace-v2/screens/{Brand,Creator}OnboardingV2.tsx',
+    notes:['Both call v2UpdateBrand / v2UpdateCreatorIdentity', 'Catches StaleVersionError → toast'],
+    tag:['auth','all'],
+  }),
+  N('notifications-bell','client','NotificationsBell.tsx','unread bell + dropdown',     40,1440,340,48,'client',{
+    role:'Header bell + dropdown that groups notifications by kind and time bucket.',
+    plain:'The bell icon at the top. Click to see what is new — new offers, new submissions, etc.',
+    path:'app/src/components/layout/NotificationsBell.tsx',
+    notes:['Phase 23 mirrors read-flip to Supabase', 'mirrorReadFlip() helper', 'Reads db.notifications'],
+    tag:['overview','inbox','realtime','all'],
+  }),
+
+  /* ─── State + Adapters ──────────────────────────────────────────── */
+  N('v2-hooks','state','v2Hooks.ts','selectors + small mutations',                      440,210,250,56,'state',{
+    role:'Zustand selector hooks + small toggle mutations (savedBrief, savedCreator, mark-read, send-message).',
+    plain:'A set of helpers each screen uses to read state and dispatch small actions like "save this brief" or "mark this thread read".',
+    path:'app/src/screens/workspace-v2/v2Hooks.ts:316',
+    notes:['Persona resolution lives here', 'mirrorThreadPatch wraps thread updates', 'v2SaveSparkDraft for Spark drafts'],
+    tag:['overview','workflow','inbox','spark','all'],
+    critical:true,
+  }),
+  N('derive-collab','state','deriveCollab()','collab stage rollup (READ)',              440,290,250,56,'state',{
+    role:'Pure function in v2Adapters — rolls up applications + offers + submissions + transactions into a single V2Collab with a derived stage.',
+    plain:'The single function that decides what stage a deal is at by looking at every related record. Drives the kanban and every deal screen.',
+    path:'app/src/screens/workspace-v2/v2Adapters.ts:520',
+    notes:['Stage logic in lockstep with computeCollabStage (write side)', 'allLive needs every slot status==="live"', 'paid requires camp.stage==="closed" + hasPayout'],
+    tag:['overview','workflow','analytics','all'],
+    critical:true,
+  }),
+  N('derive-perf','state','derivePerf()','analytics rollup',                            440,370,250,52,'state',{
+    role:'Aggregates collabs into impressions / engagement / EMV / leaderboard for a campaign.',
+    plain:'The function that turns one campaign\'s deals into the numbers brands see on the analytics tab.',
+    path:'app/src/screens/workspace-v2/screens/CampaignDetail.tsx:1457',
+    notes:['Returns null if no live/paid collab → empty state', 'Phase 49 seed fix made this fire for Aesop'],
+    tag:['analytics','all'],
+    critical:true,
+  }),
+  N('thread-to-v2','state','threadToV2()','message-list adapter',                       440,440,250,52,'state',{
+    role:'Maps a Thread + its messages into a V2Conversation with viewer-relative attribution.',
+    plain:'The adapter that turns raw chat data into the right shape for the inbox UI — and makes sure messages are attributed to the right person.',
+    path:'app/src/screens/workspace-v2/v2Adapters.ts:239',
+    notes:['Sarah self-msg bug regression: __tests__/threadToV2.test.ts', 'Filters duplicates from cross-tab race'],
+    tag:['inbox','all'],
+  }),
+  N('spark-engine','state','sparkEngine.ts','scripted LLM-like flow',                   440,510,250,52,'state',{
+    role:'Scripted message-router — given user text + context, returns next SparkMessage with creator suggestions / brief drafts.',
+    plain:'The fake brain behind Spark. Reads what you typed and returns scripted replies — no real AI model is called.',
+    path:'app/src/screens/workspace-v2/sparkEngine.ts',
+    notes:['NO real LLM — pre-baked branches', 'setSparkPool injects live creator/campaign arrays per render'],
+    tag:['spark','all'],
+  }),
+  N('route-fits','state','routeFitsPersona()','persona gate',                           440,580,250,48,'state',{
+    role:'Pure predicate that decides whether a given route is allowed for the current persona.',
+    plain:'The check that prevents a creator from accidentally seeing a brand-only screen and vice versa.',
+    path:'app/src/screens/workspace-v2/Workspace.tsx:104',
+    notes:['Tested in __tests__/routeFitsPersona.test.ts (27 cases)'],
+    tag:['auth','all'],
+  }),
+  N('stage-banner','state','StageActionBanner.tsx','per-stage CTA component',           440,645,250,48,'state',{
+    role:'Renders the right CTA for the current collab stage (10+ variants — invite, pitch, counter, submit, approve, mark-live, etc.).',
+    plain:'The "what to do next" banner that adapts to whatever stage your deal is at.',
+    path:'app/src/screens/workspace-v2/screens/StageActionBanner.tsx',
+    notes:['19 unit tests across the state matrix', 'Used by CollabDetail + BriefDetail + CreatorHome'],
+    tag:['workflow','all'],
+  }),
+
+  /* ─── v2 Mutations ──────────────────────────────────────────────── */
+  N('v2-launch','mutations','v2LaunchCampaign','create + publish',                      730, 70,300,52,'service',{
+    role:'Validates wizard input, creates Campaign + materializes deliverables, runs through tx().',
+    plain:'The function that takes the new-campaign wizard\'s inputs and saves a real campaign.',
+    path:'app/src/screens/workspace-v2/v2CampaignActions.ts:2516',
+    notes:['Capability gate: campaign.create', 'Mirrors to campaignsRepo + deliverablesRepo'],
+    tag:['workflow','all'],
+  }),
+  N('v2-apply','mutations','v2ApplyToCampaign','creator applies',                       730,140,300,52,'service',{
+    role:'Pushes an Application row + notifies the brand owner.',
+    plain:'When a creator clicks Apply on a brief, this is what runs.',
+    path:'app/src/screens/workspace-v2/v2CampaignActions.ts:431',
+    notes:['Single-application-per-(creator,campaign) guard', 'pushNotification(brand, "applications")'],
+    tag:['workflow','discover','all'],
+    critical:true,
+  }),
+  N('v2-send-offer','mutations','v2SendOffer','brand sends offer',                      730,210,300,52,'service',{
+    role:'Inserts an Offer + escrow_hold transaction; pushes "offers" notification to creator.',
+    plain:'When a brand sends an offer to a creator, this runs. Locks the rate in escrow and notifies the creator.',
+    path:'app/src/screens/workspace-v2/v2CampaignActions.ts:527',
+    notes:['No-parallel-pending-offer guard (slice-2)', 'Wallet check uses Math.max → guarded post-fix'],
+    tag:['overview','workflow','wallet','all'],
+    critical:true,
+  }),
+  N('v2-accept-offer','mutations','v2AcceptOffer','creator accepts',                    730,280,300,52,'service',{
+    role:'Flips offer.status="accepted", upserts a Collaboration row, derives Contract.',
+    plain:'When a creator clicks Accept, this is what runs. Creates the actual deal record.',
+    path:'app/src/screens/workspace-v2/v2CampaignActions.ts:766',
+    notes:['Triggers contract materialization', 'Cross-tab race guarded by optimistic lock (migration 020)'],
+    tag:['overview','workflow','all'],
+    critical:true,
+  }),
+  N('v2-counter-offer','mutations','v2CounterOffer / v2CounterCounter','price negotiation',730,350,300,52,'service',{
+    role:'Two-sided counter-rate with cap (10× current); records each round on Offer.rounds.',
+    plain:'When either side proposes a different rate, this runs. Both can do it; rounds are tracked.',
+    path:'app/src/screens/workspace-v2/v2CampaignActions.ts:1448',
+    notes:['10× cap to prevent fat-finger entries', 'Counter-cap notifications on both sides'],
+    tag:['workflow','all'],
+  }),
+  N('v2-submit-content','mutations','v2SubmitContent','creator submits draft',          730,420,300,52,'service',{
+    role:'Inserts a Submission row tagged to a deliverable slot; notifies brand approver.',
+    plain:'When a creator hands in their draft, this is what runs.',
+    path:'app/src/screens/workspace-v2/v2CampaignActions.ts:954',
+    notes:['Guards: must have accepted offer', 'Tags submission with [slot:N] for matcher'],
+    tag:['overview','workflow','all'],
+    critical:true,
+  }),
+  N('v2-approve','mutations','v2ApproveContent','brand approves',                       730,490,300,52,'service',{
+    role:'Flips submission.status="approved", releases escrow (escrow_release + payout transactions), pushes notifications.',
+    plain:'When a brand approves a submission, this runs. Releases the escrowed money to the creator.',
+    path:'app/src/screens/workspace-v2/v2CampaignActions.ts:1056',
+    notes:['Idempotency guard: re-approve no-ops', 'hasPayout becomes true after this'],
+    tag:['overview','workflow','wallet','all'],
+    critical:true,
+  }),
+  N('v2-mark-live','mutations','v2MarkContentLive','creator marks live',                730,560,300,52,'service',{
+    role:'Adds a "LIVE: <permalink>" feedback entry; deliverable rolls up to live in deriveCollab.',
+    plain:'When the creator says "I posted it" and pastes the URL, this runs. Marks the deal as live.',
+    path:'app/src/screens/workspace-v2/v2CampaignActions.ts:1966',
+    notes:['Requires submission.permalink set first', 'Idempotency: dedupes "LIVE: " feedback rows'],
+    tag:['overview','workflow','all'],
+    critical:true,
+  }),
+  N('v2-end-campaign','mutations','v2EndCampaign','close + final payouts',              730,630,300,48,'service',{
+    role:'Closes the campaign, settles escrow, derives reviews invitation.',
+    plain:'When a brand wraps a campaign, this runs. Sets it to closed and finalizes payments.',
+    path:'app/src/screens/workspace-v2/v2CampaignActions.ts:2126',
+    notes:['Triggers paid stage in deriveCollab', 'Does not auto-create reviews — UI prompts'],
+    tag:['workflow','wallet','all'],
+  }),
+  N('v2-pause-resume','mutations','v2PauseCampaign / v2ResumeCampaign','freeze workflow',730,690,300,48,'service',{
+    role:'Pauses (freezes mutations) and resumes a campaign.',
+    plain:'Lets a brand temporarily freeze all activity on a campaign without deleting it.',
+    path:'app/src/screens/workspace-v2/v2CampaignActions.ts:2319',
+    notes:['Pause-freezes-mutations (slice-3)', 'Capability check on every gated mutation'],
+    tag:['workflow','all'],
+  }),
+  N('v2-leave-review','mutations','v2LeaveReview','post-collab star',                   730,750,300,48,'service',{
+    role:'Either side leaves a review on the other after collab is done.',
+    plain:'Star-rating + comment after the collab finishes. Brand reviews creator and vice versa.',
+    path:'app/src/screens/workspace-v2/v2CampaignActions.ts:2417',
+    notes:['Single-review-per-direction guard', 'Used by LeaveReviewModal'],
+    tag:['workflow','all'],
+  }),
+  N('v2-raise-dispute','mutations','v2RaiseDispute','open a dispute',                   730,810,300,48,'service',{
+    role:'Opens a dispute on a collab; freezes escrow until resolved.',
+    plain:'When something goes wrong in a deal, either party can open a dispute. Locks the money.',
+    path:'app/src/screens/workspace-v2/v2DisputeActions.ts:135',
+    notes:['Single-open-dispute-per-collab guard (slice-2)', 'escrow_frozen flag on collab'],
+    tag:['workflow','all'],
+  }),
+  N('v2-update-brand','mutations','v2UpdateBrand','brand profile edit',                 730,870,300,52,'service',{
+    role:'Updates a Brand row; first hits Supabase, mirrors back into local store. Optimistic-lock aware.',
+    plain:'Saves a brand profile edit. Does the server first to avoid losing concurrent edits.',
+    path:'app/src/screens/workspace-v2/v2CampaignActions.ts:2655',
+    notes:['Reads brand.version pre-call as expectedVersion (slice-10)', 'StaleVersionError → toast in BrandProfile catch'],
+    tag:['auth','workflow','all'],
+  }),
+  N('v2-verify-channel','mutations','v2VerifyChannel','MOCK channel verify',            730,940,300,52,'service',{
+    role:'Flips Platform.verified flag; no real OAuth handshake.',
+    plain:'Marks a creator\'s social channel as "verified" — but only fakes it. No real check happens yet.',
+    path:'app/src/screens/workspace-v2/v2CreatorActions.ts:216',
+    notes:['Mock — see oauth-callback Edge Function for real path', 'connectPlatform.ts is wired but unused'],
+    tag:['discover','roadmap','all'],
+  }),
+  N('v2-save-spark','mutations','v2SaveSparkDraft','Spark persistence',                 730,1010,300,52,'service',{
+    role:'Persists a Spark conversation as a draft; auto-save fires every 1.5s of inactivity.',
+    plain:'Saves a Spark planner session so you can pick it up tomorrow.',
+    path:'app/src/screens/workspace-v2/v2Hooks.ts:1030',
+    notes:['Phase 49 added 1.5s debounced auto-save in Spark.tsx', 'Phase 15 multi-draft persistence'],
+    tag:['spark','all'],
+  }),
+  N('v2-send-message','mutations','v2SendMessage','chat send',                          730,1080,300,52,'service',{
+    role:'Pushes a Message into a Thread; clears archivedFor for recipients (Gmail-style).',
+    plain:'When you hit send on a chat message, this runs.',
+    path:'app/src/screens/workspace-v2/v2Hooks.ts:422',
+    notes:['Optional attachments via uploadMessageAttachment first', 'Mirrors via mirrorThreadPatch + messagesRepo.insert'],
+    tag:['inbox','realtime','all'],
+  }),
+  N('v2-toggle-saved','mutations','v2ToggleSavedBrief / v2ToggleSavedCreator','bookmark',730,1145,300,48,'service',{
+    role:'Adds/removes a campaign or creator id from the viewer\'s saved list.',
+    plain:'The save chip on a tile. Adds it to your shortlist.',
+    path:'app/src/screens/workspace-v2/v2Hooks.ts:316',
+    notes:['Optimistic-lock aware (slice-10)', 'StaleVersionError silently dropped — low-stakes'],
+    tag:['discover','all'],
+  }),
+  N('v2-send-invite','mutations','v2SendTeamInvite','brand team invite',                730,1205,300,48,'service',{
+    role:'Sends a team invite (admin/finance/viewer) to another email; expires after 14 days.',
+    plain:'A brand owner invites a teammate to help run their account.',
+    path:'app/src/screens/workspace-v2/v2Hooks.ts:838',
+    notes:['Phase 14 wired Supabase teamInvitesRepo', 'expires_at column added in 019'],
+    tag:['auth','all'],
+  }),
+  N('v2-sweep-stale','mutations','v2SweepStaleOffers','periodic cleanup',               730,1265,300,48,'service',{
+    role:'Sweeps offers older than 14 days that never got a response and marks them expired.',
+    plain:'Background cleanup that closes out offers nobody answered.',
+    path:'app/src/screens/workspace-v2/v2CampaignActions.ts:2766',
+    notes:['Called from boot — heartbeat-style', 'Guarded against double-fire via tx()'],
+    tag:['workflow','all'],
+  }),
+
+  /* ─── Store + Foundation ────────────────────────────────────────── */
+  N('store','foundation','store.ts','Zustand + persist + cross-tab',                    1070,210,260,56,'accent',{
+    role:'Zustand store with localStorage persist (v13), cross-tab sync, boot hydration, realtime mounts.',
+    plain:'The single in-memory database for the running app. Reads come here. Writes go through tx().',
+    path:'app/src/lib/api/store.ts:82',
+    notes:['version:13 (Phase 49 seed bump)', 'onRehydrateStorage runs migrations.ts', 'Promise.all hydrates 18 repos at boot'],
+    tag:['overview','workflow','realtime','all'],
+    critical:true,
+  }),
+  N('tx','foundation','tx() wrapper','atomic mutator',                                  1070,290,260,56,'accent',{
+    role:'Shallow-clones every entity table, runs the mutator on the clone, commits via setDB; returns the result.',
+    plain:'Every write goes through this wrapper so the change is atomic and visible immediately to all listeners.',
+    path:'app/src/lib/api/store.ts:139',
+    notes:['Synchronous — must NOT await inside', 'Mirrors fire post-commit via microtask or void IIFE', 'Captures result for caller'],
+    tag:['overview','workflow','all'],
+    critical:true,
+  }),
+  N('seed','foundation','seed.ts','demo dataset generator',                             1070,370,260,52,'accent',{
+    role:'Generates the demo Database (brands, creators, 200+ campaigns at varied stages, transactions, threads, messages).',
+    plain:'The fake company / fake people / fake deals everyone sees on first load.',
+    path:'app/src/lib/api/seed.ts:802',
+    notes:['Phase 49 added approved subs for posted/reporting/closed', 'countDeliverableSlots() helper at line:802', 'Aesop + Le Creuset are hand-curated; rest are generated'],
+    tag:['workflow','analytics','all'],
+  }),
+  N('migrations','foundation','migrations.ts','data migrators',                         1070,440,260,52,'accent',{
+    role:'Forward-only data migrators; runs on rehydrate to materialize collabs/deliverables/contracts from seed.',
+    plain:'On boot, walks through any new schema migrations and updates your local cached data to match.',
+    path:'app/src/lib/api/migrations.ts:419',
+    notes:['_legacyParseDeliverableSlots at line:350', 'migrateP1d builds Deliverable rows from text', 'Idempotent — re-running is a no-op'],
+    tag:['workflow','all'],
+  }),
+  N('types','foundation','types.ts','TS interface registry',                            1070,510,260,52,'accent',{
+    role:'Single file with every entity interface (Brand, Creator, Campaign, Offer, Submission, etc.) used app-wide.',
+    plain:'The big file that defines the shape of every record in the system.',
+    path:'app/src/lib/api/types.ts:850',
+    notes:['SubmissionStatus = in_review|revisions|approved (line:848)', 'Optimistic-lock added version?:number to 8 types', 'Phase 23 Notification meta FKs at line:953'],
+    tag:['all'],
+  }),
+  N('client-api','foundation','client.ts','legacy api object',                          1070,580,260,52,'accent',{
+    role:'Pre-v2 monolithic api.* surface (auth, campaigns, applications, offers, submissions, messages, wallet).',
+    plain:'The older API. v2 mutations replaced most of this; the auth + notifications still come through here.',
+    path:'app/src/lib/api/client.ts:1571',
+    notes:['pushNotification at line:39 — fires Supabase mirror via microtask', 'markAllNotificationsRead at line:1560'],
+    tag:['auth','inbox','all'],
+  }),
+  N('compute-stage','foundation','collabSync.computeCollabStage','collab stage rollup (WRITE)',1070,650,260,52,'accent',{
+    role:'Server-side sibling of deriveCollab — runs after a mutation to compute the next persisted stage.',
+    plain:'The function that computes a deal\'s stage when it is written, so the server matches what the UI sees.',
+    path:'app/src/lib/api/collabSync.ts:42',
+    notes:['MUST stay in lockstep with deriveCollab', 'computeCollabStage() called from collab mirror', '__tests__/collabSync.test.ts pins parity'],
+    tag:['workflow','all'],
+  }),
+  N('push-notif','foundation','pushNotification()','synth notify helper',               1070,720,260,52,'accent',{
+    role:'Inserts a Notification into db (synchronous), then queueMicrotask Supabase INSERT (Phase 23).',
+    plain:'A tiny helper used 25+ times across the app. Whenever a notification needs to fire, this is called.',
+    path:'app/src/lib/api/client.ts:39',
+    notes:['Respects user.notificationPrefs[kind]', 'Phase 23 added cross-device mirror', 'queueMicrotask waits for parent tx() to commit'],
+    tag:['inbox','realtime','all'],
+  }),
+  N('permissions','foundation','permissions.ts','capability gates',                     1070,790,260,52,'accent',{
+    role:'Capability matrix — requireCapability(userId, "campaign.update", db) called from every gated mutation.',
+    plain:'The gatekeeper that says "this user is allowed to do this action". Refuses with an error otherwise.',
+    path:'app/src/lib/permissions.ts',
+    notes:['90 unit tests (__tests__/permissions.test.ts)', 'P7 §4.3 admin role splits'],
+    tag:['auth','workflow','all'],
+  }),
+
+  /* ─── Repos ──────────────────────────────────────────────────────── */
+  N('brands-repo','repos','brandsRepo.ts','Brand row CRUD',                             1370, 70,300,46,'db',{
+    role:'Supabase reads/writes for the Brand entity; updateBrand accepts expectedVersion.',
+    plain:'The data layer for brands. Reads, writes, and uploads brand logos.',
+    path:'app/src/lib/data/brandsRepo.ts',
+    notes:['RLS by owner_email = auth.email()', 'uploadBrandLogo + removeBrandLogo helpers', 'Optimistic lock (slice-10)'],
+    tag:['auth','all'],
+  }),
+  N('creators-repo','repos','creatorsRepo.ts','Creator row CRUD',                       1370,130,300,46,'db',{
+    role:'Supabase reads/writes for the Creator entity; uploadCreatorPortrait helper.',
+    plain:'The data layer for creators. Reads, writes, and portrait uploads.',
+    path:'app/src/lib/data/creatorsRepo.ts:213',
+    notes:['Public SELECT (storefronts + Discover need every row)', 'updateCreator gated on owner_email', 'Optimistic lock (slice-10)'],
+    tag:['discover','all'],
+  }),
+  N('campaigns-repo','repos','campaignsRepo.ts','Campaign row CRUD',                    1370,190,300,46,'db',{
+    role:'Supabase reads/writes for Campaign; toCampaign mapper exported for realtime.',
+    plain:'The data layer for campaigns.',
+    path:'app/src/lib/data/campaignsRepo.ts:55',
+    notes:['toCampaign exported for realtimeWorkflow', 'Optimistic lock (migration 020)'],
+    tag:['workflow','all'],
+  }),
+  N('offers-repo','repos','offersRepo.ts','Offer row CRUD',                             1370,250,300,46,'db',{
+    role:'Supabase reads/writes for Offer; carries optimistic-lock version column.',
+    plain:'The data layer for offers.',
+    path:'app/src/lib/data/offersRepo.ts:34',
+    notes:['toOffer exported for realtimeWorkflow', 'Migration 020 version column'],
+    tag:['overview','workflow','all'],
+    critical:true,
+  }),
+  N('apps-repo','repos','applicationsRepo.ts','Application CRUD',                       1370,310,300,46,'db',{
+    role:'Supabase reads/writes for Application; same pattern as offers.',
+    plain:'The data layer for applications (a creator applying to a campaign).',
+    path:'app/src/lib/data/applicationsRepo.ts:30',
+    notes:['Migration 020 optimistic lock'],
+    tag:['workflow','discover','all'],
+  }),
+  N('subs-repo','repos','submissionsRepo.ts','Submission CRUD',                         1370,370,300,46,'db',{
+    role:'Supabase reads/writes for Submission; toSubmission exported.',
+    plain:'The data layer for content submissions (the drafts creators hand in).',
+    path:'app/src/lib/data/submissionsRepo.ts:30',
+    notes:['Migration 020 optimistic lock', 'Mirror catches StaleVersionError → toast'],
+    tag:['overview','workflow','all'],
+    critical:true,
+  }),
+  N('collabs-repo','repos','collaborationsRepo.ts','Collaboration CRUD',                1370,430,300,46,'db',{
+    role:'writeCollabInSupabase = update-with-version + insert-on-miss two-step (slice-9 refactor).',
+    plain:'The data layer for the deal record itself. Custom upsert because of optimistic locking.',
+    path:'app/src/lib/data/collaborationsRepo.ts:37',
+    notes:['Slice-9 refactored upsert into write+insert two-step', 'StaleVersionError on version mismatch', 'Old upsert kept as deprecated alias'],
+    tag:['workflow','all'],
+  }),
+  N('contracts-repo','repos','contractsRepo.ts','Contract CRUD',                        1370,490,300,46,'db',{
+    role:'Materialized from accepted offers; tracks deliverables + milestones + signatures.',
+    plain:'The data layer for the deal\'s legal record (auto-created from accepted offers).',
+    path:'app/src/lib/data/contractsRepo.ts',
+    notes:['Built by migrator 5 (P2 §1.3) on first hydrate'],
+    tag:['workflow','all'],
+  }),
+  N('tx-repo','repos','transactionsRepo.ts','wallet ledger CRUD',                       1370,550,300,46,'db',{
+    role:'All money movement: top-ups, escrow_hold, escrow_release, payout, withdrawal, advance.',
+    plain:'The data layer for the money ledger. Every dollar movement is one row.',
+    path:'app/src/lib/data/transactionsRepo.ts',
+    notes:['hasPayout in deriveCollab queries this', 'Brand wallet + creator wallet ledgers read this'],
+    tag:['wallet','workflow','all'],
+  }),
+  N('reviews-repo','repos','reviewsRepo.ts','Review CRUD',                              1370,610,300,46,'db',{
+    role:'Post-collab star reviews; both directions stored in the same table.',
+    plain:'The data layer for star reviews after collabs end.',
+    path:'app/src/lib/data/reviewsRepo.ts',
+    notes:['featuredReviewIds on creator points here'],
+    tag:['workflow','all'],
+  }),
+  N('disputes-repo','repos','disputesRepo.ts','Dispute CRUD',                           1370,670,300,46,'db',{
+    role:'Disputes raised on collabs; tracks messages + resolution.',
+    plain:'The data layer for disputes.',
+    path:'app/src/lib/data/disputesRepo.ts:37',
+    notes:['Migration 020 optimistic lock', 'Resolution mirrors back via collabSync'],
+    tag:['workflow','all'],
+  }),
+  N('threads-repo','repos','threadsRepo.ts','Thread CRUD',                              1370,730,300,46,'db',{
+    role:'Conversation rows; on the supabase_realtime publication for live updates.',
+    plain:'The data layer for chat threads (the conversation, not individual messages).',
+    path:'app/src/lib/data/threadsRepo.ts',
+    notes:['rowToThread exported for realtimeChat', 'Phase 11 mute/archive fields'],
+    tag:['inbox','realtime','all'],
+  }),
+  N('messages-repo','repos','messagesRepo.ts','Message CRUD',                           1370,790,300,46,'db',{
+    role:'Individual chat messages; insert path triggers realtime broadcast.',
+    plain:'The data layer for individual chat messages.',
+    path:'app/src/lib/data/messagesRepo.ts',
+    notes:['rowToMessage exported for realtimeChat', 'Phase 12 attachments column'],
+    tag:['inbox','realtime','all'],
+  }),
+  N('deliverables-repo','repos','deliverablesRepo.ts','Deliverable rows CRUD',          1370,850,300,46,'db',{
+    role:'Per-slot deliverable rows; materialized by migrator 4 from campaign.deliverablesText.',
+    plain:'The data layer for the structured "1 Reel + 2 stories" → 3 rows representation.',
+    path:'app/src/lib/data/deliverablesRepo.ts',
+    notes:['Materialization in migrations.ts:419', 'Submissions match via [slot:N] notes prefix'],
+    tag:['workflow','all'],
+  }),
+  N('outreach-repo','repos','outreachRepo.ts','Outreach CRUD',                          1370,910,300,46,'db',{
+    role:'Brand-side soft outreach (creator hasn\'t applied / isn\'t under offer).',
+    plain:'The data layer for the brand reaching out to creators they like.',
+    path:'app/src/lib/data/outreachRepo.ts',
+    notes:['Phase 9 — separate from offers (no money commit yet)'],
+    tag:['discover','all'],
+  }),
+  N('invites-repo','repos','teamInvitesRepo.ts','TeamInvite CRUD',                      1370,970,300,46,'db',{
+    role:'Brand team invites with expires_at + role; accept resolves to a real User.',
+    plain:'The data layer for team-mate invites.',
+    path:'app/src/lib/data/teamInvitesRepo.ts',
+    notes:['Migration 017 schema', 'Migration 019 added expires_at column'],
+    tag:['auth','all'],
+  }),
+  N('drafts-repo','repos','sparkDraftsRepo.ts','SparkDraft CRUD',                       1370,1030,300,46,'db',{
+    role:'Spark conversation drafts (history + context blobs in JSONB) per brand.',
+    plain:'The data layer for saved Spark planning sessions.',
+    path:'app/src/lib/data/sparkDraftsRepo.ts',
+    notes:['Phase 15 schema (migration 018)', 'Phase 49 auto-saves every 1.5s'],
+    tag:['spark','all'],
+  }),
+  N('notif-repo','repos','notificationsRepo.ts','Notification CRUD',                    1370,1090,300,46,'db',{
+    role:'Cross-device notification storage (Phase 23); RLS by owner_email.',
+    plain:'The data layer for notifications. New in this session — used to be local-only.',
+    path:'app/src/lib/data/notificationsRepo.ts',
+    notes:['markNotificationsReadInSupabase for read-flip mirror', 'Permissive INSERT (any auth\'d session)'],
+    tag:['inbox','realtime','all'],
+  }),
+  N('opt-lock','repos','optimisticLock.ts','StaleVersionError + isNoRowsError',         1370,1150,300,46,'db',{
+    role:'Shared optimistic-lock helpers used by 8 versioned repos.',
+    plain:'A small helper that decides whether a write failed because someone else got there first.',
+    path:'app/src/lib/data/optimisticLock.ts',
+    notes:['Migrations 020 + 021 added version columns', 'isNoRowsError matches PGRST116/204'],
+    tag:['workflow','all'],
+  }),
+
+  /* ─── Realtime + Auth + External ─────────────────────────────────── */
+  N('supabase-client','external','supabase.ts','client init',                           1710,210,330,52,'external',{
+    role:'Singleton Supabase JS client; wraps env vars + isSupabaseConfigured() guard.',
+    plain:'The single connection to Supabase. Every repo grabs this.',
+    path:'app/src/lib/supabase.ts',
+    notes:['VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY env', 'isSupabaseConfigured() lets local-only dev work'],
+    tag:['overview','all'],
+    critical:true,
+  }),
+  N('session-sync','external','sessionSync.ts','auth → local user sync',                1710,290,330,52,'external',{
+    role:'Subscribes to supabase.auth.onAuthStateChange; syncs the local User row + persona.',
+    plain:'Keeps the local app state in sync with whether you are signed in (and as whom).',
+    path:'app/src/lib/auth/sessionSync.ts',
+    notes:['resolveUserFromSupabaseByEmail synthesizes local User.id', 'FNV-1a 64-bit hash for User.id'],
+    tag:['auth','all'],
+  }),
+  N('realtime-chat','external','realtimeChat.ts','live chat subscription',              1710,370,330,52,'external',{
+    role:'Subscribes to threads + messages tables on the supabase_realtime publication.',
+    plain:'Keeps chats live across tabs and devices.',
+    path:'app/src/lib/realtimeChat.ts:31',
+    notes:['INSERT messages overlay by id (dedupe local echo)', 'INSERT/UPDATE threads overlay by id', 'Mounted at boot from store.ts:271'],
+    tag:['inbox','realtime','all'],
+  }),
+  N('realtime-workflow','external','realtimeWorkflow.ts','live workflow subscription',  1710,450,330,52,'external',{
+    role:'Phase 22 — subscribes to 6 workflow tables + notifications; version-aware overlay.',
+    plain:'Keeps everything else live across tabs (offers, submissions, collabs, disputes, notifications).',
+    path:'app/src/lib/api/realtimeWorkflow.ts',
+    notes:['Single channel multiplexes 7 tables', 'overlay() drops older versions to protect writeBack', 'Mounted at boot alongside chat realtime'],
+    tag:['overview','realtime','workflow','all'],
+    critical:true,
+  }),
+  N('connect-platform','external','connectPlatform.ts','OAuth popup helper',            1710,530,330,52,'external',{
+    role:'Opens platform authorize popup; listens for postMessage from oauth-callback.',
+    plain:'A scaffolded helper for real social-channel OAuth. Not yet wired to any UI — v2VerifyChannel still mocks it.',
+    path:'app/src/lib/oauth/connectPlatform.ts',
+    notes:['Throws OAuthNotConfiguredError when env vars missing', 'Round-trips state for callback', 'NOT YET CALLED — scaffold only'],
+    tag:['discover','roadmap','all'],
+  }),
+  N('oauth-edgefn','external','oauth-callback (Edge Fn)','Deno code-exchange',          1710,610,330,52,'external',{
+    role:'Supabase Edge Function — exchanges OAuth code for tokens (IG/TikTok/YT/X) via service_role.',
+    plain:'A small server function that completes social-account linking. The browser cannot do this directly because it would leak the secret.',
+    path:'app/supabase/functions/oauth-callback/index.ts',
+    notes:['IG / TikTok / YT / X flows fleshed out', 'Substack stubbed (no public OAuth)', 'Needs dev-portal app registration first'],
+    tag:['discover','roadmap','all'],
+  }),
+  N('postgres','external','Supabase Postgres','24 migrations applied',                  1710,700,330,52,'external',{
+    role:'The actual database — 18 tables + RLS + triggers + 4 storage buckets.',
+    plain:'The real database in the cloud where everything is stored.',
+    path:'app/supabase/migrations/001_brands.sql … 024_platform_tokens.sql',
+    notes:['8 tables now have version columns (020+021)', '7 tables on supabase_realtime publication (012+022+023)', 'platform_tokens table exists but unused (024)'],
+    tag:['overview','workflow','all'],
+    critical:true,
+  }),
+  N('supabase-auth','external','Supabase Auth','session + JWT',                         1710,780,330,46,'external',{
+    role:'Email/password + magic-link auth; exposes auth.email() to RLS policies.',
+    plain:'The thing that actually checks your password and gives you a session token.',
+    path:'(Supabase managed)',
+    notes:['RLS gate everywhere is auth.email() = owner_email', 'sessionSync.ts subscribes to auth state'],
+    tag:['auth','all'],
+  }),
+  N('supabase-storage','external','Supabase Storage','4 buckets',                       1710,840,330,46,'external',{
+    role:'Object storage: brand-logos, creator-portraits, campaign-assets, message-attachments.',
+    plain:'Where uploaded files (logos, portraits, draft files, chat attachments) live.',
+    path:'(Supabase managed)',
+    notes:['RLS-gated by ownership path prefix (slice-1 tightening)'],
+    tag:['workflow','inbox','all'],
+  }),
+  N('supabase-realtime','external','Supabase Realtime','postgres_changes broadcast',    1710,900,330,52,'external',{
+    role:'Postgres → WebSocket broadcast for tables in the supabase_realtime publication.',
+    plain:'The push system that lets every device know instantly when data changes.',
+    path:'(Supabase managed)',
+    notes:['7 tables now broadcast (chat 2 + workflow 6 + notifications 1)', 'RLS still gates which broadcasts each subscriber sees'],
+    tag:['overview','realtime','inbox','all'],
+    critical:true,
+  }),
+  N('social-platforms','external','Instagram / TikTok / YouTube / X','social APIs',     1710,980,330,52,'external',{
+    role:'External OAuth + read-only API targets for channel verification.',
+    plain:'The real social networks. Connection is scaffolded, not live.',
+    path:'(external)',
+    notes:['Each needs dev-portal app registration', 'Substack has no public OAuth'],
+    tag:['discover','roadmap','all'],
+  }),
+];
+
+/* ====================================================================
+ * EDGES
+ * ==================================================================== */
+const edges = [
+  /* Mounts (top-of-tree) */
+  { from:'public-landing', to:'workspace-v2', kind:'mount', label:'router.tsx', tag:['auth','all'] },
+  { from:'signin-signup',  to:'workspace-v2', kind:'mount', label:'after auth → /v2', tag:['auth','all'] },
+  { from:'workspace-v2',   to:'brand-home',    kind:'mount', label:'persona=brand', tag:['overview','auth','all'] },
+  { from:'workspace-v2',   to:'creator-home',  kind:'mount', label:'persona=creator', tag:['auth','all'] },
+  { from:'workspace-v2',   to:'route-fits',    kind:'normal', label:'gate per tab', tag:['auth','all'] },
+  { from:'workspace-v2',   to:'discover',      kind:'mount', label:'tab=discover', tag:['discover','all'] },
+  { from:'workspace-v2',   to:'browse-briefs', kind:'mount', label:'tab=browse', tag:['discover','all'] },
+  { from:'workspace-v2',   to:'inbox',         kind:'mount', label:'tab=inbox', tag:['inbox','all'] },
+  { from:'workspace-v2',   to:'spark',         kind:'mount', label:'tab=spark', tag:['spark','all'] },
+  { from:'workspace-v2',   to:'brand-analytics',kind:'mount', label:'tab=analytics', tag:['analytics','all'] },
+  { from:'workspace-v2',   to:'brand-wallet',  kind:'mount', label:'tab=wallet', tag:['wallet','all'] },
+  { from:'workspace-v2',   to:'creator-wallet',kind:'mount', label:'tab=wallet', tag:['wallet','all'] },
+  { from:'workspace-v2',   to:'onboarding',    kind:'mount', label:'first run', tag:['auth','all'] },
+  { from:'workspace-v2',   to:'notifications-bell',kind:'mount', label:'header', tag:['inbox','all'] },
+
+  /* UI navigation */
+  { from:'brand-home',     to:'campaign-detail', kind:'normal', label:'open campaign', tag:['overview','workflow','all'] },
+  { from:'discover',       to:'send-offer-modal', kind:'normal', label:'Send offer', tag:['workflow','discover','all'] },
+  { from:'campaign-detail',to:'send-offer-modal', kind:'critical', label:'1 · open SendOffer', tag:['overview','workflow','all'] },
+  { from:'campaign-detail',to:'content-review', kind:'critical', label:'review draft', tag:['overview','workflow','all'] },
+  { from:'browse-briefs',  to:'brief-detail',  kind:'normal', label:'open brief', tag:['discover','all'] },
+  { from:'creator-home',   to:'collab-detail', kind:'normal', label:'open collab', tag:['workflow','all'] },
+  { from:'creator-home',   to:'brief-detail',  kind:'normal', label:'open brief', tag:['discover','all'] },
+  { from:'inbox',          to:'collab-detail', kind:'normal', label:'related deal', tag:['inbox','all'] },
+  { from:'collab-detail',  to:'content-upload',kind:'critical', label:'creator opens upload', tag:['overview','workflow','all'] },
+  { from:'collab-detail',  to:'stage-banner',  kind:'normal', label:'renders banner', tag:['workflow','all'] },
+  { from:'brief-detail',   to:'stage-banner',  kind:'normal', label:'renders banner', tag:['workflow','all'] },
+  { from:'creator-home',   to:'stage-banner',  kind:'normal', label:'kanban row', tag:['workflow','all'] },
+
+  /* UI → Mutations (the spine + branches) */
+  { from:'send-offer-modal', to:'v2-send-offer',   kind:'critical', label:'2 · v2SendOffer', tag:['overview','workflow','all'] },
+  { from:'brief-detail',     to:'v2-apply',        kind:'critical', label:'Apply', tag:['workflow','discover','all'] },
+  { from:'collab-detail',    to:'v2-accept-offer', kind:'critical', label:'Accept', tag:['overview','workflow','all'] },
+  { from:'collab-detail',    to:'v2-counter-offer',kind:'normal', label:'Counter', tag:['workflow','all'] },
+  { from:'content-upload',   to:'v2-submit-content',kind:'critical', label:'3 · submit', tag:['overview','workflow','all'] },
+  { from:'content-review',   to:'v2-approve',      kind:'critical', label:'4 · approve', tag:['overview','workflow','all'] },
+  { from:'collab-detail',    to:'v2-mark-live',    kind:'critical', label:'5 · mark-live', tag:['overview','workflow','all'] },
+  { from:'collab-detail',    to:'v2-leave-review', kind:'normal', label:'review', tag:['workflow','all'] },
+  { from:'collab-detail',    to:'v2-raise-dispute',kind:'normal', label:'dispute', tag:['workflow','all'] },
+  { from:'campaign-detail',  to:'v2-end-campaign', kind:'normal', label:'End campaign', tag:['workflow','all'] },
+  { from:'campaign-detail',  to:'v2-pause-resume', kind:'normal', label:'Pause/Resume', tag:['workflow','all'] },
+  { from:'new-campaign',     to:'v2-launch',       kind:'normal', label:'Publish', tag:['workflow','all'] },
+  { from:'spark',            to:'v2-save-spark',   kind:'normal', label:'auto-save 1.5s', tag:['spark','all'] },
+  { from:'inbox',            to:'v2-send-message', kind:'normal', label:'send', tag:['inbox','all'] },
+  { from:'brand-home',       to:'v2-send-invite',  kind:'normal', label:'invite teammate', tag:['auth','all'] },
+  { from:'discover',         to:'v2-toggle-saved', kind:'normal', label:'save chip', tag:['discover','all'] },
+  { from:'browse-briefs',    to:'v2-toggle-saved', kind:'normal', label:'save chip', tag:['discover','all'] },
+  { from:'onboarding',       to:'v2-update-brand', kind:'normal', label:'save profile', tag:['auth','all'] },
+  { from:'onboarding',       to:'v2-verify-channel',kind:'normal', label:'connect channel (mock)', tag:['discover','roadmap','all'] },
+
+  /* UI → State adapters */
+  { from:'brand-home',       to:'v2-hooks',     kind:'normal', label:'useV2*', tag:['overview','all'] },
+  { from:'creator-home',     to:'v2-hooks',     kind:'normal', label:'useV2*', tag:['all'] },
+  { from:'inbox',            to:'thread-to-v2', kind:'normal', label:'render messages', tag:['inbox','all'] },
+  { from:'campaign-detail',  to:'derive-collab',kind:'critical', label:'roll-up kanban', tag:['overview','workflow','all'] },
+  { from:'collab-detail',    to:'derive-collab',kind:'critical', label:'derive stage', tag:['overview','workflow','all'] },
+  { from:'campaign-detail',  to:'derive-perf',  kind:'critical', label:'compute KPIs', tag:['analytics','all'] },
+  { from:'brand-analytics',  to:'derive-perf',  kind:'critical', label:'aggregate KPIs', tag:['analytics','all'] },
+  { from:'spark',            to:'spark-engine', kind:'normal', label:'processInput', tag:['spark','all'] },
+  { from:'brand-analytics',  to:'derive-collab',kind:'normal', label:'collabsForCampaign', tag:['analytics','all'] },
+
+  /* Mutations → tx */
+  { from:'v2-send-offer',    to:'tx', kind:'critical', label:'tx(commit)', tag:['overview','workflow','all'] },
+  { from:'v2-apply',         to:'tx', kind:'normal', label:'tx', tag:['workflow','discover','all'] },
+  { from:'v2-accept-offer',  to:'tx', kind:'critical', label:'tx', tag:['overview','workflow','all'] },
+  { from:'v2-submit-content',to:'tx', kind:'critical', label:'tx', tag:['overview','workflow','all'] },
+  { from:'v2-approve',       to:'tx', kind:'critical', label:'tx', tag:['overview','workflow','all'] },
+  { from:'v2-mark-live',     to:'tx', kind:'critical', label:'tx', tag:['overview','workflow','all'] },
+  { from:'v2-counter-offer', to:'tx', kind:'normal', label:'tx', tag:['workflow','all'] },
+  { from:'v2-launch',        to:'tx', kind:'normal', label:'tx', tag:['workflow','all'] },
+  { from:'v2-end-campaign',  to:'tx', kind:'normal', label:'tx', tag:['workflow','all'] },
+  { from:'v2-pause-resume',  to:'tx', kind:'normal', label:'tx', tag:['workflow','all'] },
+  { from:'v2-leave-review',  to:'tx', kind:'normal', label:'tx', tag:['workflow','all'] },
+  { from:'v2-raise-dispute', to:'tx', kind:'normal', label:'tx', tag:['workflow','all'] },
+  { from:'v2-update-brand',  to:'tx', kind:'normal', label:'tx', tag:['auth','all'] },
+  { from:'v2-verify-channel',to:'tx', kind:'normal', label:'tx (mock)', tag:['discover','roadmap','all'] },
+  { from:'v2-save-spark',    to:'tx', kind:'normal', label:'tx', tag:['spark','all'] },
+  { from:'v2-send-message',  to:'tx', kind:'normal', label:'tx', tag:['inbox','all'] },
+  { from:'v2-toggle-saved',  to:'tx', kind:'normal', label:'tx', tag:['discover','all'] },
+  { from:'v2-send-invite',   to:'tx', kind:'normal', label:'tx', tag:['auth','all'] },
+  { from:'v2-sweep-stale',   to:'tx', kind:'normal', label:'tx', tag:['workflow','all'] },
+  { from:'v2-apply',         to:'push-notif', kind:'normal', label:'notify brand', tag:['workflow','inbox','all'] },
+  { from:'v2-send-offer',    to:'push-notif', kind:'normal', label:'notify creator', tag:['workflow','inbox','all'] },
+  { from:'v2-approve',       to:'push-notif', kind:'normal', label:'notify creator', tag:['workflow','inbox','all'] },
+  { from:'v2-accept-offer',  to:'compute-stage', kind:'normal', label:'recompute stage', tag:['workflow','all'] },
+  { from:'v2-approve',       to:'compute-stage', kind:'normal', label:'recompute stage', tag:['workflow','all'] },
+  { from:'v2-mark-live',     to:'compute-stage', kind:'normal', label:'recompute stage', tag:['workflow','all'] },
+
+  /* tx → store + foundation */
+  { from:'tx',         to:'store',        kind:'critical', label:'setDB', tag:['overview','workflow','all'] },
+  { from:'store',      to:'v2-hooks',     kind:'normal',   label:'subscribe', tag:['overview','workflow','all'] },
+  { from:'store',      to:'derive-collab',kind:'critical', label:'reads db', tag:['overview','workflow','all'] },
+  { from:'store',      to:'derive-perf',  kind:'normal',   label:'reads db', tag:['analytics','all'] },
+  { from:'store',      to:'thread-to-v2', kind:'normal',   label:'reads db', tag:['inbox','all'] },
+  { from:'store',      to:'migrations',   kind:'normal',   label:'onRehydrate', tag:['workflow','all'] },
+  { from:'store',      to:'seed',         kind:'normal',   label:'first-load', tag:['workflow','all'] },
+  { from:'push-notif', to:'store',        kind:'normal',   label:'tx push', tag:['inbox','all'] },
+  { from:'push-notif', to:'notif-repo',   kind:'db',       label:'queueMicrotask insert', tag:['inbox','realtime','all'] },
+  { from:'compute-stage',to:'collabs-repo',kind:'db',      label:'mirror stage', tag:['workflow','all'] },
+  { from:'client-api', to:'tx',           kind:'normal',   label:'auth + notifs', tag:['auth','inbox','all'] },
+  { from:'client-api', to:'push-notif',   kind:'normal',   label:'helper', tag:['inbox','all'] },
+  { from:'client-api', to:'permissions',  kind:'normal',   label:'capability', tag:['auth','all'] },
+
+  /* Mutations → Repos (mirror writes) */
+  { from:'v2-launch',        to:'campaigns-repo',  kind:'db', label:'insert', tag:['workflow','all'] },
+  { from:'v2-launch',        to:'deliverables-repo',kind:'db', label:'insert N', tag:['workflow','all'] },
+  { from:'v2-apply',         to:'apps-repo',       kind:'db', label:'insert', tag:['workflow','discover','all'] },
+  { from:'v2-send-offer',    to:'offers-repo',     kind:'critical', label:'insert + escrow', tag:['overview','workflow','all'] },
+  { from:'v2-send-offer',    to:'tx-repo',         kind:'db', label:'escrow_hold', tag:['workflow','wallet','all'] },
+  { from:'v2-accept-offer',  to:'offers-repo',     kind:'db', label:'update status', tag:['workflow','all'] },
+  { from:'v2-accept-offer',  to:'collabs-repo',    kind:'db', label:'writeCollab', tag:['workflow','all'] },
+  { from:'v2-accept-offer',  to:'contracts-repo',  kind:'db', label:'derive', tag:['workflow','all'] },
+  { from:'v2-counter-offer', to:'offers-repo',     kind:'db', label:'update + rounds', tag:['workflow','all'] },
+  { from:'v2-submit-content',to:'subs-repo',       kind:'critical', label:'insert submission', tag:['overview','workflow','all'] },
+  { from:'v2-approve',       to:'subs-repo',       kind:'critical', label:'status=approved', tag:['overview','workflow','all'] },
+  { from:'v2-approve',       to:'tx-repo',         kind:'db', label:'escrow_release + payout', tag:['workflow','wallet','all'] },
+  { from:'v2-mark-live',     to:'subs-repo',       kind:'critical', label:'permalink + LIVE feedback', tag:['overview','workflow','all'] },
+  { from:'v2-end-campaign',  to:'campaigns-repo',  kind:'db', label:'stage=closed', tag:['workflow','all'] },
+  { from:'v2-pause-resume',  to:'campaigns-repo',  kind:'db', label:'paused flag', tag:['workflow','all'] },
+  { from:'v2-leave-review',  to:'reviews-repo',    kind:'db', label:'insert', tag:['workflow','all'] },
+  { from:'v2-raise-dispute', to:'disputes-repo',   kind:'db', label:'insert', tag:['workflow','all'] },
+  { from:'v2-send-message',  to:'messages-repo',   kind:'db', label:'insert', tag:['inbox','realtime','all'] },
+  { from:'v2-send-message',  to:'threads-repo',    kind:'db', label:'unreadFor patch', tag:['inbox','realtime','all'] },
+  { from:'v2-update-brand',  to:'brands-repo',     kind:'db', label:'update + version', tag:['auth','all'] },
+  { from:'v2-toggle-saved',  to:'creators-repo',   kind:'db', label:'savedBriefs', tag:['discover','all'] },
+  { from:'v2-toggle-saved',  to:'brands-repo',     kind:'db', label:'savedCreators', tag:['discover','all'] },
+  { from:'v2-save-spark',    to:'drafts-repo',     kind:'db', label:'upsert draft', tag:['spark','all'] },
+  { from:'v2-send-invite',   to:'invites-repo',    kind:'db', label:'insert invite', tag:['auth','all'] },
+  { from:'v2-sweep-stale',   to:'offers-repo',     kind:'db', label:'expire old', tag:['workflow','all'] },
+
+  /* All write repos use the shared optimistic lock helper */
+  { from:'offers-repo',      to:'opt-lock', kind:'normal', label:'StaleVersion', tag:['workflow','all'] },
+  { from:'apps-repo',        to:'opt-lock', kind:'normal', label:'StaleVersion', tag:['workflow','all'] },
+  { from:'subs-repo',        to:'opt-lock', kind:'normal', label:'StaleVersion', tag:['workflow','all'] },
+  { from:'collabs-repo',     to:'opt-lock', kind:'normal', label:'StaleVersion', tag:['workflow','all'] },
+  { from:'disputes-repo',    to:'opt-lock', kind:'normal', label:'StaleVersion', tag:['workflow','all'] },
+  { from:'campaigns-repo',   to:'opt-lock', kind:'normal', label:'StaleVersion', tag:['workflow','all'] },
+  { from:'brands-repo',      to:'opt-lock', kind:'normal', label:'StaleVersion', tag:['auth','all'] },
+  { from:'creators-repo',    to:'opt-lock', kind:'normal', label:'StaleVersion', tag:['discover','all'] },
+
+  /* Repos → External Postgres */
+  { from:'brands-repo',      to:'postgres', kind:'db', label:'CRUD', tag:['auth','all'] },
+  { from:'creators-repo',    to:'postgres', kind:'db', label:'CRUD', tag:['discover','all'] },
+  { from:'campaigns-repo',   to:'postgres', kind:'db', label:'CRUD', tag:['workflow','all'] },
+  { from:'offers-repo',      to:'postgres', kind:'critical', label:'INSERT + UPDATE', tag:['overview','workflow','all'] },
+  { from:'apps-repo',        to:'postgres', kind:'db', label:'CRUD', tag:['workflow','discover','all'] },
+  { from:'subs-repo',        to:'postgres', kind:'critical', label:'INSERT + UPDATE', tag:['overview','workflow','all'] },
+  { from:'collabs-repo',     to:'postgres', kind:'db', label:'CRUD', tag:['workflow','all'] },
+  { from:'contracts-repo',   to:'postgres', kind:'db', label:'CRUD', tag:['workflow','all'] },
+  { from:'tx-repo',          to:'postgres', kind:'db', label:'INSERT', tag:['wallet','workflow','all'] },
+  { from:'reviews-repo',     to:'postgres', kind:'db', label:'CRUD', tag:['workflow','all'] },
+  { from:'disputes-repo',    to:'postgres', kind:'db', label:'CRUD', tag:['workflow','all'] },
+  { from:'threads-repo',     to:'postgres', kind:'db', label:'CRUD', tag:['inbox','realtime','all'] },
+  { from:'messages-repo',    to:'postgres', kind:'db', label:'INSERT', tag:['inbox','realtime','all'] },
+  { from:'deliverables-repo',to:'postgres', kind:'db', label:'CRUD', tag:['workflow','all'] },
+  { from:'outreach-repo',    to:'postgres', kind:'db', label:'CRUD', tag:['discover','all'] },
+  { from:'invites-repo',     to:'postgres', kind:'db', label:'CRUD', tag:['auth','all'] },
+  { from:'drafts-repo',      to:'postgres', kind:'db', label:'CRUD', tag:['spark','all'] },
+  { from:'notif-repo',       to:'postgres', kind:'db', label:'CRUD', tag:['inbox','realtime','all'] },
+
+  /* Boot hydration (store reads everything once at startup) */
+  { from:'store', to:'brands-repo',     kind:'normal', label:'fetchAll', tag:['all'] },
+  { from:'store', to:'creators-repo',   kind:'normal', label:'fetchAll', tag:['all'] },
+  { from:'store', to:'campaigns-repo',  kind:'normal', label:'fetchAll', tag:['all'] },
+  { from:'store', to:'offers-repo',     kind:'normal', label:'fetchAll', tag:['all'] },
+  { from:'store', to:'apps-repo',       kind:'normal', label:'fetchAll', tag:['all'] },
+  { from:'store', to:'subs-repo',       kind:'normal', label:'fetchAll', tag:['all'] },
+  { from:'store', to:'collabs-repo',    kind:'normal', label:'fetchAll', tag:['all'] },
+  { from:'store', to:'contracts-repo',  kind:'normal', label:'fetchAll', tag:['all'] },
+  { from:'store', to:'tx-repo',         kind:'normal', label:'fetchAll', tag:['all'] },
+  { from:'store', to:'reviews-repo',    kind:'normal', label:'fetchAll', tag:['all'] },
+  { from:'store', to:'disputes-repo',   kind:'normal', label:'fetchAll', tag:['all'] },
+  { from:'store', to:'threads-repo',    kind:'normal', label:'fetchAll', tag:['all'] },
+  { from:'store', to:'messages-repo',   kind:'normal', label:'fetchAll', tag:['all'] },
+  { from:'store', to:'deliverables-repo',kind:'normal', label:'fetchAll', tag:['all'] },
+  { from:'store', to:'outreach-repo',   kind:'normal', label:'fetchAll', tag:['all'] },
+  { from:'store', to:'invites-repo',    kind:'normal', label:'fetchAll', tag:['all'] },
+  { from:'store', to:'drafts-repo',     kind:'normal', label:'fetchAll', tag:['all'] },
+  { from:'store', to:'notif-repo',      kind:'normal', label:'fetchAll', tag:['all'] },
+
+  /* Realtime back-edges (Postgres → realtime → store) */
+  { from:'postgres',         to:'supabase-realtime',  kind:'critical', label:'broadcast', tag:['overview','realtime','all'] },
+  { from:'supabase-realtime',to:'realtime-chat',      kind:'normal',   label:'thread + message', tag:['inbox','realtime','all'] },
+  { from:'supabase-realtime',to:'realtime-workflow',  kind:'critical', label:'7 tables', tag:['overview','realtime','workflow','all'] },
+  { from:'realtime-chat',    to:'store',              kind:'normal',   label:'overlay by id', tag:['inbox','realtime','all'] },
+  { from:'realtime-workflow',to:'store',              kind:'critical', label:'overlay by id+version', tag:['overview','realtime','workflow','all'] },
+  { from:'store',            to:'realtime-chat',      kind:'mount',    label:'mountAtBoot', tag:['inbox','realtime','all'] },
+  { from:'store',            to:'realtime-workflow',  kind:'mount',    label:'mountAtBoot', tag:['realtime','workflow','all'] },
+
+  /* Repos → Storage (file uploads) */
+  { from:'brands-repo',      to:'supabase-storage', kind:'api', label:'logo', tag:['auth','all'] },
+  { from:'creators-repo',    to:'supabase-storage', kind:'api', label:'portrait', tag:['discover','all'] },
+  { from:'subs-repo',        to:'supabase-storage', kind:'api', label:'draft files', tag:['workflow','all'] },
+  { from:'messages-repo',    to:'supabase-storage', kind:'api', label:'attachments', tag:['inbox','all'] },
+  { from:'campaigns-repo',   to:'supabase-storage', kind:'api', label:'campaign assets', tag:['workflow','all'] },
+
+  /* Auth */
+  { from:'signin-signup', to:'supabase-auth', kind:'api', label:'signIn / signUp', tag:['auth','all'] },
+  { from:'session-sync',  to:'supabase-auth', kind:'api', label:'onAuthStateChange', tag:['auth','all'] },
+  { from:'session-sync',  to:'store',         kind:'normal', label:'session.set', tag:['auth','all'] },
+  { from:'workspace-v2',  to:'session-sync',  kind:'normal', label:'mount on boot', tag:['auth','all'] },
+  { from:'supabase-client',to:'supabase-auth',kind:'api', label:'auth namespace', tag:['auth','all'] },
+
+  /* OAuth scaffolding (NOT yet wired) */
+  { from:'connect-platform', to:'social-platforms', kind:'api', label:'authorize popup', tag:['discover','roadmap','all'] },
+  { from:'oauth-edgefn',     to:'social-platforms', kind:'api', label:'code → token', tag:['discover','roadmap','all'] },
+  { from:'oauth-edgefn',     to:'postgres',         kind:'db',  label:'platform_tokens (service_role)', tag:['discover','roadmap','all'] },
+
+  /* Bell + notifications loop */
+  { from:'notifications-bell', to:'notif-repo',  kind:'db',     label:'mark-read mirror', tag:['inbox','realtime','all'] },
+  { from:'realtime-workflow',  to:'notifications-bell', kind:'normal', label:'live unread', tag:['inbox','realtime','all'] },
+];
+
+/* ====================================================================
+ * FIXES + KNOWN_BUGS
+ * ==================================================================== */
+const FIXES = {
+  'spark':                [{n:1,t:'Phase 49 — debounced auto-save (1.5s) shipped'}],
+  'brand-analytics':      [{n:1,t:'Phase 49 — seed adds approved subs for posted/reporting/closed; was empty for Aesop'}],
+  'seed':                 [{n:1,t:'Phase 49 — countDeliverableSlots helper + posted/reporting/closed submissions'}],
+  'derive-collab':        [{n:1,t:'Slice-1 — dual stage paths (deriveCollab + computeCollabStage) verified in lockstep'}],
+  'realtime-workflow':    [{n:1,t:'Phase 22 — added 6 workflow tables to publication'},
+                           {n:2,t:'Phase 23 — added notifications subscription'}],
+  'notif-repo':           [{n:1,t:'Phase 23 — cross-device bell sync (was local-only)'}],
+  'connect-platform':     [{n:1,t:'Phase 24 — OAuth client helper scaffolded (not wired)'}],
+  'oauth-edgefn':         [{n:1,t:'Phase 24 — Deno Edge Function scaffolded for IG/TikTok/YT/X'}],
+  'opt-lock':             [{n:1,t:'Migrations 020+021 — version columns on 8 tables'},
+                           {n:2,t:'Slice-9 — collaborationsRepo refactored to update+insert two-step'}],
+  'collabs-repo':         [{n:1,t:'Slice-9 — writeCollabInSupabase replaces upsert with optimistic-lock-aware path'}],
+  'campaign-detail':      [{n:1,t:'Slice-1 — ownership gate refuses non-owners (Aesop teleport bug)'}],
+  'thread-to-v2':         [{n:1,t:'Slice-1 — Sarah self-msg attribution fix'}],
+  'send-offer-modal':     [{n:1,t:'Slice-2 — no-parallel-pending-offer guard; 10× rate cap'}],
+};
+
+const KNOWN_BUGS = {
+  'v2-verify-channel':    [{sev:'med', ref:'v2CreatorActions.ts:216',
+                            t:'Still 100% mock — flips Platform.verified flag with no real OAuth handshake'}],
+  'connect-platform':     [{sev:'low', ref:'connectPlatform.ts',
+                            t:'Wired but no caller — ConnectPlatformModal still routes to v2VerifyChannel'}],
+  'oauth-edgefn':         [{sev:'low', ref:'oauth-callback/index.ts',
+                            t:'Each platform needs dev-portal app registration + secret env vars before it works'}],
+  'push-notif':           [{sev:'low', ref:'client.ts:39',
+                            t:'INSERT policy is permissive (any auth\'d session) — user A spamming user B is possible at the prototype tier'}],
+  'spark-engine':         [{sev:'low', ref:'sparkEngine.ts',
+                            t:'Scripted only — no real LLM call. Production would replace with an agent loop.'}],
+  'workspace-v2':         [{sev:'low', ref:'AdminQueueUnified.tsx:15',
+                            t:'Stale narrative comment references pre-v2 DealActionBanner (deleted in audit slice-7)'}],
+  'opt-lock':             [{sev:'low', ref:'platform_tokens table',
+                            t:'access_token + refresh_token stored plaintext — production needs pgsodium / KMS encryption'}],
+};
+
+/* ====================================================================
+ * RENDER
+ * ==================================================================== */
+const svg = document.getElementById('canvas');
+const NS = 'http://www.w3.org/2000/svg';
+const side = document.getElementById('side');
+
+const COLOR = {
+  client:'#4ea1ff', state:'#7bd389', service:'#c792ea',
+  accent:'#f5b942', db:'#ffb86b', external:'#ff6b9d',
+  route:'#7bd389',
+};
+const KIND_COLOR = {
+  critical:'#ff3860', api:'#ff7a45', db:'#ffb86b', mount:'#4ea1ff', normal:'#5a6068',
+};
+
+function el(tag, attrs={}, parent=null) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+
+/* root group with pan/zoom */
+const root = el('g', { id:'root' }, svg);
+
+/* defs: arrow markers */
+const defs = el('defs', {}, svg);
+['critical','api','db','mount','normal'].forEach(k => {
+  const m = el('marker', {
+    id:`arr-${k}`, viewBox:'0 0 10 10', refX:'9', refY:'5',
+    markerUnits:'userSpaceOnUse', markerWidth:'8', markerHeight:'8', orient:'auto',
+  }, defs);
+  el('path', { d:'M 0 0 L 10 5 L 0 10 z', fill:KIND_COLOR[k] }, m);
+});
+
+/* Cluster boxes */
+clusters.forEach(c => {
+  const g = el('g', { class:'cluster' }, root);
+  el('rect', { x:c.x, y:c.y, width:c.w, height:c.h, rx:10 }, g);
+  el('text', { x:c.x + 16, y:c.y + 22 }, g).textContent = c.label;
+});
+
+/* Edges */
+function edgePath(a, b) {
+  const x1 = a.x + a.w, y1 = a.y + a.h/2;
+  const x2 = b.x,       y2 = b.y + b.h/2;
+  const dx = Math.max(40, (x2 - x1) * 0.5);
+  // route backward if needed
+  if (x2 < x1) {
+    const cx1 = x1 + 60, cx2 = x2 - 60;
+    return { d:`M ${x1} ${y1} C ${cx1} ${y1}, ${cx2} ${y2}, ${x2} ${y2}`, lx:(x1+x2)/2, ly:(y1+y2)/2 };
+  }
+  const cx1 = x1 + dx, cx2 = x2 - dx;
+  return { d:`M ${x1} ${y1} C ${cx1} ${y1}, ${cx2} ${y2}, ${x2} ${y2}`, lx:(x1+x2)/2, ly:(y1+y2)/2 - 4 };
+}
+
+const nodeById = Object.fromEntries(nodes.map(n => [n.id, n]));
+const edgeEls = [];
+const edgeLabelEls = [];
+
+const edgesLayer = el('g', { id:'edges' }, root);
+edges.forEach((e, i) => {
+  const a = nodeById[e.from], b = nodeById[e.to];
+  if (!a || !b) { console.warn('missing edge endpoint', e); return; }
+  const { d, lx, ly } = edgePath(a, b);
+  const path = el('path', {
+    d, class:`edge k-${e.kind}`, 'marker-end':`url(#arr-${e.kind})`,
+    'data-from':e.from, 'data-to':e.to, 'data-tag':(e.tag||['all']).join(','),
+  }, edgesLayer);
+  edgeEls.push(path);
+  // hit area for hover
+  el('path', { d, class:'edge-hit' }, edgesLayer);
+  // label
+  if (e.label) {
+    const t = el('text', { x:lx, y:ly, class:'edge-label', 'text-anchor':'middle', 'data-tag':(e.tag||['all']).join(',') }, edgesLayer);
+    t.textContent = e.label;
+    edgeLabelEls.push(t);
+  } else {
+    edgeLabelEls.push(null);
+  }
+});
+
+/* Nodes */
+const nodesLayer = el('g', { id:'nodes' }, root);
+const nodeEls = {};
+nodes.forEach(n => {
+  const g = el('g', {
+    class:'node' + (n.critical ? ' crit' : ''),
+    'data-id':n.id, 'data-tag':(n.tag||['all']).join(','),
+    transform:`translate(${n.x},${n.y})`,
+  }, nodesLayer);
+  el('rect', { width:n.w, height:n.h, rx:8, stroke:COLOR[n.color] || '#888' }, g);
+  const labelTxt = el('text', { class:'label', x:14, y:22 }, g);
+  labelTxt.textContent = n.label;
+  if (n.sub) {
+    const subTxt = el('text', { class:'sub', x:14, y:n.h - 12 }, g);
+    subTxt.textContent = n.sub;
+  }
+  // badges
+  const fixes = (FIXES[n.id] || []).length;
+  const bugs  = (KNOWN_BUGS[n.id] || []).length;
+  if (fixes) {
+    const bg = el('g', { class:'badge', transform:`translate(${n.w - 18},10)` }, g);
+    el('circle', { r:8, fill:'#58c08e' }, bg);
+    el('text', { x:0, y:3 }, bg).textContent = String(fixes);
+  }
+  if (bugs) {
+    const bg = el('g', { class:'badge', transform:`translate(${n.w - (fixes ? 38 : 18)},10)` }, g);
+    el('circle', { r:8, fill:'#ff3860' }, bg);
+    el('text', { x:0, y:3 }, bg).textContent = String(bugs);
+  }
+  g.addEventListener('click', (ev) => { ev.stopPropagation(); selectNode(n.id); });
+  g.addEventListener('mouseenter', () => { if (!selected) renderSidebar(n.id); });
+  g.addEventListener('mouseleave', () => { if (!selected) renderSidebar(null); });
+  nodeEls[n.id] = g;
+});
+
+/* ====================================================================
+ * SELECTION + FILTER
+ * ==================================================================== */
+let activeFilter = 'overview';
+let selected = null;
+
+function applyFilter() {
+  const f = activeFilter;
+  const isRoadmap = f === 'roadmap';
+  nodes.forEach(n => {
+    const tags = (n.tag || ['all']);
+    const hasBadge = (FIXES[n.id] || KNOWN_BUGS[n.id]) ? true : false;
+    let visible;
+    if (isRoadmap) visible = hasBadge;
+    else visible = tags.includes(f) || (f === 'all');
+    nodeEls[n.id].classList.toggle('dim', !visible);
+  });
+  edges.forEach((e, i) => {
+    const tags = (e.tag || ['all']);
+    const a = nodeById[e.from], b = nodeById[e.to];
+    const aBadge = !!(FIXES[a?.id] || KNOWN_BUGS[a?.id]);
+    const bBadge = !!(FIXES[b?.id] || KNOWN_BUGS[b?.id]);
+    let visible;
+    if (isRoadmap) visible = aBadge && bBadge;
+    else visible = tags.includes(f) || (f === 'all');
+    edgeEls[i].classList.toggle('dim', !visible);
+    if (edgeLabelEls[i]) edgeLabelEls[i].style.opacity = visible ? '' : '0';
+  });
+}
+
+function selectNode(id) {
+  selected = id;
+  // Compute connected set
+  const conn = new Set([id]);
+  edges.forEach(e => { if (e.from === id) conn.add(e.to); if (e.to === id) conn.add(e.from); });
+  nodes.forEach(n => {
+    nodeEls[n.id].classList.toggle('selected', n.id === id);
+    nodeEls[n.id].classList.toggle('dim', !conn.has(n.id));
+  });
+  edges.forEach((e, i) => {
+    const on = e.from === id || e.to === id;
+    edgeEls[i].classList.toggle('dim', !on);
+    if (edgeLabelEls[i]) edgeLabelEls[i].style.opacity = on ? '' : '0';
+  });
+  renderSidebar(id);
+}
+
+function clearSelection() {
+  selected = null;
+  nodes.forEach(n => {
+    nodeEls[n.id].classList.remove('selected');
+    nodeEls[n.id].classList.remove('dim');
+  });
+  edges.forEach((e, i) => {
+    edgeEls[i].classList.remove('dim');
+    if (edgeLabelEls[i]) edgeLabelEls[i].style.opacity = '';
+  });
+  applyFilter();
+  renderSidebar(null);
+}
+
+/* ====================================================================
+ * SIDEBAR
+ * ==================================================================== */
+function renderSidebar(id) {
+  if (!id) {
+    side.innerHTML = `
+      <h2>Alamut · architecture map</h2>
+      <p style="color:var(--muted);font-size:12px;margin:4px 0 14px">
+        React + Vite + Zustand + Supabase. Brand × creator marketplace prototype.
+        Click a node for details. Hover for a peek.
+      </p>
+      <h3>Notable findings from this map</h3>
+      <div class="findings">
+        <div class="item"><b>Critical seam:</b><p>
+          The brand→creator workflow flows through one spine: <i>SendOfferModal → v2SendOffer → tx() → offersRepo → Postgres → Supabase Realtime → realtimeWorkflow → store</i>.
+          Every other workflow mutation (apply / submit / approve / mark-live) takes the same shape. Break tx() and you break everything.
+        </p></div>
+        <div class="item"><b>Two stage-computation paths must stay in lockstep:</b><p>
+          <code>deriveCollab</code> (read side, v2Adapters.ts:520) and <code>computeCollabStage</code> (write side, collabSync.ts:42)
+          have to agree on what counts as "live" / "paid" or the kanban diverges from the persisted collab row.
+          Slice-1 of the audit verified parity.
+        </p></div>
+        <div class="item"><b>Hot path: pushNotification fires from 25+ call sites</b><p>
+          One helper (<code>client.ts:39</code>) drops into <code>db.notifications</code>, then queueMicrotask-mirrors to Supabase.
+          A bug here ripples to every offer sent, application submitted, content approved, etc.
+        </p></div>
+        <div class="item"><b>Mock surface still in production:</b><p>
+          <code>v2VerifyChannel</code> just flips a boolean. Real OAuth is scaffolded
+          (<code>connectPlatform.ts</code> + <code>oauth-callback</code> Edge Function) but no caller wires it yet.
+          Each platform needs dev-portal app registration first.
+        </p></div>
+        <div class="item"><b>Realtime cohort grew this session:</b><p>
+          Was 2 tables (threads + messages, Phase 10). Now 9: + 6 workflow tables (Phase 22) + notifications (Phase 23).
+          Out-of-order broadcasts protected by version-aware overlay in <code>realtimeWorkflow.ts</code>.
+        </p></div>
+        <div class="item"><b>Spark engine is scripted, not LLM-backed:</b><p>
+          <code>sparkEngine.ts</code> returns pre-baked branches. No model is called. Naming suggests AI
+          but the demo runs entirely client-side.
+        </p></div>
+        <div class="item"><b>No dead exports surfaced:</b><p>
+          Every top-level export in <code>v2CampaignActions / v2CreatorActions / v2CollabActions / v2DisputeActions</code>
+          has a live caller. Slice-7 of the audit deleted the last 3 orphan files (DealActionBanner, TodayQueue, TodayDealRow).
+        </p></div>
+      </div>
+      <h3>How to read</h3>
+      <p style="color:#cdd0d4;font-size:12px;margin:4px 0">
+        <span class="pill crit">red</span> = critical spine.
+        Edges flow left-to-right for writes, right-to-left for reads.
+        Click a node to dim everything not connected to it.
+        Toggle the chips at top to filter by feature.
+      </p>
+    `;
+    return;
+  }
+  const n = nodeById[id];
+  if (!n) { side.innerHTML = ''; return; }
+  const inc = edges.filter(e => e.to === id);
+  const out = edges.filter(e => e.from === id);
+  const fixes = FIXES[id] || [];
+  const bugs  = KNOWN_BUGS[id] || [];
+
+  side.innerHTML = `
+    <h2>${escapeHtml(n.label)}</h2>
+    <div>
+      ${n.critical ? '<span class="pill crit">critical</span>' : ''}
+      <span class="pill">${n.cluster}</span>
+      ${(n.tag || []).filter(t => t !== 'all').map(t => `<span class="pill" style="background:#1f242a;color:#9ec6ff">${escapeHtml(t)}</span>`).join('')}
+    </div>
+    <p class="role">${escapeHtml(n.role || '')}</p>
+    ${n.plain ? `<div class="plain">${escapeHtml(n.plain)}</div>` : ''}
+    ${n.path ? `<div class="path">${escapeHtml(n.path)}</div>` : ''}
+    ${n.notes && n.notes.length ? `<h3>Notes</h3><ul>${n.notes.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ul>` : ''}
+    ${fixes.length ? `<h3>Fixes shipped</h3>${fixes.map(f => `<div class="fix">#${f.n} · ${escapeHtml(f.t)}</div>`).join('')}` : ''}
+    ${bugs.length ? `<h3>Known issues</h3>${bugs.map(b => `<div class="bug"><span class="sev">${b.sev}</span>${b.ref ? `<a class="code">${escapeHtml(b.ref)}</a> · ` : ''}${escapeHtml(b.t)}</div>`).join('')}` : ''}
+    ${inc.length ? `<h3>Incoming (${inc.length})</h3><div class="edges-list">${inc.map(e => `<div class="e">← <b>${escapeHtml(nodeById[e.from]?.label || e.from)}</b> · ${escapeHtml(e.label || e.kind)}</div>`).join('')}</div>` : ''}
+    ${out.length ? `<h3>Outgoing (${out.length})</h3><div class="edges-list">${out.map(e => `<div class="e">→ <b>${escapeHtml(nodeById[e.to]?.label || e.to)}</b> · ${escapeHtml(e.label || e.kind)}</div>`).join('')}</div>` : ''}
+  `;
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+
+/* ====================================================================
+ * PAN + ZOOM
+ * ==================================================================== */
+let tx = 30, ty = 30, scale = 0.7;
+
+function applyTransform() {
+  root.setAttribute('transform', `translate(${tx},${ty}) scale(${scale})`);
+}
+applyTransform();
+
+const wrap = document.getElementById('canvas-wrap');
+let dragging = false, lastX = 0, lastY = 0;
+svg.addEventListener('mousedown', (ev) => {
+  if (ev.target === svg || ev.target.tagName === 'svg' || ev.target.id === 'root') {
+    clearSelection();
+  }
+  dragging = true;
+  lastX = ev.clientX; lastY = ev.clientY;
+  svg.classList.add('dragging');
+});
+window.addEventListener('mousemove', (ev) => {
+  if (!dragging) return;
+  tx += (ev.clientX - lastX);
+  ty += (ev.clientY - lastY);
+  lastX = ev.clientX; lastY = ev.clientY;
+  applyTransform();
+});
+window.addEventListener('mouseup', () => {
+  dragging = false; svg.classList.remove('dragging');
+});
+
+svg.addEventListener('wheel', (ev) => {
+  ev.preventDefault();
+  const rect = svg.getBoundingClientRect();
+  const mx = ev.clientX - rect.left;
+  const my = ev.clientY - rect.top;
+  const factor = Math.exp(-ev.deltaY * 0.0015);
+  const next = Math.max(0.18, Math.min(2.5, scale * factor));
+  // anchor zoom to cursor
+  tx = mx - (mx - tx) * (next / scale);
+  ty = my - (my - ty) * (next / scale);
+  scale = next;
+  applyTransform();
+}, { passive:false });
+
+document.getElementById('zin').onclick = () => {
+  scale = Math.min(2.5, scale * 1.2); applyTransform();
+};
+document.getElementById('zout').onclick = () => {
+  scale = Math.max(0.18, scale / 1.2); applyTransform();
+};
+document.getElementById('zfit').onclick = () => {
+  const rect = svg.getBoundingClientRect();
+  const W = 2080, H = 1700;
+  const sx = rect.width / W, sy = rect.height / H;
+  scale = Math.min(sx, sy) * 0.96;
+  tx = (rect.width  - W * scale) / 2;
+  ty = (rect.height - H * scale) / 2;
+  applyTransform();
+};
+
+/* canvas size */
+function fitInitial() {
+  const rect = svg.getBoundingClientRect();
+  svg.setAttribute('viewBox', `0 0 ${rect.width} ${rect.height}`);
+  document.getElementById('zfit').click();
+}
+fitInitial();
+window.addEventListener('resize', () => {
+  const rect = svg.getBoundingClientRect();
+  svg.setAttribute('viewBox', `0 0 ${rect.width} ${rect.height}`);
+});
+
+/* Filter chip handlers */
+document.querySelectorAll('.chip[data-filter]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.chip[data-filter]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeFilter = btn.dataset.filter;
+    if (selected) clearSelection();
+    applyFilter();
+  });
+});
+
+/* Initial render */
+renderSidebar(null);
+applyFilter();
+</script>
+</body>
+</html>
