@@ -21,7 +21,8 @@ import {
   fmtUSD, fmtFollowers, Icon, PLATFORM_META, ScoreBadge, Topbar,
 } from '../lib';
 import {
-  emptyContext, getCreator, processInput, setSparkPool, thinkingDelay, welcomeMessage,
+  emptyContext, getCreator, processInput, setSparkPool, thinkingDelay,
+  tryRemoteText, welcomeMessage,
   type SparkBlock, type SparkContext, type SparkMessage,
 } from '../sparkEngine';
 import {
@@ -114,9 +115,25 @@ export function Spark({ onRoute }: Props) {
     setThinking(true);
 
     const delay = thinkingDelay();
-    window.setTimeout(() => {
+    // Phase 50 — race the scripted engine against the remote LLM proxy.
+    // We always render scripted's reply at `delay`ms (preserves the demo
+    // pacing + context-update logic that the scripted handlers do). If
+    // the remote returns within that window, we substitute the text
+    // body — non-text blocks (creator-cards, brief-draft) stay scripted.
+    // Falls back to scripted on 503 / network / no env var.
+    const remotePromise = tryRemoteText(trimmed, history, context);
+    window.setTimeout(async () => {
       const { reply, newContext } = processInput(trimmed, context);
-      setHistory((h) => [...h, reply]);
+      const remoteText = await remotePromise;
+      const finalReply: SparkMessage = remoteText
+        ? {
+            ...reply,
+            blocks: reply.blocks.map((b) =>
+              b.kind === 'text' ? { ...b, body: remoteText } : b,
+            ),
+          }
+        : reply;
+      setHistory((h) => [...h, finalReply]);
       setContext(newContext);
       setThinking(false);
     }, delay);

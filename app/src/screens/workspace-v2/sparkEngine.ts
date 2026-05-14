@@ -512,6 +512,68 @@ export function processInput(text: string, context: SparkContext): { reply: Spar
 }
 
 // =====================================================================
+// Remote LLM proxy (Phase 50) — Edge Function spark-chat
+// =====================================================================
+//
+// When the spark-chat Edge Function is deployed AND ANTHROPIC_API_KEY
+// is set in Supabase secrets, replace the scripted text reply with a
+// real Claude completion. Keeps the rest of the scripted reply
+// (suggestions, blocks like creator-cards/brief-draft) intact so the
+// existing UI keeps working — only the prose becomes intelligent.
+//
+// Returns null on any failure (no key configured, network, parse) so
+// the caller stays on the scripted path. Never throws.
+
+export async function tryRemoteText(
+  input: string,
+  history: SparkMessage[],
+  context: SparkContext,
+): Promise<string | null> {
+  const url = remoteSparkUrl();
+  if (!url) return null;
+  // Compress recent history to text-only entries — the function does
+  // not need the full block structure for follow-up context.
+  const compactHistory = history.slice(-10).map((m) => {
+    const text = (m.blocks ?? [])
+      .map((b) => (b.kind === 'text' ? b.body : ''))
+      .filter(Boolean)
+      .join(' ');
+    return { from: m.from, text };
+  });
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        input,
+        history: compactHistory,
+        context: {
+          brand: context.brand,
+          category: context.category,
+          region: context.region,
+          budget: context.budget,
+        },
+      }),
+    });
+    if (!res.ok) return null; // 503 = not configured, 502 = upstream
+    const data = await res.json();
+    const block = (data?.reply?.blocks ?? []).find((b: { kind?: string; body?: string }) => b.kind === 'text');
+    return typeof block?.body === 'string' ? block.body : null;
+  } catch {
+    return null;
+  }
+}
+
+function remoteSparkUrl(): string | null {
+  // Vite injects import.meta.env.* at build time. The Supabase URL we
+  // already use for the JS client also hosts the Edge Function.
+  const env = (import.meta as unknown as { env?: Record<string, string> }).env;
+  const base = env?.VITE_SUPABASE_URL?.replace(/\/$/, '');
+  if (!base) return null;
+  return `${base}/functions/v1/spark-chat`;
+}
+
+// =====================================================================
 // Welcome / starter
 // =====================================================================
 
