@@ -1,4 +1,17 @@
-// Mock OAuth flow — demo-friendly fake authorization with a "Connecting…" state.
+// Connect-channel flow.
+//
+// Two paths:
+//   1. REAL OAuth via `connectPlatform()` (lib/oauth/connectPlatform.ts +
+//      supabase/functions/oauth-callback). Activated when the platform's
+//      VITE_<PLATFORM>_CLIENT_ID env var is set. Opens a popup, exchanges
+//      the code on the Edge Function, stores tokens in platform_tokens.
+//   2. MOCK demo flow (1.5s simulated round-trip). Falls back to this when
+//      OAuth isn't configured for the chosen platform — keeps the demo
+//      working without dev-portal apps.
+//
+// The Edge Function writes the token row but doesn't fetch audience
+// metrics; the review screen still uses the spec defaults until a follow-up
+// "fetch profile" call lands.
 import { useState } from 'react';
 import { api } from '@/lib/api/client';
 import { Modal } from '@/components/ui/Modal';
@@ -8,6 +21,9 @@ import { Pill } from '@/components/ui/Pill';
 import { fmtCount } from '@/lib/utils/format';
 import { pushToast } from '@/lib/utils/toast';
 import { AgeBars, GenderSplit } from '@/components/charts/AudienceCharts';
+import { connectPlatform, OAuthNotConfiguredError, type OAuthPlatform } from '@/lib/oauth/connectPlatform';
+import { useV2CurrentCreator } from '@/screens/workspace-v2/v2Hooks';
+import { useStore } from '@/lib/api/store';
 import type { AudienceDemographics, Platform } from '@/lib/api/types';
 
 interface ConnectPlatformModalProps {
@@ -40,10 +56,28 @@ const PLATFORMS: PlatformSpec[] = [
   { name: 'LinkedIn',  description: 'Professional reach, B2B brands.',                      mockHandle: 'in/yourhandle',       mockFollowers: 6_800,  mockEngagement: 4.5, audience: SAMPLE_AUDIENCE() },
 ];
 
+/** Map modal display name → OAuthPlatform id used by connectPlatform().
+ *  Returns null for platforms with no real-OAuth path (Newsletter, LinkedIn). */
+function oauthIdFor(name: Platform['name']): OAuthPlatform | null {
+  switch (name) {
+    case 'Instagram': return 'instagram';
+    case 'TikTok':    return 'tiktok';
+    case 'YouTube':   return 'youtube';
+    case 'X':         return 'x';
+    default:          return null; // Newsletter, LinkedIn — mock only
+  }
+}
+
 export function ConnectPlatformModal({ open, onClose }: ConnectPlatformModalProps) {
   const [picked, setPicked] = useState<Platform['name'] | null>(null);
   const [phase, setPhase] = useState<'pick' | 'authorizing' | 'review'>('pick');
   const [busy, setBusy] = useState(false);
+  const currentCreator = useV2CurrentCreator();
+  const ownerEmail = useStore((s) => {
+    const uid = s.session?.userId;
+    if (!uid) return null;
+    return s.db.users.find((u) => u.id === uid)?.email ?? null;
+  });
 
   const spec = picked ? PLATFORMS.find((p) => p.name === picked)! : null;
   const [handle, setHandle] = useState('');
@@ -53,18 +87,65 @@ export function ConnectPlatformModal({ open, onClose }: ConnectPlatformModalProp
   const reset = () => { setPicked(null); setPhase('pick'); setHandle(''); setFollowers(0); setEngagement(0); };
   const close = () => { reset(); onClose(); };
 
-  const startAuth = (name: Platform['name']) => {
+  /** Move to the review screen with the spec's mock metrics. Used by both
+   *  the real-OAuth success path and the mock fallback — the Edge Function
+   *  doesn't fetch audience metrics today, so the review form is editable. */
+  function showReview(s: PlatformSpec) {
+    setHandle(s.mockHandle);
+    setFollowers(s.mockFollowers);
+    setEngagement(s.mockEngagement);
+    setPhase('review');
+  }
+
+  function startMockAuth(s: PlatformSpec) {
+    // Demo round-trip — kept for platforms without OAuth configured and
+    // for local-only dev where Supabase env vars aren't set.
+    setPhase('authorizing');
+    setTimeout(() => showReview(s), 1500);
+  }
+
+  async function startAuth(name: Platform['name']) {
     setPicked(name);
     const s = PLATFORMS.find((p) => p.name === name)!;
+    const oauthId = oauthIdFor(name);
+
+    // Platforms with no real OAuth path (Newsletter / LinkedIn) always
+    // use the mock demo flow.
+    if (!oauthId) {
+      startMockAuth(s);
+      return;
+    }
+
+    // Need a signed-in creator with an email to write the token row.
+    // Without one (anonymous demo), fall back to the mock flow.
+    if (!currentCreator || !ownerEmail) {
+      startMockAuth(s);
+      return;
+    }
+
+    // Try real OAuth. The popup opens immediately (must stay inside the
+    // user-gesture stack), and we wait for the postMessage from the Edge
+    // Function. OAuthNotConfiguredError = env var missing → mock fallback.
     setPhase('authorizing');
-    // Fake OAuth redirect/round-trip
-    setTimeout(() => {
-      setHandle(s.mockHandle);
-      setFollowers(s.mockFollowers);
-      setEngagement(s.mockEngagement);
-      setPhase('review');
-    }, 1500);
-  };
+    try {
+      await connectPlatform({
+        platform: oauthId,
+        creatorId: currentCreator.id,
+        ownerEmail,
+      });
+      showReview(s);
+    } catch (err) {
+      if (err instanceof OAuthNotConfiguredError) {
+        // Env vars not set yet — silently fall back to demo flow so the
+        // modal still works end-to-end during onboarding.
+        setTimeout(() => showReview(s), 800);
+        return;
+      }
+      // Real failure (user closed popup, network, etc.) — back to picker.
+      pushToast(err instanceof Error ? err.message : 'Connect failed', 'bad');
+      reset();
+    }
+  }
 
   const finalize = async () => {
     if (!spec) return;

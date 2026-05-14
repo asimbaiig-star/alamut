@@ -17,7 +17,7 @@
 
 import { useMemo } from 'react';
 import { useStore, useDB, tx } from '@/lib/api/store';
-import type { Brand, Creator, Database } from '@/lib/api/types';
+import type { Brand, Creator, Database, OfferTemplate } from '@/lib/api/types';
 import {
   creatorToV2, campaignToV2, threadToV2,
   brandWalletV2, creatorWalletV2,
@@ -1127,4 +1127,79 @@ export function v2SyncSparkShortlist(creatorIds: string[]) {
       savedCreators: Array.from(new Set([...db.brands[idx].savedCreators, ...creatorIds])),
     };
   });
+}
+
+// =====================================================================
+// Offer templates (Phase 50) — brand-scoped reusable offer prefabs.
+// =====================================================================
+//
+// Local-only for the prototype: lives on `Brand.offerTemplates`. Same
+// pattern as `savedCreators`. SendOfferModal reads them via
+// useV2OfferTemplates() and writes through v2SaveOfferTemplate /
+// v2DeleteOfferTemplate. Migration to a dedicated `offer_templates`
+// table is straightforward when needed (mirror the sparkDrafts shape).
+
+/** Templates for the current brand, sorted newest first. */
+export function useV2OfferTemplates(): OfferTemplate[] {
+  const brand = useV2CurrentBrand();
+  return useMemo(() => {
+    const list = brand?.offerTemplates ?? [];
+    return [...list].sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+  }, [brand?.offerTemplates]);
+}
+
+/** Save (or update) an offer template on the current brand. */
+export function v2SaveOfferTemplate(input: {
+  id?: string;
+  name: string;
+  rate: number;
+  message: string;
+  deliverables?: string;
+}): OfferTemplate | null {
+  let saved: OfferTemplate | null = null;
+  tx((db) => {
+    const session = useStore.getState().session;
+    const viewerId = getViewerUserId(db, session?.userId ?? null, 'brand');
+    const me = db.users.find((u) => u.id === viewerId);
+    if (!me?.brandId) return;
+    const idx = db.brands.findIndex((b) => b.id === me.brandId);
+    if (idx === -1) return;
+    const brand = db.brands[idx];
+    const existing = brand.offerTemplates ?? [];
+    const id = input.id ?? `tpl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const next: OfferTemplate = {
+      id,
+      name: input.name.trim() || 'Untitled template',
+      rate: Math.max(0, Math.round(input.rate)),
+      message: input.message,
+      deliverables: input.deliverables?.trim() || undefined,
+      createdAt: existing.find((t) => t.id === id)?.createdAt ?? new Date().toISOString(),
+    };
+    const merged = input.id
+      ? existing.map((t) => (t.id === id ? next : t))
+      : [...existing, next];
+    db.brands[idx] = { ...brand, offerTemplates: merged };
+    saved = next;
+  });
+  return saved;
+}
+
+/** Remove an offer template by id. */
+export function v2DeleteOfferTemplate(templateId: string): boolean {
+  let removed = false;
+  tx((db) => {
+    const session = useStore.getState().session;
+    const viewerId = getViewerUserId(db, session?.userId ?? null, 'brand');
+    const me = db.users.find((u) => u.id === viewerId);
+    if (!me?.brandId) return;
+    const idx = db.brands.findIndex((b) => b.id === me.brandId);
+    if (idx === -1) return;
+    const brand = db.brands[idx];
+    const list = brand.offerTemplates ?? [];
+    const next = list.filter((t) => t.id !== templateId);
+    if (next.length === list.length) return;
+    db.brands[idx] = { ...brand, offerTemplates: next };
+    removed = true;
+  });
+  return removed;
 }

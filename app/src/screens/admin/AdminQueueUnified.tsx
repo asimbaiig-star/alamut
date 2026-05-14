@@ -24,13 +24,14 @@ import { PageHead } from '@/components/layout/PageHead';
 import { AdminQueue } from './Queue';
 import { AdminVerify } from './Verify';
 import { AdminDisputes } from './Disputes';
+import { AdminReports } from './Reports';
 // P7 §4.3 — filter admin tabs by the signed-in admin's role(s).
 // `super` sees everything (default). `verification` sees creators +
 // brands tabs. `disputes` sees the disputes tab. Other roles fall back
 // to `super` semantics until specialized.
 import type { AdminRole } from '@/lib/api/types';
 
-type Tab = 'creators' | 'brands' | 'disputes';
+type Tab = 'creators' | 'brands' | 'disputes' | 'reports';
 
 /** Which admin roles can view each queue tab. The matrix is permissive —
  *  super sees all, role-specific admins see their slice, and we never
@@ -39,12 +40,15 @@ const TAB_VISIBLE_TO: Record<Tab, AdminRole[]> = {
   creators: ['super', 'verification'],
   brands: ['super', 'verification'],
   disputes: ['super', 'disputes'],
+  // Reports are trust-and-safety; route through the disputes role
+  // until a dedicated `moderation` role exists.
+  reports: ['super', 'disputes'],
 };
 
 function tabsVisibleForRoles(adminRoles: AdminRole[] | undefined): Tab[] {
   // Legacy admins (no adminRoles) default to super semantics — see all.
   const roles = adminRoles && adminRoles.length > 0 ? adminRoles : (['super'] as AdminRole[]);
-  const allTabs: Tab[] = ['creators', 'brands', 'disputes'];
+  const allTabs: Tab[] = ['creators', 'brands', 'disputes', 'reports'];
   return allTabs.filter((t) =>
     TAB_VISIBLE_TO[t].some((required) => roles.includes(required)),
   );
@@ -54,18 +58,21 @@ const TAB_TITLES: Record<Tab, string> = {
   creators: 'Pending creator applications',
   brands: 'Brand verification',
   disputes: 'Dispute queue',
+  reports: 'Reported threads',
 };
 
 const TAB_LEDES: Record<Tab, string> = {
   creators: 'New creator applications waiting on admin review. Approve to activate, reject with a reason to suspend.',
   brands: 'Verify brands so they appear with a checkmark in creators\' inboxes and unlock higher application volume.',
   disputes: 'Cases filed by either party when a campaign goes off-track. Escrow is frozen until resolved.',
+  reports: 'Threads flagged by participants via the inbox More menu. Dismiss benign reports or mark as actioned.',
 };
 
 const TAB_NUMS: Record<Tab, string> = {
   creators: 'A · 01',
   brands: 'A · 02',
   disputes: 'A · 05',
+  reports: 'A · 06',
 };
 
 export function AdminQueueUnified() {
@@ -96,7 +103,7 @@ export function AdminQueueUnified() {
   // silently reroute to the first allowed tab.
   useEffect(() => {
     const t = params.get('type') as Tab | null;
-    const wanted = t === 'creators' || t === 'brands' || t === 'disputes' ? t : 'creators';
+    const wanted = t === 'creators' || t === 'brands' || t === 'disputes' || t === 'reports' ? t : 'creators';
     const next = allowedTabs.includes(wanted) ? wanted : (allowedTabs[0] ?? 'creators');
     if (next !== tab) setTab(next);
   }, [params, tab, allowedTabs]);
@@ -114,9 +121,10 @@ export function AdminQueueUnified() {
     creators: db.users.filter((u) => u.status === 'pending_admin_review' && u.creatorId).length,
     brands: db.brands.filter((b) => !b.verified).length,
     disputes: select.allDisputes(db).filter((d) => d.status === 'open').length,
+    reports: db.threads.filter((t) => !!t.reportedAt).length,
   }), [db]);
 
-  const totalPending = counts.creators + counts.brands + counts.disputes;
+  const totalPending = counts.creators + counts.brands + counts.disputes + counts.reports;
 
   return (
     <div className="page admin-unified-queue">
@@ -163,11 +171,21 @@ export function AdminQueueUnified() {
               {counts.disputes > 0 && <span className="tab-count tab-count-bad">{counts.disputes}</span>}
             </button>
           )}
+          {allowedTabs.includes('reports') && (
+            <button
+              className={['tab', tab === 'reports' ? 'is-on' : ''].join(' ')}
+              onClick={() => setTabAndUrl('reports')}
+            >
+              Reports
+              {counts.reports > 0 && <span className="tab-count tab-count-bad">{counts.reports}</span>}
+            </button>
+          )}
         </div>
         <div className="admin-unified-helper mono-meta">
           {tab === 'creators' && <span>{TAB_TITLES.creators}</span>}
           {tab === 'brands' && <span>{TAB_TITLES.brands}</span>}
           {tab === 'disputes' && <span>{TAB_TITLES.disputes}</span>}
+          {tab === 'reports' && <span>{TAB_TITLES.reports}</span>}
         </div>
       </div>
 
@@ -175,6 +193,7 @@ export function AdminQueueUnified() {
         {tab === 'creators' && <AdminQueue hideHead />}
         {tab === 'brands' && <AdminVerify hideHead />}
         {tab === 'disputes' && <AdminDisputes hideHead />}
+        {tab === 'reports' && <AdminReports hideHead />}
       </div>
     </div>
   );

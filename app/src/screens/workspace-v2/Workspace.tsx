@@ -40,6 +40,7 @@ import { PublicStorefront } from './screens/PublicStorefront';
 import { CreatorOnboardingV2 } from './screens/CreatorOnboardingV2';
 import { BrandOnboardingV2 } from './screens/BrandOnboardingV2';
 import { Spark } from './screens/Spark';
+import { Calendar } from './screens/Calendar';
 
 type Persona = 'brand' | 'creator';
 
@@ -50,6 +51,7 @@ const BRAND_ROUTES = [
   { id: 'discover', label: 'Discover creators', icon: Icon.search },
   { id: 'campaigns', label: 'My campaigns', icon: Icon.campaign },
   { id: 'inbox', label: 'Inbox', icon: Icon.inbox, count: 3 },
+  { id: 'calendar', label: 'Calendar', icon: Icon.calendar },
   { id: 'brand-analytics', label: 'Analytics', icon: Icon.chart },
   { id: 'wallet', label: 'Wallet', icon: Icon.wallet },
   { id: 'brand-profile', label: 'Brand profile', icon: Icon.shield },
@@ -62,6 +64,7 @@ const CREATOR_ROUTES = [
   { id: 'creator-collabs', label: 'My collaborations', icon: Icon.campaign },
   { id: 'creator-campaigns', label: 'Browse campaigns', icon: Icon.search },
   { id: 'creator-inbox', label: 'Inbox', icon: Icon.inbox, count: 2 },
+  { id: 'creator-calendar', label: 'Calendar', icon: Icon.calendar },
   { id: 'analytics', label: 'Analytics', icon: Icon.chart },
   { id: 'creator-wallet', label: 'Wallet', icon: Icon.wallet },
   { id: 'kyc', label: 'KYC & Tax', icon: Icon.shield },
@@ -98,13 +101,13 @@ export function routeFitsPersona(route: string, persona: Persona): boolean {
   // Creator-only top-level routes.
   const CREATOR_ONLY = new Set([
     'creator-home', 'storefront', 'creator-collabs', 'creator-campaigns',
-    'creator-inbox', 'analytics', 'creator-wallet', 'kyc',
+    'creator-inbox', 'creator-calendar', 'analytics', 'creator-wallet', 'kyc',
     'onboarding-creator',
   ]);
   if (CREATOR_ONLY.has(route)) return persona === 'creator';
   // Brand-only top-level routes.
   const BRAND_ONLY = new Set([
-    'home', 'spark', 'discover', 'campaigns', 'inbox', 'wallet',
+    'home', 'spark', 'discover', 'campaigns', 'inbox', 'calendar', 'wallet',
     'campaign-new', 'onboarding-brand', 'brand-profile', 'brand-analytics',
   ]);
   if (BRAND_ONLY.has(route)) return persona === 'brand';
@@ -374,6 +377,7 @@ function RouteOutlet({ route, onRoute, persona }: { route: string; onRoute: (r: 
   }
   if (route === 'brand-profile') return <BrandProfile onRoute={onRoute} />;
   if (route === 'brand-analytics') return <BrandAnalytics onRoute={onRoute} />;
+  if (route === 'calendar') return <Calendar onRoute={onRoute} />;
 
   // Creator
   if (route === 'creator-home') return <CreatorHome onRoute={onRoute} />;
@@ -393,6 +397,7 @@ function RouteOutlet({ route, onRoute, persona }: { route: string; onRoute: (r: 
     );
   }
   if (route === 'creator-inbox') return <Inbox onRoute={onRoute} persona="creator" />;
+  if (route === 'creator-calendar') return <Calendar onRoute={onRoute} />;
   if (route === 'analytics') return <Analytics onRoute={onRoute} />;
   if (route === 'creator-wallet') return <CreatorWallet onRoute={onRoute} />;
   if (route === 'kyc' || route.startsWith('kyc?')) {

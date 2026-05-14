@@ -15,6 +15,8 @@ import { pushToast } from '@/lib/utils/toast';
 import { downloadCSV } from '@/lib/utils/csv';
 import { useV2CurrentCreator } from '../v2Hooks';
 import { useStore, tx } from '@/lib/api/store';
+import { TaxFormModal } from './TaxFormModal';
+import type { TaxFormRecord } from '@/lib/api/types';
 
 interface Props {
   onRoute: (r: string) => void;
@@ -50,13 +52,19 @@ function buildSteps(creator: {
   payout?: { account?: string; method?: string; currency?: string };
   city?: string;
   country?: string;
+  taxForm?: TaxFormRecord;
 } | null | undefined, hasPaidCollab: boolean): Step[] {
   const c = creator;
   const verified = !!c?.verified;
   const hasBank = !!(c?.payout?.account && c.payout.account.trim().length > 0);
+  const hasTaxForm = !!c?.taxForm;
   const idStatus: StepStatus = verified ? 'verified' : 'action';
   const addrStatus: StepStatus = verified ? 'verified' : 'action';
-  const taxStatus: StepStatus = verified ? (hasBank ? 'verified' : 'pending') : 'locked';
+  // Phase 50 — tax-form step flips to action (collect-now) when ID is
+  // verified but no W-9/W-8BEN is on file. Once submitted → verified.
+  const taxStatus: StepStatus = verified
+    ? (hasTaxForm ? 'verified' : 'action')
+    : 'locked';
   const bankStatus: StepStatus = verified ? (hasBank ? 'verified' : 'action') : 'locked';
   const agreementStatus: StepStatus = hasBank && hasPaidCollab ? 'verified' : hasBank ? 'action' : 'locked';
 
@@ -81,11 +89,15 @@ function buildSteps(creator: {
     },
     {
       id: 'tax-form',
-      title: 'Tax form (W-equivalent)',
-      description: 'Tax-jurisdiction registration. We auto-generate filing receipts for every brand payment.',
-      detail: taxStatus === 'verified' ? 'On file' : taxStatus === 'pending' ? 'Pending — finish bank step first' : '',
+      title: 'Tax form (W-9 / W-8BEN)',
+      description: 'W-9 for US persons; W-8BEN for everyone else. Required before your first payout clears.',
+      detail: taxStatus === 'verified' && c?.taxForm
+        ? `${c.taxForm.kind} on file · signed ${new Date(c.taxForm.signedAt).toLocaleDateString()}`
+        : '',
       status: taxStatus,
-      cta: taxStatus === 'pending' ? 'Complete tax form' : undefined,
+      cta: taxStatus === 'action' ? 'Complete tax form'
+        : taxStatus === 'verified' ? 'View / replace'
+        : undefined,
     },
     {
       id: 'bank',
@@ -112,6 +124,7 @@ export function KycTax({ onRoute, initialAction }: Props) {
   const me = useV2CurrentCreator();
   const db = useStore((s) => s.db);
   const [showBankModal, setShowBankModal] = useState(false);
+  const [showTaxModal, setShowTaxModal] = useState(false);
 
   // Real creator state — used to compute step status + filter tax docs.
   const rawCreator = me ? db.creators.find((c) => c.id === me.id) : null;
@@ -188,7 +201,7 @@ export function KycTax({ onRoute, initialAction }: Props) {
         break;
       }
       case 'tax-form':
-        pushToast('Tax form on file — auto-generated quarterly');
+        setShowTaxModal(true);
         break;
       case 'bank':
         setShowBankModal(true);
@@ -293,6 +306,13 @@ export function KycTax({ onRoute, initialAction }: Props) {
               pushToast('Bank account saved');
               setShowBankModal(false);
             }}
+          />
+        )}
+
+        {showTaxModal && (
+          <TaxFormModal
+            initial={rawCreator?.taxForm}
+            onClose={() => setShowTaxModal(false)}
           />
         )}
 

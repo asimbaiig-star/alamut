@@ -19,7 +19,13 @@ vi.mock('../../v2CampaignActions', () => ({
   v2SetSubmissionPermalink: vi.fn(),
 }));
 vi.mock('../../v2CollabActions', () => ({ v2InviteCreator: vi.fn() }));
-vi.mock('../../v2Hooks', () => ({ useV2Creators: () => [] }));
+vi.mock('../../v2Hooks', () => ({
+  useV2Creators: () => [],
+  // Phase 50 — SendOfferModal now reads/writes saved offer templates.
+  useV2OfferTemplates: () => [],
+  v2SaveOfferTemplate: () => null,
+  v2DeleteOfferTemplate: () => false,
+}));
 vi.mock('@/lib/permissions', () => ({
   useCapability: () => true,
   requireCapability: () => undefined,

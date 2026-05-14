@@ -17,7 +17,7 @@
 
 import { tx } from '@/lib/api/store';
 import type {
-  Creator, Platform, RateCardEntry, Availability, Database,
+  Creator, Platform, RateCardEntry, Availability, Database, TaxFormRecord,
 } from '@/lib/api/types';
 // Phase 5 — Supabase mirror for creator self-service writes. The
 // helper below wraps every tx() so we don't have to thread mirror
@@ -625,3 +625,38 @@ export const COMMON_PRESS_OUTLETS = [
   'Highsnobiety', 'Dawn', 'Aurora', 'Geo TV', 'Hum News',
   'Buzzfeed', 'TechCrunch', 'Fast Company', 'The Verge',
 ];
+
+// =====================================================================
+// Tax form (Phase 50) — captures W-9 (US) or W-8BEN (international).
+// =====================================================================
+//
+// Stored on Creator.taxForm. Used by KycTax.buildSteps to flip the
+// "Tax form" step status from pending → verified, and (future) by
+// the 1099 generator that aggregates payout transactions year-end.
+//
+// Notes for production:
+//   - taxIdLast4 is the only PII we hold; full SSNs need pgsodium or
+//     a dedicated PII vault (Persona / Onfido / Stripe Identity).
+//   - Real implementation should also call Stripe Connect's tax-id
+//     verification endpoint to validate the number against IRS records.
+//   - Signature is a typed legal name — real impl needs a signed PDF
+//     captured via DocuSign / HelloSign / etc.
+
+export function v2SaveTaxForm(input: Omit<TaxFormRecord, 'signedAt'>): Creator | null {
+  return txCreator((db) => {
+    // Find the creator linked to the current session's user.
+    const session = useStoreModule.useStore.getState().session;
+    if (!session?.userId) return null;
+    const me = db.users.find((u) => u.id === session.userId);
+    if (!me?.creatorId) return null;
+    const idx = db.creators.findIndex((c) => c.id === me.creatorId);
+    if (idx === -1) return null;
+    const record: TaxFormRecord = { ...input, signedAt: new Date().toISOString() };
+    db.creators[idx] = { ...db.creators[idx], taxForm: record };
+    return db.creators[idx];
+  });
+}
+
+// Lazy useStore reference — keeps the module-load order from circling
+// back into `store.ts` at import time.
+import * as useStoreModule from '@/lib/api/store';

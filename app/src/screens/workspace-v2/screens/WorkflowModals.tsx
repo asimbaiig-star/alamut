@@ -15,8 +15,12 @@ import {
   v2SendOffer, v2SetSubmissionPermalink,
 } from '../v2CampaignActions';
 import { v2InviteCreator } from '../v2CollabActions';
-import { useV2Creators } from '../v2Hooks';
+import {
+  useV2Creators, useV2OfferTemplates,
+  v2SaveOfferTemplate, v2DeleteOfferTemplate,
+} from '../v2Hooks';
 import { useStore } from '@/lib/api/store';
+import { pushToast } from '@/lib/utils/toast';
 import type { V2Creator } from '../data';
 // P7 — UI gating for brand-side actions. The mutations themselves
 // throw via P5's `requireCapability`; this layer turns that into a
@@ -44,6 +48,31 @@ export function SendOfferModal({ campaignId, creator, defaultRate, onClose }: Se
   const minRate = creator.availability?.minRate;
   const isBelowFloor = minRate !== undefined && rate > 0 && rate < minRate;
   const canSend = useCapability('offer.send');
+
+  // Phase 50 — saved offer templates (per brand). Pick fills the form;
+  // "Save as template" snapshots the current draft for next time.
+  const templates = useV2OfferTemplates();
+  const [showTemplateMenu, setShowTemplateMenu] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [newTemplateName, setNewTemplateName] = useState('');
+
+  function applyTemplate(id: string) {
+    const tpl = templates.find((t) => t.id === id);
+    if (!tpl) return;
+    setRate(tpl.rate);
+    setMessage(
+      tpl.message.replace('{firstName}', creator.name.split(' ')[0]),
+    );
+    setShowTemplateMenu(false);
+  }
+  function commitNewTemplate() {
+    const name = newTemplateName.trim();
+    if (!name) return;
+    const saved = v2SaveOfferTemplate({ name, rate, message });
+    if (saved) pushToast(`Template "${name}" saved`, 'good');
+    setSavingTemplate(false);
+    setNewTemplateName('');
+  }
   return (
     <div className="v2-modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
       <div
@@ -84,6 +113,96 @@ export function SendOfferModal({ campaignId, creator, defaultRate, onClose }: Se
               <strong style={{ color: 'var(--v2-gold)' }}>✈ {creator.name.split(' ')[0]} is on vacation</strong> — they're not actively monitoring offers right now. You can still send; expect a delayed reply.
             </div>
           )}
+          {/* Phase 50 — Templates row */}
+          <div style={{ marginBottom: 14, position: 'relative' }}>
+            <div className="v2-row" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+              <span className="v2-eyebrow">Templates</span>
+              <div className="v2-row" style={{ gap: 6 }}>
+                {templates.length > 0 && (
+                  <button
+                    type="button"
+                    className="v2-btn v2-btn-sm v2-btn-ghost"
+                    onClick={() => setShowTemplateMenu((v) => !v)}
+                  >
+                    {showTemplateMenu ? 'Close' : `Pick (${templates.length})`}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="v2-btn v2-btn-sm v2-btn-ghost"
+                  onClick={() => setSavingTemplate((v) => !v)}
+                  disabled={rate <= 0 || !message.trim()}
+                  title={rate <= 0 || !message.trim() ? 'Fill rate + message first' : 'Save current draft as a reusable template'}
+                >
+                  {savingTemplate ? 'Cancel save' : 'Save as template'}
+                </button>
+              </div>
+            </div>
+            {savingTemplate && (
+              <div className="v2-row" style={{ gap: 8, marginTop: 8 }}>
+                <input
+                  className="v2-input"
+                  style={{ flex: 1 }}
+                  placeholder='Template name (e.g. "Beauty starter · $1.5K")'
+                  value={newTemplateName}
+                  onChange={(e) => setNewTemplateName(e.target.value)}
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  className="v2-btn v2-btn-sm v2-btn-primary"
+                  onClick={commitNewTemplate}
+                  disabled={!newTemplateName.trim()}
+                >
+                  Save
+                </button>
+              </div>
+            )}
+            {showTemplateMenu && templates.length > 0 && (
+              <div
+                className="v2-card"
+                style={{
+                  position: 'absolute', right: 0, top: '100%', marginTop: 4,
+                  zIndex: 10, minWidth: 280, maxHeight: 240, overflowY: 'auto',
+                  padding: 4, boxShadow: '0 6px 24px rgba(0,0,0,0.12)',
+                }}
+              >
+                {templates.map((t) => (
+                  <div
+                    key={t.id}
+                    className="v2-row"
+                    style={{ justifyContent: 'space-between', padding: '8px 10px', borderRadius: 4, gap: 8 }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--v2-bg-2)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = '')}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => applyTemplate(t.id)}
+                      style={{
+                        flex: 1, textAlign: 'left', background: 'transparent',
+                        border: 0, cursor: 'pointer', padding: 0,
+                      }}
+                    >
+                      <div style={{ fontSize: 13, fontWeight: 500 }}>{t.name}</div>
+                      <div className="v2-muted" style={{ fontSize: 11.5 }}>
+                        {fmtUSD(t.rate)} · {t.message.slice(0, 60)}{t.message.length > 60 ? '…' : ''}
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      className="v2-icon-btn"
+                      onClick={() => { v2DeleteOfferTemplate(t.id); }}
+                      style={{ width: 24, height: 24, fontSize: 13, color: 'var(--v2-ink-3)' }}
+                      aria-label={`Delete template ${t.name}`}
+                      title="Delete template"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           <div style={{ marginBottom: 18 }}>
             <label className="v2-eyebrow" style={{ display: 'block', marginBottom: 6 }}>Rate (USD)</label>
             <div className="v2-onboarding-rate">

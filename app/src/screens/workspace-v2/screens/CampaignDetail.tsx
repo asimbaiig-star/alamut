@@ -1315,17 +1315,104 @@ function ContentReviewTab({ collabs, creators, onReview, onRoute }: {
       .map((d) => ({ collab: c, deliverable: d })),
   );
 
+  // Bulk approve (Phase 50) — select multiple awaiting submissions and
+  // approve them in one click. Each approval still goes through the
+  // single v2ApproveContent path so capability gates + escrow_release +
+  // notifications all fire per-row exactly as the modal would.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  // Drop ids that are no longer in_review (e.g. after an approve flips
+  // the deliverable status). Keeps the selection set honest across renders.
+  useEffect(() => {
+    if (selected.size === 0) return;
+    const stillReview = new Set(inReview.map(({ deliverable }) => deliverable.id));
+    const trimmed = new Set([...selected].filter((id) => stillReview.has(id)));
+    if (trimmed.size !== selected.size) setSelected(trimmed);
+  }, [inReview, selected]);
+
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function selectAll() {
+    setSelected(new Set(inReview.map(({ deliverable }) => deliverable.id)));
+  }
+  function clearSelection() { setSelected(new Set()); }
+
+  async function bulkApprove() {
+    if (selected.size === 0) return;
+    setBulkBusy(true);
+    const { v2ApproveContent } = await import('../v2CampaignActions');
+    let ok = 0; let fail = 0;
+    for (const id of selected) {
+      try {
+        const result = v2ApproveContent(id);
+        if (result) ok++; else fail++;
+      } catch {
+        fail++;
+      }
+    }
+    setBulkBusy(false);
+    setSelected(new Set());
+    pushToast(
+      fail === 0
+        ? `Approved ${ok} submission${ok === 1 ? '' : 's'}`
+        : `Approved ${ok}, ${fail} failed`,
+      fail === 0 ? 'good' : 'bad',
+    );
+  }
+
   return (
     <div>
-      <h3 style={{
-        fontFamily: 'var(--v2-font-display)',
-        fontSize: 22,
-        fontWeight: 500,
-        margin: '0 0 12px',
-        letterSpacing: '-0.02em',
-      }}>
-        Awaiting your review
-      </h3>
+      <div className="v2-row" style={{ justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 12 }}>
+        <h3 style={{
+          fontFamily: 'var(--v2-font-display)',
+          fontSize: 22,
+          fontWeight: 500,
+          margin: 0,
+          letterSpacing: '-0.02em',
+        }}>
+          Awaiting your review
+        </h3>
+        {inReview.length > 1 && (
+          <div className="v2-row" style={{ gap: 8, fontSize: 12.5 }}>
+            {selected.size === 0 ? (
+              <button
+                type="button"
+                className="v2-btn v2-btn-sm v2-btn-ghost"
+                onClick={selectAll}
+              >
+                Select all ({inReview.length})
+              </button>
+            ) : (
+              <>
+                <span className="v2-muted">{selected.size} selected</span>
+                <button
+                  type="button"
+                  className="v2-btn v2-btn-sm v2-btn-ghost"
+                  onClick={clearSelection}
+                  disabled={bulkBusy}
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  className="v2-btn v2-btn-sm v2-btn-primary"
+                  onClick={bulkApprove}
+                  disabled={bulkBusy}
+                >
+                  {bulkBusy ? 'Approving…' : `Approve ${selected.size}`}
+                </button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
       {inReview.length === 0 && (
         <div className="v2-card v2-card-pad-lg" style={{ textAlign: 'center', color: 'var(--v2-ink-3)', marginBottom: 24 }}>
           All caught up — no submissions awaiting review.
@@ -1335,17 +1422,36 @@ function ContentReviewTab({ collabs, creators, onReview, onRoute }: {
         {inReview.map(({ collab, deliverable }) => {
           const creator = creators.find((c) => c.id === collab.creatorId);
           if (!creator) return null;
+          const isSelected = selected.has(deliverable.id);
           return (
             <article
               key={deliverable.id}
               className="v2-review-card"
               onClick={() => onReview(collab)}
+              style={isSelected ? { outline: '2px solid var(--v2-accent)', outlineOffset: -2 } : undefined}
             >
+              <label
+                onClick={(e) => { e.stopPropagation(); toggleSelect(deliverable.id); }}
+                style={{
+                  position: 'absolute', top: 8, left: 8, zIndex: 2,
+                  width: 22, height: 22, borderRadius: 4,
+                  background: isSelected ? 'var(--v2-accent)' : 'rgba(255,255,255,0.85)',
+                  border: '1.5px solid ' + (isSelected ? 'var(--v2-accent)' : 'var(--v2-line)'),
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: isSelected ? 'white' : 'transparent',
+                  fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                  transition: 'background .15s, border-color .15s',
+                }}
+                aria-label={isSelected ? 'Deselect submission' : 'Select submission'}
+              >
+                ✓
+              </label>
               <div
                 className="v2-review-thumb"
                 style={{
                   backgroundImage: deliverable.thumb ? `url(${deliverable.thumb})` : undefined,
                   background: !deliverable.thumb ? 'var(--v2-bg-2)' : undefined,
+                  position: 'relative',
                 }}
               >
                 <span className="v2-review-pill">Review</span>

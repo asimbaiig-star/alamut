@@ -283,9 +283,31 @@ export interface Creator {
   // Tier 4+: managed-by-an-agent. When set, the creator's account is operated
   // by a separate User who has role='creator' and managesCreatorIds[] including this id.
   managedByUserId?: string;
+  /** Phase 50 — tax form on file (W-9 for US, W-8BEN for international).
+   *  Captured via the TaxFormModal in KycTax; consumed by the KYC step
+   *  state machine + year-end 1099 generation (latter TODO). */
+  taxForm?: TaxFormRecord;
   /** Migration 021 optimistic lock — see Dispute.version for the rationale.
    *  Creator-profile edits and wallet/pending balance updates flow through this lock. */
   version?: number;
+}
+
+export interface TaxFormRecord {
+  kind: 'W-9' | 'W-8BEN';
+  legalName: string;
+  /** US tax classification (W-9 only). */
+  classification?: 'individual' | 'sole-proprietor' | 'llc' | 'corporation';
+  /** Last 4 of SSN or full EIN (US). We never want to handle full SSNs
+   *  in a prototype; production needs pgsodium / dedicated PII vault. */
+  taxIdLast4?: string;
+  /** Country of tax residence (W-8BEN). */
+  country?: string;
+  /** Foreign tax ID number (W-8BEN). */
+  foreignTaxId?: string;
+  address: string;
+  /** Typed signature — the user types their legal name to attest. */
+  signature: string;
+  signedAt: string;
 }
 
 // Lightweight brand-side social presence. No audience demographics — brands don't typically
@@ -321,9 +343,25 @@ export interface Brand {
   verified: boolean;
   savedCreators: string[];   // brand-level shortlist (creator IDs saved for later)
   socialPlatforms?: BrandSocial[];
+  /** Phase 50 — saved offer templates per brand. Prefabs the brand can
+   *  pick from in SendOfferModal instead of retyping rate + message
+   *  per offer. Stored on the brand row (local-only for the prototype;
+   *  migrating to a dedicated `offer_templates` table later is straight-
+   *  forward — same pattern as `sparkDrafts`). */
+  offerTemplates?: OfferTemplate[];
   /** Migration 021 optimistic lock — see Dispute.version for the rationale.
    *  Brand-profile edits and wallet balance updates flow through this lock. */
   version?: number;
+}
+
+export interface OfferTemplate {
+  id: string;
+  name: string;
+  rate: number;
+  message: string;
+  /** Optional deliverable hint shown alongside the template name. */
+  deliverables?: string;
+  createdAt: string;
 }
 
 // P1b §1.2 — Campaign stage represents the campaign's own lifecycle, NOT
