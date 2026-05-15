@@ -100,7 +100,19 @@ const COVERS = [
   'photo-1542219550-37153d387c27', // wellness
 ];
 
-const upx = (id: string, w = 800, h = 600) => `https://images.unsplash.com/${id}?w=${w}&h=${h}&fit=crop&auto=format`;
+// Phase 53 — `upx` previously naively concatenated `https://images.unsplash.com/`
+// with whatever was passed. A few testimonials in seed pass FULL Unsplash URLs
+// (legacy from a copy-paste pass) which produced `https://images.unsplash.com/
+// https://images.unsplash.com/photo-...` — broken portraits on the creator
+// landing testimonial wall. Detect and pass through full URLs directly.
+const upx = (id: string, w = 800, h = 600) => {
+  if (id.startsWith('http://') || id.startsWith('https://')) {
+    // Already a full URL. Strip any existing query string, append our params.
+    const base = id.split('?')[0];
+    return `${base}?w=${w}&h=${h}&fit=crop&auto=format`;
+  }
+  return `https://images.unsplash.com/${id}?w=${w}&h=${h}&fit=crop&auto=format`;
+};
 
 // ============ NAME / BRAND POOLS ============
 const FIRST_NAMES = [

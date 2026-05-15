@@ -88,6 +88,23 @@ export const useStore = create<StoreState>()(
       onRehydrateStorage: () => (state) => {
         if (state?.db) {
           runPendingMigrations(state.db);
+          // Phase 53 in-place URL fix — pre-fix `upx()` naively prepended
+          // the Unsplash base URL to inputs that were already full URLs,
+          // producing `https://images.unsplash.com/https://images.unsplash.com/...`
+          // strings that landed in seed.testimonials.authorPortrait.
+          // The persisted localStorage carries those broken URLs; the
+          // upx() fix only helps fresh seeds. This sweeps existing rows.
+          if (Array.isArray(state.db.testimonials)) {
+            state.db.testimonials = state.db.testimonials.map((t) => {
+              if (typeof t.authorPortrait === 'string' && t.authorPortrait.includes('images.unsplash.com/https://')) {
+                return {
+                  ...t,
+                  authorPortrait: t.authorPortrait.replace(/^https:\/\/images\.unsplash\.com\/https:\/\//, 'https://'),
+                };
+              }
+              return t;
+            });
+          }
         }
       },
     },
