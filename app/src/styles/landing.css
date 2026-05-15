@@ -9007,20 +9007,14 @@ body:has([data-surface="landing-light"]) {
   text-transform: uppercase;
 }
 
-/* In the small "hero-grid" variant inside the storefront mock the
-   badges are scaled down slightly so they don't crowd the 3 small tiles. */
-.showcase-hero-grid .showcase-capture-badge {
-  top: 6px;
-  left: 6px;
-  padding: 3px 7px 3px 6px;
-  gap: 5px;
-}
-.showcase-hero-grid .showcase-capture-mark { font-size: 9px; }
-.showcase-hero-grid .showcase-capture-meta { font-size: 7px; }
-.showcase-hero-grid .showcase-capture-dot {
-  width: 4px;
-  height: 4px;
-}
+/* Phase 53 — In the hero-grid variant the tiles are tiny (~40-50px)
+   inside the CreatorStorefrontMock on the landing page. Even at 7px
+   the meta text "Spring drop · MAR '25" is wider than the tile and
+   the badge ends up covering 99% of the photo. Hide the badge
+   entirely in this variant — the dot+wordmark signal is reserved for
+   the larger full / cards variants where the badge has room.
+   The mood overlay still tints the photo for brand-mood signal. */
+.showcase-hero-grid .showcase-capture-badge { display: none; }
 
 /* On smaller viewports the badge inside large showcase tiles can be
    too crowded — hide the meta line, keep the wordmark + dot. */
