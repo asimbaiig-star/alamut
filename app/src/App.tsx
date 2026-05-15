@@ -4,6 +4,7 @@ import { router } from './router';
 import { ToastHost } from './components/ui/ToastHost';
 import { ConfirmHost } from './components/ui/ConfirmHost';
 import { ErrorBoundary } from './components/layout/ErrorBoundary';
+import { Analytics } from '@vercel/analytics/react';
 
 export default function App() {
   useEffect(() => {
@@ -18,6 +19,7 @@ export default function App() {
       <RouterProvider router={router} />
       <ToastHost />
       <ConfirmHost />
+      <Analytics />
     </ErrorBoundary>
   );
 }
