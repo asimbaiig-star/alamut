@@ -13,7 +13,13 @@
     "bench": "vitest bench --run",
     "e2e": "playwright test",
     "e2e:headed": "playwright test --headed",
-    "e2e:install": "playwright install chromium"
+    "e2e:install": "playwright install chromium",
+    "sb": "supabase",
+    "sb:login": "supabase login",
+    "sb:link": "supabase link --project-ref iddpnsnlmfhnxyhbhyvx",
+    "sb:diff": "supabase migration list",
+    "sb:push": "supabase db push",
+    "sb:lint": "supabase db lint --linked"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.4",
