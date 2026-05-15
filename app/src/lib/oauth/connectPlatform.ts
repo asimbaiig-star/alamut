@@ -134,12 +134,31 @@ export function connectPlatform(args: ConnectArgs): Promise<{ ok: true; platform
       return;
     }
 
+    // Phase 52 (security) — derive the expected origin of the OAuth
+    // callback (the Supabase Edge Function URL) and reject any
+    // postMessage from anywhere else. Pre-fix the handler accepted
+    // `data.type === 'alamut-oauth'` from any origin — an attacker
+    // could open the popup themselves, postMessage the parent with
+    // `{ type: 'alamut-oauth', ok: true, platform: '...' }` and forge
+    // a successful connect.
+    let expectedOrigin: string | null = null;
+    try {
+      expectedOrigin = new URL(callbackUri()).origin;
+    } catch {
+      reject(new Error('OAuth callback URL is not a valid URL.'));
+      return;
+    }
+
     const onMessage = (e: MessageEvent) => {
-      // Same-origin check: the postMessage comes from the Edge Function
-      // domain (supabase.co), so we accept any origin but validate the
-      // payload shape strictly.
+      // Origin must match the Edge Function's host. Anything else is
+      // either an unrelated browser message or a forgery attempt.
+      if (e.origin !== expectedOrigin) return;
       const data = e.data;
       if (!data || data.type !== 'alamut-oauth') return;
+      // Source check belt-and-suspenders — only trust messages coming
+      // from the popup we opened, not arbitrary windows that happen to
+      // share the origin (e.g. another tab).
+      if (e.source !== popup) return;
       window.removeEventListener('message', onMessage);
       if (popupCheckTimer) window.clearInterval(popupCheckTimer);
       if (data.ok) {

@@ -49,12 +49,27 @@ type Row = {
   updated_at: string;
 };
 
+// Full column set — owner-only reads (their own row + all PII columns).
+// Migration 025 restricted SELECT on the raw `creators` table to the
+// row owner; this set is what the owner pulls back when they edit
+// their profile, view their wallet, etc.
 const COLUMNS =
   'id, user_id, owner_email, name, handle, tagline, bio, cover, portrait, ' +
   'city, country, languages, categories, work, past_clients, platforms, ' +
   'reach, engagement, rating, tier, response_hrs, rate_card, rate_cards, ' +
   'payout, wallet_balance, pending_balance, lifetime_earnings, verified, ' +
   'kyc_verified_at, editors_pick, press_mentions, availability, ' +
+  'featured_review_ids, saved_briefs, version, created_at, updated_at';
+
+// Public column set — no PII (no payout, no wallet/pending/lifetime,
+// no owner_email). Storefronts + Discover pull this via the
+// `creators_public` view (migration 025). Anonymous and authenticated
+// non-owners can read it; the raw `creators` table is owner-only.
+const PUBLIC_COLUMNS =
+  'id, user_id, name, handle, tagline, bio, cover, portrait, ' +
+  'city, country, languages, categories, work, past_clients, platforms, ' +
+  'reach, engagement, rating, tier, response_hrs, rate_card, rate_cards, ' +
+  'verified, kyc_verified_at, editors_pick, press_mentions, availability, ' +
   'featured_review_ids, saved_briefs, version, created_at, updated_at';
 
 function toCreator(row: Row): Creator {
@@ -201,13 +216,43 @@ export async function insertCreatorInSupabase(
 export async function fetchAllCreatorsFromSupabase(): Promise<Creator[]> {
   if (!isSupabaseConfigured()) return [];
   const sb = getSupabase();
-  const { data, error } = await sb.from('creators').select(COLUMNS);
+  // Phase 52 — read from the public view (migration 025) so we don't
+  // pull PII (payout / wallet / owner_email) for every creator. The
+  // owner re-fetches their own row via fetchOwnCreatorFromSupabase to
+  // hydrate the private columns into the local store.
+  const { data, error } = await sb.from('creators_public').select(PUBLIC_COLUMNS);
   if (error) {
     // eslint-disable-next-line no-console
     console.warn('[creatorsRepo] fetchAll failed:', error.message);
     return [];
   }
-  return (data ?? []).map((r) => toCreator(r as unknown as Row));
+  // PUBLIC rows lack payout / wallet — fill with zeros so the type
+  // stays consistent. The owner's row gets overlaid with the real
+  // values via fetchOwnCreatorFromSupabase in the boot hydration.
+  return (data ?? []).map((r) => {
+    const row = r as unknown as Record<string, unknown>;
+    return toCreator({
+      ...(row as unknown as Row),
+      owner_email: null,
+      payout: { method: '', account: '', currency: 'USD' },
+      wallet_balance: 0,
+      pending_balance: 0,
+      lifetime_earnings: 0,
+    });
+  });
+}
+
+/** Owner-only read — fetches the row's full PII columns directly from
+ *  the raw `creators` table (RLS enforces auth.email() = owner_email).
+ *  Boot hydration calls this once per signed-in creator so the private
+ *  columns aren't missing from their own profile / wallet view. */
+export async function fetchOwnCreatorFromSupabase(): Promise<Creator | null> {
+  if (!isSupabaseConfigured()) return null;
+  const sb = getSupabase();
+  const { data, error } = await sb.from('creators').select(COLUMNS);
+  if (error || !data || data.length === 0) return null;
+  // RLS limits this to the owner's own rows — typically 1 row.
+  return toCreator(data[0] as unknown as Row);
 }
 
 export async function updateCreatorInSupabase(

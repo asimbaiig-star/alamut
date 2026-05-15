@@ -36,11 +36,20 @@ type Row = {
   version: number;
 };
 
-// Public-API column list — used for `select('...')`. Centralised so
-// adding a column updates every read path at once.
+// Full column set — owner-only reads (their own row + all PII columns).
+// Migration 025 restricted SELECT on the raw `brands` table to the
+// row owner; this set is what the owner pulls back for their wallet
+// and brand profile. Cross-row reads (Discover, brief headers) go
+// through PUBLIC_COLUMNS via the brands_public view.
 const COLUMNS =
   'id, user_id, owner_email, name, industry, hq, website, about, logo_mark, logo_url, ' +
   'preferred_categories, preferred_regions, wallet_balance, escrow_held, verified, ' +
+  'saved_creators, social_platforms, version';
+
+// Public column set — no PII (no owner_email, no wallet/escrow figures).
+const PUBLIC_COLUMNS =
+  'id, user_id, name, industry, hq, website, about, logo_mark, logo_url, ' +
+  'preferred_categories, preferred_regions, verified, ' +
   'saved_creators, social_platforms, version';
 
 function toBrand(row: Row): Brand {
@@ -125,14 +134,18 @@ export async function insertBrandInSupabase(
   return toBrand(data as unknown as Row);
 }
 
-/** Fetch every brand row visible to the current session. With the
- *  public SELECT policy this returns the full table for both anon and
- *  authenticated callers. Used by the boot-time hydrate to overlay
- *  fresh server state onto the local Zustand cache. */
+/** Fetch every brand row visible to the current session via the
+ *  sanitized `brands_public` view (migration 025). Returns the public
+ *  columns only — no owner_email, no wallet/escrow figures. The owner
+ *  re-fetches their own row's PII via fetchOwnBrandFromSupabase so the
+ *  wallet UI can render real numbers. */
 export async function fetchAllBrandsFromSupabase(): Promise<Brand[]> {
   if (!isSupabaseConfigured()) return [];
   const sb = getSupabase();
-  const { data, error } = await sb.from('brands').select(COLUMNS);
+  // Phase 52 — read from the public view so non-owner callers don't
+  // pull wallet figures. The owner's row gets overlaid with private
+  // columns via fetchOwnBrandFromSupabase in the boot hydration.
+  const { data, error } = await sb.from('brands_public').select(PUBLIC_COLUMNS);
   if (error) {
     // Swallow + log — a Supabase outage shouldn't crash the local
     // experience. The store still has the seed data to fall back on.
@@ -140,7 +153,27 @@ export async function fetchAllBrandsFromSupabase(): Promise<Brand[]> {
     console.warn('[brandsRepo] fetchAllBrands failed:', error.message);
     return [];
   }
-  return (data ?? []).map((r) => toBrand(r as unknown as Row));
+  return (data ?? []).map((r) => {
+    const row = r as unknown as Record<string, unknown>;
+    return toBrand({
+      ...(row as unknown as Row),
+      owner_email: '',
+      wallet_balance: 0,
+      escrow_held: 0,
+    });
+  });
+}
+
+/** Owner-only read — fetches the brand's full PII columns from the
+ *  raw `brands` table (RLS gates by auth.email() = owner_email). Boot
+ *  hydration uses this to overlay the wallet/owner-email columns onto
+ *  the public-view rows for the brand the user owns. */
+export async function fetchOwnBrandFromSupabase(): Promise<Brand | null> {
+  if (!isSupabaseConfigured()) return null;
+  const sb = getSupabase();
+  const { data, error } = await sb.from('brands').select(COLUMNS);
+  if (error || !data || data.length === 0) return null;
+  return toBrand(data[0] as unknown as Row);
 }
 
 /** Update a single brand. Caller must be the auth-session owner of the

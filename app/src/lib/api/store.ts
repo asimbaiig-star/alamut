@@ -338,6 +338,32 @@ if (typeof window !== 'undefined') {
           },
         };
       });
+      // Phase 52 — owner-only PII overlay. The list fetches above pull
+      // from creators_public + brands_public (no payout / wallet). Now
+      // fetch the signed-in user's OWN row from the raw tables (RLS
+      // gates by owner_email) so their wallet + payout cards have real
+      // numbers. Fire-and-forget; failure leaves the public-view zeros.
+      void (async () => {
+        try {
+          const ownCreator = await creatorsMod.fetchOwnCreatorFromSupabase();
+          const ownBrand = await brandsMod.fetchOwnBrandFromSupabase();
+          if (!ownCreator && !ownBrand) return;
+          useStore.setState((s) => ({
+            db: {
+              ...s.db,
+              creators: ownCreator
+                ? s.db.creators.map((c) => c.id === ownCreator.id ? ownCreator : c)
+                : s.db.creators,
+              brands: ownBrand
+                ? s.db.brands.map((b) => b.id === ownBrand.id ? ownBrand : b)
+                : s.db.brands,
+            },
+          }));
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn('[store] own-pii overlay skipped:', err);
+        }
+      })();
     } catch (e) {
       // Network down / Supabase outage — local store stays as-is.
       // eslint-disable-next-line no-console

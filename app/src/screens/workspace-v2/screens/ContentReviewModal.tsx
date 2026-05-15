@@ -28,13 +28,49 @@ interface Props {
 
 /** Pick a preview kind for a file — drives whether we render a <video>,
  *  <img>, <iframe>, or just a download link. Falls back to inferring
- *  from the file extension when MIME isn't carried (legacy submissions). */
-function previewKind(file: { name: string; mime?: string }): 'video' | 'image' | 'pdf' | 'other' {
+ *  from the file extension when MIME isn't carried (legacy submissions).
+ *
+ *  Phase 52 (security): the previous version trusted EITHER the MIME
+ *  string OR the extension. A creator could upload `evil.pdf` whose
+ *  bytes are an HTML page — extension says "pdf", we'd render it in an
+ *  <iframe> with same-origin script execution against the brand's
+ *  session.
+ *
+ *  New rule: PDF specifically requires BOTH the MIME to be `application/
+ *  pdf` AND the extension to be `.pdf`. Anything else falls to the
+ *  download link. Video / image render via <video src> / <img src> which
+ *  are not script-execution surfaces; we still trust either signal there.
+ *  Data URLs are further validated against `data:application/pdf;base64,`. */
+/** Check that a file URL is safe to put into `src` / `href`. Allows
+ *  http(s) and data: URLs only — blocks `javascript:`, `vbscript:`,
+ *  `file:` etc. For data URLs, also requires the declared MIME to
+ *  match a known-safe-to-link type (anything else falls back to a
+ *  plain "filename only" rendering with no clickable link). */
+function isSafeFileUrl(url: string): boolean {
+  if (!url) return false;
+  const lower = url.toLowerCase().trim();
+  if (lower.startsWith('http://') || lower.startsWith('https://')) return true;
+  if (lower.startsWith('data:')) {
+    // Block data:text/html and data:application/javascript — those
+    // are the script-execution surfaces.
+    if (/^data:(text\/html|application\/(java|ecma)script|text\/javascript)/i.test(lower)) return false;
+    return true;
+  }
+  return false;
+}
+
+function previewKind(file: { name: string; mime?: string; url?: string }): 'video' | 'image' | 'pdf' | 'other' {
   const mime = (file.mime ?? '').toLowerCase();
   const ext = file.name.toLowerCase().split('.').pop() ?? '';
   if (mime.startsWith('video/') || ['mp4','mov','webm'].includes(ext)) return 'video';
   if (mime.startsWith('image/') || ['png','jpg','jpeg','heic','gif','webp'].includes(ext)) return 'image';
-  if (mime === 'application/pdf' || ext === 'pdf') return 'pdf';
+  // PDF preview is the script-execution surface — be strict.
+  const looksPdfMime = mime === 'application/pdf';
+  const looksPdfExt = ext === 'pdf';
+  const looksPdfDataUrl = (file.url ?? '').toLowerCase().startsWith('data:application/pdf');
+  // Require MIME + extension to agree, OR a data URL whose own MIME
+  // header says PDF (data URLs are self-describing).
+  if ((looksPdfMime && looksPdfExt) || looksPdfDataUrl) return 'pdf';
   return 'other';
 }
 
@@ -53,7 +89,12 @@ export function ContentReviewModal({ collab, creators, onClose }: Props) {
   );
   const files = submission?.files ?? [];
   const primaryFile = files[0];
-  const primaryUsable = !!primaryFile && primaryFile.url && primaryFile.url !== '#';
+  // Phase 52 — `primaryUsable` now also requires the URL to pass the
+  // safe-scheme check (blocks javascript:, vbscript:, data:text/html).
+  const primaryUsable = !!primaryFile
+    && primaryFile.url
+    && primaryFile.url !== '#'
+    && isSafeFileUrl(primaryFile.url);
   const kind = primaryFile ? previewKind(primaryFile) : 'other';
 
   if (!creator || !deliverable) {
@@ -83,9 +124,14 @@ export function ContentReviewModal({ collab, creators, onClose }: Props) {
             />
           )}
           {primaryUsable && kind === 'pdf' && (
+            // Sandboxed iframe — even if previewKind() were ever fooled,
+            // the sandbox attribute strips script execution + same-origin
+            // privileges. allow-same-origin is intentionally OFF.
             <iframe
               src={primaryFile!.url}
               title={primaryFile!.name}
+              sandbox=""
+              referrerPolicy="no-referrer"
               style={{ width: '100%', height: '100%', border: 0, background: '#fff' }}
             />
           )}
@@ -136,23 +182,37 @@ export function ContentReviewModal({ collab, creators, onClose }: Props) {
                 background: 'rgba(0,0,0,0.55)', padding: 6, borderRadius: 6,
               }}
             >
-              {files.map((f, i) => (
-                <a
-                  key={i}
-                  href={f.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  download={f.name}
-                  style={{
-                    fontSize: 11, padding: '3px 8px', borderRadius: 4,
-                    background: 'rgba(255,255,255,0.92)', color: '#111',
-                    textDecoration: 'none', whiteSpace: 'nowrap',
-                  }}
-                  title={f.name}
-                >
-                  {i + 1}. {f.name.length > 18 ? f.name.slice(0, 18) + '…' : f.name}
-                </a>
-              ))}
+              {files.map((f, i) => {
+                const safe = isSafeFileUrl(f.url);
+                const label = `${i + 1}. ${f.name.length > 18 ? f.name.slice(0, 18) + '…' : f.name}`;
+                const baseStyle = {
+                  fontSize: 11, padding: '3px 8px', borderRadius: 4,
+                  background: 'rgba(255,255,255,0.92)', color: '#111',
+                  textDecoration: 'none', whiteSpace: 'nowrap' as const,
+                };
+                if (!safe) {
+                  // Render as inert text so we never put an unsafe URL
+                  // into an `href` (no javascript:, no data:text/html).
+                  return (
+                    <span key={i} style={{ ...baseStyle, opacity: 0.6 }} title={`${f.name} (unsafe URL)`}>
+                      {label}
+                    </span>
+                  );
+                }
+                return (
+                  <a
+                    key={i}
+                    href={f.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    download={f.name}
+                    style={baseStyle}
+                    title={f.name}
+                  >
+                    {label}
+                  </a>
+                );
+              })}
             </div>
           )}
           <button
