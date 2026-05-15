@@ -8370,6 +8370,13 @@ body:has([data-surface="landing-light"]) {
 }
 .showcase-tile {
   position: relative;
+  /* `isolation: isolate` creates a stacking context so the
+     mood-overlay's mix-blend-mode multiplies against THIS tile's
+     image only — not against whatever else happens to be painted
+     beneath the figure (page bg, parent backgrounds, etc.). Without
+     it, multiply can produce inconsistent results across browsers
+     and effectively wash the photo out behind the tint. */
+  isolation: isolate;
   margin: 0 0 clamp(8px, 1vw, 14px);
   break-inside: avoid;
   display: block;
@@ -9132,18 +9139,24 @@ body:has([data-surface="landing-light"]) {
 /* The mood overlay sits between the image (z=0) and the capture
    badge / caption (z=2+). Multiply blend mode tints the photo
    without flattening it. Lifts on hover so the photo reads cleaner
-   when the user engages. */
+   when the user engages.
+   Phase 53 — opacity dropped from 0.30 → 0.18 (default) and
+   0.16 → 0.10 (hover). On warm-toned photos (skin, food, fashion)
+   the previous 0.30 multiply against a similar-hue brand tint
+   washed the photo out almost completely; subjects looked obscured
+   behind a flat color panel. 0.18 keeps brand-mood signal while
+   leaving the photo clearly readable. */
 .showcase-mood-overlay {
   position: absolute;
   inset: 0;
   z-index: 1;
   mix-blend-mode: multiply;
   pointer-events: none;
-  opacity: 0.30;
+  opacity: 0.18;
   transition: opacity var(--motion-medium, 420ms) var(--ease-out, cubic-bezier(0.22, 0.36, 0.24, 1));
 }
 .showcase-tile:hover .showcase-mood-overlay {
-  opacity: 0.16;
+  opacity: 0.10;
 }
 
 .showcase-mood-amber .showcase-mood-overlay { background: oklch(0.72 0.14 65); }   /* Aesop, Khaadi spring */
