@@ -49,3 +49,9 @@ yarn-error.log*
 
 # Local backup folders (point-in-time snapshots — git history covers this)
 _backup-*/
+
+# Supabase CLI working state — auto-generated per-link / per-machine.
+# Contains project ref + cached version pins, no secrets, but it's noise
+# and changes whenever someone re-links from a different machine.
+**/supabase/.temp/
+**/supabase/.branches/
