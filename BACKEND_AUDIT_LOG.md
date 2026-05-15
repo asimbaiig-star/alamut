@@ -6,7 +6,7 @@ the pre-migration design phases 1–40). Append new sessions at the
 bottom. Designed to be read into a fresh context window to recover
 state quickly after a reset.
 
-**Last updated:** 2026-05-13
+**Last updated:** 2026-05-15
 
 ---
 
@@ -23,16 +23,32 @@ data-loss guards across ten dialogs.
 
 ---
 
-## What changed in the 2026-05-13 audit (high-impact tldr)
+## What changed in the 2026-05-13 → 2026-05-15 work (high-impact tldr)
 
 The original 17 backend-migration phases shipped a working server.
-The 2026-05-13 session ran a structural audit across the entire
-campaign-management pipeline, caught two user-reported bugs (Sarah
-self-msg in inbox + Aesop workspace teleport on deal-room open) and
-~80 latent findings. 24 mutations updated, 2 new migrations (019
-RLS-tighten + 020 optimistic-locks), 49 new tests, 3 modal/component
-extractions for testability, 3 orphan files deleted. Full ledger in
-"Session log" below.
+The 2026-05-13 session ran a structural audit across the campaign
+pipeline (slices 1-10 + items 1-4). The 2026-05-14 → 2026-05-15
+window added Phases 50-53 + a Supabase advisor sweep + landing-page
+polish.
+
+**By the numbers (2026-05-13 → 2026-05-15):**
+- 11 new migrations (019 → 029), all applied to remote via
+  `supabase db query --linked`
+- 22 Security Advisor warnings → 1 (dashboard-only password toggle)
+- 64 Performance Advisor INFOs triaged → 2 real fixes shipped
+  (outreach FK indexes), 62 documented as expected on a low-traffic DB
+- Workflow polish: Calendar tab, bulk approve, offer templates,
+  admin reports queue, KYC + W-9/W-8BEN capture, OAuth wiring,
+  Spark LLM Edge Function, Playwright e2e
+- Security hardening: 3 CRITICAL fixes (PII leak via public Creator/
+  Brand SELECT, XSS via MIME-spoofed PDF iframe, OAuth postMessage
+  origin) + 1 HIGH (storage path-traversal)
+- Bug-bash from real testing: file upload + view, modal-reopen loop,
+  Needs-you tile cap (290 of 294 items hidden), duplicate React keys
+- Landing polish: hero size, mood overlay, capture badge,
+  recent-placements masonry, press strip names, broken portrait URLs
+- Architecture map: single-file interactive HTML diagram (86 nodes /
+  183 edges)
 
 **Most important behaviour change:** v2 mutations now refuse rather
 than silently producing inconsistent state. Pre-fix a brand could
@@ -40,6 +56,12 @@ accept an offer with $0 wallet (Math.max clamp → phantom escrow);
 a creator could apply to a draft campaign; submissions could land
 on campaigns the creator had no offer on. All such paths now hard-
 return on the gate. Toasts surface where the UI needed them.
+
+**Most important security change:** the public.creators + public.brands
+tables previously exposed every column (including bank account / IBAN
++ wallet balance + owner_email) to anonymous readers via
+`for select using (true)`. Migration 025 splits into a public view
+(no PII) + owner-only raw-table SELECT.
 
 ---
 
@@ -258,29 +280,56 @@ app/src/screens/workspace-v2/
 
 ## Outstanding / deferred items
 
-After the 2026-05-13 audit + post-audit batch (slices 1-10 + items
-1-4), the remaining items are:
+After the 2026-05-13 → 2026-05-15 work (slices 1-10 + items 1-4 +
+Phases 50-53 + Supabase advisor sweep), the remaining items are:
 
 _(parent-screen RTL + collaborations refactor done in slice 9)_
 _(Spark auto-save shipped — see Session log "post-audit item 1")_
 _(realtime non-chat shipped — migration 022, item 2)_
 _(notifications migration shipped — migration 023, item 3)_
-_(ConnectPlatformModal OAuth scaffolding shipped — migration 024 +
-Edge Function + client helper. Real flow waits on dev-portal app
-registration per platform — see oauth-callback/README.md)_
+_(OAuth scaffolding shipped — migration 024 + Edge Function + client
+helper; ConnectPlatformModal wired in Phase 50 — falls back to mock
+when env vars missing, real flow activates once dev-portal apps are
+registered)_
+_(All Supabase Security Advisor warnings cleared except the
+dashboard-only "leaked password protection" toggle — see migration
+027 + 028)_
+_(All Supabase Performance Advisor "real" warnings cleared — only the
+INFO-level "unused index" findings remain, intentionally; see
+migration 029 for the policy)_
 
-- **OAuth flow wiring** — scaffolding is in place but
-  `ConnectPlatformModal` still calls `v2VerifyChannel` (the mock).
-  Once a platform's app is registered + secrets set + Edge Function
-  deployed, replace the mock call with `connectPlatform()` from
-  `src/lib/oauth/connectPlatform.ts`. Each platform can land
-  independently.
+- **Per-platform OAuth registration** — `connectPlatform()` is wired
+  but throws `OAuthNotConfiguredError` until each platform's
+  `VITE_<PLATFORM>_CLIENT_ID` env var is set + the matching app is
+  registered on its dev portal (Meta / TikTok / Google / X). Each
+  platform can land independently. Substack has no public OAuth — see
+  `app/supabase/functions/oauth-callback/README.md` for the per-platform
+  steps + the RSS-verification workaround.
+- **Spark LLM Edge Function deployment** — `spark-chat` Edge Function
+  is scaffolded; activates once `ANTHROPIC_API_KEY` is set in
+  Supabase secrets and the function is deployed. Without it, Spark
+  falls back cleanly to the scripted engine.
+- **Leaked-password protection toggle** — Supabase dashboard →
+  Authentication → Providers → Email → "Enable leaked password
+  protection". Cannot be done via SQL; one-click toggle.
 - **scheduledNotifications migration** — the heartbeat queue is still
   local-only. Lower priority than notifications proper because the
   queue is regenerated from current state on every boot.
+- **1099 generation** — W-9 / W-8BEN capture shipped (Phase 50 item
+  #9 + TaxFormModal). Year-end IRS form generation needs Stripe
+  Connect's tax-reporting endpoints, blocked on real-money infra.
 - **Real-money infra** — Stripe Connect for actual escrow + payouts,
   SES/SendGrid for real email delivery. Out of scope for the
   prototype.
+- **Sentry / observability** — flagged in the architecture-map's
+  product-readiness recap. Zero observability today; first prod bug
+  is invisible. ~30-min wire-up; should ship before paying customers.
+- **Dead-code purge candidate** — 3 orphan files unused since initial
+  commit (`CampaignCalendar.tsx`, `CampaignTimeline.tsx`,
+  `ComingSoon.tsx`) + 7 dead exports across `v2CreatorActions.ts`
+  (rate-card add/update/remove, work/review reorder) and
+  `v2DisputeActions.ts`. Identified in the Phase 53 audit; left in
+  place because the user may still ship those features.
 
 ---
 
@@ -615,6 +664,342 @@ was just shipped.
 
   Commit `b5e0dc7`. 438/438 tests passing.
 
+- **2026-05-14 (Phase 50 — workflow polish + admin moderation +
+  KYC capture + OAuth wiring)** —
+  Six features bundled because they share the v2-actions / hooks
+  surface. Items #4-#7 + #9 from the post-architecture-map roadmap.
+  - **#4 ConnectPlatformModal wired to `connectPlatform()`** —
+    real OAuth popup for IG/TikTok/YT/X, falls back to existing
+    mock flow on `OAuthNotConfiguredError` or for Newsletter /
+    LinkedIn (no OAuth scaffold). Reads ownerEmail from session
+    for the state payload.
+  - **#5 Admin reports queue** — new `AdminReports.tsx` tab in
+    `/admin/queue?type=reports`. Lists every Thread with
+    `reportedAt != null` (Phase 11's report flow finally has a
+    resolver surface). Dismiss / Action-taken buttons clear the
+    report fields. Tab counts roll into the unified-queue total.
+  - **#6a Bulk approve in CampaignDetail content-review** —
+    per-card checkbox + selection ring + sticky "Approve N" button.
+    Each approval still goes through `v2ApproveContent` (escrow
+    release + notifications fire per-row).
+  - **#6b Saved offer templates** — `Brand.offerTemplates:
+    OfferTemplate[]`. `useV2OfferTemplates` + `v2SaveOfferTemplate`
+    + `v2DeleteOfferTemplate` hooks. Picker + "Save as template"
+    in `SendOfferModal` with `{firstName}` token substitution.
+  - **#7 Calendar view** — new persona-aware tab. Hand-rolled
+    month grid, deadline chips per day, click → routes to
+    `collab:<id>`. Reads `useV2Campaigns` +
+    `collabsForCampaign / collabsForCreator`. Topbar crumb shows
+    "N overdue · M due in next 7 days". `Icon.calendar` added.
+  - **#9 Tax form capture** — `TaxFormRecord` on `Creator.taxForm`.
+    `TaxFormModal`: pick-form (W-9 vs W-8BEN) → fields → typed-
+    signature attestation. `v2SaveTaxForm` action. `KycTax`
+    `buildSteps` flips the tax-form step from locked → action →
+    verified.
+  - Commit `7a5f6bc`. TSC clean. 438/438 tests.
+
+- **2026-05-14 (Phase 50 item #8 — Spark LLM Edge Function)** —
+  Replaced the scripted-only reply path with a hybrid: scripted
+  engine still runs for context updates + non-text blocks (creator
+  cards, brief drafts), and the prose text block is substituted
+  with a real Claude completion when the Edge Function is reachable.
+  - `supabase/functions/spark-chat/index.ts` — Deno proxy to
+    Anthropic `/v1/messages` with `claude-sonnet-4-6` + brand /
+    category / budget context. Returns SparkBlock-shaped JSON.
+    503 with `code: missing_key` when `ANTHROPIC_API_KEY` isn't
+    set so the client falls back cleanly.
+  - `sparkEngine.ts tryRemoteText(input, history, context)` helper.
+    Always swallows errors; never throws.
+  - `Spark.tsx handleSend` races scripted + remote. Scripted reply
+    renders at the thinkingDelay tick; remote text replaces the
+    text body if it returned within the window.
+  - Commit `7e9e62a`.
+
+- **2026-05-14 (Phase 50 item #10 — Playwright e2e)** —
+  5 tests covering the spine. `@playwright/test` devDep,
+  `playwright.config.ts` chromium-only single-worker reusing
+  `npm run dev`, `e2e/offer-to-live.spec.ts`. npm scripts:
+  `e2e`, `e2e:headed`, `e2e:install`. Approve / mark-live skipped
+  in suite — covered by the manual smoke pass.
+  Commit `0b7d9a4`.
+
+- **2026-05-14 (architecture-map.html)** —
+  Single-file interactive diagram of the system at the repo root
+  (also copied to `app/public/`). 6 clusters · 86 nodes · 183
+  edges · 25 critical-path nodes. Filter chips: Overview / Offer→
+  Live spine / Auth / Discover / Inbox / Analytics / Spark /
+  Wallet / Realtime / All wires / Roadmap & bugs. Pan + zoom +
+  Fit/+/-. Click node → sidebar with role + plain-English + path
+  + notes + every incoming / outgoing edge. Default sidebar
+  surfaces "Notable findings" — critical seam, dual stage-
+  computation paths, pushNotification fan-out, mock OAuth still
+  live, realtime cohort growth, scripted Spark engine, zero dead
+  exports. FIXES + KNOWN_BUGS registries populated from this log.
+  Commit `8cf22b2`.
+
+- **2026-05-14 (Phase 51 — bug-bash from real testing pass)** —
+  Five user-reported bugs (and one related class).
+  - **#1 Brand couldn't open submitted file.** Whole upload→review
+    path was broken: `ContentUploadModal` stored only `{name, size}`
+    metadata and dropped the actual `File`; `v2SubmitContent`
+    persisted `{name, url: '#'}`; `ContentReviewModal` had no
+    file-rendering logic. Fix: keep real File in state, encode as
+    base64 data URL on submit (cap 25MB inline), widen
+    `v2SubmitContent` signature to `string | {name, url, mime?,
+    size?}`, render proper preview (`<video>` / `<img>` /
+    `<iframe pdf>` / download link) based on MIME or extension.
+    Multi-file thumbnail strip. Production note: real flow needs
+    Supabase Storage upload to `submission-files` bucket.
+  - **#2 Confirm-live modal kept re-opening.** Root cause:
+    CampaignDetail's auto-open useEffect for `?action=verify-live`
+    had `db.submissions` in its deps. `v2MarkContentLive` mutates
+    that → effect re-fires → modal reopens. Same bug class on
+    `?review=<collabId>`. Fix: ref-guard pattern
+    (`verifyLiveAutoOpened` / `reviewAutoOpened`) bails when same
+    ID is already opened.
+  - **#3 "Needs you" tile didn't disappear items.** Symptom of
+    #2 — the tile IS reactive. With the modal-reopen loop fixed,
+    items disappear correctly.
+  - **#4 "Needs you" tile capped at 4.** Hard 4-item cap embedded
+    across every collection loop in BrandHome's `inboxItems` and
+    CreatorHome's `todoItems`. On Aesop's pipeline, 290 of 294
+    items were silently hidden. Fix: removed every
+    `items.length < 4` gate + added `max-height: 360px;
+    overflow-y: auto` to the row containers.
+  - **#5 Hunt for related bugs.** Audited every `useEffect` with
+    `db.X` deps, every URL-action auto-open, every placeholder URL
+    site. Found one extra (CampaignDetail auto-open) and fixed it.
+    `CollabDetail` and `BrandWallet` auto-opens use
+    `[initialAction]` deps only — already safe.
+
+  Browser-verified: Aesop home shows 294 items in scrollable
+  Needs-you tile; clicking a verify-live opens the modal;
+  confirming dismisses cleanly with no re-open.
+  Commit `73c3fd5`. 438/438 tests passing.
+
+- **2026-05-14 (Phase 52 — security hardening pass)** —
+  Manual security review across the codebase. Three CRITICAL +
+  one HIGH finding fixed.
+  - **CRITICAL — PII leak via public Creator + Brand SELECT.**
+    `001`/`004` policies were `for select using (true)` exposing
+    every column to anon: bank account / IBAN, wallet balance,
+    pending balance, lifetime earnings, owner email — and the
+    `BankAccountModal` even claimed "encrypted at rest, never
+    shared with brands" while writing the raw IBAN to a
+    publicly-readable column. Fix: migration `025_pii_lockdown`
+    creates `creators_public` + `brands_public` views with
+    `security_invoker=on`. Anon + authenticated SELECT on the
+    views only. Raw-table SELECT tightened to owner-only
+    (`auth.email() = owner_email`). Repos: `fetchAll` reads from
+    public view with `PUBLIC_COLUMNS` (no PII); zeros fill
+    private fields. New `fetchOwnCreatorFromSupabase` +
+    `fetchOwnBrandFromSupabase` pull the signed-in user's own row
+    from the raw table. `store.ts` boot hydration overlays.
+  - **CRITICAL — XSS via MIME-spoofed PDF in iframe.**
+    `ContentReviewModal` rendered submission files as `<iframe>`
+    when extension OR MIME claimed PDF; a creator could upload
+    `evil.pdf` whose bytes are HTML and execute scripts against
+    the brand's session. Fix: `previewKind()` requires PDF MIME
+    AND extension to agree, OR a self-describing data URL whose
+    declared MIME is `application/pdf`. `<iframe sandbox="">`
+    explicitly drops same-origin + script execution. New
+    `isSafeFileUrl()` blocks `javascript:` / `vbscript:` /
+    `data:text/html`.
+  - **CRITICAL — OAuth postMessage origin not validated.**
+    `connectPlatform.ts` accepted any-origin `{type: 'alamut-oauth',
+    ok: true}` postMessage; an attacker could open the popup
+    themselves + forge success. Fix: derive `expectedOrigin` from
+    the Edge Function URL via `new URL()`, reject any message
+    where `e.origin !== expectedOrigin`. Belt-and-suspenders
+    `e.source === popup`.
+  - **HIGH — Storage path-traversal in INSERT/UPDATE/DELETE.**
+    The brand-logos / creator-portraits / submission-files /
+    campaign-assets / message-attachments policies used
+    `split_part(name, '/', N)` but didn't reject `..`. Fix:
+    migration `026_storage_path_validation` — new
+    `is_safe_storage_path(name, expected_segment,
+    expected_total_segments)` helper rejects `..`, backslashes,
+    leading slashes, empty segments, wrong segment counts.
+    Re-applied every storage policy on top of the helper.
+
+  Documented MED findings (deferred — accepted demo-mode
+  trade-offs): permissive notifications INSERT, persona resolver
+  fallback to demo user, localStorage session trust for client
+  checks (RLS is the actual defense layer).
+  Commits `462e227` (the four fixes) + migrations `025_*` + `026_*`.
+
+- **2026-05-15 (Supabase Security Advisor lint sweep — migration 027)** —
+  User downloaded the Security Advisor lint CSV and asked to
+  triage. 22 warnings, all addressed in `027_supabase_lints.sql`:
+  - `function_search_path_mutable` (4) — `ALTER FUNCTION ... SET
+    search_path = ''` on `touch_updated_at`,
+    `is_brand_owner_of_campaign`, `is_brand_owner_of_brand`,
+    `is_creator_owner` + the helpers added later
+    (`is_participant_of_campaign`, `is_safe_storage_path`).
+    Blocks schema-injection via earlier-search-path schemas.
+  - `rls_policy_always_true` (10) — replaced legacy
+    `_authenticated` INSERT/UPDATE policies on transactions /
+    reviews / disputes / outreach / threads / messages with
+    `_gated` versions using a new `is_user_id_owned_by_caller(text)`
+    helper that joins to brands+creators on
+    `owner_email = auth.email()`. Per-table gates: caller owns
+    wallet OR participates in campaign; from_user_id matches
+    caller; campaign-anchored or participants[] includes caller;
+    etc. Migration 019 had attempted some of these but evidently
+    never landed in the cloud DB — 027 finishes the job
+    idempotently.
+  - `public_bucket_allows_listing` (5) — dropped
+    `brand_logos_public_read` / `creator_portraits_public_read`
+    / `campaign_assets_read` / `message_attachments_read` /
+    `submission_files_public_read`. Direct URL fetches still work
+    (bucket `public=true` flag); enumeration via `.list()` is
+    blocked.
+  - `*_security_definer_function_executable` (1+1) — `REVOKE
+    EXECUTE on rls_auto_enable() from public, anon,
+    authenticated`.
+  - `auth_leaked_password_protection` (1) — dashboard-only
+    toggle; documented.
+  Commit `13f39a7`.
+
+- **2026-05-15 (Supabase CLI wiring + applying 019-027 to remote)** —
+  User asked to apply migrations via CLI. Set up:
+  - `supabase` devDep in `app/package.json`. New scripts:
+    `sb`, `sb:login`, `sb:link`, `sb:diff`, `sb:push`, `sb:lint`.
+  - `app/supabase/config.toml` via `supabase init`.
+  - First install accidentally landed at repo root; cleaned up
+    + reinstalled inside `app/`.
+  - **Migration history was missing on the linked DB** — the
+    Security Advisor lint had flagged `transactions_insert_authenticated`
+    etc. that 019 was supposed to have killed. Confirmed: the
+    `supabase_migrations.schema_migrations` table didn't exist on
+    remote, meaning the cloud schema had been built ad-hoc via
+    dashboard SQL without the CLI ever tracking it.
+  - **Workaround:** applied each pending migration via
+    `npx supabase db query --linked -f supabase/migrations/<file>.sql`.
+    Ran 019 → 027 in order. All clean.
+  - Re-running `supabase db advisors security --linked` post-apply
+    showed: 22 warnings → 1 (the leaked-password dashboard
+    toggle).
+  Commits `26a0050` (CLI scripts) + `2a546ed` (cleanup) +
+  `1a17924` (gitignore .temp).
+
+- **2026-05-15 (Migration 028 — perf-warning sweep + view security_invoker)** —
+  After 027 landed, advisor count went 22 → 21. Of the 21:
+  1 ERROR `security_definer_view` (`creator_channel_verified`),
+  19 WARN `auth_rls_initplan` (auth.email() called per-row),
+  1 WARN dashboard toggle.
+  - **`creator_channel_verified` view** — migration 024 created
+    it without `security_invoker=on`, defaulted to definer (ran
+    with view-owner privileges, bypassed RLS). Read-only public
+    data but the wrong default is a footgun. Fixed via
+    `ALTER VIEW ... SET (security_invoker = on)`.
+  - **19 × auth_rls_initplan** — Postgres re-evaluates
+    `auth.email()` per row when bare in a policy. Wrapping in
+    `(select auth.email())` lets the planner cache it once per
+    query. Same semantics, much faster at scale. Recreated 19
+    policies across 7 tables (brands / campaigns / creators /
+    notifications / platform_tokens / outreach / team_invites)
+    with the optimized form. Bodies copied verbatim from
+    `pg_policies`; only the auth call rewrapped.
+  Final advisor count: 1 (dashboard toggle).
+  Commit `fe1954d`.
+
+- **2026-05-15 (Migration 029 — perf advisor: FK indexes + unused-index policy)** —
+  Performance Advisor flagged 64 INFO findings.
+  - **2 × `unindexed_foreign_keys`** — REAL FIX.
+    `outreach.campaign_id` + `outreach.resulting_offer_id` had
+    FK constraints but no covering indexes. Added partial
+    indexes (`where ... is not null`).
+  - **62 × `unused_index`** — INTENTIONALLY KEPT.
+    The advisor reads `pg_stat_user_indexes.idx_scan` since stats
+    reset; on a near-zero-traffic cloud DB, every index reads as
+    "unused" — including FK indexes that back RLS policy lookups
+    + JOINs, status / stage / kind indexes that back filtered
+    workflow queries, `*_at_desc` indexes that back ORDER BY ...
+    DESC LIMIT N feeds, GIN array indexes for `array @> ARRAY[...]`,
+    owner_email indexes that back `auth.email() = owner_email`
+    on every authenticated SELECT. Dropping any would create
+    silent perf cliffs once real users land. Revisit after 4+
+    weeks of real traffic.
+  Commit `dc45b92`.
+
+- **2026-05-15 (full-product audit — Phase 53)** —
+  User asked for a complete audit. Ran build + tests in parallel
+  with three Explore-agent sweeps + browser smoke on both
+  personas.
+  - **Build / tests / TSC:** clean, 13s production build, 545KB
+    vendor + 534KB workspace gzipped to 163KB + 129KB. 438/438
+    unit tests passing.
+  - **Spine end-to-end:** intact. All 9 workflow actions verified
+    (signature, capability gate, mirror, notification, collab-
+    stage rollup). `v2SubmitContent`'s recent signature change
+    correctly handled at every call site. `deriveCollab` (read)
+    and `computeCollabStage` (write) still in lockstep.
+  - **Schema vs TS types:** no drift. Only minor note —
+    `Submission.disputeWindowClosesAt` is local-only (set by
+    `v2ApproveContent`, never persisted). Tracked.
+  - **Browser smoke (both personas, all 18 tabs):** all render,
+    no crashes. Console: zero TypeError / ReferenceError / RLS
+    errors. **30 instances of one duplicate-key React warning**
+    — `key={ch.platform}` at 4 sites, all when a creator has
+    multiple channels on same platform. Fixed with composite
+    `${ch.platform}-${i}` keys at `Discover.tsx:1088`,
+    `Analytics.tsx:287`, `CreatorProfile.tsx:188`, `Spark.tsx:682`.
+  - **Dead code (noted, not fixed):** 3 orphan files unused
+    since initial commit + 7 dead exports. Don't break anything,
+    left in for possible future use.
+  Commit `a09b7fe` (key fix).
+
+- **2026-05-15 (Phase 53 — landing page polish pass)** —
+  Five visual / UX bugs the user spotted on the marketing surface.
+  - **Showcase mood-overlay obscured photos.** Pre-fix opacity
+    0.30 with `mix-blend-mode: multiply` washed warm-toned photos
+    out almost completely. Fix: opacity 0.30 → 0.18 default,
+    0.16 → 0.10 hover. Added `isolation: isolate` on
+    `.showcase-tile` so multiply blends only against the tile's
+    own image (consistent across browsers). Commit `7d8bd79`.
+  - **Showcase capture badge covered 99% of small tiles.** In the
+    hero-grid variant tiles render at 42×42 px but the badge text
+    "Spring drop · MAR '25" is wider than the tile, expanding
+    the badge to cover the photo. The "//" the user reported was
+    the `·` separator at small font size; the "yellow house" was
+    a brand wordmark glyph. Fix: `display: none` on
+    `.showcase-hero-grid .showcase-capture-badge`. Mood overlay
+    still tints for brand signal. Commit `699ea91`.
+  - **Hero overflowed viewport.** `.creator-hero-v2-h` and
+    `.brand-hero-v2-h` declared `clamp(40px, 6vw, 84px)` but lost
+    the cascade to `.cn-h-display`'s `clamp(56px, 9.5vw, 168px)`
+    — same specificity, declaration order won. Computed
+    font-size was 121.6px per line at 1280px. Total hero ≈ 876px
+    on 800px viewport. Fix: chained the parent class to bump
+    specificity to (0,2,0). Cap lowered to `clamp(40px, 5vw,
+    68px)`, line-height 1.0, hero padding `clamp(48px, 7vw, 96px)`
+    → `clamp(40px, 5vw, 72px)`. Both hero pages now fit (590px /
+    683px on 800px viewport). Commit `73a5914`.
+  - **Recent-placements masonry: column 4 short by 630px.**
+    `column-count: 4` with `column-fill: balance` + 18 indivisible
+    tiles of mixed aspects → cols 1-3 took 5 tiles each
+    (~5.13 height units), col 4 got the leftover 3. Fix: lowered
+    count from 18 → 16 (4 per column avg). Cols now 1138 / 1208
+    / 1138 / 1138 (5% variance, was 42%). Headline copy changed
+    "Eighteen closed deals" → "Recent closed deals" so it
+    survives future tuning. Commit `d37a594`.
+  - **PressStrip "Publication 1 / 2 / 3 …" placeholders + broken
+    testimonial portraits.** §5.7 had replaced real publication
+    names with `Publication N` on IP grounds — looked unfinished.
+    Replaced with fictional-but-plausible trade-press names
+    (Marketplaces Brief, Stack Daily, Markets Wire, Signal
+    Quarterly, Compounding, The Briefing, Founders Edition, Pro
+    Markets, Sector Letter, Industry Desk). For the broken
+    portraits: `upx()` helper naively prepended the Unsplash base
+    URL to inputs that were already full URLs, producing
+    `https://images.unsplash.com/https://images.unsplash.com/...`
+    (`naturalWidth: 0`). Fix: detect full URLs in `upx()` + an
+    in-place sweep in `store.ts onRehydrateStorage` that
+    rewrites the bad pattern in already-persisted localStorage
+    (avoids bumping store version + flushing user state).
+    Commit `ba9290c`.
+
 ## Commit hashes for traceability
 
 Recent commits in chronological order — all on origin/main:
@@ -655,3 +1040,20 @@ Recent commits in chronological order — all on origin/main:
 | `8ead617` | Post-audit 2 | Migration 022 — realtime for 6 workflow tables |
 | `35fb76f` | Post-audit 3 | Migration 023 — cross-device notifications |
 | `b5e0dc7` | Post-audit 4 | Migration 024 — OAuth scaffolding (platform_tokens + Edge Function) |
+| `9b87046` | Post-audit log | Audit log session entries for items 1-4 |
+| `7a5f6bc` | Phase 50 | Workflow polish + admin moderation + KYC capture + OAuth wiring |
+| `7e9e62a` | Phase 50 #8 | Spark — real LLM proxy via Edge Function |
+| `0b7d9a4` | Phase 50 #10 | Playwright e2e — spine smoke test |
+| `8cf22b2` | Doc | Architecture map (single-file interactive diagram) |
+| `73c3fd5` | Phase 51 | Bug-bash from real testing pass (file upload + modal reopen + Needs-you) |
+| `462e227` | Phase 52 | Security hardening + migrations 025 (PII lockdown) + 026 (storage path validation) |
+| `13f39a7` | Lint sweep | Migration 027 — Supabase Security Advisor (function search_path + RLS gates + bucket listing) |
+| `26a0050`, `2a546ed`, `1a17924` | CLI | Supabase CLI wired as devDep + cleanup + gitignore .temp |
+| `fe1954d` | Lint sweep | Migration 028 — perf-warning sweep + creator_channel_verified security_invoker |
+| `dc45b92` | Lint sweep | Migration 029 — perf advisor: outreach FK indexes + unused-index policy |
+| `a09b7fe` | Phase 53 audit | Fix duplicate React keys at 4 sites |
+| `7d8bd79` | Phase 53 polish | Showcase mood-overlay opacity 0.30 → 0.18 + isolation: isolate |
+| `699ea91` | Phase 53 polish | Showcase capture badge hidden in hero-grid (was covering 99% of tile) |
+| `73a5914` | Phase 53 polish | Hero specificity bump + tighten so it fits in viewport |
+| `d37a594` | Phase 53 polish | Recent placements gallery — count 18 → 16 to balance masonry |
+| `ba9290c` | Phase 53 polish | PressStrip names + fix doubled portrait URLs |
