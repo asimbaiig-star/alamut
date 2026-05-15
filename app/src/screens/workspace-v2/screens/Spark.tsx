@@ -676,10 +676,10 @@ function CreatorCardsBlock({ block, onSave, onRoute, shortlist }: {
               </button>
 
               <div className="v2-row" style={{ gap: 8, padding: '0 12px 12px', flexWrap: 'wrap' }}>
-                {c.channels.slice(0, 2).map((ch) => {
+                {c.channels.slice(0, 2).map((ch, i) => {
                   const meta = PLATFORM_META[ch.platform];
                   return (
-                    <div key={ch.platform} className="v2-row" style={{ gap: 6, fontSize: 11.5 }}>
+                    <div key={`${ch.platform}-${i}`} className="v2-row" style={{ gap: 6, fontSize: 11.5 }}>
                       <span style={{ color: meta.color, display: 'flex' }}>{meta.icon}</span>
                       <span className="v2-muted">{fmtFollowers(ch.followers)}</span>
                     </div>

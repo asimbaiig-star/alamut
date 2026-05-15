@@ -1082,10 +1082,15 @@ function CreatorCard({ creator, onClick }: {
           className="v2-row"
           style={{ gap: 10, marginBottom: 10, flexWrap: 'wrap', fontSize: 11.5 }}
         >
-          {creator.channels.slice(0, 3).map((ch) => {
+          {creator.channels.slice(0, 3).map((ch, i) => {
             const meta = PLATFORM_META[ch.platform];
+            // Phase 52 fix — pre-fix this used `key={ch.platform}` and
+            // a creator with two channels on the same platform (e.g.
+            // two newsletters) caused React's "duplicate key" warning
+            // and could render the wrong channel after a sort/filter.
+            // Composite key with the index disambiguates.
             return (
-              <span key={ch.platform} className="v2-row" style={{ gap: 4 }}>
+              <span key={`${ch.platform}-${i}`} className="v2-row" style={{ gap: 4 }}>
                 <span style={{ color: meta.color, display: 'flex' }}>{meta.icon}</span>
                 <span className="v2-tabular" style={{ fontWeight: 550 }}>
                   {fmtFollowers(ch.followers)}

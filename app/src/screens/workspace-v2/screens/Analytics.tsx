@@ -281,10 +281,10 @@ export function Analytics({ onRoute }: Props) {
           <section className="v2-card v2-card-pad" style={{ flex: '2 1 480px' }}>
             <div className="v2-eyebrow" style={{ marginBottom: 14 }}>Per-channel performance</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {me.channels.map((ch) => {
+              {me.channels.map((ch, i) => {
                 const meta = PLATFORM_META[ch.platform];
                 return (
-                  <div key={ch.platform} className="v2-row" style={{
+                  <div key={`${ch.platform}-${i}`} className="v2-row" style={{
                     padding: '12px 14px',
                     background: 'var(--v2-bg-1)',
                     borderRadius: 10,

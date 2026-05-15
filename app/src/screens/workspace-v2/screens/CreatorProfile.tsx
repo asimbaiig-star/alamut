@@ -182,10 +182,10 @@ export function CreatorProfile({ creatorId, onRoute }: Props) {
           <section className="v2-card v2-card-pad" style={{ flex: '2 1 480px' }}>
             <div className="v2-eyebrow" style={{ marginBottom: 14 }}>Channels</div>
             <div className="v2-storefront-channels">
-              {creator.channels.map((ch) => {
+              {creator.channels.map((ch, i) => {
                 const meta = PLATFORM_META[ch.platform];
                 return (
-                  <div key={ch.platform} className="v2-storefront-channel">
+                  <div key={`${ch.platform}-${i}`} className="v2-storefront-channel">
                     <div
                       className="v2-channel-icon"
                       style={{ background: meta.color, width: 40, height: 40, borderRadius: 10 }}
