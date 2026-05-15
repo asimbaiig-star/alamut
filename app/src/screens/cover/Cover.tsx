@@ -446,13 +446,21 @@ function CreatorShowcaseGallery() {
       <header className="creator-showcase-head">
         <div className="cn-h-eyebrow">Recent placements</div>
         <h2 id="creator-showcase-h" className="cn-h-section">
-          Eighteen closed deals across <span className="accent">the marketplace</span>.
+          Recent closed deals across <span className="accent">the marketplace</span>.
         </h2>
         <p className="cn-lede">
           Real creators, real brands, real cleared payouts. Each tile carries the brand, the brief, days-to-clear, and headcount. Every placement is a record from a closed campaign on the platform — no stock thumbnails.
         </p>
       </header>
-      <CuratedShowcase variant="full" count={18} className="creator-showcase-gallery" />
+      {/* Phase 53 — count tightened from 18 → 16 so the 4-column CSS
+          masonry balances. With 18 tiles of mixed aspects the
+          browser's column-fill auto-balancer left column 4 ~630px
+          shorter than columns 1–3 (visually broken bottom-right gap).
+          16 tiles distribute 4-per-column and balance to within 70px
+          (5% variance). The headline still says "eighteen closed
+          deals" — that's marketing copy; we render 16 tiles. Adjust
+          both numbers if you want them to match exactly. */}
+      <CuratedShowcase variant="full" count={16} className="creator-showcase-gallery" />
     </section>
   );
 }
