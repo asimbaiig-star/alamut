@@ -685,12 +685,93 @@ body:has([data-surface="v2"]) {
   transition: width 0.3s ease;
 }
 
-/* Mobile (defensive — desktop-first) */
+/* =====================================================================
+   Phase 54 — mobile-only hamburger + sidebar drawer
+   =====================================================================
+   Pre-fix the workspace shell collapsed to a single column at ≤880px
+   and hid the sidebar entirely with no replacement, leaving mobile
+   users with no way to navigate after sign-in. The hamburger is a
+   fixed top-left button (visible only ≤880px), and the sidebar
+   becomes a left-edge drawer that slides in when `is-open` is toggled
+   directly on the sidebar element. (Earlier attempts scoped the
+   trigger to the shell and animated via `transform: translateX(...)`,
+   but the close-side transform reset wouldn't win the cascade — even
+   inline `!important` couldn't override what we eventually traced to
+   a stuck WAAPI animation on the property. The fix is to (a) put the
+   toggle class on the sidebar itself for symmetric specificity, and
+   (b) animate `left` instead of `transform` so we sidestep the
+   animation-override path entirely.) */
+
+[data-surface="v2"] .v2-mobile-menu-btn {
+  display: none;  /* desktop hides; mobile reveals via media query */
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 60;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--v2-line);
+  background: var(--v2-paper);
+  color: var(--v2-ink);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+[data-surface="v2"] .v2-mobile-menu-btn:hover {
+  background: var(--v2-bg-2);
+}
+
+[data-surface="v2"] .v2-mobile-backdrop {
+  display: none;  /* desktop hides; mobile reveals via media query */
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  background: rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  animation: v2-mobile-backdrop-in 180ms ease-out;
+}
+@keyframes v2-mobile-backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Mobile (desktop-first defensive) */
 @media (max-width: 880px) {
   [data-surface="v2"] .v2-shell {
     grid-template-columns: 1fr;
   }
-  [data-surface="v2"] .v2-sidebar { display: none; }
+  /* Show the hamburger trigger + backdrop on mobile only. */
+  [data-surface="v2"] .v2-mobile-menu-btn { display: flex; }
+  [data-surface="v2"] .v2-mobile-backdrop { display: block; }
+  /* Sidebar becomes a fixed left-edge drawer, off-canvas by default.
+     We slide via `left` (not `transform`) on purpose: earlier passes
+     used `transform: translateX(...)` and ran into a stuck WAAPI-
+     visible animation on the element that wouldn't release the
+     property, so even inline `style.setProperty('transform', ..., '!important')`
+     didn't win. `left` doesn't have that problem and animates just
+     as smoothly. */
+  [data-surface="v2"] .v2-sidebar {
+    display: flex;
+    position: fixed;
+    top: 0;
+    left: calc(-1 * min(80vw, 280px));
+    bottom: 0;
+    width: min(80vw, 280px);
+    z-index: 50;
+    transition: left 220ms cubic-bezier(0.22, 0.36, 0.24, 1);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.12);
+  }
+  [data-surface="v2"] .v2-sidebar.is-open {
+    left: 0;
+  }
+  /* Make room for the hamburger button so it doesn't overlap page
+     content. The topbar already has its own padding — add a left
+     offset only on small screens. */
+  [data-surface="v2"] .v2-topbar { padding-left: 60px; }
   [data-surface="v2"] .v2-grid-4 { grid-template-columns: repeat(2, 1fr); }
   [data-surface="v2"] .v2-grid-3 { grid-template-columns: 1fr; }
   [data-surface="v2"] .v2-grid-2 { grid-template-columns: 1fr; }

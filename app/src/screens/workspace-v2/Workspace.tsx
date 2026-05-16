@@ -239,8 +239,17 @@ export function WorkspaceV2() {
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
+  // Phase 54 — mobile drawer state. The sidebar is hidden at ≤880px
+  // and replaced with a slide-in drawer triggered by a hamburger
+  // button. Pre-fix mobile users had no way to navigate after sign-in
+  // because the sidebar was display:none with no replacement nav.
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
   function go(next: string) {
     setRouteState(next);
+    // Always close the mobile drawer on any nav — otherwise tapping a
+    // route inside the drawer would leave it open over the destination.
+    setMobileNavOpen(false);
     // Auto-flip persona ONLY for explicit top-level nav clicks. Drilldown
     // routes (`deal:`, `campaign:`, `creator:`, `collab:`, `brief:`,
     // `public:`) preserve the current persona — a creator clicking
@@ -268,6 +277,17 @@ export function WorkspaceV2() {
     window.scrollTo(0, 0);
   }
 
+  // Lock body scroll while the mobile drawer is open so the page
+  // beneath doesn't scroll along with the drawer's nav list.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (mobileNavOpen) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => { document.body.style.overflow = prev; };
+    }
+  }, [mobileNavOpen]);
+
   // Onboarding wizards render full-bleed without the workspace shell.
   // They manage their own data-surface wrapper internally.
   if (route === 'onboarding-creator') return <CreatorOnboardingV2 onRoute={go} />;
@@ -276,7 +296,41 @@ export function WorkspaceV2() {
   return (
     <div data-surface="v2">
       <div className="v2-shell">
-        <Sidebar persona={persona} route={route} onRoute={go} />
+        {/* Phase 54 — mobile-only hamburger. CSS hides this at >880px
+            so desktop is unaffected. Position: fixed top-left so it
+            floats above any page's topbar without per-screen rewires. */}
+        <button
+          type="button"
+          className="v2-mobile-menu-btn"
+          aria-label={mobileNavOpen ? 'Close menu' : 'Open menu'}
+          aria-expanded={mobileNavOpen}
+          aria-controls="v2-sidebar"
+          onClick={() => setMobileNavOpen((v) => !v)}
+        >
+          {mobileNavOpen ? (
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          ) : (
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+            </svg>
+          )}
+        </button>
+
+        {/* Backdrop — taps dismiss the drawer. Renders only when open. */}
+        {mobileNavOpen && (
+          <div
+            className="v2-mobile-backdrop"
+            aria-hidden="true"
+            onClick={() => setMobileNavOpen(false)}
+          />
+        )}
+
+        <Sidebar persona={persona} route={route} onRoute={go} isMobileOpen={mobileNavOpen} />
         <main className="v2-main">
           <RouteOutlet route={route} onRoute={go} persona={persona} />
         </main>
@@ -422,8 +476,14 @@ interface SidebarProps {
   persona: Persona;
   route: string;
   onRoute: (r: string) => void;
+  /** Phase 54 mobile drawer — when true, the sidebar slides in from
+   *  the left edge on viewports ≤880px. Direct class on the sidebar
+   *  (rather than a shell-level class with a descendant selector)
+   *  avoids a cascade specificity issue where the open→closed
+   *  transform reset wasn't winning reliably. */
+  isMobileOpen: boolean;
 }
-function Sidebar({ persona, route, onRoute }: SidebarProps) {
+function Sidebar({ persona, route, onRoute, isMobileOpen }: SidebarProps) {
   const navigate = useNavigate();
   const routes = persona === 'brand' ? BRAND_ROUTES : CREATOR_ROUTES;
   const brand = useV2CurrentBrand();
@@ -452,7 +512,10 @@ function Sidebar({ persona, route, onRoute }: SidebarProps) {
   };
 
   return (
-    <aside className="v2-sidebar">
+    <aside
+      id="v2-sidebar"
+      className={['v2-sidebar', isMobileOpen ? 'is-open' : ''].filter(Boolean).join(' ')}
+    >
       <button className="v2-brand" type="button" onClick={() => onRoute(persona === 'creator' ? 'creator-home' : 'home')}>
         <div className="v2-brand-mark" aria-hidden="true">
           <svg viewBox="0 0 32 32" width="20" height="20">
