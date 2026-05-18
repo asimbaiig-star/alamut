@@ -143,11 +143,117 @@ export function NotificationsBell() {
   // Build a deep-link from the notification's href + meta. The href is the page
   // and meta carries the entity ids — we tack on the right query so the destination
   // opens the right entity directly. Pure resolver.
+  //
+  // Two route systems are in play:
+  //  - Legacy `/approvals`, `/campaigns/<id>`, etc. — uses `?cid=`, `?sid=`
+  //    query params + `#reviews` hash.
+  //  - Workspace-v2 (`/v2`) — the entire workspace lives on one URL with
+  //    `?tab=<route>` selecting the surface. Notification creators across
+  //    v2*Actions set `href: '/v2'` (plain) and rely on this resolver to
+  //    construct the right `?tab=<route>` based on `meta` + the recipient's
+  //    persona. Pre-fix every v2 notification landed the user on the
+  //    workspace root + their last-stored route — never on the surface the
+  //    notification was about.
   const resolveHref = (n: Notification): string | undefined => {
     if (!n.href) return undefined;
     const meta = n.meta;
     if (!meta) return n.href;
     const url = new URL(n.href, window.location.origin);
+
+    // ---- v2 route resolution ---------------------------------------------
+    // If the href points to the v2 workspace, build the right `?tab=` deep-
+    // link from `meta`. The recipient is the user reading the bell, so we
+    // can use the current viewer's persona to pick between the brand-side
+    // and creator-side surfaces (same collab; different cockpit).
+    if (url.pathname === '/v2' || url.pathname.startsWith('/v2/')) {
+      // Look up the recipient (= the viewer) to determine persona. Users
+      // table is denormalized: creatorId set → creator, brandId set → brand.
+      const recipient = db.users.find((u) => u.id === n.userId);
+      const isCreator = !!recipient?.creatorId;
+
+      // Resolve to a {campaignId, collabId} pair we can route from. Try
+      // each FK in priority order — most specific first.
+      let campaignId: string | undefined;
+      let collabId: string | undefined;
+      let submissionId: string | undefined;
+
+      if (meta.collaborationId) {
+        const co = db.collaborations.find((c) => c.id === meta.collaborationId);
+        if (co) { collabId = co.id; campaignId = co.campaignId; }
+      }
+      if (meta.offerId && !collabId) {
+        const off = db.offers.find((o) => o.id === meta.offerId);
+        if (off) {
+          campaignId = off.campaignId;
+          const co = db.collaborations.find((c) => c.campaignId === off.campaignId && c.creatorId === off.creatorId);
+          if (co) collabId = co.id;
+        }
+      }
+      if (meta.submissionId && !collabId) {
+        const sub = db.submissions.find((s) => s.id === meta.submissionId);
+        if (sub) {
+          campaignId = sub.campaignId;
+          submissionId = sub.id;
+          const co = db.collaborations.find((c) => c.campaignId === sub.campaignId && c.creatorId === sub.creatorId);
+          if (co) collabId = co.id;
+        }
+      }
+      if (meta.applicationId && !campaignId) {
+        const app = db.applications.find((a) => a.id === meta.applicationId);
+        if (app) {
+          campaignId = app.campaignId;
+          const co = db.collaborations.find((c) => c.campaignId === app.campaignId && c.creatorId === app.creatorId);
+          if (co) collabId = co.id;
+        }
+      }
+      if (meta.reviewId && !campaignId) {
+        const rev = db.reviews?.find((r) => r.id === meta.reviewId);
+        if (rev) {
+          campaignId = rev.campaignId;
+        }
+      }
+      if (!campaignId && meta.campaignId) {
+        campaignId = meta.campaignId;
+        // Try to resolve a collab for this viewer on the campaign so creators
+        // land on their own collab detail (not the brand-side campaign view).
+        if (isCreator && recipient?.creatorId) {
+          const co = db.collaborations.find(
+            (c) => c.campaignId === meta.campaignId && c.creatorId === recipient.creatorId,
+          );
+          if (co) collabId = co.id;
+        }
+      }
+
+      // Pick the right surface based on persona:
+      //  - creator viewer with a collab → CollabDetail (their action cockpit)
+      //  - creator viewer with a brief but no collab → BriefDetail
+      //  - brand viewer with a campaign + submission → review modal deep-link
+      //  - brand viewer with a campaign → CampaignDetail (pipeline default)
+      //  - no campaign resolved → fall back to plain /v2
+      let tab: string | undefined;
+      if (isCreator) {
+        if (collabId) tab = `collab:${collabId}`;
+        else if (campaignId) tab = `brief:${campaignId}`;
+      } else {
+        if (campaignId && submissionId && collabId) {
+          // Brand-side review deep-link — pops ContentReviewModal on the
+          // Content tab. Matches the convention used by BrandHome's
+          // ActionInbox so the bell + the home triage land on the same UI.
+          tab = `campaign:${campaignId}?tab=content&review=${collabId}`;
+        } else if (campaignId) {
+          tab = `campaign:${campaignId}`;
+        }
+      }
+
+      if (tab) {
+        url.searchParams.set('tab', tab);
+        return url.pathname + '?' + url.searchParams.toString();
+      }
+      // No tab resolvable — fall through to the legacy `?cid=` path so
+      // the URL at least carries the campaign id.
+    }
+
+    // ---- Legacy route resolution -----------------------------------------
     // Most notifications carry a campaignId — sync the campaign drawer's `?cid` param.
     if (meta.campaignId) url.searchParams.set('cid', meta.campaignId);
     if (meta.submissionId && url.pathname.includes('/approvals')) {

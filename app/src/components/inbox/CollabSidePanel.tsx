@@ -246,7 +246,7 @@ function detailedStageHint(stage: string, persona: 'brand' | 'creator', firstNam
     if (stage === 'paid')        return `Closed. Payment cleared to ${firstName}'s wallet — leave a review when ready.`;
   } else {
     if (stage === 'pitched')     return `Pitch sent — awaiting brand response.`;
-    if (stage === 'invited')     return `The brand invited you. Accept the invitation or counter with your terms.`;
+    if (stage === 'invited')     return `The brand invited you. If they named a rate, accept or counter; otherwise message back to align on scope and price.`;
     if (stage === 'negotiating') return `Offer received — accept the terms or send a counter.`;
     if (stage === 'confirmed')   return `Deal confirmed. Time to upload your first draft.`;
     if (stage === 'submitted')   return `Draft submitted — awaiting brand review (typically 24–48h).`;

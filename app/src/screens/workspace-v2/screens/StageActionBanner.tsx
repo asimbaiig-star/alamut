@@ -33,6 +33,12 @@ export interface StageActionBannerProps {
   livePermalink?: string;
   activeOfferRate?: number;
   latestRevisionNote?: string;
+  /** Pitch message from the brand on a cold invite — stored on
+   *  `Collaboration.history[].reason` as "brand-invite: <message>".
+   *  Surfaced verbatim in the no-offer `invited` branch so the creator
+   *  can see why the brand reached out before deciding. Optional —
+   *  the branch falls back to a generic prompt when absent. */
+  inviteMessage?: string;
   onAccept: () => void;
   onCounter: () => void;
   onUpload: () => void;
@@ -44,7 +50,8 @@ export interface StageActionBannerProps {
 export function StageActionBanner({
   stage, pendingOffer, campaignBrand, campaignName, campaignPlacement,
   myApplicationId, myApplicationStatus, latestSubmissionStatus, livePermalink,
-  activeOfferRate, latestRevisionNote, onAccept, onCounter, onUpload, onWithdraw, onMessageBrand,
+  activeOfferRate, latestRevisionNote, inviteMessage,
+  onAccept, onCounter, onUpload, onWithdraw, onMessageBrand,
   onLeaveReview,
 }: StageActionBannerProps) {
   // Each stage gets its own banner content. The container uses the same
@@ -69,6 +76,28 @@ export function StageActionBanner({
           {Icon.check} Accept invitation
         </button>
       </>
+    );
+  } else if (stage === 'invited') {
+    // Cold-invite path — brand reached out via InviteCreatorsModal which
+    // creates a Collaboration in `invited` stage WITHOUT a corresponding
+    // offer (by design — the brand hasn't named a rate yet). Pre-fix this
+    // branch was missing, so the no-offer invited collab fell through and
+    // the banner rendered nothing. The creator landed on CollabDetail
+    // with the timeline + brief but no action affordances — a dead end.
+    //
+    // We surface the brand's pitch verbatim and let the creator open a
+    // thread to negotiate scope + rate. Accept/Counter aren't shown here
+    // because there's no offer to accept or counter against — the brand
+    // sends a proper offer through the Inbox conversation (or directly
+    // from the kanban after the creator engages).
+    title = `${campaignBrand} invited you to ${campaignName}`;
+    body = inviteMessage
+      ? `"${inviteMessage}" — ${campaignBrand} hasn't named a rate yet. Message them to align on scope and price, and a proper offer will follow.`
+      : `${campaignBrand} reached out about ${campaignPlacement}. Message them to align on scope and price, and a proper offer will follow.`;
+    actions = (
+      <button className="v2-btn v2-btn-primary v2-btn-sm" type="button" onClick={onMessageBrand}>
+        Message brand
+      </button>
     );
   } else if (stage === 'pitched') {
     title = 'Application sent — awaiting brand response';

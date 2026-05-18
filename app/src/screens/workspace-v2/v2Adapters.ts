@@ -526,6 +526,15 @@ export function deriveCollab(campaignId: string, creatorId: string, db: Database
   const subs = db.submissions.filter((s) => s.campaignId === campaignId && s.creatorId === creatorId);
   const accepted = isCreatorAccepted(campaignId, creatorId, db);
   const shortlisted = isCreatorShortlisted(campaignId, creatorId, db);
+  // Cold-invite path: brand reached out via InviteCreatorsModal which
+  // writes only a Collaboration row (no application, no offer). Pre-fix
+  // this row was ignored — `deriveCollab` returned null and the creator
+  // was invisible to both kanbans. We accept the Collaboration as a
+  // valid signal AND use its stage as the baseline below if no offer or
+  // application exists to override.
+  const collabRow = db.collaborations.find(
+    (c) => c.campaignId === campaignId && c.creatorId === creatorId,
+  );
 
   // Find any payout transaction for this creator that references this campaign
   const creatorRecord = db.creators.find((c) => c.id === creatorId);
@@ -538,8 +547,10 @@ export function deriveCollab(campaignId: string, creatorId: string, db: Database
       )
     : false;
 
-  // No relationship at all
-  if (apps.length === 0 && offers.length === 0 && subs.length === 0 && !accepted && !shortlisted) {
+  // No relationship at all. `collabRow` covers the cold-invite case —
+  // including it here lets `invited`-stage Collaboration rows with no
+  // application/offer/submission survive the early return.
+  if (apps.length === 0 && offers.length === 0 && subs.length === 0 && !accepted && !shortlisted && !collabRow) {
     return null;
   }
 
@@ -670,14 +681,20 @@ export function deriveCollab(campaignId: string, creatorId: string, db: Database
 export function collabsForCampaign(campaignId: string, db: Database): V2Collab[] {
   const camp = db.campaigns.find((c) => c.id === campaignId);
   if (!camp) return [];
-  // Union of every creator that has any signal on this campaign. The
-  // acceptedCreators/shortlist sets are derived from offers + applications
-  // so listing them explicitly would be double-work — the application + offer
-  // walks below already cover both stages.
+  // Union of every creator that has ANY signal on this campaign — we
+  // walk every entity that can ground a kanban row:
+  //   - applications (creator pitched into a public brief)
+  //   - offers (brand sent terms)
+  //   - submissions (creator uploaded content)
+  //   - collaborations (cold-invite path — brand reached out before any
+  //     of the above existed; Collaboration is the only row that gets
+  //     written. Pre-fix this walk omitted it, so cold-invited creators
+  //     were INVISIBLE on the brand kanban AND on their own MyCollabs.)
   const ids = new Set<string>();
   db.applications.filter((a) => a.campaignId === campaignId).forEach((a) => ids.add(a.creatorId));
   db.offers.filter((o) => o.campaignId === campaignId).forEach((o) => ids.add(o.creatorId));
   db.submissions.filter((s) => s.campaignId === campaignId).forEach((s) => ids.add(s.creatorId));
+  db.collaborations.filter((c) => c.campaignId === campaignId).forEach((c) => ids.add(c.creatorId));
   return Array.from(ids)
     .map((id) => deriveCollab(campaignId, id, db))
     .filter((c): c is V2Collab => c !== null);
@@ -686,11 +703,13 @@ export function collabsForCampaign(campaignId: string, db: Database): V2Collab[]
 /** All collabs for one creator (creator-side My collaborations). */
 export function collabsForCreator(creatorId: string, db: Database): V2Collab[] {
   const campaignIds = new Set<string>();
-  // applications + offers + submissions cover every accepted-or-shortlisted
-  // creator on every campaign — no need to also walk the duplicate fields.
+  // See `collabsForCampaign` above — `db.collaborations` is the only
+  // row written on the cold-invite path; omitting it here made cold-
+  // invites invisible on the creator's MyCollabs tracker.
   db.applications.filter((a) => a.creatorId === creatorId).forEach((a) => campaignIds.add(a.campaignId));
   db.offers.filter((o) => o.creatorId === creatorId).forEach((o) => campaignIds.add(o.campaignId));
   db.submissions.filter((s) => s.creatorId === creatorId).forEach((s) => campaignIds.add(s.campaignId));
+  db.collaborations.filter((c) => c.creatorId === creatorId).forEach((c) => campaignIds.add(c.campaignId));
   return Array.from(campaignIds)
     .map((id) => deriveCollab(id, creatorId, db))
     .filter((c): c is V2Collab => c !== null);

@@ -986,11 +986,38 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
         </div>
       );
     } else {
+      // Three "awaiting" sub-states share this branch — disambiguate the
+      // copy so the brand knows whether they sent an offer, a counter-back,
+      // or just a cold invite with no rate attached yet:
+      //  - no offer at all → cold invite, no rate proposed. The creator
+      //    sees a "Message brand" CTA (no Accept yet); brand sees this
+      //    until the creator engages or the brand sends a proper offer.
+      //  - offer pending → brand sent an offer, creator hasn't replied
+      //  - offer countered (brand was last) → brand counter-backed,
+      //    creator's turn again
+      const awaitingCopy = !offer
+        ? 'Invitation sent · awaiting creator'
+        : offer.status === 'countered'
+          ? 'Awaiting reply to your counter'
+          : 'Awaiting reply';
       stageAction = (
         <div className="v2-row" style={{ gap: 6, marginTop: 8, alignItems: 'center' }}>
           <span className="v2-muted" style={{ fontSize: 11, flex: 1 }}>
-            {offer?.status === 'countered' ? 'Awaiting reply to your counter' : 'Awaiting reply'}
+            {awaitingCopy}
           </span>
+          {!offer && (
+            // No offer yet → let the brand fast-path to sending one without
+            // waiting for the creator to message first. Same SendOfferModal
+            // path as the `pitched` branch above.
+            <button
+              type="button"
+              className="v2-btn v2-btn-sm v2-btn-outline"
+              style={{ fontSize: 11 }}
+              onClick={(e) => { stop(e); onSendOffer(creator, collab.price > 0 ? collab.price : creator.rate); }}
+            >
+              Send offer
+            </button>
+          )}
           {offer && (offer.status === 'pending' || offer.status === 'countered') && (
             <button
               type="button"

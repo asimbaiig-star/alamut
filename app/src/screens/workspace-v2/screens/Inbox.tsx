@@ -727,7 +727,12 @@ function contextHint(stage: string, persona: 'brand' | 'creator'): string {
     if (stage === 'paid')         return 'Closed · paid out';
   } else {
     if (stage === 'pitched')      return 'Awaiting brand response';
-    if (stage === 'invited')      return 'Brand invited you · accept or counter';
+    // `invited` covers two sub-cases: brand sent an offer-bearing invite
+    // (creator can accept/counter), and brand sent a cold invite with no
+    // rate yet (creator can only message back). Both paths route through
+    // CollabDetail where the banner picks the right CTAs — the hint stays
+    // generic to fit both.
+    if (stage === 'invited')      return 'Brand invited you · respond';
     if (stage === 'negotiating')  return 'Offer received · accept or counter';
     if (stage === 'confirmed')    return 'Time to upload your draft';
     if (stage === 'submitted')    return 'Awaiting brand review';

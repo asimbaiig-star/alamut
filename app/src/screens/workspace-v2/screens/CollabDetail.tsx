@@ -198,6 +198,22 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
   );
   const cancelRequest = collabRow?.cancellationRequest ?? null;
 
+  // Cold-invite pitch — `v2InviteCreator` writes the brand's invitation
+  // message into history as `"brand-invite: <message>"`. We surface it
+  // verbatim on the no-offer `invited` banner so the creator can see why
+  // the brand reached out before deciding to engage. Walk history in
+  // reverse so a re-invite (would-be future case) finds the latest one.
+  const inviteMessage = (() => {
+    if (collab.stage !== 'invited' || !collabRow?.history) return undefined;
+    for (let i = collabRow.history.length - 1; i >= 0; i--) {
+      const h = collabRow.history[i];
+      if (typeof h.reason === 'string' && h.reason.startsWith('brand-invite: ')) {
+        return h.reason.slice('brand-invite: '.length).trim() || undefined;
+      }
+    }
+    return undefined;
+  })();
+
   return (
     <>
       <Topbar
@@ -286,6 +302,7 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
               <StageActionBanner
                 stage={collab.stage}
                 pendingOffer={pendingOffer}
+                inviteMessage={inviteMessage}
                 campaignBrand={camp.brand}
                 campaignName={camp.name}
                 campaignPlacement={camp.placement}
