@@ -267,15 +267,16 @@ export function ContentReviewModal({ collab, creators, onClose }: Props) {
             )}
 
             <div className="v2-eyebrow" style={{ marginBottom: 8 }}>
-              <span style={{ color: 'var(--v2-accent)' }}>{Icon.spark}</span> Spark auto-check
+              Review checklist
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 20 }}>
-              <CheckRow ok label="Product visible in first 3s" />
-              <CheckRow ok label="Brand hashtag in caption" />
-              <CheckRow ok label="Brand handle tagged" />
-              <CheckRow ok label="#ad disclosure present" />
-              <CheckRow warn label="Caption length: 48 words (rec. 60+)" />
-            </div>
+            {/* Pre-fix this was a 5-row "Spark auto-check" panel that
+                pretended to be AI moderation but rendered the same
+                static checks for every submission. Now it's a real
+                tick-list the brand fills in as they review the
+                content. Local UI state only — could persist to the
+                Submission row later if we want history. */}
+            <ReviewChecklist />
+            <div style={{ height: 20 }} />
 
             <div className="v2-eyebrow" style={{ marginBottom: 8 }}>Your feedback</div>
             <textarea
@@ -353,14 +354,47 @@ export function ContentReviewModal({ collab, creators, onClose }: Props) {
   );
 }
 
-function CheckRow({ ok, warn, label }: { ok?: boolean; warn?: boolean; label: string }) {
-  const color = ok ? 'var(--v2-moss)' : warn ? 'var(--v2-gold)' : 'var(--v2-accent)';
+/** Brand-side review checklist. Interactive — brand ticks items off as
+ *  they verify the submission. The items themselves are the same five
+ *  brand-safety / hygiene checks every campaign cares about (product
+ *  in opening, brand handle tagged, #ad disclosure, caption length).
+ *  State is ephemeral; resets each time the modal opens. */
+function ReviewChecklist() {
+  const items = [
+    'Product visible in first 3s',
+    'Brand handle tagged',
+    'Brand hashtag in caption',
+    '#ad disclosure present',
+    'Caption length ≥ 60 words',
+  ];
+  const [ticked, setTicked] = useState<boolean[]>(() => items.map(() => false));
+  const toggle = (i: number) => setTicked((arr) => arr.map((v, j) => (j === i ? !v : v)));
+  const ratio = ticked.filter(Boolean).length;
   return (
-    <div className="v2-row" style={{ gap: 8, fontSize: 13 }}>
-      <span style={{ color, display: 'flex', flexShrink: 0 }}>
-        {ok ? Icon.check : '⚠'}
-      </span>
-      <span>{label}</span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <div className="v2-muted" style={{ fontSize: 11.5, marginBottom: 4 }}>
+        {ratio} of {items.length} verified
+      </div>
+      {items.map((label, i) => (
+        <label
+          key={label}
+          className="v2-row"
+          style={{
+            gap: 8, fontSize: 13, cursor: 'pointer',
+            padding: '4px 0',
+            color: ticked[i] ? 'var(--v2-ink)' : 'var(--v2-ink-2)',
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={ticked[i]}
+            onChange={() => toggle(i)}
+            aria-label={`Mark "${label}" verified`}
+            style={{ accentColor: 'var(--v2-moss)' }}
+          />
+          <span>{label}</span>
+        </label>
+      ))}
     </div>
   );
 }

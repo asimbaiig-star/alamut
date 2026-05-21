@@ -2292,12 +2292,11 @@ function SettingsTab({ campaign }: { campaign: V2Campaign }) {
             onChange={(e) => setName(e.target.value)}
           />
         </div>
-        <div style={{ marginBottom: 18 }}>
-          <label className="v2-eyebrow" style={{ display: 'block', marginBottom: 6 }}>Visibility</label>
-          <div className="v2-muted" style={{ fontSize: 12, padding: 12, background: 'var(--v2-bg-1)', borderRadius: 'var(--v2-r-md)' }}>
-            Campaigns are currently public on Discover by default. Private (invite-only) campaigns will land in a future release; this toggle is read-only for now.
-          </div>
-        </div>
+        {/* Visibility pseudo-control removed: pre-fix it was an eyebrow
+            label followed by a paragraph saying "this toggle is read-
+            only for now." A control that's not a control. Private
+            campaigns will land when the catalog has the visibility flag
+            wired through; until then we just don't render the field. */}
         <div style={{ marginBottom: 18 }}>
           <label className="v2-eyebrow" style={{ display: 'block', marginBottom: 6 }}>Auto-shortlist</label>
           <label className="v2-row" style={{ gap: 10, padding: 12, background: 'var(--v2-bg-1)', borderRadius: 'var(--v2-r-md)', cursor: 'pointer' }}>

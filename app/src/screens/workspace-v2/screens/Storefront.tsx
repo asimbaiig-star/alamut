@@ -440,7 +440,7 @@ function ChannelsBlock({ creator, editing, onEdit, onClose }: {
   return (
     <Block
       label="Channels"
-      tip="Connect each platform to auto-pull metrics. Brands trust live numbers."
+      tip="Add each platform you publish on. Brands cross-check follower + engagement numbers against your linked profile, so keep them current."
       action={
         <>
           {editing && (

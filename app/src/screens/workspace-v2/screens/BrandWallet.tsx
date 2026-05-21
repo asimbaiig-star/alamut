@@ -206,11 +206,19 @@ export function BrandWallet({ onRoute, initialAction }: Props) {
           {/* Sidebar */}
           <div>
             <div className="v2-card v2-card-pad" style={{ marginBottom: 16 }}>
-              <div className="v2-eyebrow" style={{ marginBottom: 12 }}>Top-up methods</div>
+              <div className="v2-eyebrow" style={{ marginBottom: 12 }}>Top-up methods on file</div>
+              {/* Methods shown are seed data — there's no self-service
+                  add/remove flow yet (would need a real payment-
+                  processor integration). Footnote sets accurate
+                  expectations rather than implying an "Add method" CTA
+                  that doesn't exist. */}
               <PaymentMethod name="Wire transfer" sub="Chase ••• 4291" color="#1B3D88" />
               <PaymentMethod name="ACH" sub="Bank ••• 8830" color="#00B14F" />
               <PaymentMethod name="JazzCash" sub="0345 ••• 4291" color="#F7941D" />
               <PaymentMethod name="Card on file" sub="Visa ending 4242" color="#635BFF" last />
+              <p className="v2-muted" style={{ fontSize: 11.5, lineHeight: 1.5, marginTop: 10, marginBottom: 0 }}>
+                To add, replace, or remove a method, contact your ops manager.
+              </p>
             </div>
 
             <div className="v2-card v2-card-pad">

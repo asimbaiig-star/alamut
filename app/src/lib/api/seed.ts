@@ -421,6 +421,17 @@ const DEMO_CREATORS: Creator[] = [
     pressMentions: [{ source: 'Vogue', title: 'The new wave of sustainable creators', year: 2025 }],
     pastClients: ['Aesop', 'Glossier', 'Le Labo'],
     availability: { status: 'limited', untilDate: dayAhead(30), note: 'Booked for May — open from June 1.' },
+    // Demo-seed storefront pulse — Sarah is our hero creator account so
+    // these numbers are tuned to look healthy in any walkthrough. The
+    // brand-viewer names mix real catalog brands with plausible cold
+    // viewers (PR agencies / brand-side teams that read storefronts
+    // before reaching out).
+    storefrontViewsLast30d: 2140,
+    storefrontViewsDeltaPct: 28,
+    brandInquiriesThisWeek: 14,
+    brandInquiriesDelta: 4,
+    recentBrandViewerNames: ['Aesop', 'Glossier', 'Le Labo', 'Reformation', 'Everlane', 'Mejuri', 'Cuyana', 'Outdoor Voices', 'Sézane', 'Vuori', 'Quince', 'Buffy'],
+    recentBrandViewerCount: 12,
   },
   {
     id: 'c_amir', userId: 'u_amir',
@@ -443,6 +454,12 @@ const DEMO_CREATORS: Creator[] = [
     verified: true,
     pressMentions: [{ source: 'Dawn', title: 'Recipes worth keeping', year: 2024 }],
     pastClients: ['Le Creuset', 'National Foods'],
+    storefrontViewsLast30d: 1480,
+    storefrontViewsDeltaPct: 12,
+    brandInquiriesThisWeek: 8,
+    brandInquiriesDelta: 2,
+    recentBrandViewerNames: ['Le Creuset', 'National Foods', 'Foodpanda', 'Daraz', 'Krave Mart', 'Tossdown', 'Khaadi'],
+    recentBrandViewerCount: 7,
   },
   {
     id: 'c_yuki', userId: 'u_yuki',
@@ -466,6 +483,12 @@ const DEMO_CREATORS: Creator[] = [
     pressMentions: [{ source: 'Apartamento', title: 'Workshop in Kyoto', year: 2024 }],
     pastClients: ['Muji'],
     availability: { status: 'open', note: 'Open for design + lifestyle briefs through Q2.' },
+    storefrontViewsLast30d: 920,
+    storefrontViewsDeltaPct: 41,
+    brandInquiriesThisWeek: 6,
+    brandInquiriesDelta: 3,
+    recentBrandViewerNames: ['Muji', 'Snow Peak', 'Postalco', 'Hender Scheme', 'D&Department', 'Beams', 'Aesop'],
+    recentBrandViewerCount: 7,
   },
 ];
 
@@ -645,6 +668,24 @@ function genCreator(idx: number, name: string, tier: 'Rising' | 'Specialist' | '
         if (r < 0.7) return { status: 'open' as const, note: 'Open for briefs' };
         if (r < 0.9) return { status: 'limited' as const, untilDate: dayAhead(range(7, 45)), note: 'Limited slots — book early' };
         return { status: 'booked' as const, untilDate: dayAhead(range(20, 90)), note: 'Fully booked this period' };
+      })(),
+      // Storefront-pulse demo metrics — scaled by tier so the CreatorHome
+      // pulse tiles tell a credible story per creator. Flagship creators
+      // get the biggest view + inquiry numbers; Rising creators get
+      // smaller but non-zero ones so the UI never shows an empty pulse.
+      ...(() => {
+        const tierMul = tier === 'Flagship' ? 1 : tier === 'Specialist' ? 0.45 : 0.18;
+        const views = Math.round((800 + rng() * 2400) * tierMul);
+        const viewerCount = Math.max(2, Math.round((4 + rng() * 16) * tierMul));
+        const viewerSample = [...BRAND_POOL].sort(() => rng() - 0.5).slice(0, Math.min(viewerCount, 12)).map((b) => b.name);
+        return {
+          storefrontViewsLast30d: views,
+          storefrontViewsDeltaPct: Math.round(-10 + rng() * 60),
+          brandInquiriesThisWeek: Math.max(1, Math.round((3 + rng() * 14) * tierMul)),
+          brandInquiriesDelta: Math.round(-2 + rng() * 8),
+          recentBrandViewerNames: viewerSample,
+          recentBrandViewerCount: viewerCount,
+        };
       })(),
     },
   };

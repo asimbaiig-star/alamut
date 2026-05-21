@@ -262,7 +262,7 @@ export function CreatorHome({ onRoute }: Props) {
         {/* Goals + Tip */}
         <div className="v2-home-row" data-style="reverse">
           <CreatorGoals wallet={wallet} me={me} myCollabs={myCollabs} onRoute={onRoute} />
-          <CreatorTip onRoute={onRoute} />
+          <CreatorTip me={me} onRoute={onRoute} />
         </div>
       </div>
     </>
@@ -651,6 +651,36 @@ function BriefMatches({ me, campaigns, myCollabs, onRoute }: {
 // =====================================================================
 
 function StorefrontPulse({ me, onRoute }: { me: V2Creator; onRoute: (r: string) => void }) {
+  // Read raw Creator from the store for storefront-pulse fields that
+  // the V2 adapter doesn't carry (storefrontViewsLast30d,
+  // brandInquiriesThisWeek, recentBrandViewerNames). Pre-fix these were
+  // hardcoded literals ("2,140 views ↑28% / 30d", "14 brand inquiries
+  // ↑4", "S/F/P/B" letter dots + "Sapphire, Foodpanda, PostEx, Bykea
+  // + 8 more") that lied identically for every creator. Now per-creator
+  // seeded values render, so Sarah's demo numbers stay healthy while
+  // generated creators get tier-scaled signals.
+  const db = useStore((s) => s.db);
+  const rawMe = db.creators.find((c) => c.id === me.id);
+  const views = rawMe?.storefrontViewsLast30d ?? 0;
+  const viewsDelta = rawMe?.storefrontViewsDeltaPct ?? 0;
+  const inquiries = rawMe?.brandInquiriesThisWeek ?? 0;
+  const inquiriesDelta = rawMe?.brandInquiriesDelta ?? 0;
+  const viewerNames = rawMe?.recentBrandViewerNames ?? [];
+  const viewerTotal = rawMe?.recentBrandViewerCount ?? viewerNames.length;
+  const dotPalette = ['var(--v2-accent)', 'var(--v2-moss)', 'var(--v2-gold)', 'var(--v2-info)'];
+  const dotInitials = viewerNames.slice(0, 4).map((n) => n.charAt(0).toUpperCase());
+  const viewerLabel = viewerNames.length === 0
+    ? 'No recent viewers — share your storefront to attract brands.'
+    : viewerNames.length <= 4
+      ? viewerNames.join(', ')
+      : `${viewerNames.slice(0, 4).join(', ')} + ${viewerTotal - 4} more`;
+
+  // Real review count from db.reviews so the "from N collabs" sub-line
+  // matches reality.
+  const reviewCount = db.reviews?.filter(
+    (r) => r.reviewType === 'creator' && r.targetId === me.id,
+  ).length ?? 0;
+
   return (
     <div className="v2-card v2-card-pad-lg">
       <div className="v2-row" style={{ justifyContent: 'space-between', marginBottom: 16 }}>
@@ -673,42 +703,45 @@ function StorefrontPulse({ me, onRoute }: { me: V2Creator; onRoute: (r: string) 
         >{Icon.external}</button>
       </div>
       <div className="v2-grid-3" style={{ gap: 12, marginBottom: 16 }}>
-        <PulseStat n="2,140" l="views" sub="↑ 28% / 30d" />
-        <PulseStat n="14" l="brand inquiries" sub="↑ 4 this week" />
-        <PulseStat n={`${(me.score / 20).toFixed(1)}`} l="avg rating" sub="from 23 collabs" />
+        <PulseStat
+          n={views.toLocaleString()}
+          l="views"
+          sub={viewsDelta === 0 ? '— vs last 30d' : `${viewsDelta > 0 ? '↑' : '↓'} ${Math.abs(viewsDelta)}% / 30d`}
+        />
+        <PulseStat
+          n={inquiries.toString()}
+          l="brand inquiries"
+          sub={inquiriesDelta === 0 ? 'same as last week' : `${inquiriesDelta > 0 ? '↑' : '↓'} ${Math.abs(inquiriesDelta)} this week`}
+        />
+        <PulseStat
+          n={`${(me.score / 20).toFixed(1)}`}
+          l="avg rating"
+          sub={reviewCount > 0 ? `from ${reviewCount} collab${reviewCount === 1 ? '' : 's'}` : 'no reviews yet'}
+        />
       </div>
       <div className="v2-home-storefront-viewers">
         <div className="v2-eyebrow" style={{ marginBottom: 6 }}>Recent brand viewers</div>
         <div className="v2-row" style={{ gap: 0, alignItems: 'center' }}>
-          {['S', 'F', 'P', 'B'].map((l, i) => (
+          {dotInitials.map((l, i) => (
             <div
               key={i}
               className="v2-home-viewer-dot"
               style={{
-                background: ['var(--v2-accent)', 'var(--v2-moss)', 'var(--v2-gold)', 'var(--v2-info)'][i],
+                background: dotPalette[i % dotPalette.length],
                 marginLeft: i === 0 ? 0 : -8,
               }}
             >{l}</div>
           ))}
-          <span className="v2-muted" style={{ fontSize: 12, marginLeft: 12 }}>
-            Sapphire, Foodpanda, PostEx, Bykea + 8 more
+          <span className="v2-muted" style={{ fontSize: 12, marginLeft: dotInitials.length > 0 ? 12 : 0 }}>
+            {viewerLabel}
           </span>
         </div>
       </div>
-      <div className="v2-home-storefront-suggestion">
-        <div className="v2-eyebrow" style={{ color: 'var(--v2-accent)', marginBottom: 4 }}>
-          <span style={{ marginRight: 4 }}>{Icon.spark}</span>Spark suggestion
-        </div>
-        <span style={{ color: 'var(--v2-ink-2)', fontSize: 13, lineHeight: 1.45 }}>
-          Add a "case study" block — creators with case studies get 2.4× more inquiries.
-        </span>
-        <button
-          className="v2-btn v2-btn-sm v2-btn-accent"
-          type="button"
-          style={{ marginLeft: 8 }}
-          onClick={() => onRoute('storefront')}
-        >Add now</button>
-      </div>
+      {/* Spark "Add a case study block" suggestion removed: it routed to
+          the Storefront page, where no case-study block exists. Either
+          a feature to build separately or a tip to delete — we picked
+          delete so the affordance doesn't promise something it can't
+          deliver. */}
     </div>
   );
 }
@@ -957,7 +990,55 @@ function Achievement({ icon, label, sub, done }: { icon: string; label: string; 
   );
 }
 
-function CreatorTip({ onRoute }: { onRoute: (r: string) => void }) {
+// Tip rotation — pre-fix CreatorTip showed one hardcoded copy
+// ("Brands pay 30% more for creators who reply within 6 hours")
+// attributed to a fixed Areeba Khan portrait + "Your average reply is
+// 18hr" stat that wasn't actually computed. Now we rotate from a
+// curated list of platform-grounded tips keyed by creator id so each
+// creator sees a stable but distinct tip across reloads. Attribution
+// dropped — we frame these as platform-side guidance rather than
+// pretending a specific creator gave them.
+const CREATOR_TIPS: { headline: string; body: string; ctaLabel: string; ctaRoute: string }[] = [
+  {
+    headline: 'Brands pay more for fast replies.',
+    body: 'Reply to inbound briefs within the same business day. Faster reply times correlate strongly with higher accepted-offer rates across the marketplace.',
+    ctaLabel: 'Open inbox',
+    ctaRoute: 'creator-inbox',
+  },
+  {
+    headline: 'A complete storefront wins more pitches.',
+    body: 'Storefronts with a rate card, 6+ work samples, and at least one review get noticeably more brand inquiries. Audit yours in a couple of minutes.',
+    ctaLabel: 'Edit storefront',
+    ctaRoute: 'storefront',
+  },
+  {
+    headline: 'Reviews from past brands are your moat.',
+    body: 'When a campaign wraps, leave the brand a review and prompt them for one too. Reviews appear at the top of your public storefront and lift conversion.',
+    ctaLabel: 'View collaborations',
+    ctaRoute: 'creator-collabs',
+  },
+  {
+    headline: 'Pin a niche to win in Discover.',
+    body: 'Brand searches in Discover filter by category and city. Two well-chosen categories outperform a generic list — pick the ones that match your strongest work.',
+    ctaLabel: 'Update storefront',
+    ctaRoute: 'storefront',
+  },
+  {
+    headline: 'Saved briefs are 4× more likely to convert.',
+    body: 'When you spot a brief that fits, save it even if you can\'t apply right away. Saved-then-applied pitches close at a higher rate than cold ones.',
+    ctaLabel: 'Browse campaigns',
+    ctaRoute: 'creator-campaigns',
+  },
+];
+
+function hashStringToIdx(s: string, mod: number): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h % mod;
+}
+
+function CreatorTip({ me, onRoute }: { me: V2Creator; onRoute: (r: string) => void }) {
+  const tip = CREATOR_TIPS[hashStringToIdx(me.id, CREATOR_TIPS.length)];
   return (
     <div className="v2-card v2-home-tip">
       <div className="v2-card-pad-lg">
@@ -972,35 +1053,22 @@ function CreatorTip({ onRoute }: { onRoute: (r: string) => void }) {
           letterSpacing: '-0.02em',
           lineHeight: 1.2,
         }}>
-          Brands pay 30% more for creators who reply within 6 hours.
+          {tip.headline}
         </h3>
         <p style={{ margin: '0 0 16px', fontSize: 13.5, color: 'var(--v2-ink-2)', lineHeight: 1.5 }}>
-          Your average reply is 18hr. Set up Inbox notifications to push so urgent
-          briefs reach you faster — it'll move you into the &lt;6h tier.
+          {tip.body}
         </p>
         <div className="v2-row" style={{ gap: 8 }}>
           <button
             className="v2-btn v2-btn-primary v2-btn-sm"
             type="button"
-            onClick={() => onRoute('creator-inbox')}
-          >Set up alerts</button>
-          <button
-            className="v2-btn v2-btn-ghost v2-btn-sm"
-            type="button"
-            onClick={() => onRoute('storefront')}
-          >
-            More tips
-          </button>
+            onClick={() => onRoute(tip.ctaRoute)}
+          >{tip.ctaLabel}</button>
         </div>
       </div>
       <div className="v2-home-tip-foot">
-        <div
-          className="v2-avatar v2-avatar-sm"
-          style={{ backgroundImage: 'url(https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=200&q=80)' }}
-          aria-hidden="true"
-        />
         <div style={{ fontSize: 12, color: 'var(--v2-ink-3)' }}>
-          From <strong style={{ color: 'var(--v2-ink)' }}>Areeba Khan</strong>'s playbook · top 1% creator
+          Tips rotate from <strong style={{ color: 'var(--v2-ink)' }}>Alamut's creator playbook</strong> — grounded in marketplace-wide deal data.
         </div>
       </div>
     </div>

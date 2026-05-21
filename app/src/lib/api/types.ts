@@ -290,6 +290,33 @@ export interface Creator {
   /** Migration 021 optimistic lock — see Dispute.version for the rationale.
    *  Creator-profile edits and wallet/pending balance updates flow through this lock. */
   version?: number;
+  /** ───────────────────────────────────────────────────────────────────
+   *  Storefront-pulse demo metrics. In production these come from a real
+   *  view-tracking pipeline (analytics events on the public storefront
+   *  page + inbound-inquiry rows on the brand outreach table). Until
+   *  that pipeline exists, these fields are seeded per-creator so the
+   *  CreatorHome StorefrontPulse + brand-viewers strip render real
+   *  numbers (just sourced from the seed rather than a literal in JSX).
+   *  Demo creators (Sarah, Areeba) get healthy numbers so a recorded
+   *  demo looks alive; other seeded creators get varied values.
+   *  ─────────────────────────────────────────────────────────────────── */
+  /** Public storefront views over the trailing 30 days. */
+  storefrontViewsLast30d?: number;
+  /** % change in storefront views vs the prior 30d period. Negative if down. */
+  storefrontViewsDeltaPct?: number;
+  /** Inbound brand inquiries (cold outreach, invites, briefs DM'd) this week. */
+  brandInquiriesThisWeek?: number;
+  /** New inquiries this week vs last week (raw count, signed). */
+  brandInquiriesDelta?: number;
+  /** Brand display names that recently viewed the creator's storefront
+   *  — surfaced on the CreatorHome viewers strip. Most-recent first.
+   *  Stored as strings (not Brand FKs) because the viewer strip is
+   *  purely a display affordance and most viewers will be brands NOT
+   *  in our own catalog (we'd just be tracking pageviews by org). */
+  recentBrandViewerNames?: string[];
+  /** Total distinct viewers over the trailing 30d. Used by the viewers
+   *  strip "+ N more" tail when `recentBrandViewerNames` is truncated. */
+  recentBrandViewerCount?: number;
 }
 
 export interface TaxFormRecord {

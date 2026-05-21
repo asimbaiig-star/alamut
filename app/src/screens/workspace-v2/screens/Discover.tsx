@@ -105,10 +105,19 @@ function summariseMulti(label: string, selectedIds: string[], options: { id: str
   return `${first} · +${selectedIds.length - 1}`;
 }
 
+// Spark-mode "quick prompts". Pre-fix these promised NLP-style natural
+// language search ("Find me 5 lifestyle creators in Lahore with mostly
+// female audience"), but the underlying filter is a plain substring
+// match on name/bio/categories — so a long sentence rarely matched
+// anything. Replaced with single-keyword chips that actually fit the
+// substring filter, so clicking a prompt narrows the catalog reliably.
 const SPARK_SUGGESTIONS = [
-  'Find me 5 lifestyle creators in Lahore with mostly female audience',
-  'Tech reviewers under $1,500 with 5%+ engagement',
-  'Verified food creators in Karachi for an Eid campaign',
+  'Lifestyle',
+  'Food',
+  'Karachi',
+  'Lahore',
+  'Verified',
+  'Sustainability',
 ];
 
 export function Discover({ onRoute }: Props) {
@@ -317,29 +326,31 @@ export function Discover({ onRoute }: Props) {
               </span>
               <input
                 placeholder={isSpark
-                  ? "Describe who you're looking for in plain English…"
+                  ? 'Try a category, city, or rate band…'
                   : 'Search by name, niche, or keyword…'}
                 value={isSpark ? sparkPrompt : query}
                 onChange={(e) => isSpark ? setSparkPrompt(e.target.value) : setQuery(e.target.value)}
                 style={{ fontSize: 15 }}
-                aria-label={isSpark ? 'Spark prompt' : 'Search creators'}
+                aria-label={isSpark ? 'Quick prompt' : 'Search creators'}
               />
             </div>
             <button
               type="button"
               className={isSpark ? 'v2-btn v2-btn-primary' : 'v2-btn v2-btn-outline'}
               onClick={() => setMode(isSpark ? 'filters' : 'spark')}
-              title={isSpark ? 'Back to filter search' : 'Search in plain English with Spark'}
+              title={isSpark ? 'Back to filter search' : 'Spark-mode quick prompts'}
             >
               <span style={{
                 display: 'flex',
                 color: isSpark ? 'var(--v2-accent-2)' : 'var(--v2-accent)',
               }}>{Icon.spark}</span>
-              {isSpark ? 'Spark on' : 'Ask Spark'}
+              {isSpark ? 'Spark on' : 'Quick prompts'}
             </button>
           </div>
 
-          {/* Spark-mode quick suggestions when no prompt yet. */}
+          {/* Spark-mode quick prompts — single-keyword chips that
+              substring-match the catalog reliably. Pre-fix these were
+              long English sentences that pretended NLP was happening. */}
           {isSpark && !sparkPrompt && (
             <div className="v2-row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 12 }}>
               <span className="v2-muted" style={{ fontSize: 12, alignSelf: 'center' }}>Try:</span>
