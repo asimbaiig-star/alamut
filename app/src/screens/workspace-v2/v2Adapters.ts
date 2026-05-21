@@ -681,6 +681,26 @@ export function deriveCollab(campaignId: string, creatorId: string, db: Database
     stage = 'paid';
   }
 
+  // Terminal-state override: trust the stored Collaboration row when its
+  // stage is terminal ('paid' or 'cancelled'). The signal-based derivation
+  // above doesn't always reach 'paid' for seeded demo data (it requires
+  // camp.stage === 'closed' AND a live-status submission AND payout) —
+  // but a seeded Collaboration row with stage='paid' explicitly represents
+  // a closed deal. Without this override, paid demo collabs render as
+  // 'approved' or 'live' and the Paid kanban column stays empty in walks.
+  // The CollabHistory entries on the row are the canonical audit trail;
+  // the per-signal derivation is just a best-effort projection.
+  if (collabRow?.stage === 'paid') {
+    stage = 'paid';
+  } else if (collabRow?.stage === 'cancelled') {
+    // V2CollabStage has no 'cancelled' member; we mark it on the V2Collab
+    // anyway via a typed escape so callers that opt in can render it.
+    // collabsForCampaign filters these out by default so the kanban
+    // doesn't show cancelled rows as mis-typed 'invited' (which they
+    // were pre-fix, since 'invited' is the derivation default).
+    stage = 'cancelled' as V2CollabStage;
+  }
+
   // Use a double-underscore separator so the regex parser can split
   // back unambiguously even when campaign or creator ids contain a
   // single underscore (e.g. `cmp_g110`, `c_sarah`).
@@ -717,7 +737,13 @@ export function collabsForCampaign(campaignId: string, db: Database): V2Collab[]
   db.collaborations.filter((c) => c.campaignId === campaignId).forEach((c) => ids.add(c.creatorId));
   return Array.from(ids)
     .map((id) => deriveCollab(campaignId, id, db))
-    .filter((c): c is V2Collab => c !== null);
+    .filter((c): c is V2Collab => c !== null)
+    // Drop cancelled rows from the kanban — they don't have a column
+    // in V2_PIPELINE_STAGES. Pre-fix they were mis-typed as 'invited'
+    // (the derivation default) and showed up as ghost invites in the
+    // first column. Cancelled history is still accessible through the
+    // CollabDetail surface if needed; just not via the kanban summary.
+    .filter((c) => (c.stage as string) !== 'cancelled');
 }
 
 /** Compute the per-creator match score against a campaign brief. Lifted
@@ -785,5 +811,8 @@ export function collabsForCreator(creatorId: string, db: Database): V2Collab[] {
   db.collaborations.filter((c) => c.creatorId === creatorId).forEach((c) => campaignIds.add(c.campaignId));
   return Array.from(campaignIds)
     .map((id) => deriveCollab(id, creatorId, db))
-    .filter((c): c is V2Collab => c !== null);
+    .filter((c): c is V2Collab => c !== null)
+    // Hide cancelled collabs from the creator's MyCollabs tracker. See
+    // `collabsForCampaign` for the same logic + rationale.
+    .filter((c) => (c.stage as string) !== 'cancelled');
 }
