@@ -551,7 +551,8 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
       )}
       {reviewOpen && currentCreator && (
         <LeaveReviewModal
-          brandName={camp.brand}
+          subjectName={camp.brand}
+          subjectKind="brand"
           campaignName={camp.name}
           onClose={() => setReviewOpen(false)}
           onSubmit={(rating, text) => {

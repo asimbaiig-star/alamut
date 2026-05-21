@@ -653,14 +653,91 @@ export function v2EnsureThreadFor(
   return createdThread ? (createdThread as import('@/lib/api/types').Thread).id : null;
 }
 
+/** Reason a withdrawal request was rejected. UI uses this to surface a
+ *  specific message instead of a generic "failed" toast. */
+export type WithdrawalRejection =
+  | 'invalid-amount'
+  | 'insufficient-balance'
+  | 'no-creator'
+  | 'kyc-not-verified'
+  | 'no-bank-account'
+  | 'open-dispute'
+  | 'in-dispute-window';
+
+/** Check whether the current creator can withdraw a given amount, and
+ *  if not, why. Pure read — does not mutate. Lets the UI gate the
+ *  Withdraw button with a specific reason ("Complete KYC first" /
+ *  "Add a bank account first") rather than showing it and then
+ *  failing silently. Mirrors the gate logic inside `v2RequestWithdrawal`
+ *  so the two paths can't drift. */
+export function v2CanWithdraw(amount: number): { ok: true } | { ok: false; reason: WithdrawalRejection } {
+  if (!Number.isFinite(amount) || amount <= 0) return { ok: false, reason: 'invalid-amount' };
+  const db = useStore.getState().db;
+  const session = useStore.getState().session;
+  const persona = readPersona();
+  const viewerId = getViewerUserId(db, session?.userId ?? null, persona);
+  const me = db.users.find((u) => u.id === viewerId);
+  if (!me?.creatorId) return { ok: false, reason: 'no-creator' };
+  const creator = db.creators.find((c) => c.id === me.creatorId);
+  if (!creator) return { ok: false, reason: 'no-creator' };
+  if (amount > creator.walletBalance) return { ok: false, reason: 'insufficient-balance' };
+  if (!creator.verified) return { ok: false, reason: 'kyc-not-verified' };
+  if (!creator.payout?.account || creator.payout.account.trim().length === 0) {
+    return { ok: false, reason: 'no-bank-account' };
+  }
+  const hasOpenDispute = db.disputes.some(
+    (d) => d.status === 'open' && d.collaborationId &&
+      db.collaborations.some((c) => c.id === d.collaborationId && c.creatorId === creator.id),
+  );
+  if (hasOpenDispute) return { ok: false, reason: 'open-dispute' };
+  const nowMs = Date.now();
+  const inWindowHold = db.submissions
+    .filter((s) =>
+      s.creatorId === creator.id &&
+      s.status === 'approved' &&
+      typeof s.disputeWindowClosesAt === 'number' &&
+      s.disputeWindowClosesAt > nowMs,
+    )
+    .reduce((sum, s) => {
+      const matching = db.transactions.find(
+        (t) => t.kind === 'payout' && t.userId === me.id &&
+          t.campaignId === s.campaignId && t.amount > 0,
+      );
+      return sum + (matching?.amount ?? 0);
+    }, 0);
+  const withdrawable = Math.max(0, creator.walletBalance - inWindowHold);
+  if (amount > withdrawable) return { ok: false, reason: 'in-dispute-window' };
+  return { ok: true };
+}
+
+/** Human-readable copy for each rejection reason. Keep one source so
+ *  the modal disabled state, the toast, and any future inline banner
+ *  all read the same. */
+export function withdrawalRejectionMessage(reason: WithdrawalRejection): string {
+  switch (reason) {
+    case 'invalid-amount':      return 'Enter a positive amount.';
+    case 'insufficient-balance': return 'Amount exceeds your available balance.';
+    case 'no-creator':          return 'Could not identify your creator account.';
+    case 'kyc-not-verified':    return 'Complete KYC verification before withdrawing. Open KYC & Tax to finish your steps.';
+    case 'no-bank-account':     return 'Add a bank account in KYC & Tax before withdrawing.';
+    case 'open-dispute':        return 'You have an open dispute — withdrawals pause until it resolves.';
+    case 'in-dispute-window':   return 'Some funds are still in the 7-day dispute window. Wait for the window to close or withdraw a smaller amount.';
+  }
+}
+
 /** Creator withdraws funds from their wallet to their bank. Decrements
  *  walletBalance and writes a 'payout' transaction so the wallet ledger
  *  shows the outflow. No real bank API — this is the demo's terminal
  *  step for the money story.
  *
- *  Returns true on success, false if the amount is invalid (≤0 or >
- *  available balance). The caller is responsible for input validation
- *  in the UI; this function defends the wallet-balance invariant. */
+ *  Returns true on success, false if any precondition fails. The caller
+ *  should also use `v2CanWithdraw()` to surface a specific reason in the
+ *  UI; this function is the defense-in-depth check.
+ *
+ *  Phase 56 — added KYC gate (creator.verified + bank account on file)
+ *  to enforce the promise the KycTax page makes ("complete KYC to
+ *  unlock payouts"). Pre-fix any creator could withdraw the full
+ *  balance even with zero KYC steps completed. */
 export function v2RequestWithdrawal(amount: number): boolean {
   if (!Number.isFinite(amount) || amount <= 0) return false;
   let ok = false;
@@ -674,6 +751,13 @@ export function v2RequestWithdrawal(amount: number): boolean {
     if (idx === -1) return;
     const creator = db.creators[idx];
     if (amount > creator.walletBalance) return;
+
+    // KYC gate — refuses the mutation when the creator hasn't
+    // verified identity or attached a bank account. The UI should
+    // have caught this via v2CanWithdraw, but we defend the invariant
+    // at the mutation boundary too in case a future caller misses it.
+    if (!creator.verified) return;
+    if (!creator.payout?.account || creator.payout.account.trim().length === 0) return;
 
     // CLEARANCE GATE — pre-fix the creator could withdraw any
     // walletBalance the moment it landed, including funds in the

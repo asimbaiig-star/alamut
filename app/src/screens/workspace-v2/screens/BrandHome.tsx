@@ -437,7 +437,11 @@ function SparkComposer({ onRoute, value, setValue }: {
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
-              onRoute('spark');
+              // Pre-fix Send/Enter discarded what the brand typed and
+              // routed to a blank Spark welcome. Now we encode the
+              // prompt onto the route so Spark fires it on mount.
+              const t = value.trim();
+              onRoute(t ? `spark?prompt=${encodeURIComponent(t)}` : 'spark');
             }
           }}
         />
@@ -453,7 +457,10 @@ function SparkComposer({ onRoute, value, setValue }: {
           <button
             className="v2-btn v2-btn-accent v2-btn-sm"
             type="button"
-            onClick={() => onRoute('spark')}
+            onClick={() => {
+              const t = value.trim();
+              onRoute(t ? `spark?prompt=${encodeURIComponent(t)}` : 'spark');
+            }}
           >Send {Icon.arrow}</button>
         </div>
       </div>
@@ -464,7 +471,7 @@ function SparkComposer({ onRoute, value, setValue }: {
             key={s}
             type="button"
             className="v2-home-spark-suggestion"
-            onClick={() => { setValue(s); onRoute('spark'); }}
+            onClick={() => onRoute(`spark?prompt=${encodeURIComponent(s)}`)}
           >{s}</button>
         ))}
       </div>
@@ -995,7 +1002,10 @@ function CreatorOfTheWeek({ creator, onRoute }: { creator: V2Creator; onRoute: (
             className="v2-btn v2-btn-outline v2-btn-sm"
             type="button"
             style={{ flex: 1, justifyContent: 'center' }}
-            onClick={() => onRoute('inbox')}
+            // Pre-fix this routed to the plain inbox (no thread, no
+            // creator context). Now opens the creator's profile where
+            // the brand has the Invite / Send-offer affordances live.
+            onClick={() => onRoute(`creator:${creator.id}`)}
           >Send brief</button>
         </div>
       </div>
@@ -1045,7 +1055,21 @@ function CulturalCalendar({ onRoute }: { onRoute: (r: string) => void }) {
           <button
             className="v2-btn v2-btn-sm v2-btn-ghost"
             type="button"
-            onClick={() => onRoute('campaign-new')}
+            onClick={() => {
+              // Pre-seed the wizard with event context — name, deadline,
+              // category — so the brand lands on a partially-filled
+              // draft instead of a fully blank one. Year-short name
+              // (e.g. "Eid-ul-Adha '26") makes the resulting campaign
+              // labels feel timely without extra typing.
+              const year = new Date(e.date).getFullYear().toString().slice(-2);
+              const params = new URLSearchParams({
+                name: `${e.name} '${year}`,
+                deadline: e.date,
+                category: e.type,
+                brief: `Campaign window around ${e.name} (${new Date(e.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}).`,
+              });
+              onRoute(`campaign-new?${params.toString()}`);
+            }}
           >Plan{Icon.arrow}</button>
         </div>
       ))}

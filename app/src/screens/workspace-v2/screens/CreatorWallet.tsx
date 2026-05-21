@@ -5,7 +5,7 @@
 
 import { useState } from 'react';
 import { fmtUSD, fmtUSDfull, Icon, Topbar } from '../lib';
-import { useV2CreatorWallet, useV2CurrentCreator, v2RequestWithdrawal } from '../v2Hooks';
+import { useV2CreatorWallet, useV2CurrentCreator, v2RequestWithdrawal, v2CanWithdraw, withdrawalRejectionMessage } from '../v2Hooks';
 import { useStore } from '@/lib/api/store';
 import { api } from '@/lib/api/client';
 import { pushToast } from '@/lib/utils/toast';
@@ -262,12 +262,20 @@ export function CreatorWallet({ onRoute }: Props) {
           available={W.available}
           onClose={() => setShowWithdraw(false)}
           onConfirm={(amount) => {
+            // Pre-check via v2CanWithdraw so the user sees a SPECIFIC
+            // failure reason (KYC not done, no bank, dispute window
+            // still open) instead of a generic "Withdrawal failed".
+            const check = v2CanWithdraw(amount);
+            if (!check.ok) {
+              pushToast(withdrawalRejectionMessage(check.reason), 'bad');
+              return;
+            }
             const ok = v2RequestWithdrawal(amount);
             if (ok) {
               pushToast(`Withdrawal of $${amount.toLocaleString()} initiated · 1–2 business days to your bank`);
               setShowWithdraw(false);
             } else {
-              pushToast('Withdrawal failed — check amount and try again');
+              pushToast('Withdrawal failed — please try again', 'bad');
             }
           }}
         />

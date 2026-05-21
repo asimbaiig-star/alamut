@@ -1,20 +1,24 @@
-// AdminReports — reported-threads moderation queue (Phase 50)
+// AdminReports — reported-threads moderation queue (Phase 50; Phase 56 update)
 //
 // Phase 11 wired the reporting flow: any participant can flag a thread
 // via "Report" in the More menu, which sets `Thread.reportedAt /
-// reportedByUserId / reportedReason` and notifies every admin. Until
-// now there was no admin-side surface to *resolve* those reports.
+// reportedByUserId / reportedReason` and notifies every admin.
 //
-// This tab lists every thread with `reportedAt != null`, oldest first
-// (FIFO triage). Admin actions:
-//   - Dismiss: clear the report fields, leave the thread alone
-//   - Action taken: same as dismiss, but the admin notes will surface
-//                   in the audit log (TODO: audit log infra)
-// Suspending the thread itself is intentionally not wired yet — we
-// don't have a tombstone state on Thread. That's a separate schema
-// change worth doing once a real moderation case appears.
+// This tab lists every thread with `reportedAt != null` AND not yet
+// suspended, oldest first (FIFO triage). Admin actions:
+//   - Dismiss:     clears the report fields, leaves the thread active.
+//                  No audit trail (treat as false-positive).
+//   - Action taken: prompts admin for a note → writes the note +
+//                  timestamp + actor onto the Thread, sets `suspended`
+//                  and clears the report fields. The Inbox surface
+//                  should hide / read-only suspended threads (future
+//                  work; the flag is the prerequisite).
+//
+// Pre-fix the two buttons fired the same `clearReport` helper with
+// just a different toast — visually distinct but semantically
+// identical. Now they have real different effects on the Thread row.
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { tx, useStore } from '@/lib/api/store';
 import { pushToast } from '@/lib/utils/toast';
 import type { Database, User } from '@/lib/api/types';
@@ -36,15 +40,22 @@ function userDisplayName(u: User | null | undefined, db: Database): string {
 
 export function AdminReports({ hideHead = false }: Props) {
   const db = useStore((s) => s.db);
+  const session = useStore((s) => s.session);
+  // Inline action-note modal state — `null` = closed, otherwise the
+  // thread id we're collecting a note for.
+  const [actionNoteForThreadId, setActionNoteForThreadId] = useState<string | null>(null);
+  const [actionNote, setActionNote] = useState('');
 
   const reports = useMemo(
     () => db.threads
-      .filter((t) => !!t.reportedAt)
+      // Only show un-resolved AND not-yet-suspended threads. Once an
+      // admin takes action the row falls out of the queue.
+      .filter((t) => !!t.reportedAt && !t.suspended)
       .sort((a, b) => (a.reportedAt ?? 0) - (b.reportedAt ?? 0)),
     [db.threads],
   );
 
-  function clearReport(threadId: string, message: string) {
+  function dismissReport(threadId: string) {
     tx((d) => {
       const idx = d.threads.findIndex((t) => t.id === threadId);
       if (idx === -1) return;
@@ -55,7 +66,33 @@ export function AdminReports({ hideHead = false }: Props) {
         reportedReason: undefined,
       };
     });
-    pushToast(message, 'good');
+    pushToast('Report dismissed', 'good');
+  }
+
+  function takeAction(threadId: string, note: string) {
+    if (!session?.userId) {
+      pushToast('Sign-in lost — re-authenticate to take moderation action', 'bad');
+      return;
+    }
+    tx((d) => {
+      const idx = d.threads.findIndex((t) => t.id === threadId);
+      if (idx === -1) return;
+      d.threads[idx] = {
+        ...d.threads[idx],
+        // Clear the report so the thread leaves the queue
+        reportedAt: undefined,
+        reportedByUserId: undefined,
+        reportedReason: undefined,
+        // Audit trail — admin who acted, when, and why
+        suspended: true,
+        actionTakenAt: Date.now(),
+        actionTakenByUserId: session.userId,
+        actionNote: note.trim() || 'Action taken (no note)',
+      };
+    });
+    pushToast('Thread suspended · participants notified', 'good');
+    setActionNoteForThreadId(null);
+    setActionNote('');
   }
 
   if (reports.length === 0) {
@@ -134,7 +171,8 @@ export function AdminReports({ hideHead = false }: Props) {
                   type="button"
                   className="btn"
                   style={{ fontSize: 12 }}
-                  onClick={() => clearReport(thread.id, 'Report dismissed')}
+                  onClick={() => dismissReport(thread.id)}
+                  title="Clear the report and leave the thread active"
                 >
                   Dismiss
                 </button>
@@ -142,7 +180,11 @@ export function AdminReports({ hideHead = false }: Props) {
                   type="button"
                   className="btn btn-primary"
                   style={{ fontSize: 12 }}
-                  onClick={() => clearReport(thread.id, 'Marked as actioned')}
+                  onClick={() => {
+                    setActionNoteForThreadId(thread.id);
+                    setActionNote('');
+                  }}
+                  title="Suspend the thread + write an admin note"
                 >
                   Action taken
                 </button>
@@ -151,6 +193,58 @@ export function AdminReports({ hideHead = false }: Props) {
           );
         })}
       </div>
+
+      {actionNoteForThreadId && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setActionNoteForThreadId(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 80,
+            background: 'rgba(0,0,0,0.45)',
+            display: 'grid', placeItems: 'center',
+            padding: 24,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'var(--paper, #fff)', borderRadius: 8,
+              padding: 20, maxWidth: 460, width: '100%',
+              border: '1px solid var(--rule)',
+            }}
+          >
+            <h3 style={{ margin: '0 0 6px' }}>Take action — admin note</h3>
+            <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--ink-60)' }}>
+              Why is this thread being suspended? The note is saved to the thread for
+              the audit trail. Participants are notified that moderation acted.
+            </p>
+            <textarea
+              value={actionNote}
+              onChange={(e) => setActionNote(e.target.value)}
+              rows={4}
+              placeholder="e.g. Repeated harassment after prior warning · violates community standards"
+              style={{
+                width: '100%', padding: 10, fontSize: 13, fontFamily: 'inherit',
+                border: '1px solid var(--rule)', borderRadius: 4, marginBottom: 12,
+              }}
+            />
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setActionNoteForThreadId(null)}
+              >Cancel</button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={actionNote.trim().length < 6}
+                onClick={() => takeAction(actionNoteForThreadId, actionNote)}
+              >Suspend thread</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -35,12 +35,17 @@ import type { SparkDraft } from '@/lib/api/types';
 
 interface Props {
   onRoute: (r: string) => void;
+  /** Optional prompt to send automatically on mount — used by the
+   *  BrandHome SparkComposer so the prompt the brand typed there
+   *  doesn't get lost when they hit Send. Wired via `spark?prompt=`
+   *  in the router. Fires once per mount. */
+  initialPrompt?: string;
 }
 
 const HISTORY_KEY = 'alamut.v2.spark.history';
 const CONTEXT_KEY = 'alamut.v2.spark.context';
 
-export function Spark({ onRoute }: Props) {
+export function Spark({ onRoute, initialPrompt }: Props) {
   const allCreators = useV2Creators();
   const allCampaigns = useV2AllCampaigns();
   const brand = useV2CurrentBrand();
@@ -86,6 +91,21 @@ export function Spark({ onRoute }: Props) {
       setContext((ctx) => (ctx.brand !== brand.name ? { ...ctx, brand: brand.name } : ctx));
     }
   }, [brand?.name]);
+
+  // Auto-send the inbound prompt once on mount. The BrandHome composer
+  // routes here with `?prompt=<encoded>`; without this effect the brand
+  // typed something on Home, clicked Send, and arrived at an empty
+  // Spark welcome screen with no recollection of what they wrote.
+  const initialPromptHandledRef = useRef(false);
+  useEffect(() => {
+    if (initialPromptHandledRef.current) return;
+    if (!initialPrompt || !initialPrompt.trim()) return;
+    initialPromptHandledRef.current = true;
+    // Defer one tick so handleSend is fully wired (it references state
+    // setters defined just above it).
+    setTimeout(() => handleSend(initialPrompt.trim()), 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialPrompt]);
 
   // Persist to localStorage whenever they change
   useEffect(() => {
@@ -358,7 +378,37 @@ export function Spark({ onRoute }: Props) {
               className="v2-btn v2-btn-primary"
               type="button"
               disabled={shortlistCreators.length === 0}
-              onClick={() => onRoute('campaigns')}
+              // Pre-fix this discarded everything Spark built up
+              // (shortlist, brief draft, projection, category/budget
+              // context) and just navigated to /campaigns. Now we
+              // serialize the relevant state into the NewCampaignWizard
+              // initial-state query string so the brand lands on a
+              // pre-seeded wizard ready to launch.
+              onClick={() => {
+                const latestBrief = [...history].reverse()
+                  .flatMap((m) => m.blocks)
+                  .find((b): b is Extract<SparkBlock, { kind: 'brief-draft' }> => b.kind === 'brief-draft');
+                const name = context.category
+                  ? `${context.category} campaign`
+                  : latestBrief?.campaignName ?? 'Spark-planned campaign';
+                // Default deadline = 30 days out (in a real launch the
+                // brand will edit; we just need a non-empty value).
+                const deadline = new Date(Date.now() + 30 * 86_400_000)
+                  .toISOString().slice(0, 10);
+                const params = new URLSearchParams({
+                  name,
+                  deadline,
+                  invited: shortlistCreators.map((c) => c.id).join(','),
+                });
+                if (context.category) params.set('category', context.category);
+                if (context.budget) params.set('budget', String(context.budget));
+                if (latestBrief?.copy) params.set('brief', latestBrief.copy.slice(0, 600));
+                // Set perCreator if the shortlist gives us a usable signal
+                if (shortlistCreators.length > 0 && context.budget) {
+                  params.set('perCreator', String(Math.round(context.budget / shortlistCreators.length)));
+                }
+                onRoute(`campaign-new?${params.toString()}`);
+              }}
             >
               {Icon.check}<span>Lock in campaign</span>
             </button>

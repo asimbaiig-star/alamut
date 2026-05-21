@@ -69,12 +69,24 @@ describe('StageActionBanner', () => {
       expect(screen.getByRole('button', { name: /Message brand/i })).toBeInTheDocument();
     });
 
-    it('returns null when invited stage has no pendingOffer (defensive fallback)', () => {
-      const { container } = render(<StageActionBanner {...baseProps({
+    it('renders no-offer invited branch with Message-brand CTA (cold invite)', () => {
+      // Phase 56 — pre-fix this returned null, leaving cold-invited
+      // creators with no action affordance on CollabDetail. Now the
+      // banner surfaces a "message brand to align on rate" prompt.
+      const h = buildHandlers();
+      render(<StageActionBanner {...baseProps({
         stage: 'invited',
+        // No pendingOffer; brand cold-invited without naming a rate.
+        inviteMessage: 'We loved your last Eid edit — want to be on Studio Notes?',
+        ...h,
       })} />);
-      // No title rendered → entire component returns null
-      expect(container.firstChild).toBeNull();
+      expect(screen.getByText(/invited you/i)).toBeInTheDocument();
+      // The brand's pitch is surfaced verbatim
+      expect(screen.getByText(/loved your last Eid edit/i)).toBeInTheDocument();
+      // Only Message-brand CTA — no Accept/Counter (there's nothing to accept)
+      expect(screen.getByRole('button', { name: /Message brand/i })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Accept invitation/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^Counter$/i })).not.toBeInTheDocument();
     });
 
     it('dispatches onAccept / onCounter / onMessageBrand on click', () => {

@@ -13,6 +13,17 @@ import { parseNumberInput } from '@/lib/utils/format';
 
 interface Props {
   onRoute: (r: string) => void;
+  /** Pre-seed values for the wizard. Lets entry points (Cultural
+   *  Calendar "Plan" CTAs, Spark "Lock in campaign", etc.) drop the
+   *  brand into a partially-filled draft instead of a blank one. Each
+   *  field is optional — un-set fields fall through to the defaults. */
+  initialName?: string;
+  initialDeadline?: string;
+  initialCategory?: string;
+  initialBriefSeed?: string;
+  initialInvitedCreators?: string[];
+  initialBudget?: number;
+  initialPerCreator?: number;
 }
 
 interface Placement {
@@ -115,15 +126,18 @@ const STEPS = [
   { id: 'review',   label: 'Review & launch' },
 ] as const;
 
-export function NewCampaignWizard({ onRoute }: Props) {
+export function NewCampaignWizard({
+  onRoute, initialName, initialDeadline, initialCategory, initialBriefSeed,
+  initialInvitedCreators, initialBudget, initialPerCreator,
+}: Props) {
   const brand = useV2CurrentBrand();
   const wallet = useV2BrandWallet();
   const allCreators = useV2Creators();
   const [step, setStep] = useState(0);
   const [draft, setDraft] = useState<Draft>({
-    name: '',
+    name: initialName ?? '',
     objective: 'awareness',
-    brief: '',
+    brief: initialBriefSeed ?? '',
     placements: [
       { platform: 'instagram', format: 'reel', count: 1 },
       { platform: 'instagram', format: 'story', count: 2 },
@@ -131,11 +145,13 @@ export function NewCampaignWizard({ onRoute }: Props) {
     audienceCity: ['Karachi', 'Lahore'],
     audienceGender: 'any',
     audienceAge: ['25-34', '18-24'],
-    categories: brand?.preferredCategories?.slice(0, 2) ?? ['Fashion', 'Lifestyle'],
-    budget: 15000,
-    perCreator: 350,
-    deadline: '2026-06-30',
-    invitedCreators: [],
+    categories: initialCategory
+      ? [initialCategory, ...(brand?.preferredCategories?.slice(0, 1) ?? [])]
+      : (brand?.preferredCategories?.slice(0, 2) ?? ['Fashion', 'Lifestyle']),
+    budget: initialBudget ?? 15000,
+    perCreator: initialPerCreator ?? 350,
+    deadline: initialDeadline ?? '2026-06-30',
+    invitedCreators: initialInvitedCreators ?? [],
   });
 
   const update = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));

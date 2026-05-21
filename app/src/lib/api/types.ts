@@ -988,6 +988,16 @@ export interface Thread {
   reportedByUserId?: string;
   /** Free-text reason captured at report time. */
   reportedReason?: string;
+  /** Phase 56 — moderation outcome fields. When an admin takes action
+   *  on a reported thread (rather than dismissing the report), they
+   *  write a short note and the thread is marked suspended. The
+   *  Inbox surface should hide / read-only-render a suspended thread
+   *  (future work; the flag is the prerequisite). Dismiss = report
+   *  cleared, no audit trail. Action taken = these fields set. */
+  suspended?: boolean;
+  actionTakenAt?: number;
+  actionTakenByUserId?: string;
+  actionNote?: string;
 }
 
 export interface MessageAttachment {

@@ -14,7 +14,7 @@ import {
   useV2AllCampaigns, useV2CreatorWallet, useV2CurrentCreator, useV2Creators,
   useV2MyCollabs,
 } from '../v2Hooks';
-import { creatorToV2 } from '../v2Adapters';
+import { creatorToV2, computeMatchScore } from '../v2Adapters';
 import { useStore } from '@/lib/api/store';
 import type { V2Campaign, V2Creator } from '../data';
 import { RecentActivityCard } from './BrandHome';
@@ -564,16 +564,21 @@ function BriefMatches({ me, campaigns, myCollabs, onRoute }: {
   myCollabs: ReturnType<typeof useV2MyCollabs>;
   onRoute: (r: string) => void;
 }) {
+  const db = useStore((s) => s.db);
   const open = useMemo(() => {
+    // Pre-fix the match score was positional — the top open brief was
+    // always 94%, the second 87%, the third 72%, regardless of fit.
+    // Now we compute the real per-(creator, campaign) score via
+    // computeMatchScore (lifted from BriefDetail), rank by it, and
+    // surface the top 3 matches.
     const appliedIds = new Set(myCollabs.map((c) => c.campaignId));
+    const rawMe = db.creators.find((c) => c.id === me.id) ?? null;
     return campaigns
       .filter((c) => c.status !== 'Completed' && !appliedIds.has(c.id))
-      .slice(0, 3)
-      .map((c, i) => ({
-        campaign: c,
-        match: [94, 87, 72][i] ?? 70,
-      }));
-  }, [campaigns, myCollabs]);
+      .map((c) => ({ campaign: c, match: computeMatchScore(me, rawMe, c, db) }))
+      .sort((a, b) => b.match - a.match)
+      .slice(0, 3);
+  }, [campaigns, myCollabs, me, db]);
 
   return (
     <div className="v2-card v2-home-inbox">
@@ -602,7 +607,6 @@ function BriefMatches({ me, campaigns, myCollabs, onRoute }: {
             No new briefs right now. We'll surface fresh matches when brands post.
           </div>
         ) : open.map(({ campaign, match }) => {
-          void me; // me would feed into a real-match calculation
           const perCreator = Math.round(campaign.budget / Math.max(campaign.creators.length || 4, 1));
           return (
             <div key={campaign.id} className="v2-home-brief-match">

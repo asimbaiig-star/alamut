@@ -20,7 +20,7 @@ describe('LeaveReviewModal', () => {
   it('renders the brand + campaign in the header', () => {
     render(
       <LeaveReviewModal
-        brandName="Aesop"
+        subjectName="Aesop"
         campaignName="Spring Renewal"
         onClose={() => undefined}
         onSubmit={() => undefined}
@@ -33,7 +33,7 @@ describe('LeaveReviewModal', () => {
   it('renders 5 star buttons with aria labels', () => {
     render(
       <LeaveReviewModal
-        brandName="Aesop"
+        subjectName="Aesop"
         campaignName="X"
         onClose={() => undefined}
         onSubmit={() => undefined}
@@ -47,7 +47,7 @@ describe('LeaveReviewModal', () => {
   it('disables submit until rating + ≥10 char note both present', () => {
     render(
       <LeaveReviewModal
-        brandName="Aesop"
+        subjectName="Aesop"
         campaignName="X"
         onClose={() => undefined}
         onSubmit={() => undefined}
@@ -74,7 +74,7 @@ describe('LeaveReviewModal', () => {
     const onSubmit = vi.fn();
     render(
       <LeaveReviewModal
-        brandName="Aesop"
+        subjectName="Aesop"
         campaignName="X"
         onClose={() => undefined}
         onSubmit={onSubmit}
@@ -92,7 +92,7 @@ describe('LeaveReviewModal', () => {
     const onClose = vi.fn();
     render(
       <LeaveReviewModal
-        brandName="Aesop"
+        subjectName="Aesop"
         campaignName="X"
         onClose={onClose}
         onSubmit={() => undefined}
@@ -106,7 +106,7 @@ describe('LeaveReviewModal', () => {
     const onClose = vi.fn();
     render(
       <LeaveReviewModal
-        brandName="Aesop"
+        subjectName="Aesop"
         campaignName="X"
         onClose={onClose}
         onSubmit={() => undefined}

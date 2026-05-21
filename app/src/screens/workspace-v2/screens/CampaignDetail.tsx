@@ -31,6 +31,7 @@ import type {
   V2Campaign, V2Collab, V2Creator, V2CampaignPerf, V2Deliverable,
 } from '../data';
 import { ContentReviewModal } from './ContentReviewModal';
+import { LeaveReviewModal } from './LeaveReviewModal';
 import { SendOfferModal, MarkLiveModal, CounterOfferModal, InviteCreatorsModal } from './WorkflowModals';
 import {
   v2EndCampaign, v2PauseCampaign, v2RejectApplication, v2ResumeCampaign,
@@ -38,6 +39,7 @@ import {
   getApplicationFor, getActiveOfferFor, getLatestSubmissionFor,
 } from '../v2CampaignActions';
 import { v2RequestCollabCancel } from '../v2CollabActions';
+import { v2LeaveReview } from '../v2CampaignActions';
 import { useStore } from '@/lib/api/store';
 import { pushToast } from '@/lib/utils/toast';
 // P7 — UI gating for campaign-lifecycle buttons.
@@ -72,6 +74,7 @@ export function CampaignDetail({
   const collabs = useV2CollabsForCampaign(campaignId);
   const creators = useV2Creators();
   const db = useStore((s) => s.db);
+  const session = useStore((s) => s.session);
   const currentBrand = useV2CurrentBrand();
   // Ownership gate — this surface mutates campaign state (pause/end,
   // accept-counter, mark-live, etc.). Only the brand that owns the
@@ -130,6 +133,11 @@ export function CampaignDetail({
   // path so the brand can multi-select + send invitations without leaving
   // the campaign context.
   const [inviteOpen, setInviteOpen] = useState(false);
+  // Brand-side LeaveReview — paid-stage kanban cards get a Leave-
+  // review CTA so brands can review the creator (mirrors the creator-
+  // side leave-review on CollabDetail). v2LeaveReview already supports
+  // reviewType='creator'; just had no UI to fire it pre-fix.
+  const [leavingReview, setLeavingReview] = useState<{ collab: V2Collab; creator: V2Creator } | null>(null);
 
   // Pull the raw campaign for stage controls (Pause/Resume/End)
   const rawCampaign = db.campaigns.find((c) => c.id === campaignId);
@@ -251,6 +259,7 @@ export function CampaignDetail({
             onMarkLive={(submissionId, name) => setMarkingLive({ submissionId, campaignName: name })}
             onCounterBack={(offerId, counterRate, creatorName) =>
               setCounterBack({ offerId, counterRate, creatorName })}
+            onLeaveReview={(collab, creator) => setLeavingReview({ collab, creator })}
             campaignName={campaign.name}
           />
         )}
@@ -320,6 +329,26 @@ export function CampaignDetail({
             ...db.collaborations.filter((c) => c.campaignId === campaignId).map((c) => c.creatorId),
           ]))}
           onClose={() => setInviteOpen(false)}
+        />
+      )}
+      {leavingReview && session?.userId && (
+        <LeaveReviewModal
+          subjectName={leavingReview.creator.name}
+          subjectKind="creator"
+          campaignName={campaign.name}
+          onClose={() => setLeavingReview(null)}
+          onSubmit={(rating, text) => {
+            v2LeaveReview({
+              campaignId: leavingReview.collab.campaignId,
+              fromUserId: session.userId,
+              reviewType: 'creator',
+              targetId: leavingReview.creator.id,
+              rating,
+              text,
+            });
+            pushToast('Review submitted — appears on the creator\'s storefront', 'good');
+            setLeavingReview(null);
+          }}
         />
       )}
     </>
@@ -789,7 +818,7 @@ function cv2DaysUntil(due: string): number {
 // Pipeline Kanban (8 columns)
 // =====================================================================
 
-function PipelineKanban({ collabs, creators, onReview, onRoute, onSendOffer, onMarkLive, onCounterBack, campaignName }: {
+function PipelineKanban({ collabs, creators, onReview, onRoute, onSendOffer, onMarkLive, onCounterBack, onLeaveReview, campaignName }: {
   collabs: V2Collab[];
   creators: V2Creator[];
   onReview: (c: V2Collab) => void;
@@ -797,6 +826,7 @@ function PipelineKanban({ collabs, creators, onReview, onRoute, onSendOffer, onM
   onSendOffer: (creator: V2Creator, defaultRate: number) => void;
   onMarkLive: (submissionId: string, campaignName: string) => void;
   onCounterBack: (offerId: string, counterRate: number, creatorName: string) => void;
+  onLeaveReview: (collab: V2Collab, creator: V2Creator) => void;
   campaignName: string;
 }) {
   return (
@@ -837,6 +867,7 @@ function PipelineKanban({ collabs, creators, onReview, onRoute, onSendOffer, onM
                     onSendOffer={onSendOffer}
                     onMarkLive={onMarkLive}
                     onCounterBack={onCounterBack}
+                    onLeaveReview={onLeaveReview}
                   />
                 );
               })}
@@ -853,7 +884,7 @@ function PipelineKanban({ collabs, creators, onReview, onRoute, onSendOffer, onM
 // KanbanCollabCard — stage-appropriate inline actions
 // =====================================================================
 
-function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, onSendOffer, onMarkLive, onCounterBack }: {
+function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, onSendOffer, onMarkLive, onCounterBack, onLeaveReview }: {
   collab: V2Collab;
   creator: V2Creator;
   campaignName: string;
@@ -862,7 +893,19 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
   onSendOffer: (creator: V2Creator, defaultRate: number) => void;
   onMarkLive: (submissionId: string, campaignName: string) => void;
   onCounterBack: (offerId: string, counterRate: number, creatorName: string) => void;
+  onLeaveReview: (collab: V2Collab, creator: V2Creator) => void;
 }) {
+  // Has the current brand already reviewed this creator on this
+  // collab? Suppresses the Leave-review CTA on cards where the brand
+  // already wrote one (no double-reviews).
+  const dbForReviews = useStore.getState().db;
+  const sessionUid = useStore.getState().session?.userId;
+  const alreadyReviewed = !!sessionUid && !!dbForReviews.reviews?.some(
+    (r) => r.campaignId === collab.campaignId
+      && r.reviewType === 'creator'
+      && r.targetId === creator.id
+      && r.fromUserId === sessionUid,
+  );
   const hasReview = collab.deliverables.some((d) => d.status === 'in_review');
   // Overdue: any pending deliverable whose human-format `due` is past.
   // Drives the gold left-border indicator on the kanban card.
@@ -1066,8 +1109,28 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
     );
   } else if (collab.stage === 'paid') {
     stageAction = (
-      <div className="v2-muted" style={{ fontSize: 11, marginTop: 8, textAlign: 'center', fontStyle: 'italic' }}>
-        Paid out · complete
+      <div className="v2-col" style={{ gap: 6, marginTop: 8 }}>
+        <div className="v2-muted" style={{ fontSize: 11, textAlign: 'center', fontStyle: 'italic' }}>
+          Paid out · complete
+        </div>
+        {/* Brand-side Leave-review CTA. Pre-fix v2LeaveReview supported
+            reviewType='creator' but no UI fired it from v2, so creator
+            storefronts never accumulated new brand-written reviews. */}
+        {!alreadyReviewed && (
+          <button
+            type="button"
+            className="v2-btn v2-btn-sm v2-btn-outline"
+            style={{ width: '100%', justifyContent: 'center', fontSize: 11 }}
+            onClick={(e) => { stop(e); onLeaveReview(collab, creator); }}
+          >
+            Leave review
+          </button>
+        )}
+        {alreadyReviewed && (
+          <div className="v2-muted" style={{ fontSize: 11, textAlign: 'center' }}>
+            ✓ Reviewed
+          </div>
+        )}
       </div>
     );
   } else if (collab.stage === 'confirmed') {

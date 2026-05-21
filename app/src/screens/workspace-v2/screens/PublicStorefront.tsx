@@ -43,15 +43,16 @@ export function PublicStorefront({ handle, onRoute }: Props) {
   const firstName = creator.name.split(' ')[0];
   const publicUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/c/${creator.handle.replace('@', '')}`;
 
-  // Hero CTAs — preview-mode routes the "Brief" CTA through the
-  // workspace inbox (so the creator can preview the funnel) rather
-  // than to /signup. Other CTAs match the public surface.
+  // Hero CTAs — preview-mode routes the "Brief" CTA to the creator's
+  // workspace profile where the Invite + Send-offer affordances live.
+  // Pre-fix it just routed to the plain inbox (no creator context),
+  // so a brand previewing a storefront landed nowhere actionable.
   const heroActions = (
     <>
       <button
         className="v2-btn v2-btn-primary"
         type="button"
-        onClick={() => onRoute('inbox')}
+        onClick={() => onRoute(`creator:${creator.id}`)}
       >
         {Icon.send} Brief on Alamut
       </button>

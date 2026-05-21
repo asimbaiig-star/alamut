@@ -415,9 +415,36 @@ function RouteOutlet({ route, onRoute, persona }: { route: string; onRoute: (r: 
 
   // Brand
   if (route === 'home') return <BrandHome onRoute={onRoute} />;
-  if (route === 'spark') return <Spark onRoute={onRoute} />;
+  if (route === 'spark' || route.startsWith('spark?')) {
+    // `spark?prompt=<encoded>` lets entry points (BrandHome composer,
+    // future spark-suggestion deep links) pre-fill the Spark
+    // conversation with what the user typed before navigating.
+    const queryStr = route.includes('?') ? route.split('?')[1] : '';
+    const params = new URLSearchParams(queryStr);
+    const initialPrompt = params.get('prompt') ?? undefined;
+    return <Spark onRoute={onRoute} initialPrompt={initialPrompt} />;
+  }
   if (route === 'discover') return <Discover onRoute={onRoute} />;
-  if (route === 'campaign-new') return <NewCampaignWizard onRoute={onRoute} />;
+  if (route === 'campaign-new' || route.startsWith('campaign-new?')) {
+    // `campaign-new?name=Eid&deadline=2026-06-06&category=Cultural&brief=...`
+    // lets entry points (CulturalCalendar Plan tiles, Spark Lock-in)
+    // pre-seed the wizard with event/draft context.
+    const queryStr = route.includes('?') ? route.split('?')[1] : '';
+    const params = new URLSearchParams(queryStr);
+    const invitedStr = params.get('invited') ?? '';
+    return (
+      <NewCampaignWizard
+        onRoute={onRoute}
+        initialName={params.get('name') ?? undefined}
+        initialDeadline={params.get('deadline') ?? undefined}
+        initialCategory={params.get('category') ?? undefined}
+        initialBriefSeed={params.get('brief') ?? undefined}
+        initialBudget={params.get('budget') ? Number(params.get('budget')) || undefined : undefined}
+        initialPerCreator={params.get('perCreator') ? Number(params.get('perCreator')) || undefined : undefined}
+        initialInvitedCreators={invitedStr ? invitedStr.split(',').filter(Boolean) : undefined}
+      />
+    );
+  }
   if (route === 'campaigns') return <Campaigns onRoute={onRoute} />;
   if (route === 'inbox') return <Inbox onRoute={onRoute} persona="brand" />;
   if (route === 'wallet' || route.startsWith('wallet?')) {

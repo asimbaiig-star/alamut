@@ -12,14 +12,19 @@
 import { useState } from 'react';
 
 export interface LeaveReviewModalProps {
-  brandName: string;
+  /** Name of the entity being reviewed. Creator-side reviews pass the
+   *  brand name; brand-side reviews pass the creator name. */
+  subjectName: string;
+  /** Type of subject — used to tailor the copy. Defaults to 'brand'
+   *  so the existing creator-side call sites keep working unchanged. */
+  subjectKind?: 'brand' | 'creator';
   campaignName: string;
   onClose: () => void;
   onSubmit: (rating: number, text: string) => void;
 }
 
 export function LeaveReviewModal({
-  brandName, campaignName, onClose, onSubmit,
+  subjectName, subjectKind = 'brand', campaignName, onClose, onSubmit,
 }: LeaveReviewModalProps) {
   const [rating, setRating] = useState(0);
   const [text, setText] = useState('');
@@ -39,9 +44,10 @@ export function LeaveReviewModal({
         <h2 style={{
           fontFamily: 'var(--v2-font-display)', fontSize: 22, fontWeight: 500,
           margin: '0 0 6px', letterSpacing: '-0.02em',
-        }}>Review {brandName}</h2>
+        }}>Review {subjectName}</h2>
         <p className="v2-muted" style={{ margin: '0 0 14px', fontSize: 13 }}>
-          How was the collaboration on {campaignName}? Your review is public on the brand's profile.
+          How was the collaboration on {campaignName}? Your review is public on the
+          {subjectKind === 'creator' ? " creator's storefront." : " brand's profile."}
         </p>
         <label className="v2-eyebrow" style={{ display: 'block', marginBottom: 6 }}>Rating</label>
         <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>

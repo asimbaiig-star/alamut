@@ -241,6 +241,7 @@ export function Inbox({ onRoute, persona, forceThreadId, forcePanelMode }: Props
               setPendingAttachments((curr) => curr.filter((_, i) => i !== idx))
             }
             attachUploading={attachUploading}
+            panelMode={panelMode}
           />
         ) : (
           <div className="v2-inbox-empty v2-inbox-thread">
@@ -398,7 +399,7 @@ function ConversationList({
 // =====================================================================
 function Thread({
   conversation, counterparty, persona, draft, setDraft, onRoute, onSend,
-  pendingAttachments, onPickFiles, onRemoveAttachment, attachUploading,
+  pendingAttachments, onPickFiles, onRemoveAttachment, attachUploading, panelMode,
 }: {
   conversation: V2Conversation;
   counterparty: V2Creator;
@@ -411,6 +412,9 @@ function Thread({
   onPickFiles: (files: FileList | null) => void;
   onRemoveAttachment: (idx: number) => void;
   attachUploading: boolean;
+  /** When 'detailed' the right pane is already expanded — the
+   *  "Detail view" button hides itself to avoid being a no-op. */
+  panelMode: 'compact' | 'detailed';
 }) {
   // Ref the hidden file input so the visible button can dispatch a click.
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -500,13 +504,22 @@ function Thread({
             View brief
           </button>
         ) : null}
-        <button
-          className="v2-btn v2-btn-primary v2-btn-sm"
-          type="button"
-          onClick={() => onRoute(`deal:${conversation.id}`)}
-        >
-          Open deal room
-        </button>
+        {/* Pre-fix this said "Open deal room" and clicking from inside
+            the inbox routed to `deal:<convId>` — which Workspace.tsx
+            resolved straight back to the SAME Inbox with the detail
+            panel expanded. The label promised navigation; the behavior
+            was just expand-the-right-pane. Now hidden when the panel
+            is already detailed (so the button is never a no-op) and
+            relabeled to match its actual effect. */}
+        {panelMode !== 'detailed' && (
+          <button
+            className="v2-btn v2-btn-primary v2-btn-sm"
+            type="button"
+            onClick={() => onRoute(`deal:${conversation.id}`)}
+          >
+            Detail view
+          </button>
+        )}
         <div ref={moreRef} style={{ position: 'relative' }}>
           <button
             className="v2-icon-btn"
