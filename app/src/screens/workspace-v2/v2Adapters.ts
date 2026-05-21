@@ -191,9 +191,15 @@ const STAGE_TO_V2_STATUS: Record<Campaign['stage'], V2Campaign['status']> = {
 
 export function campaignToV2(c: Campaign, db: Database): V2Campaign {
   const brand = db.brands.find((b) => b.id === c.brandId);
-  // Live placements = approved submissions for this campaign
-  const liveCount = db.submissions.filter(
-    (s) => s.campaignId === c.id && s.status === 'approved',
+  // Live placements = collabs at stage 'live' or 'paid'. Pre-fix this
+  // was `submissions where status='approved'`, which overcounted:
+  // submissions stay at `approved` even after mark-live (deliverable
+  // status promotes to 'live', not the submission status). So the
+  // home card said "1 live" while the kanban Live column was empty
+  // for an approved-but-not-yet-marked-live collab. Counting raw
+  // Collaboration.stage matches the kanban exactly.
+  const liveCount = db.collaborations.filter(
+    (col) => col.campaignId === c.id && (col.stage === 'live' || col.stage === 'paid'),
   ).length;
   return {
     id: c.id,

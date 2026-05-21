@@ -262,10 +262,22 @@ export function BrandHome({ onRoute }: Props) {
         crumb={
           <span>
             {getGreeting()}
-            {urgentCount > 0 && (
+            {/* Pre-fix the topbar crumb showed `urgentCount` (urgent-
+                only filter) while the ActionInbox heading just below
+                showed `items.length` (all). A brand with 1 urgent + 3
+                non-urgent saw "1 thing needs you" in the crumb and
+                "4 things blocking" two inches below — two summaries
+                of the same list with different filters. Now both
+                read off the same `inboxItems.length`, with urgent
+                visible as a separate accent pill on the ActionInbox
+                card so the prioritization signal isn't lost. */}
+            {inboxItems.length > 0 && (
               <>
                 {' · '}
-                <span style={{ color: 'var(--v2-accent)' }}>{urgentCount} thing{urgentCount === 1 ? '' : 's'} need{urgentCount === 1 ? 's' : ''} you</span>
+                <span style={{ color: urgentCount > 0 ? 'var(--v2-accent)' : 'var(--v2-ink-3)' }}>
+                  {inboxItems.length} thing{inboxItems.length === 1 ? '' : 's'} need{inboxItems.length === 1 ? 's' : ''} you
+                  {urgentCount > 0 && ` · ${urgentCount} urgent`}
+                </span>
               </>
             )}
             {activeCampaigns[0] && (
@@ -819,7 +831,13 @@ function PacingStrip({ wallet, campaigns }: {
         <PacingStat
           label="In escrow"
           value={fmtUSD(wallet.reserved)}
-          sub={`across ${campaigns.filter((c) => c.status === 'Live').length} campaign${campaigns.length === 1 ? '' : 's'}`}
+          // Pluralize off the filtered count (Live campaigns), not the
+          // total campaign count, so 1 Live + 5 total no longer reads
+          // "across 1 campaigns".
+          sub={(() => {
+            const n = campaigns.filter((c) => c.status === 'Live').length;
+            return `across ${n} campaign${n === 1 ? '' : 's'}`;
+          })()}
         />
         <PacingStat
           label="Q2 budget"

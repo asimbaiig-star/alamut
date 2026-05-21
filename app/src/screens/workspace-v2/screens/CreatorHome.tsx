@@ -222,7 +222,7 @@ export function CreatorHome({ onRoute }: Props) {
       />
       <div className="v2-content">
         {/* Money hero */}
-        <EarningsHero wallet={wallet} onRoute={onRoute} />
+        <EarningsHero wallet={wallet} myCollabs={myCollabs} onRoute={onRoute} />
 
         {/* Recent activity — cross-persona event feed derived from
             server-persisted state (collab history + transactions +
@@ -273,8 +273,9 @@ export function CreatorHome({ onRoute }: Props) {
 // Earnings hero (gradient moss card)
 // =====================================================================
 
-function EarningsHero({ wallet, onRoute }: {
+function EarningsHero({ wallet, myCollabs, onRoute }: {
   wallet: ReturnType<typeof useV2CreatorWallet>;
+  myCollabs: ReturnType<typeof useV2MyCollabs>;
   onRoute: (r: string) => void;
 }) {
   const db = useStore((s) => s.db);
@@ -393,7 +394,7 @@ function EarningsHero({ wallet, onRoute }: {
           </div>
           <div className="v2-row v2-home-earnings-stats">
             <MiniStatLight label="Released today" value={fmtUSD(stats.releasedToday)} sub={wallet.ledger[0]?.desc?.slice(0, 32) ?? '—'} />
-            <MiniStatLight label="Releases this week" value={fmtUSD(stats.releasesThisWeek)} sub={`${myDeliverableCount(wallet)} pending`} />
+            <MiniStatLight label="Releases this week" value={fmtUSD(stats.releasesThisWeek)} sub={myDeliverableCount(myCollabs)} />
             <MiniStatLight label="Avg release time" value={lagCopy} sub={stats.avgLagHours > 0 ? 'submission → payout' : 'no payouts yet'} />
           </div>
         </div>
@@ -411,9 +412,20 @@ function EarningsHero({ wallet, onRoute }: {
   );
 }
 
-function myDeliverableCount(wallet: ReturnType<typeof useV2CreatorWallet>): string {
-  const pendingCount = Math.max(0, Math.round(wallet.pending / 200));
-  return `${pendingCount} deliverable${pendingCount === 1 ? '' : 's'} pending`;
+/** Real count of "pending" deliverables across the creator's active
+ *  collabs. Pre-fix this was `Math.round(wallet.pending / 200)` — a
+ *  random division of the pending wallet balance that had nothing to
+ *  do with actual deliverables. The MyCollabs surface showed the
+ *  truth (3 in-flight slots); this stat said 17 because $3,400 / 200.
+ *  Now both surfaces agree. Pending here means: needs action by the
+ *  creator (pending) OR feedback addressed (revision); in_review is
+ *  excluded since it's on the brand's side, not the creator's. */
+function myDeliverableCount(myCollabs: ReturnType<typeof useV2MyCollabs>): string {
+  const n = myCollabs.reduce(
+    (s, c) => s + c.deliverables.filter((d) => d.status === 'pending' || d.status === 'revision').length,
+    0,
+  );
+  return `${n} deliverable${n === 1 ? '' : 's'} pending`;
 }
 
 function MiniStatLight({ label, value, sub }: { label: string; value: string; sub: string }) {
@@ -592,7 +604,13 @@ function BriefMatches({ me, campaigns, myCollabs, onRoute }: {
             margin: '2px 0 0',
             letterSpacing: '-0.02em',
           }}>
-            {campaigns.filter((c) => c.status !== 'Completed').length} brand{campaigns.length === 1 ? '' : 's'} looking for your audience
+            {(() => {
+              // Pluralize off the filtered (open-brief) count, not the
+              // total campaigns count — pre-fix 1 open + 5 total read
+              // "1 brands looking for your audience".
+              const n = campaigns.filter((c) => c.status !== 'Completed').length;
+              return `${n} brand${n === 1 ? '' : 's'} looking for your audience`;
+            })()}
           </h3>
         </div>
         <button
