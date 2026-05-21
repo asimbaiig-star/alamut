@@ -193,21 +193,67 @@ export function BrandHome({ onRoute }: Props) {
     return scored[0]?.c;
   }, [brand?.savedCreators, campaigns, creators]);
 
-  // Find 3 outcome creators — split by "top performer", "breakout", "engagement leader"
+  // Find 3 outcome creators — split by "top performer", "breakout", "engagement leader".
+  // Also compute per-card deltas (vs pool average) so the OutcomeCard
+  // "+38% vs avg" / "2.1× your typical reach" / "ER ↑ vs niche" labels
+  // are real metrics instead of hardcoded marketing copy.
   const outcomes = useMemo(() => {
     const accepted = creators.filter((c) => campaigns.some((cm) => cm.creators.includes(c.id)));
     const pool = accepted.length >= 3 ? accepted : creators;
     const sorted = [...pool].sort((a, b) => b.score - a.score);
-    const byReach = [...pool].sort((a, b) =>
-      b.channels.reduce((s, ch) => s + ch.followers, 0) - a.channels.reduce((s, ch) => s + ch.followers, 0),
-    );
-    const byEr = [...pool].sort((a, b) => {
-      const erA = a.channels.reduce((s, ch) => s + ch.engagement, 0) / Math.max(a.channels.length, 1);
-      const erB = b.channels.reduce((s, ch) => s + ch.engagement, 0) / Math.max(b.channels.length, 1);
-      return erB - erA;
-    });
-    return { top: byReach[0], breakout: sorted[1] ?? sorted[0], er: byEr[0] };
+    const reachOf = (c: typeof pool[number]) => c.channels.reduce((s, ch) => s + ch.followers, 0);
+    const erOf = (c: typeof pool[number]) =>
+      c.channels.reduce((s, ch) => s + ch.engagement, 0) / Math.max(c.channels.length, 1);
+    const byReach = [...pool].sort((a, b) => reachOf(b) - reachOf(a));
+    const byEr = [...pool].sort((a, b) => erOf(b) - erOf(a));
+    const avgReach = pool.length > 0
+      ? pool.reduce((s, c) => s + reachOf(c), 0) / pool.length
+      : 0;
+    const avgEr = pool.length > 0
+      ? pool.reduce((s, c) => s + erOf(c), 0) / pool.length
+      : 0;
+    const top = byReach[0];
+    const breakout = sorted[1] ?? sorted[0];
+    const er = byEr[0];
+    // Top performer: reach vs avg as "+X% vs avg"
+    const topDelta = top && avgReach > 0
+      ? `+${Math.round((reachOf(top) / avgReach - 1) * 100)}% vs avg`
+      : '';
+    // Breakout: reach vs median as "N×" so the multiplier feels grounded
+    const sortedReach = [...pool].map(reachOf).sort((a, b) => a - b);
+    const medianReach = sortedReach.length > 0
+      ? sortedReach[Math.floor(sortedReach.length / 2)]
+      : 0;
+    const breakoutMult = breakout && medianReach > 0
+      ? `${(reachOf(breakout) / medianReach).toFixed(1)}× your typical reach`
+      : '';
+    // ER leader: delta in percentage points (not relative %) — "+1.4pt vs avg"
+    const erDelta = er && avgEr > 0
+      ? `+${(erOf(er) - avgEr).toFixed(1)}pt vs avg`
+      : '';
+    return { top, breakout, er, topDelta, breakoutMult, erDelta };
   }, [campaigns, creators]);
+
+  // Pacing pill — pre-fix always said "On plan" in moss-green regardless
+  // of state. Now computed: compare % of budget spent against % of the
+  // quarter elapsed and pick a label/tone. The threshold (±10 percentage
+  // points) is forgiving so normal lumpy spend doesn't flip to amber.
+  const pacing = useMemo(() => {
+    const totalBudget = campaigns.reduce((s, c) => s + c.budget, 0);
+    const totalSpent = campaigns.reduce((s, c) => s + c.spent, 0);
+    if (totalBudget === 0) return { label: 'No spend yet', tone: 'muted' as const };
+    const spentPct = (totalSpent / totalBudget) * 100;
+    if (spentPct > 100) return { label: 'Over budget', tone: 'amber' as const };
+    const now = new Date();
+    const quarter = Math.floor(now.getMonth() / 3);
+    const qStart = new Date(now.getFullYear(), quarter * 3, 1);
+    const qEnd = new Date(now.getFullYear(), quarter * 3 + 3, 0);
+    const elapsedPct = ((+now - +qStart) / Math.max(+qEnd - +qStart, 1)) * 100;
+    const drift = spentPct - elapsedPct;
+    if (drift > 15) return { label: 'Over pace', tone: 'amber' as const };
+    if (drift < -25) return { label: 'Behind pace', tone: 'amber' as const };
+    return { label: 'On plan', tone: 'moss' as const };
+  }, [campaigns]);
 
   return (
     <>
@@ -260,7 +306,12 @@ export function BrandHome({ onRoute }: Props) {
                 {activeCampaigns.length > 0 ? `${activeCampaigns.length} live campaign${activeCampaigns.length === 1 ? '' : 's'} on plan` : 'No active spend yet'}
               </p>
             </div>
-            <span className="v2-pill v2-pill-moss" style={{ fontSize: 11 }}>On plan</span>
+            <span
+              className={`v2-pill ${pacing.tone === 'moss' ? 'v2-pill-moss' : pacing.tone === 'amber' ? 'v2-pill-amber' : 'v2-pill-muted'}`}
+              style={{ fontSize: 11 }}
+            >
+              {pacing.label}
+            </span>
           </div>
           <PacingStrip wallet={wallet} campaigns={campaigns} />
         </section>
@@ -284,7 +335,7 @@ export function BrandHome({ onRoute }: Props) {
               label="Top performer"
               creator={outcomes.top}
               sub={`${fmtFollowers(outcomes.top.channels.reduce((s, ch) => s + ch.followers, 0))} reach across channels`}
-              change="+38% vs avg"
+              change={outcomes.topDelta || ''}
               onClick={() => onRoute(`creator:${outcomes.top!.id}`)}
             />
           )}
@@ -292,7 +343,7 @@ export function BrandHome({ onRoute }: Props) {
             <OutcomeCard
               label="Breakout"
               creator={outcomes.breakout}
-              sub="2.1× your typical reach this week"
+              sub={outcomes.breakoutMult || `${fmtFollowers(outcomes.breakout.channels.reduce((s, ch) => s + ch.followers, 0))} reach`}
               change="↑ Re-hire?"
               badge="🚀"
               onClick={() => onRoute(`creator:${outcomes.breakout!.id}`)}
@@ -302,8 +353,8 @@ export function BrandHome({ onRoute }: Props) {
             <OutcomeCard
               label="Engagement leader"
               creator={outcomes.er}
-              sub={`${(outcomes.er.channels.reduce((s, ch) => s + ch.engagement, 0) / Math.max(outcomes.er.channels.length, 1)).toFixed(1)}% ER · 4.2K saves`}
-              change="ER ↑ vs niche"
+              sub={`${(outcomes.er.channels.reduce((s, ch) => s + ch.engagement, 0) / Math.max(outcomes.er.channels.length, 1)).toFixed(1)}% ER`}
+              change={outcomes.erDelta || ''}
               onClick={() => onRoute(`creator:${outcomes.er!.id}`)}
             />
           )}

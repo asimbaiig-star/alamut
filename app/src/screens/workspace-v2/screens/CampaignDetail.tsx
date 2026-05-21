@@ -1951,15 +1951,17 @@ export function KpiTile({
         <div className="v2-stat-value v2-tabular">{value}</div>
         {spark && <Sparkline points={spark} />}
       </div>
-      <div className="v2-row" style={{ gap: 6, marginTop: 6 }}>
-        <span style={{
-          fontSize: 11,
-          fontWeight: 600,
-          color: deltaPositive ? 'var(--v2-moss)' : 'var(--v2-gold)',
-        }}>
-          {deltaPositive ? '▲' : '▼'} {delta}
-        </span>
-      </div>
+      {delta && (
+        <div className="v2-row" style={{ gap: 6, marginTop: 6 }}>
+          <span style={{
+            fontSize: 11,
+            fontWeight: 600,
+            color: deltaPositive ? 'var(--v2-moss)' : 'var(--v2-gold)',
+          }}>
+            {deltaPositive ? '▲' : '▼'} {delta}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

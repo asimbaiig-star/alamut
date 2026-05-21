@@ -47,7 +47,7 @@ interface Step {
  *    at least one paid collab (signal that the agreement was signed
  *    when the first offer was accepted)
  */
-function buildSteps(creator: {
+export function buildSteps(creator: {
   verified?: boolean;
   payout?: { account?: string; method?: string; currency?: string };
   city?: string;

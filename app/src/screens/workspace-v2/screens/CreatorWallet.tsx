@@ -22,6 +22,17 @@ export function CreatorWallet({ onRoute }: Props) {
   const W = useV2CreatorWallet();
   const creator = useV2CurrentCreator();
   const db = useStore((s) => s.db);
+  // Raw DB Creator (the V2 adapter strips `payout`). We read it to drive
+  // the Payout method sidebar block — pre-fix that block displayed a
+  // hardcoded "Bank transfer · Account ending 4291" for everyone,
+  // including creators with no bank account on file yet.
+  const dbCreator = creator ? db.creators.find((c) => c.id === creator.id) : undefined;
+  const payoutAccount = dbCreator?.payout?.account?.trim() || '';
+  const payoutMethod = dbCreator?.payout?.method?.trim() || '';
+  const hasPayoutAccount = payoutAccount.length > 0;
+  const payoutLast4 = hasPayoutAccount
+    ? payoutAccount.replace(/\s+/g, '').slice(-4)
+    : '';
   const activeAdvance = creator
     ? db.advances?.find((a) => a.creatorId === creator.id && a.status === 'active')
     : undefined;
@@ -154,26 +165,58 @@ export function CreatorWallet({ onRoute }: Props) {
           <div>
             <div className="v2-card v2-card-pad" style={{ marginBottom: 16 }}>
               <div className="v2-eyebrow" style={{ marginBottom: 12 }}>Payout method</div>
-              <div className="v2-row" style={{ gap: 10 }}>
-                <div style={{
-                  width: 40, height: 40, borderRadius: 8,
-                  background: '#1B3D88', color: 'white',
-                  display: 'grid', placeItems: 'center',
-                  fontWeight: 700, fontSize: 12,
-                }}>BA</div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 600 }}>Bank transfer</div>
-                  <div className="v2-muted" style={{ fontSize: 11.5 }}>Account ending 4291</div>
+              {hasPayoutAccount ? (
+                <div className="v2-row" style={{ gap: 10 }}>
+                  <div style={{
+                    width: 40, height: 40, borderRadius: 8,
+                    background: '#1B3D88', color: 'white',
+                    display: 'grid', placeItems: 'center',
+                    fontWeight: 700, fontSize: 12,
+                  }}>BA</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 600 }}>
+                      {payoutMethod || 'Bank transfer'}
+                    </div>
+                    <div className="v2-muted" style={{ fontSize: 11.5 }}>
+                      Account ending {payoutLast4}
+                    </div>
+                  </div>
+                  <button
+                    className="v2-btn v2-btn-sm v2-btn-ghost"
+                    type="button"
+                    onClick={() => onRoute('kyc')}
+                    title="Manage payout methods in KYC settings"
+                  >
+                    Edit
+                  </button>
                 </div>
-                <button
-                  className="v2-btn v2-btn-sm v2-btn-ghost"
-                  type="button"
-                  onClick={() => onRoute('kyc')}
-                  title="Manage payout methods in KYC settings"
-                >
-                  Edit
-                </button>
-              </div>
+              ) : (
+                <div className="v2-row" style={{ gap: 10, alignItems: 'flex-start' }}>
+                  <div style={{
+                    width: 40, height: 40, borderRadius: 8,
+                    background: 'var(--v2-bg-2)',
+                    color: 'var(--v2-ink-3)',
+                    border: '1px dashed var(--v2-line)',
+                    display: 'grid', placeItems: 'center',
+                    fontWeight: 700, fontSize: 18,
+                  }}>+</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 600 }}>
+                      No payout method yet
+                    </div>
+                    <div className="v2-muted" style={{ fontSize: 11.5, lineHeight: 1.4 }}>
+                      Add a bank account in KYC settings before your first withdrawal.
+                    </div>
+                  </div>
+                  <button
+                    className="v2-btn v2-btn-sm v2-btn-primary"
+                    type="button"
+                    onClick={() => onRoute('kyc')}
+                  >
+                    Add
+                  </button>
+                </div>
+              )}
               <hr style={{ height: 1, background: 'var(--v2-line)', margin: '12px 0', border: 'none' }} />
               <p className="v2-muted" style={{ fontSize: 12, lineHeight: 1.5, margin: 0 }}>
                 Add wire, ACH, JazzCash, or Easypaisa as a backup payout rail in your KYC settings.

@@ -346,8 +346,9 @@ export function transactionToV2(tx: Transaction, db: Database): V2WalletLedgerEn
 // =====================================================================
 
 export function brandWalletV2(brand: Brand, db: Database) {
-  const ledger = db.transactions
-    .filter((t) => t.userId === brand.userId)
+  const mineAll = db.transactions.filter((t) => t.userId === brand.userId);
+  const ledger = mineAll
+    .slice()
     .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
     .slice(0, 10)
     .map((t) => transactionToV2(t, db));
@@ -355,12 +356,31 @@ export function brandWalletV2(brand: Brand, db: Database) {
   const inFlight = db.transactions
     .filter((t) => t.userId === brand.userId && t.kind === 'escrow_hold' && t.status === 'pending')
     .reduce((s, t) => s + Math.abs(t.amount), 0);
+  // This-month totals — summed across the FULL transaction history (not
+  // the 10-entry ledger slice above) so the BrandWallet sidebar "This
+  // month" panel can show real numbers instead of the hardcoded
+  // $23k / $8.4k / $890 / $445 it previously displayed. Cleared-only;
+  // pending escrow doesn't count toward spend until release.
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
+  const inMonth = mineAll.filter((t) => {
+    const at = new Date(t.at).getTime();
+    return at >= monthStart && at < monthEnd && t.status === 'cleared';
+  });
+  const thisMonth = {
+    topups:      inMonth.filter((t) => t.kind === 'topup').reduce((s, t) => s + Math.abs(t.amount), 0),
+    released:    inMonth.filter((t) => t.kind === 'escrow_release' || t.kind === 'payout').reduce((s, t) => s + Math.abs(t.amount), 0),
+    fees:        inMonth.filter((t) => t.kind === 'fee').reduce((s, t) => s + Math.abs(t.amount), 0),
+    adSpend:     inMonth.filter((t) => t.kind === 'ad_spend').reduce((s, t) => s + Math.abs(t.amount), 0),
+  };
   return {
     available: brand.walletBalance,
     reserved: brand.escrowHeld,
     inFlight,
     currency: 'USD' as const,
     ledger,
+    thisMonth,
   };
 }
 

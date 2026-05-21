@@ -51,6 +51,18 @@ export function Campaigns({ onRoute }: Props) {
 
   const totalBudget = campaigns.reduce((s, c) => s + c.budget, 0);
   const totalSpent = campaigns.reduce((s, c) => s + c.spent, 0);
+  // Pre-fix the "Active creators" summary stat was the literal string
+  // "14 across 4 campaigns" on every load — same number regardless of
+  // the brand's actual roster. Derive it: unique creators currently
+  // engaged on Live or Paused campaigns (campaigns that still need
+  // attention), and the count of campaigns those creators are on.
+  const activeCampaigns = campaigns.filter(
+    (c) => c.status === 'Live' || c.status === 'Paused',
+  );
+  const activeCreatorIds = new Set<string>();
+  for (const c of activeCampaigns) for (const id of c.creators) activeCreatorIds.add(id);
+  const activeCreatorCount = activeCreatorIds.size;
+  const activeCampaignCount = activeCampaigns.length;
 
   // The stages we actually render. When `filter === 'all'`, render
   // every stage that has at least one campaign; otherwise narrow to
@@ -76,7 +88,15 @@ export function Campaigns({ onRoute }: Props) {
           <div className="v2-row" style={{ gap: 32, flexWrap: 'wrap' }}>
             <SummaryStat label="Total budget" value={fmtUSD(totalBudget)} />
             <SummaryStat label="Spent" value={fmtUSD(totalSpent)} sub={totalBudget > 0 ? `${Math.round((totalSpent / totalBudget) * 100)}% deployed` : '—'} />
-            <SummaryStat label="Active creators" value="14" sub="across 4 campaigns" />
+            <SummaryStat
+              label="Active creators"
+              value={String(activeCreatorCount)}
+              sub={
+                activeCampaignCount === 0
+                  ? 'no live or paused campaigns'
+                  : `across ${activeCampaignCount} ${activeCampaignCount === 1 ? 'campaign' : 'campaigns'}`
+              }
+            />
             <span className="v2-spacer" />
             <button
               className="v2-btn v2-btn-outline v2-btn-sm"

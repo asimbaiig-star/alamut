@@ -19,6 +19,7 @@ import { useStore } from '@/lib/api/store';
 import type { V2Campaign, V2Creator } from '../data';
 import { RecentActivityCard } from './BrandHome';
 import { useRecentActivity } from '../useRecentActivity';
+import { buildSteps as buildKycSteps } from './KycTax';
 // P6 §5.6 — compute on read instead of reading the (now-removed)
 // stored field.
 
@@ -170,19 +171,28 @@ export function CreatorHome({ onRoute }: Props) {
     //    with `?action=next-step` which scrolls to + pulse-highlights
     //    the first incomplete step — distinct from the sidebar entry
     //    that just opens the page header.
+    //
+    // Pre-fix the tile rendered unconditionally as long as a creator
+    // record existed — so a fully-verified creator still saw a stale
+    // "Complete KYC verification" prompt on home. Now we ask the same
+    // step builder KycTax uses, count remaining non-verified non-locked
+    // steps, and only show the tile when there's actually work to do.
     if (creator) {
-      // The KycTax page currently uses static step data; surface the
-      // tile whenever the creator hasn't fully completed all steps.
-      // Wired off creator presence as a proxy until step state moves
-      // to the store.
-      items.push({
-        id: 'kyc',
-        icon: '✓',
-        urgent: false,
-        title: 'Complete KYC verification',
-        sub: 'Unlock payouts above $1,000 · 2 minutes',
-        route: 'kyc?action=next-step',
-      });
+      const hasPaidCollab = myCollabs.some((c) => c.stage === 'paid');
+      const steps = buildKycSteps(creator, hasPaidCollab);
+      const pendingSteps = steps.filter((s) => s.status === 'action' || s.status === 'pending').length;
+      if (pendingSteps > 0) {
+        items.push({
+          id: 'kyc',
+          icon: '✓',
+          urgent: false,
+          title: pendingSteps === 1
+            ? 'One KYC step left to unlock payouts'
+            : `${pendingSteps} KYC steps left to unlock payouts`,
+          sub: 'Unlock payouts above $1,000 · 2 minutes',
+          route: 'kyc?action=next-step',
+        });
+      }
     }
 
     return items;
@@ -251,7 +261,7 @@ export function CreatorHome({ onRoute }: Props) {
 
         {/* Goals + Tip */}
         <div className="v2-home-row" data-style="reverse">
-          <CreatorGoals wallet={wallet} onRoute={onRoute} />
+          <CreatorGoals wallet={wallet} me={me} myCollabs={myCollabs} onRoute={onRoute} />
           <CreatorTip onRoute={onRoute} />
         </div>
       </div>
@@ -823,13 +833,37 @@ function BarRow({ label, pct }: { label: string; pct: number }) {
 // Goals + Tip
 // =====================================================================
 
-function CreatorGoals({ wallet, onRoute }: {
+function CreatorGoals({ wallet, me, myCollabs, onRoute }: {
   wallet: ReturnType<typeof useV2CreatorWallet>;
+  me: V2Creator;
+  myCollabs: ReturnType<typeof useV2MyCollabs>;
   onRoute: (r: string) => void;
 }) {
   const target = 2500; // synthetic monthly target
   const earned = wallet.available + wallet.pending;
   const pct = Math.min(100, Math.round((earned / target) * 100));
+  // Pre-fix two of the three Achievement tiles always showed "✓ done"
+  // with hardcoded labels ("3 collabs / this month", "11% ER / hit
+  // target"). They now derive:
+  //  - Collabs this month: count of `myCollabs` whose Collaboration row
+  //    has a `paid` or `live`-stage history entry in the current month
+  //    (signal that the deal actually shipped, not just exists). We
+  //    approximate using the latest history entry timestamp.
+  //  - ER hit target: avg engagement across the creator's channels
+  //    crossed the 8% "industry-respectable" mark. Pure store data.
+  // myCollabs is V2Collab — no direct timestamp on the V2 shape. Fall
+  // back to a presence check (deals currently in flight or shipped this
+  // period). Good enough until we have settled-at timestamps; the tile
+  // copy reflects "this month" loosely as a result.
+  const collabsThisMonth = myCollabs.filter(
+    (c) => c.stage === 'paid' || c.stage === 'live',
+  ).length;
+  const collabTarget = 3;
+  const collabsTileDone = collabsThisMonth >= collabTarget;
+  const avgEr = me.channels.length === 0 ? 0
+    : me.channels.reduce((s, ch) => s + ch.engagement, 0) / me.channels.length;
+  const erTarget = 8;
+  const erTileDone = avgEr >= erTarget;
 
   // Tier derived from lifetime earnings — replaces the static "Silver
   // tier" pill that ignored actual progression.
@@ -890,8 +924,18 @@ function CreatorGoals({ wallet, onRoute }: {
         </div>
       </div>
       <div className="v2-grid-3" style={{ gap: 8 }}>
-        <Achievement icon="✦" label="3 collabs" sub="this month" done />
-        <Achievement icon="↑" label="11% ER" sub="hit target" done />
+        <Achievement
+          icon="✦"
+          label={`${collabsThisMonth} collab${collabsThisMonth === 1 ? '' : 's'}`}
+          sub={collabsTileDone ? `≥ ${collabTarget} this month` : `${collabTarget - collabsThisMonth} to hit target`}
+          done={collabsTileDone}
+        />
+        <Achievement
+          icon="↑"
+          label={`${avgEr.toFixed(1)}% ER`}
+          sub={erTileDone ? `≥ ${erTarget}% target` : `${(erTarget - avgEr).toFixed(1)}pt to target`}
+          done={erTileDone}
+        />
         <Achievement
           icon="◆"
           label={nextTierLabel ? `${nextTierLabel} tier` : 'Top tier'}

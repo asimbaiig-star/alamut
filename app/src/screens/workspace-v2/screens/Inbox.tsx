@@ -277,6 +277,28 @@ function ConversationList({
   persona: 'brand' | 'creator';
   brands: import('@/lib/api/types').Brand[];
 }) {
+  // Pre-fix the search input was decorative — no `value`, no `onChange`,
+  // no filter. The user could type, nothing happened. Now we filter by
+  // counterparty name / handle and campaign name, persona-aware (brand
+  // viewers see creators on the row; creator viewers see brands).
+  const [query, setQuery] = useState('');
+  const q = query.trim().toLowerCase();
+  const visible = !q ? conversations : conversations.filter((c) => {
+    const campaign = campaigns.find((cmp) => cmp.id === c.campaignId);
+    const counterpartyName = persona === 'brand'
+      ? (creators.find((cr) => cr.id === c.creatorId)?.name ?? '')
+      : (brands.find((b) => b.id === c.brandId)?.name ?? '');
+    const counterpartyHandle = persona === 'brand'
+      ? (creators.find((cr) => cr.id === c.creatorId)?.handle ?? '')
+      : '';
+    const campaignName = campaign?.name ?? '';
+    return (
+      counterpartyName.toLowerCase().includes(q) ||
+      counterpartyHandle.toLowerCase().includes(q) ||
+      campaignName.toLowerCase().includes(q)
+    );
+  });
+
   return (
     <aside className="v2-inbox-list" aria-label="Conversations">
       <header className="v2-inbox-list-head">
@@ -290,11 +312,21 @@ function ConversationList({
         }}>Messages</h3>
         <div className="v2-input-search v2-inbox-list-search">
           {Icon.search}
-          <input placeholder="Search by name or campaign…" />
+          <input
+            placeholder="Search by name or campaign…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="Search conversations"
+          />
         </div>
       </header>
+      {visible.length === 0 && q && (
+        <p className="v2-muted" style={{ padding: '14px 16px', fontSize: 13, margin: 0 }}>
+          No conversations match "{query.trim()}".
+        </p>
+      )}
       <div role="list">
-        {conversations.map((c) => {
+        {visible.map((c) => {
           // Row label is the COUNTERPARTY, not "always the creator". For
           // a brand viewer the counterparty is the creator on the thread;
           // for a creator viewer the counterparty is the brand. Without

@@ -39,7 +39,6 @@ export function BrandAnalytics({ onRoute }: Props) {
 
   const [range, setRange] = useState<Range>('campaign');
   const [metric, setMetric] = useState<Metric>('engagement');
-  void range; // visual-only filter on the demo perf series
 
   // Pull every collab across the brand's campaigns into a flat list so
   // the leaderboard + content mix can see them without re-walking the
@@ -155,6 +154,34 @@ export function BrandAnalytics({ onRoute }: Props) {
   const cpmDeltaPositive = aggregatedPerf.cpm < benchCPM;
   const cpmDeltaPct = Math.round(Math.abs(benchCPM - aggregatedPerf.cpm) / benchCPM * 100);
 
+  // Pre-fix the range chip group (All campaigns / 7d / 30d) was a dead
+  // control — `setRange` flipped state, the data ignored it. Wired now:
+  // we clip the aggregated weeklySeries to the window the user picked
+  // and recompute wk/wk delta + chart payload off the clipped series.
+  // Each `weeklySeries` entry represents one week of impressions, so
+  // "7d" reads the most recent entry, "30d" reads the most recent 4,
+  // "campaign" reads everything.
+  const windowedSeries = useMemo(() => {
+    const s = aggregatedPerf.weeklySeries;
+    if (range === '7d') return s.slice(-1);
+    if (range === '30d') return s.slice(-4);
+    return s;
+  }, [aggregatedPerf, range]);
+
+  // wk/wk impressions delta — uses the last two entries of the windowed
+  // series. Pre-fix this was a hardcoded "+18% wk/wk" string that didn't
+  // move regardless of state. Falls back to '' (no chip) when we don't
+  // have at least 2 comparable weeks.
+  const impressionsWkDelta = useMemo(() => {
+    const s = windowedSeries.length >= 2 ? windowedSeries : aggregatedPerf.weeklySeries;
+    if (s.length < 2) return null;
+    const cur = s[s.length - 1];
+    const prev = s[s.length - 2];
+    if (prev === 0) return null;
+    const pct = Math.round(((cur - prev) / prev) * 100);
+    return { pct, positive: pct >= 0 };
+  }, [windowedSeries, aggregatedPerf]);
+
   return (
     <>
       <Topbar
@@ -259,14 +286,23 @@ export function BrandAnalytics({ onRoute }: Props) {
           <KpiTile
             label="Impressions"
             value={fmtFollowers(aggregatedPerf.impressions)}
-            delta="+18% wk/wk"
-            deltaPositive
-            spark={aggregatedPerf.weeklySeries}
+            delta={
+              impressionsWkDelta
+                ? `${impressionsWkDelta.positive ? '+' : ''}${impressionsWkDelta.pct}% wk/wk`
+                : 'wk/wk —'
+            }
+            deltaPositive={impressionsWkDelta?.positive ?? true}
+            spark={windowedSeries}
           />
           <KpiTile
             label="Engagement rate"
             value={`${aggregatedPerf.er}%`}
-            delta={`+${(aggregatedPerf.er - 4.2).toFixed(1)}pt vs 4.2% category`}
+            // Pre-fix this delta read `+${aggregatedPerf.er - 4.2}pt vs
+            // 4.2% category` — the "4.2% category" was synthetic. We
+            // drop the made-up benchmark and just show the live ER tile
+            // without a delta chip until we have a real comparison
+            // dataset to compute against.
+            delta=""
             deltaPositive
             accent
           />
@@ -327,7 +363,7 @@ export function BrandAnalytics({ onRoute }: Props) {
                 ))}
               </div>
             </div>
-            <BigPerfChart points={aggregatedPerf.weeklySeries} metric={metric} perf={aggregatedPerf} />
+            <BigPerfChart points={windowedSeries} metric={metric} perf={aggregatedPerf} />
           </div>
 
           <div className="v2-card v2-card-pad-lg">

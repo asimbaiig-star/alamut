@@ -11,7 +11,7 @@ import '@/styles/workspace-v2.css';
 import '@/styles/workspace-v2-campaign-mgmt.css';
 import '@/styles/workspace-v2-home.css';
 import { Icon } from './lib';
-import { useV2CurrentBrand, useV2CurrentCreator } from './v2Hooks';
+import { useV2CurrentBrand, useV2CurrentCreator, useV2Conversations } from './v2Hooks';
 import { v2SweepStaleOffers } from './v2CampaignActions';
 import { useAuth } from '@/lib/auth/useAuth';
 import { api } from '@/lib/api/client';
@@ -44,26 +44,29 @@ import { Calendar } from './screens/Calendar';
 
 type Persona = 'brand' | 'creator';
 
-// Brand-side routes (per design's BRAND_ROUTES)
+// Brand-side routes (per design's BRAND_ROUTES). Note the inbox row has
+// no `count` here — it's computed live in `Sidebar` from useV2Conversations
+// so the badge tracks real unread state instead of a hardcoded literal.
 const BRAND_ROUTES = [
   { id: 'home', label: 'Home', icon: Icon.home },
   { id: 'spark', label: 'Spark', icon: Icon.spark, badge: 'AI' },
   { id: 'discover', label: 'Discover creators', icon: Icon.search },
   { id: 'campaigns', label: 'My campaigns', icon: Icon.campaign },
-  { id: 'inbox', label: 'Inbox', icon: Icon.inbox, count: 3 },
+  { id: 'inbox', label: 'Inbox', icon: Icon.inbox },
   { id: 'calendar', label: 'Calendar', icon: Icon.calendar },
   { id: 'brand-analytics', label: 'Analytics', icon: Icon.chart },
   { id: 'wallet', label: 'Wallet', icon: Icon.wallet },
   { id: 'brand-profile', label: 'Brand profile', icon: Icon.shield },
 ] as const;
 
-// Creator-side routes (per design's CREATOR_ROUTES)
+// Creator-side routes (per design's CREATOR_ROUTES). Same live-count
+// treatment for `creator-inbox` as above.
 const CREATOR_ROUTES = [
   { id: 'creator-home', label: 'Home', icon: Icon.home },
   { id: 'storefront', label: 'My storefront', icon: Icon.store },
   { id: 'creator-collabs', label: 'My collaborations', icon: Icon.campaign },
   { id: 'creator-campaigns', label: 'Browse campaigns', icon: Icon.search },
-  { id: 'creator-inbox', label: 'Inbox', icon: Icon.inbox, count: 2 },
+  { id: 'creator-inbox', label: 'Inbox', icon: Icon.inbox },
   { id: 'creator-calendar', label: 'Calendar', icon: Icon.calendar },
   { id: 'analytics', label: 'Analytics', icon: Icon.chart },
   { id: 'creator-wallet', label: 'Wallet', icon: Icon.wallet },
@@ -488,6 +491,14 @@ function Sidebar({ persona, route, onRoute, isMobileOpen }: SidebarProps) {
   const routes = persona === 'brand' ? BRAND_ROUTES : CREATOR_ROUTES;
   const brand = useV2CurrentBrand();
   const creator = useV2CurrentCreator();
+  // Live unread badge on the Inbox nav row. Pre-fix the brand sidebar
+  // always read "3" and the creator sidebar always read "2" because the
+  // count came from a literal in BRAND_ROUTES/CREATOR_ROUTES. The Inbox
+  // surface's own topbar crumb showed the real number — so the same
+  // screen disagreed with itself. `useV2Conversations` already returns
+  // per-conversation unread counts for the current viewer; we sum them.
+  const conversations = useV2Conversations();
+  const inboxUnread = conversations.reduce((sum, c) => sum + (c.unread ?? 0), 0);
   // The "viewer" identity in the sidebar foot reflects the active persona —
   // not necessarily the auth role. A brand user previewing the creator side
   // sees the creator's chrome; the actual auth identity is unchanged.
@@ -527,19 +538,27 @@ function Sidebar({ persona, route, onRoute, isMobileOpen }: SidebarProps) {
       </button>
 
       <nav className="v2-nav" aria-label="Primary">
-        {routes.map((r) => (
-          <button
-            key={r.id}
-            type="button"
-            className={`v2-nav-item ${route === r.id ? 'is-active' : ''}`}
-            onClick={() => onRoute(r.id)}
-          >
-            <span className="v2-nav-icon">{r.icon}</span>
-            <span className="v2-nav-label">{r.label}</span>
-            {'badge' in r && r.badge && <span className="v2-nav-badge">{r.badge}</span>}
-            {'count' in r && r.count != null && <span className="v2-nav-count">{r.count}</span>}
-          </button>
-        ))}
+        {routes.map((r) => {
+          // Inbox count is the only live badge today — computed from
+          // store state (see comment at the top of the component). If
+          // future nav rows ever need badges, add them here.
+          const liveCount = (r.id === 'inbox' || r.id === 'creator-inbox')
+            ? (inboxUnread > 0 ? inboxUnread : undefined)
+            : undefined;
+          return (
+            <button
+              key={r.id}
+              type="button"
+              className={`v2-nav-item ${route === r.id ? 'is-active' : ''}`}
+              onClick={() => onRoute(r.id)}
+            >
+              <span className="v2-nav-icon">{r.icon}</span>
+              <span className="v2-nav-label">{r.label}</span>
+              {'badge' in r && r.badge && <span className="v2-nav-badge">{r.badge}</span>}
+              {liveCount != null && <span className="v2-nav-count">{liveCount}</span>}
+            </button>
+          );
+        })}
       </nav>
 
       <div className="v2-sidebar-foot">

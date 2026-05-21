@@ -73,7 +73,12 @@ export function Storefront({ onRoute }: Props) {
     <>
       <Topbar
         title="My storefront"
-        crumb={`alamut.co/@${me.handle} · last updated 3 days ago`}
+        // Pre-fix this crumb appended a hardcoded "last updated 3 days
+        // ago" suffix that stayed identical across every edit. Until we
+        // track a real `Creator.updatedAt` field (would require bumping
+        // it across ~10 mutation sites in v2CreatorActions), drop the
+        // false suffix rather than show stale information.
+        crumb={`alamut.co/@${me.handle}`}
         actions={
           <>
             <button

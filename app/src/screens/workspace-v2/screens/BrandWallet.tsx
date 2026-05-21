@@ -215,10 +215,18 @@ export function BrandWallet({ onRoute, initialAction }: Props) {
 
             <div className="v2-card v2-card-pad">
               <div className="v2-eyebrow" style={{ marginBottom: 8 }}>This month</div>
-              <SidebarRow label="Top-ups" value={fmtUSD(23_000)} />
-              <SidebarRow label="Released to creators" value={fmtUSD(8_400)} />
-              <SidebarRow label="Platform fees" value={fmtUSD(890)} muted />
-              <SidebarRow label="Withholding tax" value={fmtUSD(445)} muted />
+              {/* Pre-fix these four rows were hardcoded ($23k / $8.4k /
+                  $890 / $445). They now sum the brand's cleared txns in
+                  the current month, computed in `brandWalletV2`. The
+                  withholding-tax row is removed because `Transaction.kind`
+                  has no `'tax'` member — the seed never wrote that
+                  category in the first place. */}
+              <SidebarRow label="Top-ups" value={fmtUSD(W.thisMonth.topups)} />
+              <SidebarRow label="Released to creators" value={fmtUSD(W.thisMonth.released)} />
+              <SidebarRow label="Platform fees" value={fmtUSD(W.thisMonth.fees)} muted />
+              {W.thisMonth.adSpend > 0 && (
+                <SidebarRow label="Ad spend" value={fmtUSD(W.thisMonth.adSpend)} muted />
+              )}
               <hr style={{ height: 1, background: 'var(--v2-line)', margin: '14px 0', border: 'none' }} />
               <button
                 className="v2-btn v2-btn-outline"

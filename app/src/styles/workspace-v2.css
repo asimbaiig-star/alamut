@@ -421,6 +421,19 @@ body:has([data-surface="v2"]) {
   color: var(--v2-moss);
   border-color: transparent;
 }
+/* Amber + muted pill variants — used by BrandHome's pacing pill so the
+   "On plan" / "Over pace" / "Behind pace" states each have a distinct
+   tone instead of the pre-fix always-green "On plan" label. */
+[data-surface="v2"] .v2-pill-amber {
+  background: #FBEFD9;
+  color: #8A5A1F;
+  border-color: transparent;
+}
+[data-surface="v2"] .v2-pill-muted {
+  background: var(--v2-bg-2);
+  color: var(--v2-ink-3);
+  border-color: transparent;
+}
 [data-surface="v2"] .v2-pill-live {
   background: #FCE6DD;
   color: var(--v2-accent);

@@ -228,7 +228,11 @@ export function useV2BrandWallet() {
   const brand = useV2CurrentBrand();
   return useMemo(() => {
     if (!brand) {
-      return { available: 0, reserved: 0, inFlight: 0, currency: 'USD' as const, ledger: [] };
+      return {
+        available: 0, reserved: 0, inFlight: 0,
+        currency: 'USD' as const, ledger: [],
+        thisMonth: { topups: 0, released: 0, fees: 0, adSpend: 0 },
+      };
     }
     return brandWalletV2(brand, db);
   }, [brand, db]);
