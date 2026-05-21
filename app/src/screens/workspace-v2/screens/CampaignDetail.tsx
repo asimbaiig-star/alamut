@@ -274,7 +274,7 @@ export function CampaignDetail({
         )}
         {tab === 'analytics' && (
           <AnalyticsTab
-            perf={derivePerf(campaign, collabs)}
+            perf={derivePerf(campaign, collabs, creators)}
             campaign={campaign}
             collabs={collabs}
             creators={creators}
@@ -1666,18 +1666,85 @@ function ContentReviewTab({ collabs, creators, onReview, onRoute }: {
 // content mix card with best-performing-format callout.
 // =====================================================================
 
-export function derivePerf(campaign: V2Campaign, collabs: V2Collab[]): V2CampaignPerf | null {
-  // Synthesize from the campaign reach + engagement fields. Live
-  // placements are the multiplier — no live = no perf yet.
-  const liveCount = collabs.filter((c) => c.stage === 'live' || c.stage === 'paid').length;
-  if (liveCount === 0) return null;
+/** Projected campaign performance derived from the actual reach + ER
+ *  of accepted creators on the campaign. Pre-fix this function used
+ *  campaign.spent × literal-ratios (reach = spent × 18, engagement =
+ *  reach × 0.115, er = 11.5, weeklySeries = [12,18,…,38]) which made
+ *  every campaign render the same shape — Hannah's $5k cosmetic
+ *  campaign and a $80k tech campaign had proportionally identical
+ *  charts. Real engagement APIs (Instagram/TikTok insights) aren't
+ *  connected so we synthesize from creator-level signals instead:
+ *
+ *    reach       = Σ (creator followers across all channels)
+ *    er          = average creator ER across channels (live creators)
+ *    engagement  = reach × er%
+ *    impressions = reach × 1.4 (typical impression-to-reach ratio)
+ *    weeklySeries = back-load engagement across 7 weeks (skewed late;
+ *                   most impressions land in the first 2 weeks of a
+ *                   live post and decay)
+ *
+ *  Per-platform API metrics would replace this. Until then the KPI
+ *  tiles + leaderboards downstream are correct in shape and tied to
+ *  the brand's actual roster, not to spend × an arbitrary multiplier. */
+export function derivePerf(
+  campaign: V2Campaign,
+  collabs: V2Collab[],
+  creators?: V2Creator[],
+): V2CampaignPerf | null {
+  const liveCollabs = collabs.filter((c) => c.stage === 'live' || c.stage === 'paid');
+  if (liveCollabs.length === 0) return null;
 
-  const reach = campaign.spent > 0 ? campaign.spent * 18 : 0;
-  const engagement = Math.round(reach * 0.115);
-  const impressions = Math.round(reach * 1.3);
-  const er = 11.5;
-  const cpm = reach > 0 ? Math.round((campaign.spent / reach) * 1000) : 0;
+  // Match live collabs to their V2Creator records. If creators not
+  // provided, fall back to the legacy spent×ratio path so existing
+  // call sites that don't pass creators still get something.
+  const creatorById = new Map<string, V2Creator>();
+  for (const c of creators ?? []) creatorById.set(c.id, c);
+
+  const liveCreators = liveCollabs
+    .map((co) => creatorById.get(co.creatorId))
+    .filter((c): c is V2Creator => !!c);
+
+  if (liveCreators.length === 0) {
+    // Legacy fallback — callers that don't have creator data still see
+    // something sensible (Spent × 18 reach ratio, then standard mixin).
+    const reach = campaign.spent > 0 ? campaign.spent * 18 : 0;
+    const engagement = Math.round(reach * 0.115);
+    return {
+      impressions: Math.round(reach * 1.3),
+      reach,
+      engagement,
+      er: 11.5,
+      cpm: reach > 0 ? Math.round((campaign.spent / reach) * 1000) : 0,
+      cpe: engagement > 0 ? Math.round(campaign.spent / engagement) : 0,
+      saves: Math.round(engagement * 0.15),
+      shares: Math.round(engagement * 0.07),
+      profileVisits: Math.round(reach * 0.05),
+      weeklySeries: [12, 18, 14, 22, 28, 31, 38].map((n) => Math.round(n * (liveCollabs.length / 3))),
+    };
+  }
+
+  // Real-creator-based projection.
+  const reach = liveCreators.reduce(
+    (s, c) => s + c.channels.reduce((a, ch) => a + ch.followers, 0),
+    0,
+  );
+  const erSum = liveCreators.reduce((s, c) => {
+    const er = c.channels.length === 0 ? 0
+      : c.channels.reduce((a, ch) => a + ch.engagement, 0) / c.channels.length;
+    return s + er;
+  }, 0);
+  const er = Number((erSum / liveCreators.length).toFixed(1));
+  const engagement = Math.round(reach * (er / 100));
+  const impressions = Math.round(reach * 1.4);
+  const cpm = impressions > 0 ? Math.round((campaign.spent / impressions) * 1000) : 0;
   const cpe = engagement > 0 ? Math.round(campaign.spent / engagement) : 0;
+
+  // 7-week series — peak in week 2 (publish + initial discovery), decay
+  // toward week 7. Multiply each weight by total engagement and split
+  // proportionally. Always sums to ~engagement.
+  const weights = [0.08, 0.18, 0.16, 0.14, 0.12, 0.10, 0.08]; // sum ~0.86
+  const weeklySeries = weights.map((w) => Math.round(engagement * w));
+
   return {
     impressions,
     reach,
@@ -1688,7 +1755,7 @@ export function derivePerf(campaign: V2Campaign, collabs: V2Collab[]): V2Campaig
     saves: Math.round(engagement * 0.15),
     shares: Math.round(engagement * 0.07),
     profileVisits: Math.round(reach * 0.05),
-    weeklySeries: [12, 18, 14, 22, 28, 31, 38].map((n) => Math.round(n * (liveCount / 3))),
+    weeklySeries,
   };
 }
 

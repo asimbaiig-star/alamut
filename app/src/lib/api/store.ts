@@ -74,12 +74,16 @@ export const useStore = create<StoreState>()(
     {
       name: STORAGE_KEY,
       storage: createJSONStorage(() => safeStorage),
-      // 13 — Phase 49 added approved submissions for posted / reporting /
-      // closed campaigns in the seed (so brand Analytics actually has
-      // live + paid collabs to render against). Existing v12 state
-      // doesn't have those rows; bumping flushes the cache and
-      // rehydrates the richer demo state. (12 was Phase 48 testimonials.)
-      version: 13,
+      // 14 — Phase 56 added per-creator storefront-pulse seed fields
+      // (storefrontViewsLast30d, brandInquiriesThisWeek,
+      // recentBrandViewerNames) AND seeded audience demographics
+      // (topCountries, growthRate30d, audienceCredibilityScore) on
+      // every platform of every demo creator. The CreatorHome
+      // AudiencePulse + StorefrontPulse + recent-viewers strip read
+      // these directly. Existing v13 state doesn't have any of them;
+      // bumping flushes the cache so the richer seed actually renders.
+      // (13 was Phase 49 approved-submissions seed.)
+      version: 14,
       // Forward-only data migrations layered on top of Zustand's persist
       // versioning. After rehydration, walk `db.migrationVersion + 1` to
       // CURRENT_MIGRATION_VERSION and run each migrator. Idempotent;
@@ -331,6 +335,43 @@ if (typeof window !== 'undefined') {
           for (const row of remote) if (!localIds.has(row.id)) next.push(row);
           return next;
         };
+        // Smart-merge overlay for creators: Supabase carries the core
+        // fields but NOT the demo-fixture extras (per-platform audience,
+        // storefront-pulse counters, recent-viewer names). When we
+        // overlay we'd otherwise blow those away on every boot. Pre-fix
+        // Sarah's seeded audience + storefront views disappeared the
+        // moment Supabase's hydration completed.
+        const overlayCreators = (local: typeof s.db.creators, remote: typeof creators) => {
+          if (remote.length === 0) return local;
+          const byId = new Map(remote.map((r) => [r.id, r]));
+          const next = local.map((row) => {
+            const r = byId.get(row.id);
+            if (!r) return row;
+            // Per-platform: keep the locally-seeded `audience` whenever
+            // the Supabase platform doesn't carry it.
+            const mergedPlatforms = r.platforms.map((rp, i) => {
+              const lp = row.platforms[i];
+              if (!lp) return rp;
+              if (rp.audience || !lp.audience) return rp;
+              if (rp.name !== lp.name) return rp;
+              return { ...rp, audience: lp.audience };
+            });
+            return {
+              ...r,
+              platforms: mergedPlatforms,
+              // Demo-only fields — keep local if remote is empty / undefined.
+              storefrontViewsLast30d: r.storefrontViewsLast30d ?? row.storefrontViewsLast30d,
+              storefrontViewsDeltaPct: r.storefrontViewsDeltaPct ?? row.storefrontViewsDeltaPct,
+              brandInquiriesThisWeek: r.brandInquiriesThisWeek ?? row.brandInquiriesThisWeek,
+              brandInquiriesDelta: r.brandInquiriesDelta ?? row.brandInquiriesDelta,
+              recentBrandViewerNames: r.recentBrandViewerNames ?? row.recentBrandViewerNames,
+              recentBrandViewerCount: r.recentBrandViewerCount ?? row.recentBrandViewerCount,
+            };
+          });
+          const localIds = new Set(local.map((row) => row.id));
+          for (const row of remote) if (!localIds.has(row.id)) next.push(row);
+          return next;
+        };
         return {
           db: {
             ...s.db,
@@ -338,7 +379,7 @@ if (typeof window !== 'undefined') {
             campaigns: overlay(s.db.campaigns, campaigns),
             applications: overlay(s.db.applications, applications),
             offers: overlay(s.db.offers, offers),
-            creators: overlay(s.db.creators, creators),
+            creators: overlayCreators(s.db.creators, creators),
             collaborations: overlay(s.db.collaborations ?? [], collaborations),
             submissions: overlay(s.db.submissions, submissions),
             deliverables: overlay(s.db.deliverables ?? [], deliverables),
@@ -368,8 +409,31 @@ if (typeof window !== 'undefined') {
           useStore.setState((s) => ({
             db: {
               ...s.db,
+              // Same smart-merge as the bulk overlay above — keep the
+              // locally-seeded demo-fixture fields (per-platform
+              // audience + storefront-pulse counters + recent viewers)
+              // that Supabase doesn't carry.
               creators: ownCreator
-                ? s.db.creators.map((c) => c.id === ownCreator.id ? ownCreator : c)
+                ? s.db.creators.map((c) => {
+                    if (c.id !== ownCreator.id) return c;
+                    const mergedPlatforms = ownCreator.platforms.map((rp, i) => {
+                      const lp = c.platforms[i];
+                      if (!lp) return rp;
+                      if (rp.audience || !lp.audience) return rp;
+                      if (rp.name !== lp.name) return rp;
+                      return { ...rp, audience: lp.audience };
+                    });
+                    return {
+                      ...ownCreator,
+                      platforms: mergedPlatforms,
+                      storefrontViewsLast30d: ownCreator.storefrontViewsLast30d ?? c.storefrontViewsLast30d,
+                      storefrontViewsDeltaPct: ownCreator.storefrontViewsDeltaPct ?? c.storefrontViewsDeltaPct,
+                      brandInquiriesThisWeek: ownCreator.brandInquiriesThisWeek ?? c.brandInquiriesThisWeek,
+                      brandInquiriesDelta: ownCreator.brandInquiriesDelta ?? c.brandInquiriesDelta,
+                      recentBrandViewerNames: ownCreator.recentBrandViewerNames ?? c.recentBrandViewerNames,
+                      recentBrandViewerCount: ownCreator.recentBrandViewerCount ?? c.recentBrandViewerCount,
+                    };
+                  })
                 : s.db.creators,
               brands: ownBrand
                 ? s.db.brands.map((b) => b.id === ownBrand.id ? ownBrand : b)

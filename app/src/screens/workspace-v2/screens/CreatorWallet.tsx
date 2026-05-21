@@ -260,6 +260,11 @@ export function CreatorWallet({ onRoute }: Props) {
       {showWithdraw && (
         <WithdrawModal
           available={W.available}
+          payoutLabel={
+            hasPayoutAccount
+              ? `${payoutMethod || 'Bank'} ending ${payoutLast4}`
+              : 'No bank account on file'
+          }
           onClose={() => setShowWithdraw(false)}
           onConfirm={(amount) => {
             // Pre-check via v2CanWithdraw so the user sees a SPECIFIC
@@ -381,8 +386,13 @@ function AdvanceModal({ pendingBalance, maxAdvance, onClose, onConfirm }: {
   );
 }
 
-function WithdrawModal({ available, onClose, onConfirm }: {
+function WithdrawModal({ available, payoutLabel, onClose, onConfirm }: {
   available: number;
+  /** Display label for the destination bank — e.g. "ACH · Chase ••• 4421".
+   *  Pre-fix this modal hardcoded "Bank ending 4291" regardless of the
+   *  creator's actual account, contradicting the wallet sidebar which
+   *  reads `creator.payout.account` correctly. */
+  payoutLabel: string;
   onClose: () => void;
   onConfirm: (amount: number) => void;
 }) {
@@ -448,7 +458,7 @@ function WithdrawModal({ available, onClose, onConfirm }: {
           </div>
           <div className="v2-row" style={{ justifyContent: 'space-between', fontSize: 13, marginTop: 4 }}>
             <span className="v2-muted">To</span>
-            <span style={{ fontWeight: 600 }}>Bank ending 4291</span>
+            <span style={{ fontWeight: 600 }}>{payoutLabel}</span>
           </div>
           <div className="v2-row" style={{ justifyContent: 'space-between', fontSize: 13, marginTop: 4 }}>
             <span className="v2-muted">Estimated arrival</span>

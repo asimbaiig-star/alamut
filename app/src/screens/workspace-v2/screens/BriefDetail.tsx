@@ -172,12 +172,22 @@ export function BriefDetail({ campaignId, onRoute }: Props) {
   );
   const matchedAutoDecline = autoDeclined ? campaign.category : null;
 
-  // Competition signal — synthesized from the seed for demo parity.
-  // Rank improves with match score; viewing/applied numbers tick from
-  // a deterministic seed so they don't churn on every render.
-  const seed = (campaign.id.charCodeAt(0) + campaign.id.charCodeAt(campaign.id.length - 1)) % 17;
-  const viewing = 8 + seed;
-  const applicants = 3 + ((seed * 3) % 9);
+  // Competition signal — applicant count from real db.applications so
+  // the creator sees the same number the brand sees on the Pipeline
+  // kanban. Pre-fix `applicants` was `3 + ((hash(campaign.id) * 3) % 9)`
+  // — a deterministic random per campaign that had nothing to do with
+  // actual demand on the brief. `viewing` is still synthesized (we
+  // don't track storefront/brief views yet) but anchored to the real
+  // applicant count so it scales sensibly.
+  const applicants = db.applications.filter(
+    (a) => a.campaignId === campaign.id && (a.status === 'submitted' || a.status === 'shortlisted'),
+  ).length;
+  // Brief views aren't tracked — synthesize a plausible "currently
+  // viewing" number that's bigger than applicants (more lookers than
+  // pitches) but not absurd. Stable across renders via campaign id hash.
+  const viewSeed = (campaign.id.charCodeAt(0) + campaign.id.charCodeAt(campaign.id.length - 1)) % 17;
+  const viewing = applicants + 4 + viewSeed;
+  // Spots open — campaign caps roster at ~6 creators; what's left.
   const spotsOpen = Math.max(1, 6 - applicants);
   const rank = matchScore >= 90 ? 2 : matchScore >= 75 ? 4 : 9;
   const daysToClose = (() => {

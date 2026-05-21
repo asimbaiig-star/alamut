@@ -55,7 +55,7 @@ export function BrandAnalytics({ onRoute }: Props) {
       _budget += camp.budget;
       const collabs = collabsForCampaign(camp.id, db);
       allCollabsAcc.push(...collabs);
-      const perf = derivePerf(camp, collabs);
+      const perf = derivePerf(camp, collabs, creators);
       if (!perf) continue;
       _liveCount += 1;
       if (!agg) {

@@ -777,7 +777,22 @@ function PulseStat({ n, l, sub }: { n: string; l: string; sub: string }) {
 function AudiencePulse({ me, onRoute }: { me: V2Creator; onRoute: (r: string) => void }) {
   const totalReach = me.channels.reduce((s, ch) => s + ch.followers, 0);
   const avgEr = (me.channels.reduce((s, ch) => s + ch.engagement, 0) / Math.max(me.channels.length, 1)).toFixed(1);
-  const fakeWeekGrowth = Math.round(totalReach * 0.005);
+
+  // Read raw creator from store so we can use the per-platform audience
+  // demographics (V2Creator strips them). Pre-fix this section showed
+  // Karachi/Lahore/Islamabad + a fixed [298, 305, ..., 342] sparkline +
+  // "Best time to post: tomorrow 9 PM" for every creator regardless of
+  // where their audience actually lives.
+  const db = useStore((s) => s.db);
+  const rawMe = db.creators.find((c) => c.id === me.id);
+  // Pick the primary platform (highest follower count) for audience data
+  const primary = rawMe?.platforms.slice().sort((a, b) => b.followers - a.followers)[0];
+  const audience = primary?.audience;
+  // Real weekly growth: convert 30d growth rate to a weekly delta.
+  const weekGrowthPct = audience?.growthRate30d != null ? audience.growthRate30d / 4 : 0;
+  const weekGrowth = Math.max(0, Math.round(totalReach * (weekGrowthPct / 100)));
+  // Top regions: convert percentages 0–1 to display percentages.
+  const topRegions = (audience?.topCountries ?? []).slice(0, 3);
 
   return (
     <div className="v2-card v2-card-pad-lg">
@@ -791,7 +806,10 @@ function AudiencePulse({ me, onRoute }: { me: V2Creator; onRoute: (r: string) =>
             margin: '2px 0 0',
             letterSpacing: '-0.02em',
           }}>
-            {fmtFollowers(totalReach)} · ↑ {fakeWeekGrowth.toLocaleString()} this week
+            {fmtFollowers(totalReach)}
+            {weekGrowth > 0 && (
+              <> · <span style={{ color: 'var(--v2-moss)' }}>↑ {weekGrowth.toLocaleString()} this week</span></>
+            )}
           </h3>
         </div>
         <button
@@ -801,34 +819,54 @@ function AudiencePulse({ me, onRoute }: { me: V2Creator; onRoute: (r: string) =>
         >Analytics</button>
       </div>
       <div style={{ marginBottom: 16 }}>
-        <FollowerSparkline />
+        <FollowerSparkline reach={totalReach} growthRate30d={audience?.growthRate30d ?? 0} />
       </div>
       <div className="v2-row" style={{ gap: 16, marginBottom: 12, flexWrap: 'wrap' }}>
         <div style={{ flex: '1 1 180px', minWidth: 0 }}>
           <div className="v2-eyebrow" style={{ marginBottom: 6 }}>Top regions</div>
-          <BarRow label="Karachi" pct={42} />
-          <BarRow label="Lahore" pct={28} />
-          <BarRow label="Islamabad" pct={14} />
+          {topRegions.length > 0 ? (
+            topRegions.map((r) => (
+              <BarRow key={r.country} label={r.country} pct={Math.round(r.pct * 100)} />
+            ))
+          ) : (
+            <div className="v2-muted" style={{ fontSize: 12 }}>
+              No region data on file yet.
+            </div>
+          )}
         </div>
         <div style={{ flex: '1 1 180px', minWidth: 0 }}>
-          <div className="v2-eyebrow" style={{ marginBottom: 6 }}>Last post</div>
+          <div className="v2-eyebrow" style={{ marginBottom: 6 }}>Avg engagement</div>
           <div className="v2-tabular" style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', marginBottom: 4 }}>
             {avgEr}%
           </div>
           <div className="v2-muted" style={{ fontSize: 12, marginBottom: 8 }}>
-            ER · vs 4.2% niche avg
+            across {me.channels.length} channel{me.channels.length === 1 ? '' : 's'}
           </div>
-          <div className="v2-home-best-time">
-            🎯 Best time to post: tomorrow 9 PM
-          </div>
+          {audience?.audienceCredibilityScore != null && (
+            <div className="v2-home-best-time">
+              ✓ Audience credibility: {audience.audienceCredibilityScore}/100
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-function FollowerSparkline() {
-  const data = [298, 305, 310, 318, 325, 334, 342];
+/** Plot a 7-week follower sparkline by working backwards from current
+ *  reach + 30-day growth rate. Pre-fix this was a fixed `[298…342]`
+ *  array — every creator saw the same line. Now each creator's line
+ *  reflects their actual reach scale + growth direction. */
+function FollowerSparkline({ reach, growthRate30d }: { reach: number; growthRate30d: number }) {
+  // Reconstruct what reach was 6 weeks ago to render the trailing line
+  const monthlyGrowth = (growthRate30d || 0) / 100;
+  const weeklyGrowth = monthlyGrowth / 4;
+  const data: number[] = [];
+  for (let i = 6; i >= 0; i--) {
+    data.push(Math.round(reach * Math.pow(1 + weeklyGrowth, -i)));
+  }
+  // Original visual proportions are preserved for the existing CSS;
+  // only the values are now per-creator-anchored.
   const min = Math.min(...data);
   const max = Math.max(...data);
   const w = 320;

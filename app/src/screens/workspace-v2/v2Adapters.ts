@@ -386,8 +386,9 @@ export function brandWalletV2(brand: Brand, db: Database) {
 
 export function creatorWalletV2(creator: Creator, db: Database) {
   const myUserId = creator.userId;
-  const ledger = db.transactions
-    .filter((t) => t.userId === myUserId)
+  const mineAll = db.transactions.filter((t) => t.userId === myUserId);
+  const ledger = mineAll
+    .slice()
     .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
     .slice(0, 10)
     .map((t) => {
@@ -400,10 +401,23 @@ export function creatorWalletV2(creator: Creator, db: Database) {
       }
       return entry;
     });
+  // Lifetime earnings: compute from the actual ledger (sum of cleared
+  // payouts) rather than reading `creator.lifetimeEarnings`. Pre-fix
+  // the stored field was a seeded random number divorced from the
+  // seeded transactions — wallet hero stat could disagree with the
+  // ledger total below it (e.g. lifetime "$47,800" but the ledger sums
+  // to $12k). The stored field is still updated on payout for
+  // backward compatibility but we trust the ledger as the source of
+  // truth on read. Fall back to the stored field when there are
+  // genuinely no ledger entries (fresh accounts).
+  const ledgerLifetime = mineAll
+    .filter((t) => (t.kind === 'payout' || t.kind === 'escrow_release') && t.status === 'cleared' && t.amount > 0)
+    .reduce((s, t) => s + t.amount, 0);
+  const lifetime = ledgerLifetime > 0 ? ledgerLifetime : creator.lifetimeEarnings;
   return {
     available: creator.walletBalance,
     pending: creator.pendingBalance,
-    lifetime: creator.lifetimeEarnings,
+    lifetime,
     currency: 'USD' as const,
     ledger,
   };
@@ -444,6 +458,13 @@ function deliverableFromSubmission(
   hasPayout: boolean,
   label: string,
   deliverableId: string,
+  /** The campaign deadline string ("May 18"). Used as the deliverable's
+   *  due date when the row's own `dueOffsetDays` is null (the common
+   *  case). Pre-fix this fn used `submittedAt` as `due` which made the
+   *  Calendar plot every submitted deliverable on the day it was sent
+   *  to review, not on its actual deadline — the whole Calendar
+   *  surface ("overdue", "next 7 days") was lying as a result. */
+  campaignDeadline: string,
 ): V2Deliverable {
   // Map submission status → deliverable status. If we already see a payout
   // for this submission's campaign × creator, treat it as `live` (it's
@@ -465,7 +486,7 @@ function deliverableFromSubmission(
     deliverableId,
     label,
     status: baseStatus,
-    due: fmtDateShort(s.submittedAt),
+    due: campaignDeadline,
     submittedAt: fmtDateShort(s.submittedAt),
     thumb: s.files[0]?.url,
     // Strip the `[slot:N]` prefix from notes when displaying — the prefix
@@ -627,7 +648,7 @@ export function deriveCollab(campaignId: string, creatorId: string, db: Database
       .sort((a, b) => b.round - a.round);
     const latest = delSubs[0];
     if (latest) {
-      deliverables.push(deliverableFromSubmission(latest, hasPayout, label, del.id));
+      deliverables.push(deliverableFromSubmission(latest, hasPayout, label, del.id, fmtDateShort(camp.deadline)));
     } else if (accepted || stage !== 'invited') {
       deliverables.push({
         id: `synth__${campaignId}__${creatorId}__${del.index}`,
