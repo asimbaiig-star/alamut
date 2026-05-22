@@ -1000,6 +1000,227 @@ was just shipped.
     (avoids bumping store version + flushing user state).
     Commit `ba9290c`.
 
+---
+
+### 2026-05-21 → 2026-05-22 — Phase 54-57 — workspace-v2 consistency sweep (35+ surface fixes)
+
+A 6-commit run through the v2 workspace eliminating literal/fake data,
+unwired CTAs, copy that misrepresented features, and cross-surface
+mismatches. Worked within the project constraint that real external
+APIs (platform OAuth, payment processor, view tracking, etc.) cannot
+be wired right now — seed data was extended where deletion would gut
+demo visual richness.
+
+**Cumulative surface count touched: 35.**
+
+#### Buckets
+
+1. **A-batch (bug fixes)** — commit `289c023`, 14 files +392/-95:
+   - A2: sidebar inbox count live from `useV2Conversations` (was literal 3/2)
+   - A3: KYC tile renders only when `buildSteps()` reports pending
+   - A4: CreatorWallet payout method reads real `creator.payout.account`
+   - A5: Campaigns "active creators" derived from Live+Paused rosters
+   - A6: BrandHome pacing pill computes drift (On plan / Over pace / Behind pace)
+   - A7: Storefront crumb dropped fake "last updated 3 days ago"
+   - A8: CreatorHome Achievement tiles from real myCollabs + channels
+   - A9: Inbox conversation-list search input wired to filter
+   - A10: BrandWallet "This month" sums cleared transactions
+   - A11: OutcomeCard deltas from real weeklySeries
+   - A12+A13: BrandAnalytics wk/wk delta + range filter wired
+
+2. **C-batch (copy honesty + seed)** — commit `a5fe844`, 9 files +260/-148:
+   - 3 new Creator seed fields: `storefrontViewsLast30d`,
+     `brandInquiriesThisWeek`, `recentBrandViewerNames` (+ deltas + count)
+   - StorefrontPulse + viewers strip read from seed (Sarah: 2,140 views,
+     14 inquiries, Aesop/Glossier/Le Labo viewers); generated creators
+     get tier-scaled values via `genCreator`
+   - Tip of the day rotates from 5-tip array keyed by creator-id hash
+   - ContentReviewModal: interactive checklist (was fake "Spark
+     auto-check" rows)
+   - Discover "Ask Spark" → "Quick prompts" with keyword chips that
+     actually match the substring filter
+   - Storefront channels tip reworded (no more "auto-pull metrics" lie)
+   - Campaign Settings "Visibility" pseudo-control deleted
+   - ComingSoon.tsx deleted (76 lines dead)
+
+3. **B-batch (wiring gaps)** — commit `d633c0f`, 17 files +544/-78:
+   - Brand-side reviews wired (LeaveReviewModal generalized
+     `brandName` → `subjectName` + `subjectKind`; CTA on paid kanban
+     cards; checks for already-reviewed)
+   - KYC withdrawal gate: new `v2CanWithdraw()` returns structured
+     rejection reason (kyc-not-verified, no-bank-account,
+     open-dispute, in-dispute-window); modal surfaces specific copy
+   - Spark "Lock in campaign" serializes shortlist + brief + projection
+     into `campaign-new?…` query string
+   - BrandHome SparkComposer passes typed prompt via `spark?prompt=…`
+   - Cultural Calendar "Plan" CTAs pre-seed wizard with event
+     name/deadline/category/brief
+   - BriefMatches scores via `computeMatchScore()` (extracted from
+     BriefDetail into v2Adapters)
+   - "Send brief" CTA on Creator-of-the-Week → `creator:<id>`
+   - PublicStorefront "Brief on Alamut" → `creator:<id>`
+   - "Open deal room" hidden when already in detailed inbox mode
+   - Admin Reports: new `Thread.suspended` + `actionTakenAt` +
+     `actionTakenByUserId` + `actionNote` fields; "Action taken"
+     button prompts for note + suspends thread; "Dismiss" stays as
+     no-action path
+
+4. **Adapter terminal-stage fix** — commit `ee8e82f`, 1 file +31/-2:
+   - `deriveCollab` honors `Collaboration.stage === 'paid'` as a
+     terminal override (signal-based derivation requires
+     camp.stage='closed' + live submission + payout — seed data has
+     none, so paid collabs were coerced to 'live' or 'approved')
+   - Cancelled rows filtered from `collabsForCampaign` +
+     `collabsForCreator` so they don't show up as ghost invites
+
+5. **H-batch (high-severity cross-surface mismatches)** — commit `917cd55`, 7 files +258/-48:
+   - H1 WithdrawModal accepts `payoutLabel` prop (was hardcoded "Bank
+     ending 4291" for every creator)
+   - H2 Calendar deliverable `due` = campaign deadline (was
+     `submittedAt` — the whole Calendar overdue/next-7-days lied)
+   - H3 BriefDetail applicants from `db.applications` (was
+     deterministic hash random)
+   - H4 AudiencePulse reads real per-platform audience seed
+     (topCountries, growthRate30d, credibility) instead of hardcoded
+     Karachi/Lahore/Islamabad
+   - H5 derivePerf computes from accepted creators' actual reach + ER
+     (was `reach = spent × 18`, `er = 11.5` literal)
+   - H6 Wallet "Lifetime" = Σ cleared payouts (was seeded random
+     `creator.lifetimeEarnings`)
+   - **Bonus critical fix**: Supabase boot overlay in `store.ts:328`
+     was blowing away locally-seeded `platforms[*].audience` +
+     storefront-pulse fields on every page load. Added smart-merge
+     overlay (`overlayCreators`) that preserves local-only demo
+     fields when remote rows don't carry them. Owner-only PII overlay
+     had same bug — same fix.
+   - Persist schema bumped 13 → 14 to flush stale cached state
+
+6. **M-batch (medium-severity alignments)** — commit `97926be`, 3 files +55/-13:
+   - M7 BrandHome pacing "across N campaigns" plural fix
+   - M8 BrandHome topbar crumb "X things need you" matches ActionInbox
+     "X things blocking" (urgent shown as secondary stat)
+   - M9 V2Campaign.live counts collabs at stage='live' or 'paid'
+     (was approved-submissions count — diverged from kanban Live col)
+   - M10 CreatorHome "X deliverables pending" from real
+     myCollabs.deliverables (was `wallet.pending / 200`)
+   - M11 CreatorHome BriefMatches "N brand(s)" plural fix
+   - Also killed a stray "deliverables pending pending" double-word
+
+#### Verified live (Sarah + Hannah demo accounts)
+
+- StorefrontPulse: 2,140 views ↑28%, 14 brand inquiries ↑4
+- Brand viewers strip: Aesop, Glossier, Le Labo, Reformation + 8 more
+- AudiencePulse: 208K · ↑2,188 this week · USA 52%, UK 16%, Canada 10%
+  · 18.1% ER · ✓ Audience credibility 96/100
+- Achievement tiles: 25 collabs / 18.1% ER / Top tier reached
+- Wallet: real account 4421 · lifetime from ledger · KYC-gated withdrawals
+- Brand kanban: Pipeline 2 · Invited 1 with "Invitation sent · awaiting
+  creator" + Send-offer fast-path
+- Brand topbar: "Good afternoon · 328 things need you · 121 urgent · 13 live"
+- Brand pacing: "In escrow $19.5K · across 13 campaigns"
+- Spark composer round-trip: typed prompt → spark?prompt= → engine parses
+  "Lifestyle · Lahore" facets
+- Cultural Calendar Plan → wizard pre-seeded "Eid-ul-Adha '26"
+- Pipeline Paid column: 3 cards each with "Leave review" CTA (cmp_g8)
+- 438/438 tests pass; typecheck clean across all 6 commits
+
+#### Final audit (2026-05-22) — 31 remaining findings
+
+A focused agent sweep identified the items below as still-broken or
+unwired, all distinct from what shipped in A/B/C/H/M. **In progress:**
+fixing all local-fixable items now (Phase 58). See "Outstanding /
+deferred items" section above for items that need backend connections
+the prototype intentionally lacks.
+
+**CRITICAL (fixing now, except #1 NotificationsBell which user
+explicitly deferred pending a decision on whether notifications +
+Recent Activity + Needs-you tile consolidate into one feature):**
+- #2 TopupModal submit is a no-op (`BrandWallet.tsx:421-430`)
+- #3 RouteOutlet fall-through to BrandHome on unknown route
+  (`Workspace.tsx:499`) — creator persona can land on brand home
+- #4 Inbox conversation list `display: none` at <760px
+  (`workspace-v2.css:1028`) — mobile creator can't switch threads
+
+**HIGH (fixing now):**
+- #5 ConnectPlatformModal unmounted — delete (no real OAuth to wire)
+- #6 Storefront audience block read-only — relabel honest
+- #7 BrandOnboarding drops `creatorTier` + `monthlyBudget`
+
+**MEDIUM (fixing the local-fixable ones now):**
+- Archive / duplicate campaign (new mutations)
+- Snooze thread (new mutation)
+- Bulk-decline applicants
+- Inbox: message-body search (LOCAL — fix)
+- Inbox: typing indicator + read receipts (BACKEND — skip; document)
+- realtimeWorkflow only INSERT (BACKEND — skip; document)
+- New message toast (LOCAL — fix)
+- /p/<campaignId> public route + robots + sitemap + OG SSR (DEPLOY —
+  skip; document)
+- Empty states for 0 campaigns / 0 collabs / 0 ledger (LOCAL — fix)
+- A11y ESC handler on modals (LOCAL — single shared hook)
+- Initial-boot loading skeleton (LOCAL — fix)
+- StaleVersionError UX (LOCAL — small reload prompt)
+- Mobile pipeline kanban (LOCAL — significant — fix as stack-on-mobile)
+- Mobile wizard sticky preview (LOCAL — fix collapse)
+- Mobile upload modal (LOCAL — fix padding)
+
+**LOW (fixing local-fixable ones now):**
+- 22 dead modal files in `components/modals/` + 3 legacy components —
+  bulk delete
+- Topbar `search` prop decorative on most call sites — make functional
+  where wired, drop on others
+- Ledger pagination (brand + creator)
+- Edit-payout-method routes to `/kyc` (no anchor) — add scroll target
+- Advance modal `purpose` captured but not sent — pass it
+- ContentUpload >25MB silent break — add "Pending upload" pill on
+  submission card
+- MarkLive URL allowlist out of sync with `Platform` type union
+- CreatorOnboardingV2 saves `payout.method` without `payout.account`
+- Tax cert PDF generation (BACKEND — skip; document)
+- Real platform OAuth via ConnectPlatformModal (BACKEND — skip;
+  delete the modal)
+- Stale-route teleport (covered by #3 fix above)
+
+#### What's intentionally NOT fixed (backend / deployment dependencies)
+
+The prototype runs without real external APIs by design. These items
+need integrations that aren't in scope:
+
+| Item | Why it needs backend |
+|---|---|
+| NotificationsBell mount | User deferred pending feature consolidation decision |
+| Real platform OAuth (Instagram / TikTok / YouTube / etc.) | Each platform's OAuth + insights API; ConnectPlatformModal has the scaffolding but no real provider credentials |
+| Realtime presence (typing indicator, online status) | Supabase Realtime presence channel — adds latency + reconnect logic |
+| Realtime workflow UPDATE subscriptions | Currently INSERT-only; UPDATEs work in same-tab via store mutations, only matters cross-tab |
+| Per-message read receipts | Schema + per-recipient state; deferred |
+| SSR for `/c/<handle>` + `/p/<campaignId>` OG tags | Vercel page config / `next/head`; current OG tags set client-side won't render in FB/LinkedIn crawler previews |
+| robots.txt + sitemap.xml | Deployment-time generation |
+| Quarterly tax-cert PDF download | Server-side render (pdf-lib or similar) |
+| File uploads >25MB | Supabase Storage path works; modal has known gap on URL persistence (file name kept, URL empty); demo accounts stay under the limit |
+
+#### Tooling / approach notes (for future sessions)
+
+- **Smart-merge overlay pattern (`store.ts:overlayCreators`)** is the
+  pattern to use for any future Creator/Brand demo-only field. Adding
+  a new field to types.ts + seed.ts is now sufficient; the overlay
+  preserves local seed when Supabase doesn't carry the column.
+- **Schema version bump (`store.ts:82`)** is required whenever a new
+  Creator/Brand/etc. seeded field is added — Zustand persist won't
+  flush stale state without it. Current: v14 (Phase 56 audience +
+  storefront-pulse seed).
+- **`computeMatchScore` in v2Adapters** is the shared helper for any
+  brief↔creator match scoring across surfaces (BriefDetail,
+  CreatorHome BriefMatches; future: Discover ranking).
+- **`v2CanWithdraw` + `withdrawalRejectionMessage`** pattern is
+  reusable for any other mutation that needs to surface a specific
+  rejection reason instead of a generic "failed" toast (e.g.
+  application accept might benefit from this for "no escrow funds
+  available" / "campaign closed" / etc.).
+- **The `LeaveReviewModal`** now supports both `subjectKind: 'brand'`
+  and `subjectKind: 'creator'`. Both directions of review fire
+  `v2LeaveReview` with the right `reviewType`; surfaces consume via
+  `db.reviews.filter(r => r.targetId === ...)`.
+
 ## Commit hashes for traceability
 
 Recent commits in chronological order — all on origin/main:
@@ -1057,3 +1278,13 @@ Recent commits in chronological order — all on origin/main:
 | `73a5914` | Phase 53 polish | Hero specificity bump + tighten so it fits in viewport |
 | `d37a594` | Phase 53 polish | Recent placements gallery — count 18 → 16 to balance masonry |
 | `ba9290c` | Phase 53 polish | PressStrip names + fix doubled portrait URLs |
+| `84b7071` | Audit log | Catch up 2026-05-14 → 2026-05-15 work |
+| `26f1e10` | Investor brief | Product brief markdown for designer hand-off |
+| `9dc696c` | Phase 54 | Brand cold-invite workflow + adapter visibility |
+| `03b4313` | Phase 54 | Mobile nav drawer (hamburger + slide-in sidebar) |
+| `289c023` | Phase 55 A-batch | 13 bug fixes — live data into surfaces that already had it |
+| `a5fe844` | Phase 55 C-batch | Copy honesty + 3 Creator seed fields |
+| `d633c0f` | Phase 55 B-batch | 10 wiring fixes (CTA → existing actions) |
+| `ee8e82f` | Phase 56 | Adapter honors paid/cancelled terminal stages |
+| `917cd55` | Phase 56 H-batch | 6 cross-surface mismatches + Supabase overlay race fix |
+| `97926be` | Phase 57 M-batch | 5 medium-severity consistency alignments |
