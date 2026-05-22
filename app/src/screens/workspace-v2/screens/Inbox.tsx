@@ -28,7 +28,7 @@ import {
 import {
   useV2Conversations, useV2Creators, useV2AllCampaigns,
   v2MarkThreadRead, v2SendMessage,
-  v2MuteThread, v2ArchiveThread, v2ReportThread,
+  v2MuteThread, v2ArchiveThread, v2ReportThread, v2SnoozeThread,
 } from '../v2Hooks';
 import { deriveCollab, V2_PIPELINE_STAGES } from '../v2Adapters';
 import { useStore } from '@/lib/api/store';
@@ -55,6 +55,8 @@ export function Inbox({ onRoute, persona, forceThreadId, forcePanelMode }: Props
   const db = useStore((s) => s.db);
   const [activeId, setActiveId] = useState<string>(forceThreadId ?? conversations[0]?.id ?? '');
   const [draft, setDraft] = useState('');
+  // Mobile-only — drives the conversation-list slide-in drawer at <760px.
+  const [mobileListOpen, setMobileListOpen] = useState(false);
 
   // If the conversation list refreshes (e.g. after a tx) keep activeId valid.
   useEffect(() => {
@@ -86,12 +88,25 @@ export function Inbox({ onRoute, persona, forceThreadId, forcePanelMode }: Props
   // bounce back to 'all' when the other party messages (v2SendMessage
   // un-archives for non-sender participants).
   const [filter, setFilter] = useState<'all' | 'unread' | 'archived'>('all');
+  const sessionUid = useStore((s) => s.session?.userId) ?? null;
   const filteredConversations = useMemo(() => {
     if (filter === 'archived') return conversations.filter((c) => c.isArchivedForViewer);
     const visible = conversations.filter((c) => !c.isArchivedForViewer);
-    if (filter === 'unread') return visible.filter((c) => c.unread > 0);
-    return visible;
-  }, [conversations, filter]);
+    // Phase 58 — hide snoozed threads from the default + unread views.
+    // Snooze is per-viewer; we look up the raw Thread row to read the
+    // current viewer's wake-up timestamp. User can re-show via the
+    // thread's More menu (Unsnooze).
+    const nowMs = Date.now();
+    const notSnoozed = sessionUid
+      ? visible.filter((c) => {
+          const t = db.threads.find((x) => x.id === c.id);
+          const wake = t?.snoozedFor?.[sessionUid] ?? 0;
+          return wake <= nowMs;
+        })
+      : visible;
+    if (filter === 'unread') return notSnoozed.filter((c) => c.unread > 0);
+    return notSnoozed;
+  }, [conversations, filter, db.threads, sessionUid]);
 
   const active = filteredConversations.find((c) => c.id === activeId) ?? filteredConversations[0] ?? conversations[0];
 
@@ -216,15 +231,47 @@ export function Inbox({ onRoute, persona, forceThreadId, forcePanelMode }: Props
           </select>
         }
       />
+      {/* Mobile-only floating toggle to open the conversation list.
+          Pre-fix the list was `display: none` at <760px, leaving the
+          creator stuck on the current thread with no way to pick a
+          different one. CSS hides this on desktop. */}
+      <button
+        type="button"
+        className="v2-inbox-mobile-toggle"
+        aria-label={mobileListOpen ? 'Close conversations' : 'Open conversations'}
+        aria-expanded={mobileListOpen}
+        onClick={() => setMobileListOpen((v) => !v)}
+      >
+        {mobileListOpen ? (
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        ) : (
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        )}
+      </button>
+      {mobileListOpen && (
+        <div
+          className="v2-inbox-mobile-backdrop"
+          aria-hidden="true"
+          onClick={() => setMobileListOpen(false)}
+        />
+      )}
       <div className="v2-inbox">
         <ConversationList
           conversations={filteredConversations}
           activeId={activeId}
-          onSelect={setActiveId}
+          onSelect={(id) => { setActiveId(id); setMobileListOpen(false); }}
           creators={creators}
           campaigns={campaigns}
           persona={persona}
           brands={db.brands}
+          mobileOpen={mobileListOpen}
         />
         {active && counterparty ? (
           <Thread
@@ -268,7 +315,7 @@ export function Inbox({ onRoute, persona, forceThreadId, forcePanelMode }: Props
 // Conversation list (left pane)
 // =====================================================================
 function ConversationList({
-  conversations, activeId, onSelect, creators, campaigns, persona, brands,
+  conversations, activeId, onSelect, creators, campaigns, persona, brands, mobileOpen,
 }: {
   conversations: V2Conversation[];
   activeId: string;
@@ -277,13 +324,30 @@ function ConversationList({
   campaigns: V2Campaign[];
   persona: 'brand' | 'creator';
   brands: import('@/lib/api/types').Brand[];
+  /** Mobile drawer state — applies `is-mobile-open` class at <760px
+   *  so the off-canvas list slides into view. CSS hides this prop's
+   *  effect on desktop. */
+  mobileOpen?: boolean;
 }) {
-  // Pre-fix the search input was decorative — no `value`, no `onChange`,
-  // no filter. The user could type, nothing happened. Now we filter by
-  // counterparty name / handle and campaign name, persona-aware (brand
-  // viewers see creators on the row; creator viewers see brands).
+  // Pre-fix the search input was decorative; we wired it to filter by
+  // counterparty/campaign. Phase 58 extends it to ALSO scan message
+  // body text so the user can find a quote inside any thread — closes
+  // the "I can see we discussed it but can't find the message" gap.
   const [query, setQuery] = useState('');
   const q = query.trim().toLowerCase();
+  const db = useStore((s) => s.db);
+  // Build a per-thread "messages contain query?" map once per query.
+  // Avoids scanning all messages × all conversations on each render.
+  const threadsMatchingBody = useMemo(() => {
+    if (!q) return new Set<string>();
+    const set = new Set<string>();
+    for (const m of db.messages) {
+      if (!set.has(m.threadId) && m.text.toLowerCase().includes(q)) {
+        set.add(m.threadId);
+      }
+    }
+    return set;
+  }, [db.messages, q]);
   const visible = !q ? conversations : conversations.filter((c) => {
     const campaign = campaigns.find((cmp) => cmp.id === c.campaignId);
     const counterpartyName = persona === 'brand'
@@ -296,12 +360,16 @@ function ConversationList({
     return (
       counterpartyName.toLowerCase().includes(q) ||
       counterpartyHandle.toLowerCase().includes(q) ||
-      campaignName.toLowerCase().includes(q)
+      campaignName.toLowerCase().includes(q) ||
+      threadsMatchingBody.has(c.id)
     );
   });
 
   return (
-    <aside className="v2-inbox-list" aria-label="Conversations">
+    <aside
+      className={['v2-inbox-list', mobileOpen ? 'is-mobile-open' : ''].filter(Boolean).join(' ')}
+      aria-label="Conversations"
+    >
       <header className="v2-inbox-list-head">
         <h3 style={{
           margin: 0,
@@ -455,6 +523,8 @@ function Thread({
   })();
   const isMuted = (rawThread?.mutedFor ?? []).includes(viewerUserId);
   const isArchived = (rawThread?.archivedFor ?? []).includes(viewerUserId);
+  const snoozeUntil = rawThread?.snoozedFor?.[viewerUserId] ?? 0;
+  const isSnoozed = snoozeUntil > Date.now();
 
   return (
     <section className="v2-inbox-thread" aria-label="Message thread">
@@ -563,6 +633,42 @@ function Thread({
                   setMoreOpen(false);
                 }}
               />
+              {/* Phase 58 — snooze for N hours. Persists per-user on
+                  thread.snoozedFor. Default inbox filter hides snoozed
+                  threads until the wake-up time passes. New messages
+                  from the counterparty would clear the snooze on the
+                  recipient's side (real-time-side patch — for now,
+                  manually unsnoozing brings it back). */}
+              <MoreMenuItem
+                label="Snooze · 1 hour"
+                onClick={() => {
+                  v2SnoozeThread(conversation.id, 60 * 60 * 1000);
+                  pushToast('Snoozed for 1 hour');
+                  setMoreOpen(false);
+                }}
+              />
+              <MoreMenuItem
+                label="Snooze · until tomorrow"
+                onClick={() => {
+                  // Next 9am local time.
+                  const t = new Date();
+                  t.setDate(t.getDate() + 1);
+                  t.setHours(9, 0, 0, 0);
+                  v2SnoozeThread(conversation.id, t.getTime() - Date.now());
+                  pushToast('Snoozed until tomorrow 9am');
+                  setMoreOpen(false);
+                }}
+              />
+              {isSnoozed && (
+                <MoreMenuItem
+                  label="Unsnooze"
+                  onClick={() => {
+                    v2SnoozeThread(conversation.id, 0);
+                    pushToast('Snooze cleared');
+                    setMoreOpen(false);
+                  }}
+                />
+              )}
               <hr style={{ border: 0, borderTop: '1px solid var(--v2-line)', margin: '4px 0' }} />
               <MoreMenuItem
                 label="Report conversation…"

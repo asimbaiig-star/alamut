@@ -327,6 +327,17 @@
   border-top: 1px solid var(--v2-line);
   background: var(--v2-bg-1);
 }
+/* Phase 58 — mobile compaction. Pre-fix modal padding stayed at
+   24/32px even on <480px viewports, leaving little room for content
+   and clipping footer buttons. Smaller paddings + a tighter dropzone
+   keep the modal usable on phones. */
+@media (max-width: 600px) {
+  [data-surface="v2"] .v2-upload-modal { max-width: 100%; margin: 8px; }
+  [data-surface="v2"] .v2-upload-modal-head { padding: 14px 16px; }
+  [data-surface="v2"] .v2-upload-modal-body { padding: 16px; }
+  [data-surface="v2"] .v2-upload-modal-foot { padding: 12px; flex-wrap: wrap; }
+  [data-surface="v2"] .v2-upload-dropzone { padding: 20px 12px; }
+}
 [data-surface="v2"] .v2-upload-dropzone {
   width: 100%;
   padding: 32px;
@@ -357,6 +368,22 @@
   display: grid;
   gap: 0;
   position: relative;
+}
+/* Phase 58 — mobile collapse for the wizard's 2-pane layout (content
+   left, sticky preview right). At <880px stack the preview below so
+   the form gets full width; sticky positioning is dropped. */
+@media (max-width: 880px) {
+  [data-surface="v2"] .v2-wizard-grid {
+    grid-template-columns: 1fr !important;
+  }
+  [data-surface="v2"] .v2-wizard-preview {
+    position: static !important;
+    margin-top: 24px;
+  }
+  [data-surface="v2"] .v2-wizard-stepper {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 4px;
+  }
 }
 [data-surface="v2"] .v2-wizard-step {
   background: none;

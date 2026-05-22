@@ -21,6 +21,7 @@ import {
 } from '../v2Hooks';
 import { useStore } from '@/lib/api/store';
 import { pushToast } from '@/lib/utils/toast';
+import { useModalEscape } from '@/lib/utils/useModalEscape';
 import type { V2Creator } from '../data';
 // P7 — UI gating for brand-side actions. The mutations themselves
 // throw via P5's `requireCapability`; this layer turns that into a
@@ -39,6 +40,7 @@ interface SendOfferProps {
 }
 
 export function SendOfferModal({ campaignId, creator, defaultRate, onClose }: SendOfferProps) {
+  useModalEscape(onClose);
   const [rate, setRate] = useState<number>(defaultRate);
   const [message, setMessage] = useState<string>(
     `Hi ${creator.name.split(' ')[0]} — we'd love to work with you. Offering $${defaultRate.toLocaleString()} for the brief — let me know if you'd like to discuss.`,
@@ -320,6 +322,7 @@ export function CounterOfferModal(
     offerId, currentRate, onClose, side = 'creator',
     counterpartyName, brandName,
   } = props;
+  useModalEscape(onClose);
   const otherName = counterpartyName ?? brandName ?? 'The other side';
 
   // Default counter direction depends on side: creators counter UP
@@ -455,6 +458,7 @@ interface MarkLiveProps {
 }
 
 export function MarkLiveModal({ submissionId, campaignName, onClose, initialPermalink }: MarkLiveProps) {
+  useModalEscape(onClose);
   // P3 §2.2 — creator-only Mark Live. The creator owns the URL field;
   // they paste it via the deliverable's inline editor (which calls
   // `v2SetSubmissionPermalink`). The brand sees the URL here and just
@@ -562,6 +566,7 @@ interface InviteCreatorsProps {
 export function InviteCreatorsModal({
   campaignId, excludeCreatorIds, campaignTitle, onClose,
 }: InviteCreatorsProps) {
+  useModalEscape(onClose);
   const allCreators = useV2Creators();
   const session = useStore((s) => s.session);
   const [query, setQuery] = useState('');
@@ -772,6 +777,7 @@ export function CreatorMarkLiveModal({
   submissionId, deliverableLabel, campaignName, brandName,
   initialPermalink, releaseAmount, onClose,
 }: CreatorMarkLiveProps) {
+  useModalEscape(onClose);
   const [url, setUrl] = useState(initialPermalink ?? '');
   const [confirmed, setConfirmed] = useState(false);
   const canSetPermalink = useCapability('content.setPermalink');
@@ -791,16 +797,19 @@ export function CreatorMarkLiveModal({
       return { valid: false, recognized: false, platform: '' };
     }
     const host = parsed.hostname.toLowerCase().replace(/^www\./, '');
+    // Allowlist mirrors the `Platform` type union in types.ts. Pre-fix
+    // it included Threads/Snapchat/Facebook/Pinterest which aren't in
+    // the union — a creator could paste a Snap URL here but the
+    // storefront wouldn't render the channel because Platform.name
+    // doesn't accept 'Snapchat'. Substack was missing in the other
+    // direction: it's a valid Platform but the URL parser rejected it.
     const platformMap: { match: string[]; label: string }[] = [
       { match: ['instagram.com'], label: 'Instagram' },
       { match: ['tiktok.com', 'vm.tiktok.com'], label: 'TikTok' },
       { match: ['youtube.com', 'youtu.be', 'm.youtube.com'], label: 'YouTube' },
-      { match: ['twitter.com', 'x.com'], label: 'X (Twitter)' },
+      { match: ['twitter.com', 'x.com'], label: 'X' },
       { match: ['linkedin.com'], label: 'LinkedIn' },
-      { match: ['threads.net'], label: 'Threads' },
-      { match: ['snapchat.com'], label: 'Snapchat' },
-      { match: ['facebook.com', 'fb.com'], label: 'Facebook' },
-      { match: ['pinterest.com'], label: 'Pinterest' },
+      { match: ['substack.com'], label: 'Substack' },
     ];
     const matched = platformMap.find((p) => p.match.some((d) => host === d || host.endsWith(`.${d}`)));
     return { valid: true, recognized: !!matched, platform: matched?.label ?? '' };

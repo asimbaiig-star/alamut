@@ -7,6 +7,7 @@
 
 import { useState } from 'react';
 import { fmtUSD, Icon } from '../lib';
+import { useModalEscape } from '@/lib/utils/useModalEscape';
 import type { V2Collab, V2Creator } from '../data';
 import { v2ApproveContent, v2RequestRevision } from '../v2CampaignActions';
 // P7 — gate the approve / request-revision buttons by capability so
@@ -75,6 +76,7 @@ function previewKind(file: { name: string; mime?: string; url?: string }): 'vide
 }
 
 export function ContentReviewModal({ collab, creators, onClose }: Props) {
+  useModalEscape(onClose);
   const creator = creators.find((c) => c.id === collab.creatorId);
   const deliverable =
     collab.deliverables.find((d) => d.status === 'in_review') ?? collab.deliverables[0];

@@ -11,9 +11,10 @@
 // campaigns and only wants to see what's live or paused right now.
 
 import { useMemo, useState } from 'react';
-import { fmtUSD, Icon, Topbar } from '../lib';
+import { fmtUSD, Icon, Topbar, EmptyState } from '../lib';
 import { type V2Campaign } from '../data';
 import { useV2Campaigns, useV2Creators } from '../v2Hooks';
+import { useStore } from '@/lib/api/store';
 
 interface Props {
   onRoute: (r: string) => void;
@@ -32,7 +33,18 @@ const STAGES: { key: V2Campaign['status']; label: string; tip?: string }[] = [
 type StageFilter = 'all' | V2Campaign['status'];
 
 export function Campaigns({ onRoute }: Props) {
-  const campaigns = useV2Campaigns();
+  const allCampaignsRaw = useV2Campaigns();
+  // Pull archive state from the underlying db so we can split visible
+  // vs archived. Phase 58 added Campaign.archivedAt; the V2Campaign
+  // adapter doesn't surface it (no consumer needs it on the v2 shape
+  // beyond this filter).
+  const dbCampaigns = useStore((s) => s.db.campaigns);
+  const archivedIds = new Set(dbCampaigns.filter((c) => c.archivedAt).map((c) => c.id));
+  const [showArchived, setShowArchived] = useState(false);
+  const campaigns = showArchived
+    ? allCampaignsRaw.filter((c) => archivedIds.has(c.id))
+    : allCampaignsRaw.filter((c) => !archivedIds.has(c.id));
+  const archivedCount = archivedIds.size;
   const creators = useV2Creators();
   const [filter, setFilter] = useState<StageFilter>('all');
 
@@ -98,6 +110,16 @@ export function Campaigns({ onRoute }: Props) {
               }
             />
             <span className="v2-spacer" />
+            {archivedCount > 0 && (
+              <button
+                className="v2-btn v2-btn-outline v2-btn-sm"
+                type="button"
+                onClick={() => setShowArchived((v) => !v)}
+                title={showArchived ? 'Switch back to active campaigns' : 'View archived campaigns'}
+              >
+                {showArchived ? `Active (${allCampaignsRaw.length - archivedCount})` : `Archived (${archivedCount})`}
+              </button>
+            )}
             <button
               className="v2-btn v2-btn-outline v2-btn-sm"
               type="button"
@@ -145,6 +167,29 @@ export function Campaigns({ onRoute }: Props) {
         )}
 
         {/* Stage-grouped sections */}
+        {/* Phase 58 — first-time empty state. Pre-fix a fresh brand
+            with 0 campaigns landed on a page with the stage chips
+            (all reading "0") and nothing else. Now a hero card
+            prompts them to launch their first campaign or describe
+            it to Spark. */}
+        {allCampaignsRaw.length === 0 && !showArchived && (
+          <EmptyState
+            icon={<>{Icon.campaign}</>}
+            title="No campaigns yet"
+            body="Brief your first campaign — describe what you want to ship and Spark drafts the brief, surfaces matching creators, and primes the escrow."
+            ctaLabel="Launch your first campaign"
+            onCta={() => onRoute('campaign-new')}
+            secondary={
+              <button
+                type="button"
+                className="v2-btn v2-btn-ghost v2-btn-sm"
+                onClick={() => onRoute('spark')}
+              >
+                Or describe it to Spark
+              </button>
+            }
+          />
+        )}
         {visibleStages.map((stage) => {
           const items = grouped[stage.key];
           if (items.length === 0) return null;

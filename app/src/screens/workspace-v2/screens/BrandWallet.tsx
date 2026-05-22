@@ -7,9 +7,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fmtUSD, fmtUSDfull, Icon, Topbar } from '../lib';
 import { useV2BrandWallet, useV2CurrentBrand } from '../v2Hooks';
+import { api } from '@/lib/api/client';
 import { pushToast } from '@/lib/utils/toast';
 import { downloadCSV } from '@/lib/utils/csv';
 import { parseNumberInput } from '@/lib/utils/format';
+import { useModalEscape } from '@/lib/utils/useModalEscape';
 import { useCapability } from '@/lib/permissions';
 
 interface Props {
@@ -312,12 +314,40 @@ function PaymentMethod({ name, sub, color, last }: {
 }
 
 function TopupModal({ onClose }: { onClose: () => void }) {
+  useModalEscape(onClose);
   const [method, setMethod] = useState('wire');
   const [amount, setAmount] = useState(5000);
+  const [submitting, setSubmitting] = useState(false);
   // Modal opens through gated entry buttons in the parent, so the
   // submit gate is mostly defense-in-depth (e.g. role changes mid-
   // session). Same `wallet.topup` capability for consistency.
   const canTopup = useCapability('wallet.topup');
+
+  // Pre-fix this modal's "Top up" submit just called onClose — brand
+  // filled the form, clicked, nothing happened. `api.wallet.topUp`
+  // exists and writes a real topup transaction + credits walletBalance;
+  // wire to it. No real payment-processor integration (out of scope
+  // for the prototype) — the transaction is the demo-relevant outcome.
+  const handleSubmit = async () => {
+    if (!canTopup || amount <= 0 || submitting) return;
+    setSubmitting(true);
+    try {
+      const methodLabel = ({
+        wire: 'Wire transfer',
+        ach: 'ACH transfer',
+        jazzcash: 'JazzCash',
+        card: 'Card payment',
+      } as const)[method as 'wire' | 'ach' | 'jazzcash' | 'card'] ?? 'Top-up';
+      await api.wallet.topUp(amount, methodLabel);
+      pushToast(`Top-up of ${fmtUSDfull(amount)} cleared · available now`, 'good');
+      onClose();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Top-up failed';
+      pushToast(msg, 'bad');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div className="v2-modal-overlay" onClick={onClose}>
@@ -421,11 +451,11 @@ function TopupModal({ onClose }: { onClose: () => void }) {
           <button
             className="v2-btn v2-btn-primary"
             type="button"
-            onClick={onClose}
-            disabled={!canTopup}
+            onClick={handleSubmit}
+            disabled={!canTopup || amount <= 0 || submitting}
             title={!canTopup ? 'Top-up requires admin or finance role' : undefined}
           >
-            {canTopup ? `Top up ${fmtUSDfull(amount)}` : 'Admin/finance only'}
+            {!canTopup ? 'Admin/finance only' : submitting ? 'Processing…' : `Top up ${fmtUSDfull(amount)}`}
           </button>
         </div>
       </div>

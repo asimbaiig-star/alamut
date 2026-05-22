@@ -10,6 +10,7 @@
 //   - The parent owns the side effects (toast, v2LeaveReview call).
 
 import { useState } from 'react';
+import { useModalEscape } from '@/lib/utils/useModalEscape';
 
 export interface LeaveReviewModalProps {
   /** Name of the entity being reviewed. Creator-side reviews pass the
@@ -29,6 +30,7 @@ export function LeaveReviewModal({
   const [rating, setRating] = useState(0);
   const [text, setText] = useState('');
   const canSubmit = rating > 0 && text.trim().length >= 10;
+  useModalEscape(onClose);
   return (
     <div
       className="v2-modal-overlay"

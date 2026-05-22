@@ -78,13 +78,13 @@ export function BrandOnboardingV2({ onRoute }: Props) {
   const back = () => idx > 0 && setStep(STEPS[idx - 1].id);
   const update = (patch: Partial<State>) => setS((prev) => ({ ...prev, ...patch }));
 
-  // Persist the wizard's seven mappable fields onto the current brand
+  // Persist the wizard's mappable fields onto the current brand
   // record before routing into the workspace. Pre-fix the wizard
   // discarded everything — fresh signups landed in /v2 with empty
   // brand rows and had to re-enter every field via Brand Profile.
-  // creatorTier + monthlyBudget have no place in the Brand schema yet,
-  // so they're dropped (acceptable — they're matching hints, not
-  // identity); a future migration could add them.
+  // Phase 58 added `preferredCreatorTier` + `monthlyBudgetBand` to
+  // the Brand schema so the wizard no longer drops them on submit;
+  // Discover + Spark consume them as matching hints when ranking.
   async function persistAndRoute() {
     if (!currentBrand?.id) {
       // No brand on this session — nothing to persist against.
@@ -103,6 +103,11 @@ export function BrandOnboardingV2({ onRoute }: Props) {
         about: s.about.trim(),
         preferredCategories: s.categories,
         preferredRegions: s.regions,
+        // Matching hints — captured in earlier steps, persisted now so
+        // Discover/Spark can rank by them. `any` is a valid tier value
+        // when the brand explicitly opts not to constrain.
+        ...(s.creatorTier ? { preferredCreatorTier: s.creatorTier } : {}),
+        ...(s.monthlyBudget ? { monthlyBudgetBand: s.monthlyBudget } : {}),
       });
     } catch (err) {
       pushToast(err instanceof Error ? err.message : 'Could not save your brand profile');

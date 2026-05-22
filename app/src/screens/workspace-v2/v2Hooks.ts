@@ -524,6 +524,34 @@ export function v2ArchiveThread(threadId: string): boolean {
   return nextArchived !== null;
 }
 
+/** Phase 58 — snooze a thread for a duration. Stamps a wake-up
+ *  timestamp on `thread.snoozedFor[viewerId]`; the inbox default
+ *  view filters threads whose snooze hasn't elapsed. New messages
+ *  from peers should clear the recipient's snooze so urgent replies
+ *  bubble back up (handled in `sendMessage` mirror). Per-user state
+ *  so each participant can snooze independently.
+ *  @param durationMs how long from now; 0 to unsnooze. */
+export function v2SnoozeThread(threadId: string, durationMs: number): boolean {
+  let updated = false;
+  tx((db) => {
+    const session = useStore.getState().session;
+    const persona = readPersona();
+    const viewerId = getViewerUserId(db, session?.userId ?? null, persona);
+    const idx = db.threads.findIndex((t) => t.id === threadId);
+    if (idx === -1) return;
+    const t = db.threads[idx];
+    const next = { ...(t.snoozedFor ?? {}) };
+    if (durationMs <= 0) {
+      delete next[viewerId];
+    } else {
+      next[viewerId] = Date.now() + durationMs;
+    }
+    db.threads[idx] = { ...t, snoozedFor: next };
+    updated = true;
+  });
+  return updated;
+}
+
 /** Phase 11 — report a thread to admin. Stamps reportedAt/by/reason on
  *  the thread + pushes a notification to every admin user so it lands
  *  in the admin queue. Re-reporting overwrites the previous report

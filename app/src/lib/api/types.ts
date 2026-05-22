@@ -376,6 +376,15 @@ export interface Brand {
    *  migrating to a dedicated `offer_templates` table later is straight-
    *  forward — same pattern as `sparkDrafts`). */
   offerTemplates?: OfferTemplate[];
+  /** Phase 58 — onboarding-captured matching hints. The brand sets these
+   *  during the BrandOnboardingV2 wizard (creator-tier price-band
+   *  preference + rough monthly budget). Discover + Spark consume them
+   *  to rank creators that fit the brand's size profile. Pre-fix the
+   *  wizard captured both fields then dropped them on submit.
+   *  Tier uses the price-band glyph the wizard renders, matching the
+   *  V2Creator.priceTier shape so filters can compare directly. */
+  preferredCreatorTier?: '$' | '$$' | '$$$' | '$$$$';
+  monthlyBudgetBand?: string;
   /** Migration 021 optimistic lock — see Dispute.version for the rationale.
    *  Brand-profile edits and wallet balance updates flow through this lock. */
   version?: number;
@@ -701,6 +710,12 @@ export interface Campaign {
    *  reference videos). Stored as a jsonb array on the campaign for
    *  demo simplicity — separate table not justified at this scale. */
   assets?: CampaignAsset[];
+  /** Phase 58 — brand-side archive flag. Orthogonal to `stage`: a
+   *  closed campaign can still be unarchived and revisited; archive
+   *  just hides the row from the default Campaigns list to declutter
+   *  long histories. ISO timestamp when archived. Toggle via
+   *  v2ArchiveCampaign / v2UnarchiveCampaign. */
+  archivedAt?: string;
   /** Migration 020 optimistic lock — see Dispute.version for the rationale. */
   version?: number;
 }
@@ -998,6 +1013,11 @@ export interface Thread {
   actionTakenAt?: number;
   actionTakenByUserId?: string;
   actionNote?: string;
+  /** Phase 58 — snooze. When a participant snoozes a thread it falls
+   *  out of the default inbox view until `snoozedUntilMs` passes; new
+   *  messages from the counterparty clear the sender's snooze (peers
+   *  expect to surface). Stored per-user via `snoozedFor[userId]`. */
+  snoozedFor?: Record<string, number>;
 }
 
 export interface MessageAttachment {

@@ -15,7 +15,7 @@
 // header keeps the mental model clean.
 
 import { useState } from 'react';
-import { fmtUSD, Icon, StagePill, Topbar } from '../lib';
+import { fmtUSD, Icon, StagePill, Topbar, EmptyState } from '../lib';
 import { useV2AllCampaigns, useV2MyCollabs } from '../v2Hooks';
 import { V2_PIPELINE_STAGES } from '../v2Adapters';
 import type { V2Collab, V2CollabStage } from '../data';
@@ -67,6 +67,29 @@ export function MyCollabs({ onRoute }: Props) {
         }
       />
       <div className="v2-content">
+        {/* Phase 58 — empty state for fresh creators with no collabs
+            in any direction (no open offers, no active deals). Pre-fix
+            this surface rendered just an empty stage strip with zero
+            counts. Now nudges them toward Browse campaigns. */}
+        {allCollabs.length === 0 && (
+          <EmptyState
+            icon={<>{Icon.campaign}</>}
+            title="No collaborations yet"
+            body="Browse open briefs to apply, or wait for brands to find your storefront. Anything you accept will show up here as it progresses through production."
+            ctaLabel="Browse campaigns"
+            onCta={() => onRoute('creator-campaigns')}
+            secondary={
+              <button
+                type="button"
+                className="v2-btn v2-btn-ghost v2-btn-sm"
+                onClick={() => onRoute('storefront')}
+              >
+                Polish my storefront
+              </button>
+            }
+          />
+        )}
+
         {/* ─── Open offers (pre-acceptance) ──────────────────────────── */}
         {negotiating.length > 0 && (
           <section style={{ marginBottom: 32 }}>

@@ -175,6 +175,71 @@ export function StatCard({
   );
 }
 
+/** Phase 58 — shared empty-state component for first-time-here surfaces.
+ *  Pre-fix Campaigns / MyCollabs / wallet ledger / etc. either rendered
+ *  bare empty tables or weak "no items" muted text for fresh accounts.
+ *  This is the single place to render an opinionated empty-state card
+ *  with an icon, headline, supporting copy, and a primary CTA that
+ *  routes the user somewhere useful. */
+export function EmptyState({
+  icon, title, body, ctaLabel, onCta, secondary,
+}: {
+  icon?: ReactNode;
+  title: string;
+  body: string;
+  ctaLabel?: string;
+  onCta?: () => void;
+  secondary?: ReactNode;
+}) {
+  return (
+    <div
+      className="v2-card v2-card-pad-lg"
+      style={{
+        textAlign: 'center',
+        maxWidth: 540,
+        margin: '40px auto',
+      }}
+    >
+      {icon && (
+        <div style={{
+          fontSize: 28,
+          marginBottom: 10,
+          opacity: 0.45,
+          color: 'var(--v2-ink-3)',
+        }}>{icon}</div>
+      )}
+      <div style={{
+        fontFamily: 'var(--v2-font-display)',
+        fontSize: 22,
+        fontWeight: 500,
+        letterSpacing: '-0.014em',
+        marginBottom: 6,
+        color: 'var(--v2-ink)',
+      }}>
+        {title}
+      </div>
+      <div className="v2-muted" style={{
+        fontSize: 14, lineHeight: 1.6, marginBottom: ctaLabel ? 18 : 0, maxWidth: 420, margin: '0 auto',
+      }}>
+        {body}
+      </div>
+      {ctaLabel && onCta && (
+        <button
+          type="button"
+          className="v2-btn v2-btn-primary"
+          onClick={onCta}
+          style={{ marginTop: 18 }}
+        >
+          {ctaLabel}
+        </button>
+      )}
+      {secondary && (
+        <div style={{ marginTop: 12 }}>{secondary}</div>
+      )}
+    </div>
+  );
+}
+
 export function CampaignCard({ campaign, onClick }: {
   campaign: V2Campaign;
   onClick?: () => void;
@@ -210,25 +275,23 @@ export function CampaignCard({ campaign, onClick }: {
 }
 
 export function Topbar({
-  title, crumb, actions, search,
+  title, crumb, actions,
 }: {
   title: string;
   crumb?: ReactNode;
   actions?: ReactNode;
-  search?: string;
 }) {
+  // Phase 58 — `search` prop removed. Pre-fix it rendered a
+  // decorative input with no value/onChange — typing did nothing.
+  // No call site actually passed it (all Topbar usages route their
+  // own search through `actions`), so killing the prop entirely is
+  // safer than leaving a tempting-but-broken affordance.
   return (
     <div className="v2-topbar">
       <div>
         {crumb && <div className="v2-crumb">{crumb}</div>}
         <h1>{title}</h1>
       </div>
-      {search && (
-        <div className="v2-input-search" style={{ maxWidth: 320, flex: 1, marginLeft: 24 }}>
-          {Icon.search}
-          <input placeholder={search} />
-        </div>
-      )}
       <div className="v2-topbar-actions">
         {actions}
         <button

@@ -296,6 +296,48 @@ export function WorkspaceV2() {
   if (route === 'onboarding-creator') return <CreatorOnboardingV2 onRoute={go} />;
   if (route === 'onboarding-brand') return <BrandOnboardingV2 onRoute={go} />;
 
+  // Phase 58 — initial boot skeleton. Pre-fix the workspace mounted
+  // immediately even when `useAuth()` was still resolving the session
+  // — surfaces showed "—" / "Loading..." for a frame and then snapped
+  // to real data. A short skeleton is friendlier to the eye.
+  const isHydrating = user === undefined;
+  if (isHydrating) {
+    return (
+      <div data-surface="v2">
+        <div className="v2-shell">
+          <aside className="v2-sidebar" aria-busy="true">
+            <div className="v2-brand" style={{ pointerEvents: 'none' }}>
+              <div className="v2-brand-mark"><svg viewBox="0 0 32 32" width="20" height="20"><path d="M16 4 L28 26 L22 26 L16 14 L10 26 L4 26 Z" fill="var(--v2-paper)" /><circle cx="16" cy="22" r="2" fill="var(--v2-accent)" /></svg></div>
+              <div className="v2-brand-name">Alamut</div>
+            </div>
+            <nav className="v2-nav" aria-hidden="true">
+              {[1,2,3,4,5,6,7].map((i) => (
+                <div key={i} style={{
+                  height: 32, margin: '4px 8px', borderRadius: 6,
+                  background: 'var(--v2-bg-2)', opacity: 0.6,
+                }} />
+              ))}
+            </nav>
+          </aside>
+          <main className="v2-main" aria-busy="true">
+            <div style={{
+              padding: '40px 32px',
+              display: 'flex', flexDirection: 'column', gap: 24,
+            }}>
+              <div style={{ height: 32, width: 240, background: 'var(--v2-bg-2)', borderRadius: 6, opacity: 0.6 }} />
+              <div style={{ height: 120, background: 'var(--v2-bg-2)', borderRadius: 12, opacity: 0.45 }} />
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+                {[1,2,3].map((i) => (
+                  <div key={i} style={{ height: 100, background: 'var(--v2-bg-2)', borderRadius: 10, opacity: 0.4 }} />
+                ))}
+              </div>
+            </div>
+          </main>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div data-surface="v2">
       <div className="v2-shell">
@@ -496,7 +538,15 @@ function RouteOutlet({ route, onRoute, persona }: { route: string; onRoute: (r: 
     );
   }
 
-  return <BrandHome onRoute={onRoute} />;
+  // Persona-aware fallback for unknown routes. Pre-fix this always
+  // returned BrandHome, so a creator persona with a stale localStorage
+  // route (e.g. left over from a previous tab on a different surface)
+  // would boot into Hannah-shaped chrome that doesn't belong to them.
+  // Now we return the persona's home so the fall-through is at least
+  // coherent for whoever's logged in.
+  return persona === 'creator'
+    ? <CreatorHome onRoute={onRoute} />
+    : <BrandHome onRoute={onRoute} />;
 }
 
 // =====================================================================

@@ -2415,6 +2415,83 @@ export function v2ResumeCampaign(campaignId: string): Campaign | null {
   return result;
 }
 
+/** Phase 58 — archive a campaign. Hides the row from the default
+ *  Campaigns list (Campaigns.tsx filters by `!archivedAt`) without
+ *  changing its stage. Reversible via v2UnarchiveCampaign. Useful for
+ *  cleaning up a stale roster without losing the history. Requires
+ *  the same brand-update capability as other lifecycle mutations.
+ *  Local-only mutation — `archivedAt` is a new field not yet in the
+ *  Supabase schema; mirror is a no-op for now. */
+export function v2ArchiveCampaign(campaignId: string): Campaign | null {
+  return tx((db) => {
+    requireCapability(getActorUserId(), 'campaign.pause', db);
+    const idx = db.campaigns.findIndex((c) => c.id === campaignId);
+    if (idx === -1) return null;
+    db.campaigns[idx] = { ...db.campaigns[idx], archivedAt: nowIso() };
+    return db.campaigns[idx];
+  });
+}
+
+export function v2UnarchiveCampaign(campaignId: string): Campaign | null {
+  return tx((db) => {
+    requireCapability(getActorUserId(), 'campaign.pause', db);
+    const idx = db.campaigns.findIndex((c) => c.id === campaignId);
+    if (idx === -1) return null;
+    const { archivedAt: _drop, ...rest } = db.campaigns[idx];
+    void _drop;
+    db.campaigns[idx] = rest;
+    return db.campaigns[idx];
+  });
+}
+
+/** Phase 58 — duplicate a campaign as a new draft. Copies the brief,
+ *  category, region, budget, preferred deliverables, and rights/
+ *  tracking config; resets spend/escrow/history/applications/offers
+ *  and starts at stage='draft' so the brand can re-publish at a new
+ *  deadline. Returns the new campaign id so the caller can route
+ *  into the draft for final edits. */
+export function v2DuplicateCampaign(campaignId: string): Campaign | null {
+  return tx((db) => {
+    requireCapability(getActorUserId(), 'campaign.create', db);
+    const src = db.campaigns.find((c) => c.id === campaignId);
+    if (!src) return null;
+    const newCampId = newId('cmp');
+    // Duplicate the deliverable rows so the new campaign has its own
+    // FK list — pre-fix sharing deliverableIds would have caused both
+    // campaigns to render the same per-deliverable submissions.
+    const newDeliverableIds: string[] = [];
+    for (const oldId of src.deliverableIds) {
+      const oldDel = db.deliverables.find((d) => d.id === oldId);
+      if (!oldDel) continue;
+      const dupId = newId('del');
+      db.deliverables.push({ ...oldDel, id: dupId, campaignId: newCampId });
+      newDeliverableIds.push(dupId);
+    }
+    const dup: Campaign = {
+      ...src,
+      id: newCampId,
+      title: `${src.title} (copy)`,
+      stage: 'draft',
+      spent: 0,
+      escrowHeld: 0,
+      applications: [],
+      offers: [],
+      history: [{ stage: 'draft', at: nowIso(), by: 'brand' }],
+      createdAt: nowIso(),
+      postedAt: undefined,
+      reach: undefined,
+      engagement: undefined,
+      milestones: [],
+      assets: [],  // assets reference Storage URLs — duplication needs separate copy step
+      archivedAt: undefined,
+      deliverableIds: newDeliverableIds,
+      version: 1,
+    };
+    db.campaigns.push(dup);
+    return dup;
+  });
+}
+
 // =====================================================================
 // Reviews
 // =====================================================================
@@ -2662,7 +2739,7 @@ export function v2LaunchCampaign(input: LaunchCampaignInput): Campaign | null {
 // through to a local-only write, preserving the demo experience.
 export async function v2UpdateBrand(
   brandId: string,
-  patch: Partial<Pick<Brand, 'name' | 'industry' | 'hq' | 'website' | 'about' | 'logoMark' | 'logoUrl' | 'preferredCategories' | 'preferredRegions'>>,
+  patch: Partial<Pick<Brand, 'name' | 'industry' | 'hq' | 'website' | 'about' | 'logoMark' | 'logoUrl' | 'preferredCategories' | 'preferredRegions' | 'preferredCreatorTier' | 'monthlyBudgetBand'>>,
 ): Promise<Brand | null> {
   // 1. Try the Supabase write first. Anything else (RLS rejection,
   //    network error) we surface — the caller's UI will show the

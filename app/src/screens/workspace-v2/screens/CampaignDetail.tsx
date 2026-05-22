@@ -36,6 +36,7 @@ import { SendOfferModal, MarkLiveModal, CounterOfferModal, InviteCreatorsModal }
 import {
   v2EndCampaign, v2PauseCampaign, v2RejectApplication, v2ResumeCampaign,
   v2WithdrawOffer, v2AcceptCounter, v2DeclineOffer, v2UpdateCampaign,
+  v2ArchiveCampaign, v2UnarchiveCampaign, v2DuplicateCampaign,
   getApplicationFor, getActiveOfferFor, getLatestSubmissionFor,
 } from '../v2CampaignActions';
 import { v2RequestCollabCancel } from '../v2CollabActions';
@@ -280,7 +281,7 @@ export function CampaignDetail({
             creators={creators}
           />
         )}
-        {tab === 'settings' && <SettingsTab campaign={campaign} />}
+        {tab === 'settings' && <SettingsTab campaign={campaign} onRoute={onRoute} />}
       </div>
 
       {reviewing && (
@@ -850,6 +851,30 @@ function PipelineKanban({ collabs, creators, onReview, onRoute, onSendOffer, onM
                 >
                   {fmtUSD(columnSpend)}
                 </span>
+              )}
+              {/* Phase 58 — bulk-decline on Pitched. Only the Pitched
+                  column has 1-click decline semantics (rejecting all
+                  pitches that the brand is passing on). Shown when
+                  there are ≥3 items so the brand doesn't accidentally
+                  nuke their roster on a small column. */}
+              {stage.id === 'pitched' && items.length >= 3 && (
+                <button
+                  type="button"
+                  className="v2-btn v2-btn-sm v2-btn-ghost"
+                  style={{ marginLeft: 'auto', fontSize: 10 }}
+                  onClick={() => {
+                    if (!window.confirm(`Decline all ${items.length} pitched applications? This can't be undone.`)) return;
+                    let n = 0;
+                    for (const c of items) {
+                      const app = getApplicationFor(c.campaignId, c.creatorId);
+                      if (app) { v2RejectApplication(app.id); n++; }
+                    }
+                    pushToast(`${n} application${n === 1 ? '' : 's'} declined`, 'good');
+                  }}
+                  title="Decline every applicant in this column"
+                >
+                  Decline all
+                </button>
               )}
             </div>
             <div className="v2-kanban-list">
@@ -2373,7 +2398,7 @@ export function ContentTypeTile({
 // Settings tab
 // =====================================================================
 
-function SettingsTab({ campaign }: { campaign: V2Campaign }) {
+function SettingsTab({ campaign, onRoute }: { campaign: V2Campaign; onRoute: (r: string) => void }) {
   // Read the raw Campaign so we can persist via v2UpdateCampaign. The
   // V2Campaign adapter renames `title → name`, but the underlying
   // mutation writes `title`.
@@ -2452,6 +2477,56 @@ function SettingsTab({ campaign }: { campaign: V2Campaign }) {
           </button>
         </div>
         <hr style={{ border: 0, borderTop: '1px solid var(--v2-line)', margin: '20px 0' }} />
+        <h4 style={{
+          fontFamily: 'var(--v2-font-display)',
+          fontSize: 16, fontWeight: 500, margin: '0 0 12px',
+        }}>Lifecycle actions</h4>
+        <div className="v2-row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
+          {/* Duplicate: makes a new draft pre-filled with this brief.
+              Brand can then bump the deadline + relaunch. */}
+          <button
+            className="v2-btn v2-btn-outline"
+            type="button"
+            onClick={() => {
+              const dup = v2DuplicateCampaign(campaign.id);
+              if (dup) {
+                pushToast(`Duplicated as "${dup.title}" — saved as draft`, 'good');
+                onRoute(`campaign:${dup.id}`);
+              } else {
+                pushToast('Could not duplicate campaign', 'bad');
+              }
+            }}
+          >
+            Duplicate campaign
+          </button>
+          {/* Archive / Unarchive: orthogonal to stage. Hides the row
+              from the default Campaigns list without changing state. */}
+          {rawCampaign?.archivedAt ? (
+            <button
+              className="v2-btn v2-btn-outline"
+              type="button"
+              onClick={() => {
+                v2UnarchiveCampaign(campaign.id);
+                pushToast('Campaign unarchived · back in default list', 'good');
+              }}
+            >
+              Unarchive
+            </button>
+          ) : (
+            <button
+              className="v2-btn v2-btn-outline"
+              type="button"
+              onClick={() => {
+                if (window.confirm('Archive this campaign? It will be hidden from the default Campaigns list — you can unarchive later.')) {
+                  v2ArchiveCampaign(campaign.id);
+                  pushToast('Campaign archived', 'good');
+                }
+              }}
+            >
+              Archive
+            </button>
+          )}
+        </div>
         <h4 style={{
           fontFamily: 'var(--v2-font-display)',
           fontSize: 16, fontWeight: 500, margin: '0 0 12px', color: 'var(--v2-accent)',

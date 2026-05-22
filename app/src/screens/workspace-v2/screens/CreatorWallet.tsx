@@ -11,6 +11,7 @@ import { api } from '@/lib/api/client';
 import { pushToast } from '@/lib/utils/toast';
 import { downloadCSV } from '@/lib/utils/csv';
 import { parseNumberInput } from '@/lib/utils/format';
+import { useModalEscape } from '@/lib/utils/useModalEscape';
 
 interface Props {
   onRoute: (r: string) => void;
@@ -311,6 +312,7 @@ function AdvanceModal({ pendingBalance, maxAdvance, onClose, onConfirm }: {
   onClose: () => void;
   onConfirm: (amount: number) => Promise<void>;
 }) {
+  useModalEscape(onClose);
   const [amount, setAmount] = useState<number>(Math.min(maxAdvance, 1000));
   const [busy, setBusy] = useState(false);
   const fee = Math.round(amount * 0.03);
@@ -396,6 +398,7 @@ function WithdrawModal({ available, payoutLabel, onClose, onConfirm }: {
   onClose: () => void;
   onConfirm: (amount: number) => void;
 }) {
+  useModalEscape(onClose);
   // P5 capability gap (Tier 2 follow-up):
   //   The capability matrix has `wallet.withdraw` (brand-side) but no
   //   creator-side equivalent — creators withdraw their earnings via

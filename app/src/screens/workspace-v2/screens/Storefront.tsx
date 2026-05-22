@@ -166,8 +166,14 @@ export function Storefront({ onRoute }: Props) {
           onClose={() => setEditing(null)}
         />
 
-        {/* Audience snapshot — read-only (derived from platform data) */}
-        <Block label="Audience snapshot" tip="Brands filter by age, gender, region. Wired to your channels' audience analytics.">
+        {/* Audience snapshot — read-only. Honest framing: this is
+            derived from the platforms you've added; refresh by
+            re-verifying each channel. Pre-fix the tip didn't
+            disclose the absence of an edit affordance. */}
+        <Block
+          label="Audience snapshot"
+          tip="Aggregated from your connected channels. Update a channel's verified status to refresh — direct editing isn't supported (the data is meant to mirror your platform analytics, not be hand-tuned)."
+        >
           <div className="v2-storefront-audience">
             <AudienceStat label="Female" value={`${me.audience.female}%`} bar={me.audience.female} />
             <AudienceStat label="Male" value={`${me.audience.male}%`} bar={me.audience.male} />
