@@ -110,12 +110,33 @@ export function ContentUploadModal({ collab, campaign, deliverableId, deliverabl
       if (file.size <= MAX_INLINE_SIZE_MB * 1024 * 1024) {
         url = await readAsDataUrl(file);
       }
-      v2SubmitContent(
+      // P60.1 — v2SubmitContent now throws on every failure path with
+      // a specific message (no-accepted-offer, campaign-not-live, etc.).
+      // Pre-fix it returned null silently and the modal still advanced
+      // to step 1, so users saw "Submitted!" with nothing persisted.
+      const sub = v2SubmitContent(
         collab.campaignId,
         collab.creatorId,
         caption,
         { name: file.name, url, mime: file.type, size: file.size },
         deliverableId,
+      );
+      // Belt-and-braces: even with the throw-on-failure refactor, guard
+      // the step transition behind a real submission row. If anything
+      // ever returns null again (e.g. a future caller passes through),
+      // we'd rather show a generic error than a fake success.
+      if (!sub) {
+        pushToast('Submit didn\'t take. Refresh the page and try again.', 'bad');
+        return;
+      }
+      // Also fire a confirmation toast — the success step inside the
+      // modal disappears when the user dismisses, but the toast survives
+      // long enough to confirm the submit landed even at a glance.
+      pushToast(
+        deliverableLabel
+          ? `${deliverableLabel} submitted to ${campaign.brand}`
+          : `Submitted to ${campaign.brand}`,
+        'good',
       );
       setStep(1);
     } catch (err) {

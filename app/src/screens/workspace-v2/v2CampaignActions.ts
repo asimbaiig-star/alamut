@@ -962,18 +962,23 @@ export function v2SubmitContent(
    *  string is treated as just the filename with no URL. */
   fileMeta: string | { name: string; url: string; mime?: string; size?: number },
   deliverableId: string,
-): Submission | null {
+): Submission {
+  // P60.1 — was `Submission | null` with 5 silent failure paths. The only
+  // caller (ContentUploadModal) didn't check the return, so a returned-null
+  // failure showed a "Submitted!" success screen while the submission was
+  // dropped on the floor. Now: throw on every failure with a specific
+  // message; the modal's existing try/catch surfaces it as a toast.
   const fileObj = typeof fileMeta === 'string'
     ? { name: fileMeta, url: '' }
     : fileMeta;
   const result = tx((db) => {
-    // P5 §4.1 — creator-side capability.
+    // P5 §4.1 — creator-side capability. Throws PermissionError on miss.
     requireCapability(getActorUserId(), 'content.submit', db);
 
     const camp = db.campaigns.find((c) => c.id === campaignId);
-    if (!camp) return null;
+    if (!camp) throw new Error("Couldn't find that campaign — it may have been deleted. Refresh and try again.");
     const creator = db.creators.find((c) => c.id === creatorId);
-    if (!creator) return null;
+    if (!creator) throw new Error("Couldn't find your creator profile. Sign out and back in, then try again.");
 
     // OFFER GATE — submissions are only allowed for creators with an
     // accepted offer on this campaign. Pre-fix anyone holding the
@@ -984,11 +989,15 @@ export function v2SubmitContent(
     const hasAcceptedOffer = db.offers.some(
       (o) => o.campaignId === campaignId && o.creatorId === creatorId && o.status === 'accepted',
     );
-    if (!hasAcceptedOffer) return null;
+    if (!hasAcceptedOffer) {
+      throw new Error('You need an accepted offer on this campaign before you can submit work. Check the offer status in your inbox.');
+    }
 
     // CAMPAIGN-STAGE GATE — paused / closed / draft campaigns don't
     // accept new work. Only `live` is active.
-    if (camp.stage !== 'live') return null;
+    if (camp.stage !== 'live') {
+      throw new Error(`This campaign is ${camp.stage} — only live campaigns accept submissions. Message the brand if you think this is a mistake.`);
+    }
 
     // Resolve the deliverable. Pass-through when caller supplied a real
     // id; fall back to the campaign's first Deliverable if blank.
