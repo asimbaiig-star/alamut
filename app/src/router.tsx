@@ -50,16 +50,6 @@ const AdminAudit = lazy(() =>
 // not on every initial app load.
 const Cover = lazy(() =>
   import('./screens/cover/Cover').then((m) => ({ default: m.Cover })));
-// Phase 60 — duplicate creator landing surface at /landing-preview
-// for A/B previewing hero quick wins without touching the production
-// `/` route. Same sections as Cover.tsx, only the hero is modified.
-const CoverPreview = lazy(() =>
-  import('./screens/cover/CoverPreview').then((m) => ({ default: m.CoverPreview })));
-// Phase 61 — same surface as /landing-preview but the hero swaps the
-// animated SVG for a Remotion-rendered video loop (hero-loop.webm
-// with mp4 fallback + poster PNG, all in /public).
-const CoverPreviewVideo = lazy(() =>
-  import('./screens/cover/CoverPreview').then((m) => ({ default: m.CoverPreviewVideo })));
 // Phase 52b — brand-facing landing page (separate URL from creator
 // landing for focused narrative, ROI-forward tone, comparison matrix).
 const BrandLanding = lazy(() =>
@@ -104,10 +94,6 @@ function lazyRoute(El: React.ComponentType) {
 
 export const router = createBrowserRouter([
   { path: '/', element: lazyRoute(Cover) },
-  // Phase 60 — A/B preview of the creator landing with hero quick wins.
-  { path: '/landing-preview', element: lazyRoute(CoverPreview) },
-  // Phase 61 — A/B preview with Remotion-rendered video hero loop.
-  { path: '/landing-preview-video', element: lazyRoute(CoverPreviewVideo) },
   // Phase 52b — brand-facing landing on its own URL.
   { path: '/for-brands', element: lazyRoute(BrandLanding) },
   // Phase 52d — calculator tools. Single component, platform passed
