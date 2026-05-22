@@ -146,7 +146,11 @@ describe('v2WithdrawDispute', () => {
       description: 'reason',
     });
     const dispId = useStore.getState().db.disputes[0].id;
-    v2WithdrawDispute(dispId, 'u_brand'); // wrong actor
+    // P63 — now throws with a clear "only the raiser can withdraw" message
+    // instead of silently no-oping. Store state must still be untouched.
+    expect(() => v2WithdrawDispute(dispId, 'u_brand')).toThrow(
+      /only the person who raised this dispute/i,
+    );
 
     const db = useStore.getState().db;
     expect(db.disputes[0].status).toBe('open'); // still open

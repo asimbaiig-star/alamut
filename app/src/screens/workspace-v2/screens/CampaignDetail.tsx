@@ -865,11 +865,23 @@ function PipelineKanban({ collabs, creators, onReview, onRoute, onSendOffer, onM
                   onClick={() => {
                     if (!window.confirm(`Decline all ${items.length} pitched applications? This can't be undone.`)) return;
                     let n = 0;
+                    const failures: string[] = [];
                     for (const c of items) {
                       const app = getApplicationFor(c.campaignId, c.creatorId);
-                      if (app) { v2RejectApplication(app.id); n++; }
+                      if (!app) continue;
+                      try {
+                        v2RejectApplication(app.id);
+                        n++;
+                      } catch (err) {
+                        const msg = err instanceof Error ? err.message : 'Unknown error';
+                        if (!failures.includes(msg)) failures.push(msg);
+                      }
                     }
-                    pushToast(`${n} application${n === 1 ? '' : 's'} declined`, 'good');
+                    if (failures.length === 0) {
+                      pushToast(`${n} application${n === 1 ? '' : 's'} declined`, 'good');
+                    } else {
+                      pushToast(`Declined ${n}, ${items.length - n} failed: ${failures[0]}`, 'bad');
+                    }
                   }}
                   title="Decline every applicant in this column"
                 >
@@ -961,7 +973,15 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
             type="button"
             className="v2-btn v2-btn-sm v2-btn-ghost"
             style={{ flex: 1, justifyContent: 'center', fontSize: 11 }}
-            onClick={(e) => { stop(e); v2RejectApplication(application.id); }}
+            onClick={(e) => {
+              stop(e);
+              try {
+                v2RejectApplication(application.id);
+                pushToast(`Declined ${creator.name.split(' ')[0]}'s application`, 'good');
+              } catch (err) {
+                pushToast(err instanceof Error ? err.message : 'Reject failed', 'bad');
+              }
+            }}
             disabled={!canDecide}
             title={!canDecide ? 'Admin or ops only' : undefined}
           >
@@ -1052,7 +1072,15 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
               type="button"
               className="v2-btn v2-btn-sm v2-btn-primary"
               style={{ flex: 1.4, justifyContent: 'center', fontSize: 11 }}
-              onClick={(e) => { stop(e); v2AcceptCounter(offer.id); }}
+              onClick={(e) => {
+                stop(e);
+                try {
+                  v2AcceptCounter(offer.id);
+                  pushToast(`Accepted ${creator.name.split(' ')[0]}'s counter at ${fmtUSD(counterRate)}`, 'good');
+                } catch (err) {
+                  pushToast(err instanceof Error ? err.message : 'Accept failed', 'bad');
+                }
+              }}
               disabled={!canWithdraw}
               title={!canWithdraw ? 'Admin or ops only' : undefined}
             >
@@ -1099,7 +1127,15 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
               type="button"
               className="v2-btn v2-btn-sm v2-btn-ghost"
               style={{ fontSize: 11 }}
-              onClick={(e) => { stop(e); v2WithdrawOffer(offer.id); }}
+              onClick={(e) => {
+                stop(e);
+                try {
+                  v2WithdrawOffer(offer.id);
+                  pushToast(`Withdrew offer to ${creator.name.split(' ')[0]}`, 'good');
+                } catch (err) {
+                  pushToast(err instanceof Error ? err.message : 'Withdraw failed', 'bad');
+                }
+              }}
               disabled={!canWithdraw}
               title={!canWithdraw ? 'Admin or ops only' : undefined}
             >
@@ -1246,11 +1282,11 @@ function CancelCollabButton({ collab }: { collab: V2Collab }) {
           'Why are you canceling this collab? The creator must agree before escrow is refunded.',
         );
         if (!reason || reason.trim().length < 6) return;
-        const result = v2RequestCollabCancel(collabRow.id, me.id, reason.trim());
-        if (result?.cancellationRequest) {
+        try {
+          v2RequestCollabCancel(collabRow.id, me.id, reason.trim());
           pushToast('Cancel requested — awaiting creator agreement', 'good');
-        } else {
-          pushToast('Could not request cancel (stage may have changed)', 'bad');
+        } catch (err) {
+          pushToast(err instanceof Error ? err.message : 'Could not request cancel', 'bad');
         }
       }}
       title={pending ? 'Cancel request already pending' : undefined}
@@ -2504,12 +2540,12 @@ function SettingsTab({ campaign, onRoute }: { campaign: V2Campaign; onRoute: (r:
             className="v2-btn v2-btn-outline"
             type="button"
             onClick={() => {
-              const dup = v2DuplicateCampaign(campaign.id);
-              if (dup) {
+              try {
+                const dup = v2DuplicateCampaign(campaign.id);
                 pushToast(`Duplicated as "${dup.title}" — saved as draft`, 'good');
                 onRoute(`campaign:${dup.id}`);
-              } else {
-                pushToast('Could not duplicate campaign', 'bad');
+              } catch (err) {
+                pushToast(err instanceof Error ? err.message : 'Could not duplicate campaign', 'bad');
               }
             }}
           >
@@ -2522,8 +2558,12 @@ function SettingsTab({ campaign, onRoute }: { campaign: V2Campaign; onRoute: (r:
               className="v2-btn v2-btn-outline"
               type="button"
               onClick={() => {
-                v2UnarchiveCampaign(campaign.id);
-                pushToast('Campaign unarchived · back in default list', 'good');
+                try {
+                  v2UnarchiveCampaign(campaign.id);
+                  pushToast('Campaign unarchived · back in default list', 'good');
+                } catch (err) {
+                  pushToast(err instanceof Error ? err.message : 'Unarchive failed', 'bad');
+                }
               }}
             >
               Unarchive
@@ -2533,9 +2573,12 @@ function SettingsTab({ campaign, onRoute }: { campaign: V2Campaign; onRoute: (r:
               className="v2-btn v2-btn-outline"
               type="button"
               onClick={() => {
-                if (window.confirm('Archive this campaign? It will be hidden from the default Campaigns list — you can unarchive later.')) {
+                if (!window.confirm('Archive this campaign? It will be hidden from the default Campaigns list — you can unarchive later.')) return;
+                try {
                   v2ArchiveCampaign(campaign.id);
                   pushToast('Campaign archived', 'good');
+                } catch (err) {
+                  pushToast(err instanceof Error ? err.message : 'Archive failed', 'bad');
                 }
               }}
             >
@@ -2552,9 +2595,12 @@ function SettingsTab({ campaign, onRoute }: { campaign: V2Campaign; onRoute: (r:
           type="button"
           style={{ borderColor: 'var(--v2-accent)', color: 'var(--v2-accent)' }}
           onClick={() => {
-            if (window.confirm('End campaign and refund unused escrow back to your wallet?')) {
+            if (!window.confirm('End campaign and refund unused escrow back to your wallet?')) return;
+            try {
               v2EndCampaign(campaign.id);
               pushToast('Campaign ended · unused escrow refunded', 'good');
+            } catch (err) {
+              pushToast(err instanceof Error ? err.message : 'End-campaign failed', 'bad');
             }
           }}
         >
@@ -2842,7 +2888,14 @@ function CampaignLifecycleActions({
           type="button"
           disabled={!canPause}
           title={!canPause ? 'Admin or ops only' : undefined}
-          onClick={() => v2PauseCampaign(campaignId)}
+          onClick={() => {
+            try {
+              v2PauseCampaign(campaignId);
+              pushToast('Campaign paused · creators on hold', 'good');
+            } catch (err) {
+              pushToast(err instanceof Error ? err.message : 'Pause failed', 'bad');
+            }
+          }}
         >
           {canPause ? 'Pause campaign' : 'Pause (admin/ops)'}
         </button>
@@ -2856,7 +2909,14 @@ function CampaignLifecycleActions({
           type="button"
           disabled={!canPause}
           title={!canPause ? 'Admin or ops only' : undefined}
-          onClick={() => v2ResumeCampaign(campaignId)}
+          onClick={() => {
+            try {
+              v2ResumeCampaign(campaignId);
+              pushToast('Campaign resumed · live again', 'good');
+            } catch (err) {
+              pushToast(err instanceof Error ? err.message : 'Resume failed', 'bad');
+            }
+          }}
         >
           {canPause ? 'Resume campaign' : 'Resume (admin/ops)'}
         </button>
@@ -2869,7 +2929,14 @@ function CampaignLifecycleActions({
           type="button"
           disabled={!canPause}
           title={!canPause ? 'Admin or ops only' : undefined}
-          onClick={() => v2ResumeCampaign(campaignId)}
+          onClick={() => {
+            try {
+              v2ResumeCampaign(campaignId);
+              pushToast('Campaign published · creators can apply', 'good');
+            } catch (err) {
+              pushToast(err instanceof Error ? err.message : 'Publish failed', 'bad');
+            }
+          }}
         >
           {canPause ? 'Publish campaign' : 'Publish (admin/ops)'}
         </button>
@@ -2881,7 +2948,13 @@ function CampaignLifecycleActions({
           disabled={!canEnd}
           title={!canEnd ? 'Admin or ops only' : undefined}
           onClick={() => {
-            if (window.confirm('End campaign and refund unused escrow?')) v2EndCampaign(campaignId);
+            if (!window.confirm('End campaign and refund unused escrow?')) return;
+            try {
+              v2EndCampaign(campaignId);
+              pushToast('Campaign ended · unused escrow refunded', 'good');
+            } catch (err) {
+              pushToast(err instanceof Error ? err.message : 'End-campaign failed', 'bad');
+            }
           }}
         >
           {canEnd ? 'End' : 'End (admin/ops)'}

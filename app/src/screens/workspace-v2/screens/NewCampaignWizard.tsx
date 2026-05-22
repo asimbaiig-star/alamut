@@ -237,17 +237,18 @@ export function NewCampaignWizard({
                   className="v2-btn v2-btn-primary"
                   type="button"
                   onClick={() => {
-                    const camp = v2LaunchCampaign({
-                      ...draft,
-                      // Serialize the structured placement list to the
-                      // free-form string the launch action + downstream
-                      // deliverable materializer parse.
-                      placement: serializePlacements(draft.placements),
-                    });
-                    if (camp) {
+                    try {
+                      const camp = v2LaunchCampaign({
+                        ...draft,
+                        // Serialize the structured placement list to the
+                        // free-form string the launch action + downstream
+                        // deliverable materializer parse.
+                        placement: serializePlacements(draft.placements),
+                      });
+                      pushToast(`Launched "${camp.title}" — live and accepting applications`, 'good');
                       onRoute(`campaign:${camp.id}`);
-                    } else {
-                      onRoute('campaigns');
+                    } catch (err) {
+                      pushToast(err instanceof Error ? err.message : 'Launch failed — check your draft', 'bad');
                     }
                   }}
                   disabled={!draft.name.trim() || !draft.brief.trim()}

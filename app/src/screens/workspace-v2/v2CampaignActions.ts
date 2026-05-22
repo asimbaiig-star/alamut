@@ -1325,20 +1325,24 @@ export function v2ApproveContent(submissionId: string): Submission {
  */
 const MAX_REVISIONS = 3;
 
-export function v2RequestRevision(submissionId: string, note: string): Submission | null {
+export function v2RequestRevision(submissionId: string, note: string): Submission {
+  // P63 — was `Submission | null` with silent returns on every guard. Caller
+  // (ContentReviewModal) didn't differentiate the no-op cases.
   const result = tx((db) => {
     // P5 §4.1 — same role set as content.approve; the brand team that
     // can approve content can also send it back for revision.
     requireCapability(getActorUserId(), 'content.revise', db);
 
     const subIdx = db.submissions.findIndex((s) => s.id === submissionId);
-    if (subIdx === -1) return null;
+    if (subIdx === -1) throw new Error("Couldn't find that submission — it may have been deleted. Refresh and try again.");
     const sub = db.submissions[subIdx];
     const camp = db.campaigns.find((c) => c.id === sub.campaignId);
-    if (!camp) return null;
+    if (!camp) throw new Error("Couldn't find the campaign for this submission. Refresh and try again.");
     // CAMPAIGN-STAGE GATE — paused / closed campaigns can't request
     // new revisions. Submission stays in its current state.
-    if (camp.stage !== 'live') return sub;
+    if (camp.stage !== 'live') {
+      throw new Error(`This campaign is ${camp.stage} — resume it before requesting revisions.`);
+    }
     const brandUser = findUserByBrand(db, camp.brandId);
     // REVISION CAP — count prior brand feedback entries on this
     // submission. brandUser.id may be unstable across team members,
@@ -1349,10 +1353,7 @@ export function v2RequestRevision(submissionId: string, note: string): Submissio
       (f) => f.from !== creatorUserForCount?.id,
     ).length;
     if (priorRevisions >= MAX_REVISIONS) {
-      // Hit the cap. Don't append a fresh revision; return the
-      // submission unchanged. UI surfaces a toast based on the
-      // unchanged feedback count.
-      return sub;
+      throw new Error(`This submission has already had ${MAX_REVISIONS} revision rounds — the cap. Approve, reject, or open a dispute instead.`);
     }
     db.submissions[subIdx] = {
       ...sub,
@@ -1621,23 +1622,31 @@ export function v2CounterOffer(offerId: string, rate: number, message: string): 
  * Mirror of `v2CounterOffer` but pushes a `brand` round. Required
  * precondition: the latest round was a creator round. Same cap behavior.
  */
-export function v2CounterCounter(offerId: string, rate: number, message: string): Offer | null {
+export function v2CounterCounter(offerId: string, rate: number, message: string): Offer {
+  // P63 — symmetric to v2CounterOffer P62 refactor.
   const result = tx((db) => {
     // P5 §4.1 — brand-side counter-back; admin/ops only.
     requireCapability(getActorUserId(), 'offer.send', db);
 
     const idx = db.offers.findIndex((o) => o.id === offerId);
-    if (idx === -1) return null;
+    if (idx === -1) throw new Error("Couldn't find that offer — it may have been withdrawn. Refresh the page.");
     const offer = db.offers[idx];
-    if (offer.status !== 'countered') return offer;
+    if (offer.status === 'accepted') throw new Error('This offer was already accepted — no more counters.');
+    if (offer.status === 'declined') throw new Error('The creator declined this offer — nothing to counter back.');
+    if (offer.status === 'expired')  throw new Error('This offer expired — send a fresh one instead.');
+    if (offer.status === 'withdrawn') throw new Error('This offer was withdrawn — send a fresh one instead.');
+    if (offer.status === 'pending') throw new Error("Counter-back only applies after the creator has countered. They haven't responded yet.");
     const lastRound = offer.rounds[offer.rounds.length - 1];
-    if (!lastRound || lastRound.by !== 'creator') return offer;
+    if (!lastRound || lastRound.by !== 'creator') {
+      throw new Error("Waiting on the creator's response before you can counter back.");
+    }
 
-    // RATE SANITY BOUND — symmetric to v2CounterOffer. Brand can't
-    // counter-back at $1 (≤0 rejected) or at 10x the original brief
-    // (no extreme reverse moves).
+    // RATE SANITY BOUND — symmetric to v2CounterOffer.
     const originalRate = offer.rounds[0]?.rate ?? offer.rate;
-    if (rate <= 0 || rate > originalRate * 10) return offer;
+    if (rate <= 0) throw new Error('Counter rate must be greater than $0.');
+    if (rate > originalRate * 10) {
+      throw new Error(`Counter rate $${rate.toLocaleString()} is more than 10× the original $${originalRate.toLocaleString()} — typo? Bring it down to retry.`);
+    }
 
     if (offer.rounds.length >= MAX_OFFER_ROUNDS) {
       db.offers[idx] = { ...offer, status: 'expired', respondedAt: nowIso() };
@@ -1725,34 +1734,44 @@ export function v2CounterCounter(offerId: string, rate: number, message: string)
  * Brand accepts a counter — promotes the counter rate to the offer's
  * accepted rate and runs the same escrow logic as v2AcceptOffer.
  */
-export function v2AcceptCounter(offerId: string): Offer | null {
+export function v2AcceptCounter(offerId: string): Offer {
+  // P63 — symmetric to v2AcceptOffer P62 refactor.
   const result = tx((db) => {
     // P5 §4.1 — brand-side accept; admin/ops only.
     requireCapability(getActorUserId(), 'offer.send', db);
 
     const idx = db.offers.findIndex((o) => o.id === offerId);
-    if (idx === -1) return null;
+    if (idx === -1) throw new Error("Couldn't find that offer — it may have been withdrawn. Refresh the page.");
     const offer = db.offers[idx];
-    if (offer.status !== 'countered') return offer;
+    if (offer.status === 'accepted') return offer; // idempotent
+    if (offer.status === 'declined') throw new Error('The creator declined this offer — nothing to accept.');
+    if (offer.status === 'expired')  throw new Error('This offer expired — send a fresh one.');
+    if (offer.status === 'withdrawn') throw new Error('This offer was withdrawn — send a fresh one.');
+    if (offer.status === 'pending') throw new Error("Counter-accept only applies to a creator's counter. Send a fresh offer instead.");
     // P3 §2.1 — accept the latest round. Either side can be the
     // "accepter" depending on who sent the latest round.
     const lastRound = offer.rounds[offer.rounds.length - 1];
-    if (!lastRound) return offer;
+    if (!lastRound) throw new Error('Offer has no negotiation history — nothing to accept.');
 
     const newRate = lastRound.rate;
 
     const camp = db.campaigns.find((c) => c.id === offer.campaignId);
     const brand = camp ? db.brands.find((b) => b.id === camp.brandId) : null;
     const creator = db.creators.find((c) => c.id === offer.creatorId);
-    if (!camp || !brand || !creator) return null;
+    if (!camp) throw new Error("Couldn't find the campaign for this offer. Refresh and try again.");
+    if (!brand) throw new Error("Couldn't find the brand on this offer. Refresh and try again.");
+    if (!creator) throw new Error("Couldn't find the creator on this offer. Refresh and try again.");
 
     // CAMPAIGN-STAGE GATE — pause / closed campaigns don't accept
     // commitments (parallel to v2AcceptOffer).
-    if (camp.stage !== 'live') return offer;
+    if (camp.stage !== 'live') {
+      throw new Error(`This campaign is ${camp.stage} — resume it before accepting the counter.`);
+    }
 
-    // FUNDS GUARD — same rule as v2AcceptOffer. Refuse to flip the
-    // offer to 'accepted' if the brand can't cover the counter rate.
-    if (brand.walletBalance < newRate) return offer;
+    // FUNDS GUARD — same rule as v2AcceptOffer.
+    if (brand.walletBalance < newRate) {
+      throw new Error(`Your wallet has $${brand.walletBalance.toLocaleString()} — short by $${(newRate - brand.walletBalance).toLocaleString()} for this offer. Top up first.`);
+    }
 
     db.offers[idx] = { ...offer, rate: newRate, status: 'accepted', respondedAt: nowIso() };
 
@@ -1871,15 +1890,17 @@ export function v2AcceptCounter(offerId: string): Offer | null {
  * Brand rejects a creator's pitch. Application.status → rejected.
  * Notifies creator.
  */
-export function v2RejectApplication(applicationId: string): Application | null {
+export function v2RejectApplication(applicationId: string): Application {
   const result = tx((db) => {
     // P5 §4.1 — brand-side application decision.
     requireCapability(getActorUserId(), 'application.decide', db);
 
     const idx = db.applications.findIndex((a) => a.id === applicationId);
-    if (idx === -1) return null;
+    if (idx === -1) throw new Error("Couldn't find that application — it may have been withdrawn. Refresh and try again.");
     const app = db.applications[idx];
-    if (app.status === 'rejected') return app;
+    if (app.status === 'rejected') return app; // idempotent
+    if (app.status === 'withdrawn') throw new Error('The creator already withdrew this application — nothing to reject.');
+    if (app.status === 'shortlisted') throw new Error("You've already shortlisted this creator — withdraw the offer first if you want to pass.");
     db.applications[idx] = { ...app, status: 'rejected', decidedAt: nowIso() };
 
     const creator = db.creators.find((c) => c.id === app.creatorId);
@@ -1912,18 +1933,18 @@ export function v2RejectApplication(applicationId: string): Application | null {
  * Creator withdraws their own application. Application.status → withdrawn.
  * Notifies brand (s19 — was missing).
  */
-export function v2WithdrawApplication(applicationId: string): Application | null {
+export function v2WithdrawApplication(applicationId: string): Application {
   const result = tx((db) => {
     // P5 §4.1 — creator self-withdrawal; same capability as self-apply.
     requireCapability(getActorUserId(), 'application.invite', db);
 
     const idx = db.applications.findIndex((a) => a.id === applicationId);
-    if (idx === -1) return null;
+    if (idx === -1) throw new Error("Couldn't find that application — refresh and try again.");
     const app = db.applications[idx];
-    // IDEMPOTENCY GUARD — pre-fix a double-click would push a fresh
-    // brand notification + run ensureCollabState a second time, so two
-    // tabs racing the withdraw button left noise in the brand's inbox.
-    if (app.status === 'withdrawn' || app.status === 'rejected') return app;
+    // Idempotent on already-withdrawn; explicit error on rejected.
+    if (app.status === 'withdrawn') return app;
+    if (app.status === 'rejected') throw new Error('This application was already rejected by the brand.');
+    if (app.status === 'shortlisted') throw new Error("You're shortlisted on this brief — message the brand instead of withdrawing.");
     db.applications[idx] = { ...app, status: 'withdrawn', decidedAt: nowIso() };
 
     const creator = db.creators.find((c) => c.id === app.creatorId);
@@ -1958,21 +1979,19 @@ export function v2WithdrawApplication(applicationId: string): Application | null
  * change their mind. Offer.status → withdrawn. Notifies creator
  * (s19 — was missing).
  */
-export function v2WithdrawOffer(offerId: string): Offer | null {
+export function v2WithdrawOffer(offerId: string): Offer {
   const result = tx((db) => {
     // P5 §4.1 — brand-side withdrawal of a sent offer.
     requireCapability(getActorUserId(), 'offer.withdraw', db);
 
     const idx = db.offers.findIndex((o) => o.id === offerId);
-    if (idx === -1) return null;
+    if (idx === -1) throw new Error("Couldn't find that offer — refresh and try again.");
     const offer = db.offers[idx];
-    // Terminal states — can't withdraw an already-terminal offer.
-    if (
-      offer.status === 'accepted'
-      || offer.status === 'withdrawn'
-      || offer.status === 'declined'
-      || offer.status === 'expired'
-    ) return offer;
+    // Idempotent on already-withdrawn; specific reasons for the other terminals.
+    if (offer.status === 'withdrawn') return offer;
+    if (offer.status === 'accepted') throw new Error("This offer was already accepted — you can't withdraw it. Open a dispute if you need to back out.");
+    if (offer.status === 'declined') throw new Error('The creator already declined this offer — nothing to withdraw.');
+    if (offer.status === 'expired')  throw new Error('This offer expired on its own.');
     db.offers[idx] = { ...offer, status: 'withdrawn', respondedAt: nowIso() };
 
     const camp = db.campaigns.find((c) => c.id === offer.campaignId);
@@ -2019,24 +2038,21 @@ export function v2WithdrawOffer(offerId: string): Offer | null {
  * whatever the creator had pasted. That's gone — the creator owns the
  * URL field and the brand confirms it's right.
  */
-export function v2MarkContentLive(submissionId: string): Submission | null {
+export function v2MarkContentLive(submissionId: string): Submission {
   const result = tx((db) => {
     // P5 §4.1 — brand confirmation that the post is live; admin/ops.
     requireCapability(getActorUserId(), 'content.markLive', db);
 
     const idx = db.submissions.findIndex((s) => s.id === submissionId);
-    if (idx === -1) return null;
+    if (idx === -1) throw new Error("Couldn't find that submission — refresh and try again.");
     const sub = db.submissions[idx];
-    if (sub.status !== 'approved') return sub;
+    if (sub.status === 'in_review') throw new Error('This submission hasn\'t been approved yet — approve it first, then mark live.');
+    if (sub.status === 'revisions') throw new Error('This submission is in revisions — wait for the creator to resubmit and approve before marking live.');
+    if (sub.status !== 'approved') throw new Error(`Submission status is "${sub.status}" — mark-live only works on approved drafts.`);
     // P3 §2.2 — must have a permalink set by the creator.
-    if (!sub.permalink) throw new Error('mark-live requires submission.permalink to be set by the creator first');
+    if (!sub.permalink) throw new Error('The creator needs to paste the live URL first. Ask them to set it from their collab page.');
 
-    // IDEMPOTENCY GUARD — if a LIVE: feedback entry already exists, the
-    // submission has already been marked live. Pre-fix a double-click
-    // pushed two LIVE: entries + two creator notifications. computeCollabStage
-    // checks `feedback.some(f => f.text.startsWith('LIVE: '))`, so the
-    // duplicate didn't break stage logic — but it polluted the feedback
-    // audit log and double-notified the creator.
+    // IDEMPOTENCY GUARD — already live → return unchanged (no-op).
     if (sub.feedback.some((f) => f.text.startsWith('LIVE: '))) return sub;
 
     // Append a feedback entry recording the action — the feedback log
@@ -2179,15 +2195,15 @@ export function v2SetSubmissionPermalink(
  * touching individual collabs; that was lossy because per-collab
  * accepted offers stayed 'accepted' even after campaign-end.
  */
-export function v2EndCampaign(campaignId: string): Campaign | null {
+export function v2EndCampaign(campaignId: string): Campaign {
   const result = tx((db) => {
     // P5 §4.1 — admin/ops only; finance and viewer cannot end campaigns.
     requireCapability(getActorUserId(), 'campaign.end', db);
 
     const idx = db.campaigns.findIndex((c) => c.id === campaignId);
-    if (idx === -1) return null;
+    if (idx === -1) throw new Error("Couldn't find that campaign — refresh and try again.");
     const camp = db.campaigns[idx];
-    if (camp.stage === 'closed') return camp;
+    if (camp.stage === 'closed') return camp; // idempotent
 
     const brand = db.brands.find((b) => b.id === camp.brandId);
 
@@ -2354,16 +2370,16 @@ export function v2EndCampaign(campaignId: string): Campaign | null {
       }
     }
 
-    return db.campaigns.find((c) => c.id === campaignId) ?? null;
+    const final = db.campaigns.find((c) => c.id === campaignId);
+    if (!final) throw new Error("Campaign vanished mid-end. Refresh and check the Campaigns list.");
+    return final;
   });
   // Mirror stage + history + escrow to Supabase (Phase 3).
-  if (result) {
-    mirrorCampaignToSupabase(campaignId, {
-      stage: result.stage,
-      history: result.history,
-      escrowHeld: result.escrowHeld,
-    });
-  }
+  mirrorCampaignToSupabase(campaignId, {
+    stage: result.stage,
+    history: result.history,
+    escrowHeld: result.escrowHeld,
+  });
   return result;
 }
 
@@ -2372,17 +2388,18 @@ export function v2EndCampaign(campaignId: string): Campaign | null {
  * Resume by calling v2ResumeCampaign. Notifies anyone with a pending
  * application or active offer (s19 — was missing).
  */
-export function v2PauseCampaign(campaignId: string): Campaign | null {
+export function v2PauseCampaign(campaignId: string): Campaign {
   const result = tx((db) => {
     // P5 §4.1 — admin/ops only.
     requireCapability(getActorUserId(), 'campaign.pause', db);
 
     const idx = db.campaigns.findIndex((c) => c.id === campaignId);
-    if (idx === -1) return null;
+    if (idx === -1) throw new Error("Couldn't find that campaign — refresh and try again.");
     const camp = db.campaigns[idx];
-    // P1b §1.2: only live campaigns can be paused. Pause moves to the
-    // dedicated 'paused' stage (added in P1b) — was 'draft' before.
-    if (camp.stage !== 'live') return camp;
+    if (camp.stage === 'paused') return camp; // idempotent
+    if (camp.stage !== 'live') {
+      throw new Error(`Only live campaigns can be paused — this one is ${camp.stage}.`);
+    }
     db.campaigns[idx] = {
       ...camp,
       stage: 'paused',
@@ -2418,16 +2435,18 @@ export function v2PauseCampaign(campaignId: string): Campaign | null {
   return result;
 }
 
-export function v2ResumeCampaign(campaignId: string): Campaign | null {
+export function v2ResumeCampaign(campaignId: string): Campaign {
   const result = tx((db) => {
     // P5 §4.1 — same gate as pause.
     requireCapability(getActorUserId(), 'campaign.pause', db);
 
     const idx = db.campaigns.findIndex((c) => c.id === campaignId);
-    if (idx === -1) return null;
+    if (idx === -1) throw new Error("Couldn't find that campaign — refresh and try again.");
     const camp = db.campaigns[idx];
-    // P1b §1.2: only paused campaigns can be resumed.
-    if (camp.stage !== 'paused') return camp;
+    if (camp.stage === 'live') return camp; // idempotent
+    if (camp.stage !== 'paused') {
+      throw new Error(`Only paused campaigns can be resumed — this one is ${camp.stage}.`);
+    }
     db.campaigns[idx] = {
       ...camp,
       stage: 'live',
@@ -2470,21 +2489,21 @@ export function v2ResumeCampaign(campaignId: string): Campaign | null {
  *  the same brand-update capability as other lifecycle mutations.
  *  Local-only mutation — `archivedAt` is a new field not yet in the
  *  Supabase schema; mirror is a no-op for now. */
-export function v2ArchiveCampaign(campaignId: string): Campaign | null {
+export function v2ArchiveCampaign(campaignId: string): Campaign {
   return tx((db) => {
     requireCapability(getActorUserId(), 'campaign.pause', db);
     const idx = db.campaigns.findIndex((c) => c.id === campaignId);
-    if (idx === -1) return null;
+    if (idx === -1) throw new Error("Couldn't find that campaign — refresh and try again.");
     db.campaigns[idx] = { ...db.campaigns[idx], archivedAt: nowIso() };
     return db.campaigns[idx];
   });
 }
 
-export function v2UnarchiveCampaign(campaignId: string): Campaign | null {
+export function v2UnarchiveCampaign(campaignId: string): Campaign {
   return tx((db) => {
     requireCapability(getActorUserId(), 'campaign.pause', db);
     const idx = db.campaigns.findIndex((c) => c.id === campaignId);
-    if (idx === -1) return null;
+    if (idx === -1) throw new Error("Couldn't find that campaign — refresh and try again.");
     const { archivedAt: _drop, ...rest } = db.campaigns[idx];
     void _drop;
     db.campaigns[idx] = rest;
@@ -2498,11 +2517,11 @@ export function v2UnarchiveCampaign(campaignId: string): Campaign | null {
  *  and starts at stage='draft' so the brand can re-publish at a new
  *  deadline. Returns the new campaign id so the caller can route
  *  into the draft for final edits. */
-export function v2DuplicateCampaign(campaignId: string): Campaign | null {
+export function v2DuplicateCampaign(campaignId: string): Campaign {
   return tx((db) => {
     requireCapability(getActorUserId(), 'campaign.create', db);
     const src = db.campaigns.find((c) => c.id === campaignId);
-    if (!src) return null;
+    if (!src) throw new Error("Couldn't find that campaign to duplicate — refresh and try again.");
     const newCampId = newId('cmp');
     // Duplicate the deliverable rows so the new campaign has its own
     // FK list — pre-fix sharing deliverableIds would have caused both
@@ -2646,7 +2665,7 @@ export function getLatestSubmissionFor(campaignId: string, creatorId: string) {
  * with stage='live' so creators can apply / be invited. Reserves no
  * funds yet — funds reserve as offers get accepted.
  */
-export function v2LaunchCampaign(input: LaunchCampaignInput): Campaign | null {
+export function v2LaunchCampaign(input: LaunchCampaignInput): Campaign {
   const result = tx((db) => {
     // P5 §4.1 — admin/ops only; finance + viewer cannot create campaigns.
     requireCapability(getActorUserId(), 'campaign.create', db);
@@ -2657,7 +2676,7 @@ export function v2LaunchCampaign(input: LaunchCampaignInput): Campaign | null {
     const brand = brandUser?.brandId
       ? db.brands.find((b) => b.id === brandUser.brandId)
       : db.brands.find((b) => b.userId === 'u_hannah');
-    if (!brand) return null;
+    if (!brand) throw new Error("Couldn't find your brand profile. Sign out and back in, then try again.");
 
     const id = newId('cmp');
     const camp: Campaign = {

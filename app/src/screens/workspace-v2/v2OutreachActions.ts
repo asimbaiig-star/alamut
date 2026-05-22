@@ -186,17 +186,17 @@ export function v2RespondOutreach(
  * is a tidy-up action, not a conversational one. Idempotent on
  * already-archived rows.
  */
-export function v2ArchiveOutreach(outreachId: string): Outreach | null {
+export function v2ArchiveOutreach(outreachId: string): Outreach {
   const result = tx((db) => {
     requireCapability(getActorUserId(), 'application.invite', db);
 
     const idx = db.outreach.findIndex((o) => o.id === outreachId);
-    if (idx === -1) return null;
-    if (db.outreach[idx].status === 'archived') return db.outreach[idx];
+    if (idx === -1) throw new Error("Couldn't find that outreach record — refresh and try again.");
+    if (db.outreach[idx].status === 'archived') return db.outreach[idx]; // idempotent
     db.outreach[idx] = { ...db.outreach[idx], status: 'archived', respondedAt: nowIso() };
     return db.outreach[idx];
   });
-  if (result && result.status === 'archived') {
+  if (result.status === 'archived') {
     mirrorOutreachUpdateToSupabase(outreachId, {
       status: 'archived',
       respondedAt: result.respondedAt ?? null,

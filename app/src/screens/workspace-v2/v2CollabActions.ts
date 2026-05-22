@@ -289,7 +289,7 @@ export function v2RequestCollabCancel(
   collaborationId: string,
   byUserId: string,
   reason: string,
-): Collaboration | null {
+): Collaboration {
   return tx((db) => {
     // P5 §4.1 — both creator and brand-side admin/ops can request a
     // cancel. `application.invite` is held by both sides and is the
@@ -298,9 +298,13 @@ export function v2RequestCollabCancel(
     requireCapability(getActorUserId(), 'application.invite', db);
 
     const collab = db.collaborations.find((c) => c.id === collaborationId);
-    if (!collab) return null;
-    if (!CANCELLABLE_STAGES.has(collab.stage)) return collab;
-    if (collab.cancellationRequest) return collab; // already pending
+    if (!collab) throw new Error("Couldn't find that collaboration — refresh and try again.");
+    if (!CANCELLABLE_STAGES.has(collab.stage)) {
+      throw new Error(`Can't cancel a collab in "${collab.stage}" — it's already past the cancellable window.`);
+    }
+    if (collab.cancellationRequest) {
+      throw new Error('A cancel request is already pending on this collab. Wait for the other side to respond.');
+    }
 
     collab.cancellationRequest = {
       by: byUserId,
@@ -339,18 +343,24 @@ export function v2RequestCollabCancel(
 export function v2AgreeCollabCancel(
   collaborationId: string,
   byUserId: string,
-): Collaboration | null {
+): Collaboration {
   return tx((db) => {
     // P5 §4.1 — same gate as request.
     requireCapability(getActorUserId(), 'application.invite', db);
 
     const collab = db.collaborations.find((c) => c.id === collaborationId);
-    if (!collab) return null;
-    if (!collab.cancellationRequest) return collab;
-    if (collab.cancellationRequest.by === byUserId) return collab; // can't self-agree
+    if (!collab) throw new Error("Couldn't find that collaboration — refresh and try again.");
+    if (!collab.cancellationRequest) {
+      throw new Error('No pending cancel request on this collab — nothing to agree to.');
+    }
+    if (collab.cancellationRequest.by === byUserId) {
+      throw new Error("You opened this cancel request — you can't agree to it yourself. Wait for the other side.");
+    }
 
     const reason = `mutual-cancel: ${collab.cancellationRequest.reason}`;
-    return cancelCollabInternal(db, collaborationId, reason, byUserId);
+    const updated = cancelCollabInternal(db, collaborationId, reason, byUserId);
+    if (!updated) throw new Error('Cancellation failed mid-flight. Refresh and check the collab state.');
+    return updated;
   });
 }
 
@@ -361,15 +371,19 @@ export function v2AgreeCollabCancel(
 export function v2DeclineCollabCancel(
   collaborationId: string,
   byUserId: string,
-): Collaboration | null {
+): Collaboration {
   return tx((db) => {
     // P5 §4.1 — same gate as request/agree.
     requireCapability(getActorUserId(), 'application.invite', db);
 
     const collab = db.collaborations.find((c) => c.id === collaborationId);
-    if (!collab) return null;
-    if (!collab.cancellationRequest) return collab;
-    if (collab.cancellationRequest.by === byUserId) return collab; // can't self-decline
+    if (!collab) throw new Error("Couldn't find that collaboration — refresh and try again.");
+    if (!collab.cancellationRequest) {
+      throw new Error('No pending cancel request on this collab — nothing to decline.');
+    }
+    if (collab.cancellationRequest.by === byUserId) {
+      throw new Error("You opened this cancel request — you can't decline it yourself. Withdraw the request instead.");
+    }
 
     const requesterUserId = collab.cancellationRequest.by;
     collab.cancellationRequest = null;

@@ -271,8 +271,12 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
                 onClick={() => {
                   const meUser = db.users.find((u) => u.id === currentCreator.userId);
                   if (!meUser) return;
-                  v2DeclineCollabCancel(collabRow.id, meUser.id);
-                  pushToast('Cancel request declined · collab continues');
+                  try {
+                    v2DeclineCollabCancel(collabRow.id, meUser.id);
+                    pushToast('Cancel request declined · collab continues', 'good');
+                  } catch (err) {
+                    pushToast(err instanceof Error ? err.message : 'Decline failed', 'bad');
+                  }
                 }}
               >Decline</button>
               <button
@@ -282,8 +286,12 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
                   const meUser = db.users.find((u) => u.id === currentCreator.userId);
                   if (!meUser) return;
                   if (!window.confirm('Agree to cancel? Escrow returns to the brand. This cannot be undone.')) return;
-                  v2AgreeCollabCancel(collabRow.id, meUser.id);
-                  pushToast('Collab cancelled · escrow returned to brand', 'good');
+                  try {
+                    v2AgreeCollabCancel(collabRow.id, meUser.id);
+                    pushToast('Collab cancelled · escrow returned to brand', 'good');
+                  } catch (err) {
+                    pushToast(err instanceof Error ? err.message : 'Agree failed', 'bad');
+                  }
                 }}
               >Agree &amp; cancel</button>
             </div>
@@ -321,7 +329,15 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
                 }}
                 onCounter={() => setCounterOpen(true)}
                 onUpload={() => nextSlot && setUploadSlot(nextSlot)}
-                onWithdraw={() => myApplication && v2WithdrawApplication(myApplication.id)}
+                onWithdraw={() => {
+                  if (!myApplication) return;
+                  try {
+                    v2WithdrawApplication(myApplication.id);
+                    pushToast(`Application withdrawn from ${camp.brand}`, 'good');
+                  } catch (err) {
+                    pushToast(err instanceof Error ? err.message : 'Withdraw failed', 'bad');
+                  }
+                }}
                 onMessageBrand={openConversationForCollab}
                 onLeaveReview={() => setReviewOpen(true)}
                 activeOfferRate={activeOffer?.rate}

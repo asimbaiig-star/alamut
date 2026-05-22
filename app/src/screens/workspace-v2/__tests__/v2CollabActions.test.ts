@@ -123,7 +123,10 @@ describe('v2RequestCollabCancel', () => {
       ...useStore.getState().db,
       collaborations: [makeCollab({ stage: 'paid' })],
     });
-    v2RequestCollabCancel('col_1', 'u_creator', 'too late');
+    // P63 — now throws with stage-specific message; store still untouched.
+    expect(() => v2RequestCollabCancel('col_1', 'u_creator', 'too late')).toThrow(
+      /can't cancel a collab in "paid"/i,
+    );
     const db = useStore.getState().db;
     const collab = db.collaborations.find((c) => c.id === 'col_1')!;
     expect(collab.cancellationRequest).toBeFalsy();
@@ -131,7 +134,10 @@ describe('v2RequestCollabCancel', () => {
 
   it('rejects double-request (already pending)', () => {
     v2RequestCollabCancel('col_1', 'u_creator', 'first');
-    v2RequestCollabCancel('col_1', 'u_brand', 'second');
+    // P63 — second request throws with "already pending" message.
+    expect(() => v2RequestCollabCancel('col_1', 'u_brand', 'second')).toThrow(
+      /already pending/i,
+    );
     const db = useStore.getState().db;
     const collab = db.collaborations.find((c) => c.id === 'col_1')!;
     expect(collab.cancellationRequest?.by).toBe('u_creator'); // first wins
@@ -213,8 +219,10 @@ describe('v2AgreeCollabCancel — money-correctness', () => {
 
   it('rejects self-agree (the original raiser cannot agree to their own request)', () => {
     v2RequestCollabCancel('col_1', 'u_creator', 'reason');
-    // Same user trying to agree — should be rejected.
-    v2AgreeCollabCancel('col_1', 'u_creator');
+    // P63 — now throws "you opened this cancel request" instead of no-op.
+    expect(() => v2AgreeCollabCancel('col_1', 'u_creator')).toThrow(
+      /can't agree to it yourself/i,
+    );
     const db = useStore.getState().db;
     const collab = db.collaborations.find((c) => c.id === 'col_1')!;
     // Cancellation request still pending, stage still confirmed.
@@ -222,8 +230,11 @@ describe('v2AgreeCollabCancel — money-correctness', () => {
     expect(collab.stage).toBe('confirmed');
   });
 
-  it('no-op when no pending cancellation request exists', () => {
-    v2AgreeCollabCancel('col_1', 'u_brand');
+  it('throws when no pending cancellation request exists', () => {
+    // P63 — was a silent no-op; now throws "no pending cancel request".
+    expect(() => v2AgreeCollabCancel('col_1', 'u_brand')).toThrow(
+      /no pending cancel request/i,
+    );
     const db = useStore.getState().db;
     const collab = db.collaborations.find((c) => c.id === 'col_1')!;
     expect(collab.stage).toBe('confirmed'); // unchanged
@@ -262,7 +273,10 @@ describe('v2DeclineCollabCancel', () => {
 
   it('rejects self-decline (raiser cannot decline their own request)', () => {
     v2RequestCollabCancel('col_1', 'u_creator', 'reason');
-    v2DeclineCollabCancel('col_1', 'u_creator');
+    // P63 — now throws "you opened this cancel request" instead of no-op.
+    expect(() => v2DeclineCollabCancel('col_1', 'u_creator')).toThrow(
+      /can't decline it yourself/i,
+    );
     const db = useStore.getState().db;
     const collab = db.collaborations.find((c) => c.id === 'col_1')!;
     expect(collab.cancellationRequest).toBeDefined(); // still there

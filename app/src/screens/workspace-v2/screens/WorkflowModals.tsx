@@ -540,8 +540,13 @@ export function MarkLiveModal({ submissionId, campaignName, onClose, initialPerm
               disabled={!hasPermalink || !canMarkLive}
               title={!canMarkLive ? 'Confirming live requires admin or ops role' : undefined}
               onClick={() => {
-                v2MarkContentLive(submissionId);
-                onClose();
+                try {
+                  v2MarkContentLive(submissionId);
+                  pushToast('Marked live — payout triggers on the dispute-window close', 'good');
+                  onClose();
+                } catch (err) {
+                  pushToast(err instanceof Error ? err.message : 'Mark-live failed', 'bad');
+                }
               }}
             >
               {Icon.check} {!canMarkLive ? 'Admin/ops only' : (hasPermalink ? 'Confirm live' : 'Awaiting URL')}

@@ -225,7 +225,7 @@ export function v2RaiseDispute(input: {
  * collab so the normal approval path resumes. Resolved disputes can't
  * be withdrawn (use `resolveDispute` to issue a corrective resolution).
  */
-export function v2WithdrawDispute(disputeId: string, byUserId: string): Dispute | null {
+export function v2WithdrawDispute(disputeId: string, byUserId: string): Dispute {
   const result = tx((db) => {
     // P5 §4.1 — same gate as raise. Only the original raiser can
     // withdraw (data-layer check below); the cap gate catches viewer/
@@ -233,9 +233,14 @@ export function v2WithdrawDispute(disputeId: string, byUserId: string): Dispute 
     requireCapability(getActorUserId(), 'dispute.raise', db);
 
     const disp = db.disputes.find((d) => d.id === disputeId);
-    if (!disp) return null;
-    if (disp.status !== 'open' && disp.status !== 'in-review') return disp;
-    if (disp.raisedByUserId !== byUserId) return disp; // only the raiser can withdraw
+    if (!disp) throw new Error("Couldn't find that dispute — refresh and try again.");
+    if (disp.status === 'withdrawn') return disp; // idempotent
+    if (disp.status === 'resolved-refund' || disp.status === 'resolved-release' || disp.status === 'resolved-partial') {
+      throw new Error('This dispute has already been resolved by admin — can\'t withdraw it now.');
+    }
+    if (disp.raisedByUserId !== byUserId) {
+      throw new Error('Only the person who raised this dispute can withdraw it.');
+    }
 
     const now = nowMs();
     disp.status = 'withdrawn';
@@ -271,15 +276,18 @@ export function v2WithdrawDispute(disputeId: string, byUserId: string): Dispute 
  * counter party, admin) can post. The message log is the audit trail
  * the admin reads when deciding the resolution.
  */
-export function v2AddDisputeMessage(disputeId: string, fromUserId: string, body: string): Dispute | null {
+export function v2AddDisputeMessage(disputeId: string, fromUserId: string, body: string): Dispute {
   const result = tx((db) => {
     // P5 §4.1 — viewer/finance can read but can't post into a dispute.
     requireCapability(getActorUserId(), 'dispute.raise', db);
 
     const disp = db.disputes.find((d) => d.id === disputeId);
-    if (!disp) return null;
-    if (disp.status !== 'open' && disp.status !== 'in-review') return disp;
-    if (!body.trim()) return disp;
+    if (!disp) throw new Error("Couldn't find that dispute — refresh and try again.");
+    if (disp.status === 'withdrawn') throw new Error('This dispute was withdrawn — can\'t post messages on it.');
+    if (disp.status === 'resolved-refund' || disp.status === 'resolved-release' || disp.status === 'resolved-partial') {
+      throw new Error('This dispute is already resolved — can\'t post new messages on it.');
+    }
+    if (!body.trim()) throw new Error('Message body is empty.');
 
     const now = nowMs();
     disp.messages = [...disp.messages, { at: now, userId: fromUserId, body: body.trim() }];
