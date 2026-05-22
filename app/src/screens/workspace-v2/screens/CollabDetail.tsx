@@ -310,7 +310,15 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
                 myApplicationStatus={myApplication?.status}
                 latestSubmissionStatus={latestSubmission?.status}
                 livePermalink={livePermalink}
-                onAccept={() => pendingOffer && v2AcceptOffer(pendingOffer.id)}
+                onAccept={() => {
+                  if (!pendingOffer) return;
+                  try {
+                    v2AcceptOffer(pendingOffer.id);
+                    pushToast(`Offer accepted — ${camp.brand} just got the notification`, 'good');
+                  } catch (err) {
+                    pushToast(err instanceof Error ? err.message : 'Accept failed', 'bad');
+                  }
+                }}
                 onCounter={() => setCounterOpen(true)}
                 onUpload={() => nextSlot && setUploadSlot(nextSlot)}
                 onWithdraw={() => myApplication && v2WithdrawApplication(myApplication.id)}

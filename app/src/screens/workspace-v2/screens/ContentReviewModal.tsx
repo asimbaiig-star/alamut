@@ -10,6 +10,7 @@ import { fmtUSD, Icon } from '../lib';
 import { useModalEscape } from '@/lib/utils/useModalEscape';
 import type { V2Collab, V2Creator } from '../data';
 import { v2ApproveContent, v2RequestRevision } from '../v2CampaignActions';
+import { pushToast } from '@/lib/utils/toast';
 // P7 — gate the approve / request-revision buttons by capability so
 // finance + viewer team members see the actions exist (disabled) but
 // can't fire them. The mutations themselves still throw via
@@ -329,8 +330,13 @@ export function ContentReviewModal({ collab, creators, onClose }: Props) {
                 disabled={!canRevise}
                 title={!canRevise ? 'Admin or ops only' : undefined}
                 onClick={() => {
-                  v2RequestRevision(deliverable.id, feedback || 'Revision requested.');
-                  onClose();
+                  try {
+                    v2RequestRevision(deliverable.id, feedback || 'Revision requested.');
+                    pushToast('Revision requested — the creator was notified', 'good');
+                    onClose();
+                  } catch (err) {
+                    pushToast(err instanceof Error ? err.message : 'Revision request failed', 'bad');
+                  }
                 }}
               >
                 {canRevise ? 'Request revision' : 'Admin/ops only'}
@@ -342,8 +348,13 @@ export function ContentReviewModal({ collab, creators, onClose }: Props) {
                 disabled={!canApprove}
                 title={!canApprove ? 'Admin or ops only' : undefined}
                 onClick={() => {
-                  v2ApproveContent(deliverable.id);
-                  onClose();
+                  try {
+                    v2ApproveContent(deliverable.id);
+                    pushToast(`Approved — ${fmtUSD(collab.price)} released to the creator`, 'good');
+                    onClose();
+                  } catch (err) {
+                    pushToast(err instanceof Error ? err.message : 'Approve failed', 'bad');
+                  }
                 }}
               >
                 {Icon.check} {canApprove ? `Approve & release ${fmtUSD(collab.price)}` : 'Admin/ops only'}

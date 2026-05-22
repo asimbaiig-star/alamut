@@ -267,7 +267,13 @@ describe('counter cap (P3 §2.1) — MAX_OFFER_ROUNDS = 4', () => {
         ]),
       })],
     });
-    v2CounterOffer('off_1', 2200, 'creator again');
+    // P62 — v2CounterOffer now throws instead of silently no-oping so
+    // the UI can surface "You already sent a counter — waiting on the
+    // brand". The store should still be untouched (no new round) which
+    // is the original behavioral guarantee this test exists for.
+    expect(() => v2CounterOffer('off_1', 2200, 'creator again')).toThrow(
+      /already sent a counter/i,
+    );
     const offer = useStore.getState().db.offers[0];
     // No new round appended (still 2 entries).
     expect(offer.rounds.length).toBe(2);

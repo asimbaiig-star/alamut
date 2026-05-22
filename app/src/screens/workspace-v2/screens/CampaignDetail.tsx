@@ -1024,7 +1024,15 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
               type="button"
               className="v2-btn v2-btn-sm v2-btn-ghost"
               style={{ flex: 1, justifyContent: 'center', fontSize: 11 }}
-              onClick={(e) => { stop(e); v2DeclineOffer(offer.id); }}
+              onClick={(e) => {
+                stop(e);
+                try {
+                  v2DeclineOffer(offer.id);
+                  pushToast(`Declined ${creator.name.split(' ')[0]}'s counter`, 'good');
+                } catch (err) {
+                  pushToast(err instanceof Error ? err.message : 'Decline failed', 'bad');
+                }
+              }}
               disabled={!canWithdraw}
               title={!canWithdraw ? 'Admin or ops only' : undefined}
             >
@@ -1479,23 +1487,31 @@ function ContentReviewTab({ collabs, creators, onReview, onRoute }: {
     if (selected.size === 0) return;
     setBulkBusy(true);
     const { v2ApproveContent } = await import('../v2CampaignActions');
-    let ok = 0; let fail = 0;
+    let ok = 0;
+    const failures: string[] = [];
     for (const id of selected) {
       try {
-        const result = v2ApproveContent(id);
-        if (result) ok++; else fail++;
-      } catch {
-        fail++;
+        v2ApproveContent(id);
+        ok++;
+      } catch (err) {
+        // P62 — v2ApproveContent throws specific reasons now (paused
+        // campaign, frozen escrow, no accepted offer). Surface the first
+        // distinct reason in the bulk toast so the brand knows what to
+        // fix; the rest are common-cause.
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        if (!failures.includes(msg)) failures.push(msg);
       }
     }
     setBulkBusy(false);
     setSelected(new Set());
-    pushToast(
-      fail === 0
-        ? `Approved ${ok} submission${ok === 1 ? '' : 's'}`
-        : `Approved ${ok}, ${fail} failed`,
-      fail === 0 ? 'good' : 'bad',
-    );
+    if (failures.length === 0) {
+      pushToast(`Approved ${ok} submission${ok === 1 ? '' : 's'}`, 'good');
+    } else {
+      pushToast(
+        `Approved ${ok}, ${selected.size - ok} failed: ${failures[0]}`,
+        'bad',
+      );
+    }
   }
 
   return (

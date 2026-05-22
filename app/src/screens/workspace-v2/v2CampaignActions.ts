@@ -763,7 +763,14 @@ export function v2SendOffer(
  *   - Transaction (escrow_hold) recorded for both sides
  *   - acceptedCreators list updated on Campaign
  */
-export function v2AcceptOffer(offerId: string): Offer | null {
+export function v2AcceptOffer(offerId: string): Offer {
+  // P62 — was `Offer | null` with 4 silent failure paths (3× return null,
+  // 2× return-the-unchanged-offer). The only caller (CollabDetail) fired
+  // and forgot, so a no-op accept (campaign paused, brand short on funds,
+  // offer already declined) left the creator clicking with nothing visible
+  // happening. Now: throw on every can't-happen with a specific reason;
+  // re-clicking on an already-accepted offer is treated as idempotent
+  // success (returns the unchanged accepted offer).
   const result = tx((db) => {
     // P5 §4.1 — accept is a creator-side action (creators have
     // `offer.counter` which covers accept/decline/counter on their
@@ -771,19 +778,28 @@ export function v2AcceptOffer(offerId: string): Offer | null {
     requireCapability(getActorUserId(), 'offer.counter', db);
 
     const offerIdx = db.offers.findIndex((o) => o.id === offerId);
-    if (offerIdx === -1) return null;
+    if (offerIdx === -1) throw new Error("Couldn't find that offer — it may have been withdrawn. Refresh the page.");
     const offer = db.offers[offerIdx];
-    if (offer.status !== 'pending' && offer.status !== 'countered') return offer;
+    // Idempotent: if it's already accepted, that's what the user wanted.
+    if (offer.status === 'accepted') return offer;
+    if (offer.status === 'declined') throw new Error('This offer was already declined. Ask the brand to re-send if you changed your mind.');
+    if (offer.status === 'withdrawn') throw new Error('The brand withdrew this offer.');
+    if (offer.status === 'expired')  throw new Error('This offer expired. Ask the brand to re-send if you\'re still interested.');
+    // Only pending + countered are acceptable at this point.
 
     const camp = db.campaigns.find((c) => c.id === offer.campaignId);
     const brand = camp ? db.brands.find((b) => b.id === camp.brandId) : undefined;
     const creator = db.creators.find((c) => c.id === offer.creatorId);
-    if (!camp || !brand || !creator) return null;
+    if (!camp) throw new Error("Couldn't find the campaign for this offer. Refresh and try again.");
+    if (!brand) throw new Error("Couldn't find the brand on this offer. Refresh and try again.");
+    if (!creator) throw new Error("Couldn't find your creator profile. Sign out and back in, then try again.");
 
     // CAMPAIGN-STAGE GATE — pause / closed campaigns don't accept
     // commitments. The offer stays in its current status; the creator
     // can accept once the brand resumes the campaign.
-    if (camp.stage !== 'live') return offer;
+    if (camp.stage !== 'live') {
+      throw new Error(`This campaign is ${camp.stage} — you can accept once the brand reopens it. Message them to nudge.`);
+    }
 
     // FUNDS GUARD — pre-fix this used Math.max(0, walletBalance - rate)
     // which silently clamped underfunded brands to a $0 wallet while
@@ -791,7 +807,9 @@ export function v2AcceptOffer(offerId: string): Offer | null {
     // the FULL rate. The creator could then withdraw real cash that
     // was never funded by the brand. Refuse the accept instead so the
     // creator sees an error and the brand has to top up first.
-    if (brand.walletBalance < offer.rate) return offer;
+    if (brand.walletBalance < offer.rate) {
+      throw new Error(`${brand.name}'s wallet is short on funds for this offer. They need to top up before you can accept.`);
+    }
 
     db.offers[offerIdx] = { ...offer, status: 'accepted', respondedAt: nowIso() };
 
@@ -1070,38 +1088,46 @@ export function v2SubmitContent(
 /** P2 §1.4 — 7-day post-approval dispute window. */
 const DISPUTE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
-export function v2ApproveContent(submissionId: string): Submission | null {
+export function v2ApproveContent(submissionId: string): Submission {
+  // P62 — was `Submission | null` with 5 silent failure paths (3× return
+  // null, 3× return the unchanged submission). The brand-side approve UX
+  // (ContentReviewModal + CampaignDetail's "Approve all") fired these
+  // without checking the return — so an approve against a paused
+  // campaign or a disputed collab silently no-oped and the brand
+  // wondered why the submission stayed `in_review`.
   const result = tx((db) => {
     // P5 §4.1 — brand-side `content.approve` (admin/ops).
     requireCapability(getActorUserId(), 'content.approve', db);
 
     const subIdx = db.submissions.findIndex((s) => s.id === submissionId);
-    if (subIdx === -1) return null;
+    if (subIdx === -1) throw new Error("Couldn't find that submission — it may have been deleted. Refresh and try again.");
     const sub = db.submissions[subIdx];
+    // Idempotent: already-approved is what the user wanted.
     if (sub.status === 'approved') return sub;
 
     const camp = db.campaigns.find((c) => c.id === sub.campaignId);
     const creator = db.creators.find((c) => c.id === sub.creatorId);
     const brand = camp ? db.brands.find((b) => b.id === camp.brandId) : undefined;
-    if (!camp || !creator || !brand) return null;
+    if (!camp) throw new Error("Couldn't find the campaign for this submission. Refresh and try again.");
+    if (!creator) throw new Error("Couldn't find the creator for this submission. Refresh and try again.");
+    if (!brand) throw new Error("Couldn't find your brand profile. Sign out and back in, then try again.");
 
     // CAMPAIGN-STAGE GATE — paused / closed campaigns don't release
     // escrow. The submission stays in_review; brand must resume the
     // campaign before approving. (closed never resumes; that's an
     // explicit terminal state the brand chose.)
-    if (camp.stage !== 'live') return sub;
+    if (camp.stage !== 'live') {
+      throw new Error(`This campaign is ${camp.stage} — resume it before approving submissions. The creator stays in review until then.`);
+    }
 
     // P2 §1.4 — block approval if there's an open dispute on this collab.
     // The Collaboration's `escrowFrozen` flag is set when a dispute is
-    // raised (and cleared on resolve / withdraw). We surface the block
-    // as a no-op return so the caller knows the action didn't take.
+    // raised (and cleared on resolve / withdraw).
     const collab = db.collaborations.find(
       (c) => c.campaignId === sub.campaignId && c.creatorId === sub.creatorId,
     );
     if (collab?.escrowFrozen) {
-      // Soft fail — don't throw inside the tx; caller surfaces a toast
-      // when the return value indicates no transition.
-      return sub;
+      throw new Error('Escrow is frozen on this collab — there\'s an open dispute. Resolve or withdraw it before approving.');
     }
 
     // Find the agreed offer rate (latest accepted offer).
@@ -1119,10 +1145,11 @@ export function v2ApproveContent(submissionId: string): Submission | null {
       .filter((o) => o.campaignId === sub.campaignId && o.creatorId === sub.creatorId && o.status === 'accepted')
       .sort((a, b) => new Date(b.respondedAt ?? b.sentAt).getTime() - new Date(a.respondedAt ?? a.sentAt).getTime())[0];
     if (!acceptedOffer) {
-      // No accepted offer = no rate to release against. Leave the
-      // submission in_review and let the caller toast the unchanged
-      // return. (Same soft-fail shape as escrowFrozen above.)
-      return sub;
+      // No accepted offer = no rate to release against. This should be
+      // impossible (v2SubmitContent's offer gate blocks submission without
+      // an accepted offer) but guard anyway — releasing without a rate
+      // would drain escrow on an arbitrary share of the campaign budget.
+      throw new Error("Can't release escrow — no accepted offer found for this creator on this campaign. Check the offer status before approving.");
     }
     const gross = acceptedOffer.rate;
     const fee = Math.round(gross * PLATFORM_FEE);
@@ -1393,22 +1420,24 @@ export interface LaunchCampaignInput {
  * placeholder reservation (none in our model since we only reserve on
  * accept). Notifies brand.
  */
-export function v2DeclineOffer(offerId: string, reason?: string): Offer | null {
+export function v2DeclineOffer(offerId: string, reason?: string): Offer {
+  // P62 — was `Offer | null`. Caller (WorkflowModals) didn't check the
+  // return, so declining an already-accepted/expired offer silently
+  // returned the unchanged offer and the brand never saw a notification.
+  // Now: throw on impossible transitions; idempotent on already-declined.
   const result = tx((db) => {
     // P5 §4.1 — creator action; same capability as counter.
     requireCapability(getActorUserId(), 'offer.counter', db);
 
     const idx = db.offers.findIndex((o) => o.id === offerId);
-    if (idx === -1) return null;
+    if (idx === -1) throw new Error("Couldn't find that offer — it may have been withdrawn. Refresh the page.");
     const offer = db.offers[idx];
-    // Terminal states — can't decline an already-terminal offer.
-    // 'expired' (P3 §2.1 counter cap) + 'withdrawn' added to the guard.
-    if (
-      offer.status === 'accepted'
-      || offer.status === 'declined'
-      || offer.status === 'expired'
-      || offer.status === 'withdrawn'
-    ) return offer;
+    // Terminal-state guards. Idempotent on declined; the rest are
+    // user-visible errors so the creator knows why the action no-oped.
+    if (offer.status === 'declined') return offer; // already what they wanted
+    if (offer.status === 'accepted') throw new Error('This offer was already accepted — you can\'t decline it now. Open a dispute instead if you need to back out.');
+    if (offer.status === 'expired')  throw new Error('This offer already expired — nothing to decline.');
+    if (offer.status === 'withdrawn') throw new Error('The brand withdrew this offer — nothing to decline.');
 
     db.offers[idx] = { ...offer, status: 'declined', respondedAt: nowIso() };
 
@@ -1462,18 +1491,25 @@ export const MAX_OFFER_ROUNDS = 4;
  * to `expired` and the new round is NOT appended. Application returns
  * to `submitted` so the brand can still re-engage with a fresh Offer.
  */
-export function v2CounterOffer(offerId: string, rate: number, message: string): Offer | null {
+export function v2CounterOffer(offerId: string, rate: number, message: string): Offer {
+  // P62 — was `Offer | null`. Five silent failure paths swallowed
+  // counter-invalid inputs without any signal to the caller.
   const result = tx((db) => {
     // P5 §4.1 — creator-side counter.
     requireCapability(getActorUserId(), 'offer.counter', db);
 
     const idx = db.offers.findIndex((o) => o.id === offerId);
-    if (idx === -1) return null;
+    if (idx === -1) throw new Error("Couldn't find that offer — it may have been withdrawn. Refresh the page.");
     const offer = db.offers[idx];
-    if (offer.status !== 'pending' && offer.status !== 'countered') return offer;
+    if (offer.status === 'accepted') throw new Error('This offer was already accepted — no more counters.');
+    if (offer.status === 'declined') throw new Error('This offer was already declined — nothing to counter.');
+    if (offer.status === 'expired')  throw new Error('This offer expired — ask the brand to send a fresh one.');
+    if (offer.status === 'withdrawn') throw new Error('The brand withdrew this offer — nothing to counter.');
     // Creator can only counter when the latest round was a brand round.
     const lastRound = offer.rounds[offer.rounds.length - 1];
-    if (lastRound && lastRound.by === 'creator') return offer;
+    if (lastRound && lastRound.by === 'creator') {
+      throw new Error("You already sent a counter — waiting on the brand's response.");
+    }
 
     // RATE SANITY BOUND — pre-fix a creator could counter $1M on a $500
     // offer with no warning. The brand would see the absolute number
@@ -1482,7 +1518,10 @@ export function v2CounterOffer(offerId: string, rate: number, message: string): 
     // typos / abuse. Original rate is offer.rounds[0].rate (always the
     // brand's initial send).
     const originalRate = offer.rounds[0]?.rate ?? offer.rate;
-    if (rate <= 0 || rate > originalRate * 10) return offer;
+    if (rate <= 0) throw new Error('Counter rate must be greater than $0.');
+    if (rate > originalRate * 10) {
+      throw new Error(`Counter rate $${rate.toLocaleString()} is more than 10× the original $${originalRate.toLocaleString()} — typo? Bring it down to retry.`);
+    }
 
     // Cap check — if we'd exceed MAX_OFFER_ROUNDS, expire instead.
     if (offer.rounds.length >= MAX_OFFER_ROUNDS) {

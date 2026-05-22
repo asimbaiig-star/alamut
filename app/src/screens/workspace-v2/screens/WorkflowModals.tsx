@@ -416,8 +416,13 @@ export function CounterOfferModal(
               type="button"
               style={{ flex: 1 }}
               onClick={() => {
-                v2DeclineOffer(offerId, message || 'Pass for now.');
-                onClose();
+                try {
+                  v2DeclineOffer(offerId, message || 'Pass for now.');
+                  pushToast('Offer declined — the brand was notified', 'good');
+                  onClose();
+                } catch (err) {
+                  pushToast(err instanceof Error ? err.message : 'Decline failed', 'bad');
+                }
               }}
             >
               Decline instead
@@ -428,9 +433,14 @@ export function CounterOfferModal(
               style={{ flex: 2 }}
               disabled={rate <= 0 || (currentRate > 0 && rate > currentRate * 10)}
               onClick={() => {
-                if (side === 'brand') v2CounterCounter(offerId, rate, message);
-                else v2CounterOffer(offerId, rate, message);
-                onClose();
+                try {
+                  if (side === 'brand') v2CounterCounter(offerId, rate, message);
+                  else v2CounterOffer(offerId, rate, message);
+                  pushToast(`Counter sent at ${fmtUSD(rate)}`, 'good');
+                  onClose();
+                } catch (err) {
+                  pushToast(err instanceof Error ? err.message : 'Counter failed', 'bad');
+                }
               }}
             >
               {Icon.send} Send counter ({fmtUSD(rate)})
