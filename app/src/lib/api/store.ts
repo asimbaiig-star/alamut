@@ -74,16 +74,21 @@ export const useStore = create<StoreState>()(
     {
       name: STORAGE_KEY,
       storage: createJSONStorage(() => safeStorage),
-      // 14 — Phase 56 added per-creator storefront-pulse seed fields
-      // (storefrontViewsLast30d, brandInquiriesThisWeek,
-      // recentBrandViewerNames) AND seeded audience demographics
-      // (topCountries, growthRate30d, audienceCredibilityScore) on
-      // every platform of every demo creator. The CreatorHome
-      // AudiencePulse + StorefrontPulse + recent-viewers strip read
-      // these directly. Existing v13 state doesn't have any of them;
-      // bumping flushes the cache so the richer seed actually renders.
-      // (13 was Phase 49 approved-submissions seed.)
-      version: 14,
+      // 15 — Phase 59 demo-coverage seed pass:
+      //   - Sarah: work[] (6 portfolio images), rateCards[] (6 per-
+      //     platform packages), featuredReviewIds[] (3 pinned),
+      //     savedBriefs[] (5 bookmarks), 2 extra press mentions
+      //   - Aesop: offerTemplates[] (3), expanded savedCreators[] (8),
+      //     preferredCreatorTier + monthlyBudgetBand
+      //   - 3 new Aesop campaigns: draft + paused + archived
+      //   - 4 new offers: 2 pending + 2 countered (Sarah + Yuki) so
+      //     the Accept/Counter/Decline flow has live demo data
+      //   - Smart-merge overlay extended to preserve work/pressMentions
+      //     /featuredReviewIds/savedBriefs/rateCards/pastClients when
+      //     Supabase returns empty arrays for them
+      // Existing v14 state doesn't have any of these; bumping flushes.
+      // (14 was Phase 56 audience + storefront-pulse seed.)
+      version: 15,
       // Forward-only data migrations layered on top of Zustand's persist
       // versioning. After rehydration, walk `db.migrationVersion + 1` to
       // CURRENT_MIGRATION_VERSION and run each migrator. Idempotent;
@@ -356,9 +361,25 @@ if (typeof window !== 'undefined') {
               if (rp.name !== lp.name) return rp;
               return { ...rp, audience: lp.audience };
             });
+            // Helper: keep local array when remote is empty/missing.
+            // Supabase rows for demo creators frequently have empty
+            // arrays for these "storefront content" fields because the
+            // seeded data was pushed to Postgres before these features
+            // existed. Without this guard the overlay blows away
+            // Sarah's portfolio + rate cards + pinned reviews + saved
+            // briefs on every page load.
+            const arr = <T,>(remoteVal: T[] | undefined, localVal: T[] | undefined): T[] | undefined =>
+              (remoteVal && remoteVal.length > 0) ? remoteVal : (localVal && localVal.length > 0 ? localVal : remoteVal);
             return {
               ...r,
               platforms: mergedPlatforms,
+              // Storefront content arrays — seed only.
+              work: arr(r.work, row.work) ?? [],
+              pressMentions: arr(r.pressMentions, row.pressMentions) ?? [],
+              featuredReviewIds: arr(r.featuredReviewIds, row.featuredReviewIds),
+              savedBriefs: arr(r.savedBriefs, row.savedBriefs),
+              rateCards: arr(r.rateCards, row.rateCards),
+              pastClients: arr(r.pastClients, row.pastClients) ?? [],
               // Demo-only fields — keep local if remote is empty / undefined.
               storefrontViewsLast30d: r.storefrontViewsLast30d ?? row.storefrontViewsLast30d,
               storefrontViewsDeltaPct: r.storefrontViewsDeltaPct ?? row.storefrontViewsDeltaPct,
@@ -423,9 +444,20 @@ if (typeof window !== 'undefined') {
                       if (rp.name !== lp.name) return rp;
                       return { ...rp, audience: lp.audience };
                     });
+                    // Same array-preserve helper as the bulk overlay
+                    // above — keep local storefront content when
+                    // Supabase row returns empty arrays.
+                    const arr = <T,>(remoteVal: T[] | undefined, localVal: T[] | undefined): T[] | undefined =>
+                      (remoteVal && remoteVal.length > 0) ? remoteVal : (localVal && localVal.length > 0 ? localVal : remoteVal);
                     return {
                       ...ownCreator,
                       platforms: mergedPlatforms,
+                      work: arr(ownCreator.work, c.work) ?? [],
+                      pressMentions: arr(ownCreator.pressMentions, c.pressMentions) ?? [],
+                      featuredReviewIds: arr(ownCreator.featuredReviewIds, c.featuredReviewIds),
+                      savedBriefs: arr(ownCreator.savedBriefs, c.savedBriefs),
+                      rateCards: arr(ownCreator.rateCards, c.rateCards),
+                      pastClients: arr(ownCreator.pastClients, c.pastClients) ?? [],
                       storefrontViewsLast30d: ownCreator.storefrontViewsLast30d ?? c.storefrontViewsLast30d,
                       storefrontViewsDeltaPct: ownCreator.storefrontViewsDeltaPct ?? c.storefrontViewsDeltaPct,
                       brandInquiriesThisWeek: ownCreator.brandInquiriesThisWeek ?? c.brandInquiriesThisWeek,

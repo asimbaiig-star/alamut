@@ -386,7 +386,6 @@ const DEMO_CREATORS: Creator[] = [
     city: 'New York', country: 'USA', languages: ['English'],
     categories: ['Fashion', 'Lifestyle', 'Sustainability'],
     portrait: upx(PORTRAITS[0], 600, 750),
-    work: [upx(COVERS[4], 600, 600), upx(COVERS[5], 600, 600), upx(COVERS[6], 600, 600), upx(COVERS[7], 600, 600)],
     platforms: [
       { name: 'Instagram', handle: '@sarahstyle', followers: 142_000, engagement: 5.2, verified: true,
         audience: {
@@ -415,12 +414,43 @@ const DEMO_CREATORS: Creator[] = [
     reach: 208_400, engagement: 5.2, rating: 4.9, tier: 'Flagship',
     responseHrs: 3,
     rateCard: { post: '$800–1,500', reel: '$1,000–2,000', story: '$300–600', longform: '—' },
+    // Phase 59 — per-platform rate cards for the Storefront packages
+    // block. Pre-fix Sarah's storefront fell through to the legacy
+    // single `rateCard` field above, so the brand viewing her public
+    // page saw only one row.
+    rateCards: [
+      { id: 'rc_sarah_1', platform: 'Instagram', format: 'reel', rate: '$1,400–2,000', notes: '90-second narrative · 9:16 · 1 round of revisions included' },
+      { id: 'rc_sarah_2', platform: 'Instagram', format: 'story', rate: '$300–500', notes: '3-frame swipe-up · brand handle + #ad' },
+      { id: 'rc_sarah_3', platform: 'Instagram', format: 'post', rate: '$900–1,400', notes: 'Carousel up to 8 frames · permanent grid placement' },
+      { id: 'rc_sarah_4', platform: 'TikTok',    format: 'reel', rate: '$1,100–1,800', notes: 'Hook-led, sound-on, max 60s · platform-native edit' },
+      { id: 'rc_sarah_5', platform: 'Newsletter', format: 'longform', rate: '$2,200',     notes: 'Dedicated send to 8.4k engaged subscribers · 1 main link' },
+      { id: 'rc_sarah_6', platform: 'All platforms', format: 'bundle',  rate: '$3,800',     notes: 'Reel + 3 stories + carousel · best value combo' },
+    ],
     payout: { method: 'ACH', account: 'Chase ••• 4421', currency: 'USD' },
     walletBalance: 4200, pendingBalance: 3400, lifetimeEarnings: 47_800,
     verified: true,
-    pressMentions: [{ source: 'Vogue', title: 'The new wave of sustainable creators', year: 2025 }],
-    pastClients: ['Aesop', 'Glossier', 'Le Labo'],
+    pressMentions: [
+      { source: 'Vogue', title: 'The new wave of sustainable creators', year: 2025 },
+      { source: 'The Cut', title: '10 creators changing fashion media', year: 2024 },
+      { source: 'Business of Fashion', title: 'Closet refresh: lasting style picks', year: 2024 },
+    ],
+    pastClients: ['Aesop', 'Glossier', 'Le Labo', 'Reformation', 'Everlane', 'Mejuri'],
     availability: { status: 'limited', untilDate: dayAhead(30), note: 'Booked for May — open from June 1.' },
+    // Phase 59 — Sarah's storefront portfolio (was getting nuked by
+    // Supabase overlay; overlay now preserves local). 6 representative
+    // shots that mirror what a fashion creator would publish.
+    work: [
+      upx(COVERS[0], 600, 600), upx(COVERS[1], 600, 600), upx(COVERS[2], 600, 600),
+      upx(COVERS[3], 600, 600), upx(COVERS[4], 600, 600), upx(COVERS[5], 600, 600),
+    ],
+    // Phase 59 — top 3 reviews pinned to Sarah's public storefront so
+    // the "Featured" carousel renders something on first paint.
+    // These IDs reference reviews seeded later in this file.
+    featuredReviewIds: ['rv_s1', 'rv_s2', 'rv_s3'],
+    // Phase 59 — saved briefs so CreatorHome's "Saved for later" tile
+    // surfaces (was hidden when empty). Mix of Aesop + Le Creuset
+    // briefs + a couple of generated campaigns to show variety.
+    savedBriefs: ['cmp_3', 'cmp_4', 'cmp_g8', 'cmp_g10', 'cmp_g12'],
     // Demo-seed storefront pulse — Sarah is our hero creator account so
     // these numbers are tuned to look healthy in any walkthrough. The
     // brand-viewer names mix real catalog brands with plausible cold
@@ -502,7 +532,47 @@ const DEMO_BRANDS: Brand[] = [
     preferredRegions: ['US', 'UK', 'EU', 'APAC'],
     walletBalance: 48_200, escrowHeld: 5_400,
     verified: true,
-    savedCreators: ['c_sarah', 'c_yuki'],
+    // Phase 59 — expanded shortlist so Discover's "favorites" filter +
+    // Spark's seeded shortlist context have meaningful content for a
+    // demo walk-through. Mixes the named demo creators (Sarah, Yuki)
+    // with generated ones so cross-section coverage is real.
+    savedCreators: ['c_sarah', 'c_yuki', 'c_gc01', 'c_gc05', 'c_gc12', 'c_gc18', 'c_gc24', 'c_gc31'],
+    // Phase 59 — offer templates so the brand-side SendOffer modal's
+    // templates dropdown isn't empty on first open. Three common shapes
+    // covering single-reel deals, multi-deliverable packs, and the
+    // newsletter sponsor format Aesop runs quarterly.
+    offerTemplates: [
+      {
+        id: 'tpl_aesop_1',
+        name: 'Standard Reel',
+        rate: 1500,
+        message: 'We\'d love to have you on this campaign. Standard rate for a 1 Reel + 2 Stories deliverable — let me know if it\'s a fit.',
+        deliverables: '1 Reel + 2 Stories',
+        createdAt: dayAgo(45),
+      },
+      {
+        id: 'tpl_aesop_2',
+        name: 'Premium Story Pack',
+        rate: 2400,
+        message: 'Premium package: 1 Reel + 5 Stories + 1 carousel post, with a 1-week exclusivity window in the beauty category. Higher rate to match.',
+        deliverables: '1 Reel + 5 Stories + 1 Post',
+        createdAt: dayAgo(30),
+      },
+      {
+        id: 'tpl_aesop_3',
+        name: 'Newsletter Sponsor',
+        rate: 3200,
+        message: 'Dedicated newsletter feature with a main link + 2-paragraph editorial. Premium rate for primary sponsor placement.',
+        deliverables: '1 Newsletter feature + 1 IG Story',
+        createdAt: dayAgo(14),
+      },
+    ],
+    // Phase 58 — preferred-tier + budget signals captured from
+    // BrandOnboardingV2. Aesop targets the Flagship segment for its
+    // premium positioning; monthly budget anchors the campaign budget
+    // defaults the wizard suggests.
+    preferredCreatorTier: '$$$',
+    monthlyBudgetBand: '$20k–50k / month',
   },
   {
     id: 'b_lecreuset', userId: 'u_marcus',
@@ -1396,6 +1466,62 @@ const demoCampaigns: Campaign[] = [
     milestones: [],
     applications: [], offers: ['off_4'],
   },
+  // Phase 59 — Aesop demo campaigns covering every lifecycle stage so
+  // the Campaigns list + CampaignDetail can demo the wizard / pause-
+  // resume / archive toggle flows without needing to fabricate state
+  // mid-walkthrough.
+  {
+    id: 'cmp_aesop_draft', brandId: 'b_aesop', title: 'Quiet Objects 2026 — Q3 (draft)',
+    pitch: 'Slow-living essentials for late summer.',
+    brief: 'Open-tone editorial: 1 reel + 2 stories + 1 carousel post per creator. Highlight the seasonal hand-cream + the new tinted body lotion in soft natural light. Brand handle + #ad in caption; deliver in 9:16 + 1:1. Aesop pays out same-day on approval.',
+    cover: upx(COVERS[6], 800, 600),
+    budget: 8_000, spent: 0, escrowHeld: 0,
+    region: 'EU/UK', category: 'Lifestyle',
+    stage: 'draft', deliverablesText: '1 IG Reel + 2 IG Stories + 1 IG Post', deliverableIds: [],
+    deadline: futureDeadline(60),
+    createdAt: dayAgo(2),
+    history: [{ stage: 'draft', at: dayAgo(2), by: 'u_hannah' }],
+    milestones: [],
+    applications: [], offers: [],
+  },
+  {
+    id: 'cmp_aesop_paused', brandId: 'b_aesop', title: 'Reset Skincare — Spring',
+    pitch: 'Skincare-first creators for the spring reset campaign.',
+    brief: 'Paused mid-flight while we finalize the new hero SKU. Existing offers stay accepted; new applications hold. Resume once the hero photography lands (~2 weeks).',
+    cover: upx(COVERS[7], 800, 600),
+    budget: 12_000, spent: 2_800, escrowHeld: 3_000,
+    region: 'US/UK', category: 'Beauty',
+    stage: 'paused', deliverablesText: '1 IG Reel + 3 IG Stories', deliverableIds: [],
+    deadline: futureDeadline(45),
+    createdAt: dayAgo(28),
+    history: [
+      { stage: 'draft', at: dayAgo(28), by: 'u_hannah' },
+      { stage: 'live', at: dayAgo(25), by: 'u_hannah' },
+      { stage: 'paused', at: dayAgo(3), by: 'u_hannah' },
+    ],
+    milestones: [],
+    applications: [], offers: [],
+  },
+  {
+    id: 'cmp_aesop_archived', brandId: 'b_aesop', title: 'Hand-care kit · launch teaser',
+    pitch: 'Soft-launch teaser for the hand-care kit (closed Q1).',
+    brief: 'Completed and archived. Kept in the catalog as a reference brief for the next launch cycle.',
+    cover: upx(COVERS[8], 800, 600),
+    budget: 6_500, spent: 6_350, escrowHeld: 0,
+    region: 'US', category: 'Beauty',
+    stage: 'closed', deliverablesText: '1 IG Reel + 1 IG Post', deliverableIds: [],
+    deadline: '2025-12-01', postedAt: dayAgo(120),
+    reach: 480_000, engagement: 5.8,
+    createdAt: dayAgo(160),
+    history: [
+      { stage: 'draft', at: dayAgo(160), by: 'u_hannah' },
+      { stage: 'live', at: dayAgo(155), by: 'u_hannah' },
+      { stage: 'closed', at: dayAgo(110), by: 'u_hannah' },
+    ],
+    milestones: [],
+    applications: [], offers: [],
+    archivedAt: new Date(Date.now() - 30 * 86400_000).toISOString(),
+  },
 ];
 
 const demoApps: Application[] = [
@@ -1426,6 +1552,64 @@ const demoOffers: Offer[] = [
     applicationId: null, source: 'cold-outreach',
     rounds: [
       { by: 'brand', at: +new Date(dayAgo(140)), rate: 3000, message: 'Long-form holiday hosting feature.' },
+    ],
+  },
+  // Phase 59 — demo offers for the negotiation flow. Pre-fix every
+  // seeded offer was `accepted` or `expired` so Accept/Counter/Decline
+  // had no live data to demo.
+  //
+  //  off_pending_1 — Aesop → Sarah on cmp_3 (Studio Notes), brand sent
+  //  an offer, Sarah hasn't responded yet. Creator-side MyCollabs +
+  //  StageActionBanner show Accept / Counter / Decline buttons.
+  {
+    id: 'off_pending_1', campaignId: 'cmp_3', creatorId: 'c_sarah',
+    rate: 1650, message: 'We loved your Spring Renewal work — would love you on Studio Notes too. $1,650 flat for the 1 IG post + 1 Reel deliverable, post by the deadline.',
+    status: 'pending', sentAt: dayAgo(1),
+    applicationId: null, source: 'cold-outreach',
+    rounds: [
+      { by: 'brand', at: +new Date(dayAgo(1)), rate: 1650, message: 'We loved your Spring Renewal work — would love you on Studio Notes too. $1,650 flat for the 1 IG post + 1 Reel deliverable, post by the deadline.' },
+    ],
+  },
+  //  off_countered_1 — Le Creuset → Sarah, Sarah countered up to $2,200,
+  //  brand owes a response. Brand-side kanban shows Accept / Counter
+  //  back / Decline buttons.
+  {
+    id: 'off_countered_1', campaignId: 'cmp_2', creatorId: 'c_sarah',
+    rate: 1800, message: 'Hosting season feature — $1,800 for a Reel + 3 stories.',
+    status: 'countered', sentAt: dayAgo(3), respondedAt: dayAgo(1),
+    applicationId: null, source: 'cold-outreach',
+    rounds: [
+      { by: 'brand',   at: +new Date(dayAgo(3)), rate: 1800, message: 'Hosting season feature — $1,800 for a Reel + 3 stories.' },
+      { by: 'creator', at: +new Date(dayAgo(1)), rate: 2200, message: 'Excited about Le Creuset! For the scope (Reel + 3 stories + a carousel), my standard is $2,200 — close to your offer. Open to chatting.' },
+    ],
+  },
+  //  off_pending_2 — Aesop → Yuki on cmp_aesop_draft would be too
+  //  meta. Use the existing cmp_3 (Studio Notes) to set up another
+  //  pending offer waiting on Yuki — gives Hannah a kanban entry
+  //  showing "Awaiting reply" in Negotiating, distinct from the
+  //  cold-invite "Invitation sent" case.
+  {
+    id: 'off_pending_2', campaignId: 'cmp_3', creatorId: 'c_yuki',
+    rate: 1400, message: 'Want you on Studio Notes — $1,400 for the same deliverable spec. Karachi / design backdrop would be perfect.',
+    status: 'pending', sentAt: dayAgo(2),
+    applicationId: 'app_2', source: 'application',
+    rounds: [
+      { by: 'brand', at: +new Date(dayAgo(2)), rate: 1400, message: 'Want you on Studio Notes — $1,400 for the same deliverable spec. Karachi / design backdrop would be perfect.' },
+    ],
+  },
+  //  off_countered_2 — A generated brand counter-back to Sarah's pitch,
+  //  demoing the "brand countered, creator owes response" branch where
+  //  the creator-side banner shows the brand's counter with an Accept
+  //  / Counter again / Decline triad.
+  {
+    id: 'off_countered_2', campaignId: 'cmp_g8', creatorId: 'c_sarah',
+    rate: 1900, message: 'Morning Pages feature, $1,900 for the 1 Reel + 2 Stories spec.',
+    status: 'countered', sentAt: dayAgo(4), respondedAt: dayAgo(1),
+    applicationId: null, source: 'cold-outreach',
+    rounds: [
+      { by: 'brand',   at: +new Date(dayAgo(4)), rate: 1900, message: 'Morning Pages feature, $1,900 for the 1 Reel + 2 Stories spec.' },
+      { by: 'creator', at: +new Date(dayAgo(3)), rate: 2400, message: 'Loved the brief! For the full Reel + Stories package my floor is $2,400 — happy to discuss.' },
+      { by: 'brand',   at: +new Date(dayAgo(1)), rate: 2100, message: 'Let\'s meet in the middle — $2,100. Same scope, deadline stretched by a week if helpful.' },
     ],
   },
 ];
