@@ -59,7 +59,16 @@ import '@/styles/cinematic.css';
 // Top-level page
 // =====================================================================
 
-export function CoverPreview() {
+// `variant` selects the hero illustration source:
+//   'svg'   — AnimatedHeroIllustration (motion/react animated SVG)
+//   'video' — Remotion-rendered hero-loop.{webm,mp4} from app/public/
+// Two routes mount this component; the only difference is which
+// illustration the hero shows.
+export interface CoverPreviewProps {
+  variant?: 'svg' | 'video';
+}
+
+export function CoverPreview({ variant = 'svg' }: CoverPreviewProps = {}) {
   const reduced = useReducedMotion();
   const { user, isCreator, isBrand } = useAuth();
   const continueHref = isCreator ? '/creator/today' : isBrand ? '/brand/today' : '/admin/home';
@@ -70,17 +79,19 @@ export function CoverPreview() {
 
   useEffect(() => {
     const prevTitle = document.title;
-    document.title = 'Alamut · Landing preview · Hero quick wins';
+    document.title = variant === 'video'
+      ? 'Alamut · Landing preview · Remotion hero loop'
+      : 'Alamut · Landing preview · Hero quick wins';
     return () => { document.title = prevTitle; };
-  }, []);
+  }, [variant]);
 
   return (
     <PersonaPalette>
       <div data-surface="landing-light" className="lp-light-root creator-landing">
         <CreatorTopNav user={user} continueHref={continueHref} />
-        <PreviewBadge />
+        <PreviewBadge variant={variant} />
 
-        <CreatorHero reduced={reduced} />
+        <CreatorHero reduced={reduced} variant={variant} />
         <CreatorTrustBar />
         <CreatorPillars reduced={reduced} />
         <CreatorEditorialBreak />
@@ -145,7 +156,12 @@ export function CoverPreview() {
 // Preview banner — makes it obvious this surface is the A/B duplicate.
 // =====================================================================
 
-function PreviewBadge() {
+function PreviewBadge({ variant }: { variant: 'svg' | 'video' }) {
+  const label = variant === 'video'
+    ? 'Preview · Remotion hero loop'
+    : 'Preview · animated SVG hero';
+  const otherHref = variant === 'video' ? '/landing-preview' : '/landing-preview-video';
+  const otherLabel = variant === 'video' ? 'Animated SVG variant' : 'Remotion video variant';
   return (
     <div
       role="note"
@@ -164,14 +180,21 @@ function PreviewBadge() {
         letterSpacing: '0.10em',
         textTransform: 'uppercase',
         gap: 14,
+        flexWrap: 'wrap',
       }}
     >
-      <span style={{ opacity: 0.7 }}>Preview · hero quick wins</span>
+      <span style={{ opacity: 0.7 }}>{label}</span>
       <Link
         to="/"
         style={{ color: 'inherit', textDecoration: 'underline', opacity: 0.85 }}
       >
-        ← Back to production landing
+        ← Production landing
+      </Link>
+      <Link
+        to={otherHref}
+        style={{ color: 'inherit', textDecoration: 'underline', opacity: 0.85 }}
+      >
+        {otherLabel} →
       </Link>
     </div>
   );
@@ -227,7 +250,7 @@ function CreatorTopNav({ user, continueHref }: { user: ReturnType<typeof useAuth
 // the right column with inline flex-column styles so we don't have to
 // edit landing.css (which serves the production hero).
 
-function CreatorHero({ reduced }: { reduced: boolean | null }) {
+function CreatorHero({ reduced, variant }: { reduced: boolean | null; variant: 'svg' | 'video' }) {
   const db = useStore((s) => s.db);
   const anchor = useCreatorAnchor();
   const verifiedBrands = useMemo(
@@ -311,12 +334,61 @@ function CreatorHero({ reduced }: { reduced: boolean | null }) {
           animate={{ opacity: 1, y: 0 }}
           transition={reduced ? { duration: 0 } : { duration: 0.9, delay: 0.30, ease: [0.22, 0.36, 0.24, 1] }}
         >
-          <AnimatedHeroIllustration className="creator-hero-v2-illust" />
+          {variant === 'video' ? (
+            <HeroLoopVideo />
+          ) : (
+            <AnimatedHeroIllustration className="creator-hero-v2-illust" />
+          )}
           {anchor && <HeroAnchorCard anchor={anchor} reduced={reduced} />}
         </motion.div>
       </div>
     </section>
   );
+}
+
+// =====================================================================
+// HeroLoopVideo — Remotion-rendered video variant for the hero
+// =====================================================================
+// Renders `/public/hero-loop.webm` (with mp4 fallback + poster PNG) in
+// place of the AnimatedHeroIllustration. The Remotion source lives in
+// /marketing at the repo root and can be re-rendered with
+// `npx remotion render src/index.ts HeroLoop out/hero-loop.{mp4,webm}`
+// any time the copy or seeded values change.
+//
+// CSS class `creator-hero-v2-illust` is reused so the existing width /
+// aspect-ratio constraints from landing.css apply unchanged. The video
+// is autoplay / muted / loop / playsInline so it behaves on iOS Safari.
+
+function HeroLoopVideo() {
+  return (
+    <video
+      className="creator-hero-v2-illust"
+      autoPlay
+      muted
+      loop
+      playsInline
+      poster="/hero-loop-poster.png"
+      // 600×540 from the Remotion composition.
+      width={600}
+      height={540}
+      style={{
+        width: '100%',
+        maxWidth: 600,
+        height: 'auto',
+        display: 'block',
+        borderRadius: 12,
+      }}
+      aria-label="Sarah Johnson × Aesop and Yuki Tanaka × Hay closing payouts on Alamut"
+    >
+      <source src="/hero-loop.webm" type="video/webm" />
+      <source src="/hero-loop.mp4" type="video/mp4" />
+    </video>
+  );
+}
+
+// Thin wrapper used by the `/landing-preview-video` route.
+export function CoverPreviewVideo() {
+  return <CoverPreview variant="video" />;
 }
 
 // =====================================================================
