@@ -34,7 +34,7 @@
 //  11. CreatorFinalCTA
 
 import { Link } from 'react-router-dom';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { Logo } from '@/components/ui/Logo';
 import { useStore } from '@/lib/api/store';
@@ -360,13 +360,38 @@ function CreatorHero({ reduced, variant }: { reduced: boolean | null; variant: '
 // is autoplay / muted / loop / playsInline so it behaves on iOS Safari.
 
 function HeroLoopVideo() {
+  // Belt-and-braces autoplay. Chrome / Safari only allow `<video autoplay>`
+  // to start when the DOM `muted` property is `true` at play time, and
+  // React's `muted` prop has a long-standing hydration quirk where it
+  // sets the *attribute* but not the *property* on first render. We:
+  //   1. Imperatively set `videoRef.current.muted = true` post-mount.
+  //   2. Call `.play()` ourselves and swallow the rejection silently if
+  //      the browser still blocks it (then the poster shows as a static
+  //      fallback, which is the same image the user would have seen
+  //      anyway).
+  const videoRef = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.muted = true;
+    const tryPlay = () => v.play().catch(() => { /* autoplay blocked — poster stays */ });
+    if (v.readyState >= 2) {
+      tryPlay();
+    } else {
+      v.addEventListener('loadeddata', tryPlay, { once: true });
+      return () => v.removeEventListener('loadeddata', tryPlay);
+    }
+  }, []);
+
   return (
     <video
+      ref={videoRef}
       className="creator-hero-v2-illust"
       autoPlay
       muted
       loop
       playsInline
+      preload="auto"
       poster="/hero-loop-poster.png"
       // 600×540 from the Remotion composition.
       width={600}
