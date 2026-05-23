@@ -54,6 +54,85 @@
   color: var(--v2-paper);
 }
 
+/* Segmented control — used for view toggles (Kanban/List, etc.).
+   P66 — pre-fix the `.v2-segmented` markup had no CSS at all and
+   rendered as bare browser buttons stuck next to each other with no
+   visual grouping. Now: pill-shaped track on a subtle inset surface,
+   active pill lifts with paper fill + soft shadow, inactive options
+   sit muted on the track and brighten on hover.
+
+   Used in MyCollabs (Kanban/List), BrowseBriefs (filter mode),
+   Storefront (preview mode), NewCampaignWizard (placement preset). */
+[data-surface="v2"] .v2-segmented {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 3px;
+  background: var(--v2-bg-2);
+  border: 1px solid var(--v2-line);
+  border-radius: var(--v2-r-pill);
+  box-shadow: inset 0 1px 2px rgba(28, 26, 21, 0.04);
+  /* Stable height so a single-button click doesn't shift surrounding
+     layout (kanban→list flips height of the surface below). */
+  min-height: 36px;
+}
+[data-surface="v2"] .v2-segmented-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--v2-ink-3);
+  padding: 6px 16px;
+  border-radius: var(--v2-r-pill);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 76px;
+  transition:
+    background-color 180ms ease,
+    color 180ms ease,
+    box-shadow 180ms ease,
+    transform 100ms ease;
+  white-space: nowrap;
+}
+[data-surface="v2"] .v2-segmented-btn:hover:not(.is-on) {
+  color: var(--v2-ink-2);
+  background: rgba(28, 26, 21, 0.03);
+}
+[data-surface="v2"] .v2-segmented-btn:active:not(.is-on) {
+  transform: scale(0.98);
+}
+[data-surface="v2"] .v2-segmented-btn.is-on {
+  background: var(--v2-paper);
+  color: var(--v2-ink);
+  font-weight: 600;
+  box-shadow:
+    0 1px 0 rgba(28, 26, 21, 0.04),
+    0 1px 3px rgba(28, 26, 21, 0.08),
+    0 0 0 1px rgba(28, 26, 21, 0.04);
+}
+/* Keyboard focus — visible ring without breaking the pill shape. */
+[data-surface="v2"] .v2-segmented-btn:focus-visible {
+  outline: 2px solid var(--v2-accent);
+  outline-offset: 1px;
+}
+/* Small SVG icons inline with the label. */
+[data-surface="v2"] .v2-segmented-btn svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+[data-surface="v2"] .v2-segmented-btn.is-on svg {
+  opacity: 1;
+  color: var(--v2-accent);
+}
+
 /* Kanban */
 [data-surface="v2"] .v2-kanban {
   display: grid;

@@ -52,17 +52,31 @@ export function MyCollabs({ onRoute }: Props) {
         title="My collaborations"
         crumb={crumbParts.join(' · ')}
         actions={
-          <div className="v2-segmented">
+          <div
+            className="v2-segmented"
+            role="group"
+            aria-label="View mode"
+          >
             <button
               type="button"
               className={`v2-segmented-btn ${view === 'kanban' ? 'is-on' : ''}`}
               onClick={() => setView('kanban')}
-            >Kanban</button>
+              aria-pressed={view === 'kanban'}
+              aria-label="Kanban view"
+            >
+              {Icon.kanban}
+              <span>Kanban</span>
+            </button>
             <button
               type="button"
               className={`v2-segmented-btn ${view === 'list' ? 'is-on' : ''}`}
               onClick={() => setView('list')}
-            >List</button>
+              aria-pressed={view === 'list'}
+              aria-label="List view"
+            >
+              {Icon.list}
+              <span>List</span>
+            </button>
           </div>
         }
       />
