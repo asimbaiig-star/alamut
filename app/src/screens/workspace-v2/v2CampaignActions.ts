@@ -540,28 +540,28 @@ export function v2SendOffer(
    *  link the new Offer back to the Outreach via `resultingOfferId`.
    *  Null/undefined for non-outreach paths. */
   outreachId: string | null = null,
-): Offer | null {
+): Offer {
+  // P64 — symmetric to v2AcceptOffer/v2CounterOffer P62 refactor. The
+  // SendOfferModal called this fire-and-forget with no return check.
   const result = tx((db) => {
     // P5 §4.1 — brand-side `offer.send` (admin/ops; not finance/viewer).
     requireCapability(getActorUserId(), 'offer.send', db);
 
     const camp = db.campaigns.find((c) => c.id === campaignId);
-    if (!camp) return null;
+    if (!camp) throw new Error("Couldn't find that campaign — refresh and try again.");
     const creator = db.creators.find((c) => c.id === creatorId);
-    if (!creator) return null;
+    if (!creator) throw new Error("Couldn't find that creator — refresh and try again.");
     const brand = db.brands.find((b) => b.id === camp.brandId);
-    if (!brand) return null;
+    if (!brand) throw new Error("Couldn't find your brand profile. Sign out and back in, then try again.");
 
     // CAMPAIGN-STAGE GATE — only live campaigns send new offers.
-    // Paused / draft / closed all refuse so brands don't accidentally
-    // commit wallet against a campaign they paused or never published.
-    if (camp.stage !== 'live') return null;
+    if (camp.stage !== 'live') {
+      throw new Error(`This campaign is ${camp.stage} — resume it before sending new offers.`);
+    }
 
-    // IDEMPOTENCY / DUPE-OFFER GUARD — refuse if there's already a
-    // live offer for this (campaign, creator) pair. Pre-fix a brand
-    // could send a second offer while the first was still pending,
-    // creating two parallel negotiations on the same deal. The brand
-    // can withdraw the existing offer first if they want to re-pitch.
+    // IDEMPOTENCY / DUPE-OFFER GUARD — return the existing live offer
+    // so the UI can treat it as a no-op success rather than an error.
+    // (Sending the "same" offer twice = same intent.)
     const liveOffer = db.offers.find((o) =>
       o.campaignId === campaignId &&
       o.creatorId === creatorId &&
@@ -569,18 +569,18 @@ export function v2SendOffer(
     );
     if (liveOffer) return liveOffer;
 
-    // BUDGET CAP — pre-fix a brand could send unlimited offers each at
-    // rate > camp.budget; two creators accepting at full budget was
-    // fully allowed. Reject sends that would push committed-spend
-    // (existing pending+accepted offers + this rate) above the budget.
-    // Closed/declined/withdrawn/expired offers don't count.
+    // BUDGET CAP — sum of pending+accepted offers + this rate must
+    // fit in camp.budget. Otherwise the brand could over-commit.
     const committed = db.offers
       .filter((o) =>
         o.campaignId === campaignId &&
         (o.status === 'pending' || o.status === 'countered' || o.status === 'accepted'),
       )
       .reduce((sum, o) => sum + o.rate, 0);
-    if (committed + rate > camp.budget) return null;
+    if (committed + rate > camp.budget) {
+      const remaining = camp.budget - committed;
+      throw new Error(`Offer rate $${rate.toLocaleString()} pushes you over the campaign budget. You have $${Math.max(0, remaining).toLocaleString()} left to commit.`);
+    }
 
     const sentAtIso = nowIso();
     const offer: Offer = {

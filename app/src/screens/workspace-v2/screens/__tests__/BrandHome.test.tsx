@@ -16,6 +16,14 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+
+// P64 — Topbar now mounts the real NotificationsBell which uses
+// useNavigate from react-router. Render through MemoryRouter so the
+// hook has its context. Pre-P64 the stub bell had no router dependency.
+function renderWithRouter(ui: React.ReactElement) {
+  return render(<MemoryRouter>{ui}</MemoryRouter>);
+}
 
 // Mock all the hooks BrandHome reads. Returning controlled shapes makes
 // the test deterministic + fast. Real-store integration is exercised
@@ -88,12 +96,12 @@ afterEach(() => cleanup());
 
 describe('BrandHome (smoke)', () => {
   it('renders without crashing and shows the brand name in the topbar', () => {
-    render(<BrandHome onRoute={() => undefined} />);
+    renderWithRouter(<BrandHome onRoute={() => undefined} />);
     expect(screen.getByText(/Welcome back, Aesop/i)).toBeInTheDocument();
   });
 
   it('shows the live-campaign count in the topbar crumb', () => {
-    render(<BrandHome onRoute={() => undefined} />);
+    renderWithRouter(<BrandHome onRoute={() => undefined} />);
     // "1 live" appears in the crumb AND in the Quarter pacing sub-text
     // ("1 live campaign on plan"). Both renders confirm the mocked
     // campaign's Live status flowed through to the UI.
@@ -102,14 +110,14 @@ describe('BrandHome (smoke)', () => {
 
   it('"New campaign" CTA in the topbar dispatches to onRoute("campaign-new")', () => {
     const onRoute = vi.fn();
-    render(<BrandHome onRoute={onRoute} />);
+    renderWithRouter(<BrandHome onRoute={onRoute} />);
     fireEvent.click(screen.getByRole('button', { name: /New campaign/i }));
     expect(onRoute).toHaveBeenCalledWith('campaign-new');
   });
 
   it('SparkComposer Send button dispatches to onRoute("spark")', () => {
     const onRoute = vi.fn();
-    render(<BrandHome onRoute={onRoute} />);
+    renderWithRouter(<BrandHome onRoute={onRoute} />);
     // SparkComposer renders a "Send" button with an arrow icon.
     const sendBtn = screen.getByRole('button', { name: /^Send/i });
     fireEvent.click(sendBtn);

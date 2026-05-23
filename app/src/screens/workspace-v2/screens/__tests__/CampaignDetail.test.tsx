@@ -15,6 +15,13 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+
+// P64 — Topbar now mounts the real NotificationsBell (uses useNavigate).
+function renderWithRouter(ui: React.ReactElement) {
+  return render(<MemoryRouter>{ui}</MemoryRouter>);
+}
+
 
 const ownerBrand = {
   id: 'b_aesop',
@@ -163,7 +170,7 @@ afterEach(() => {
 
 describe('CampaignDetail (smoke)', () => {
   it('renders the campaign name in the topbar for the owner brand', () => {
-    render(<CampaignDetail campaignId="cmp_1" onRoute={() => undefined} />);
+    renderWithRouter(<CampaignDetail campaignId="cmp_1" onRoute={() => undefined} />);
     // Campaign name appears in topbar + breadcrumb. At least one match
     // confirms the owner-side render path took (vs the access-denied
     // branch which has no campaign name visible).
@@ -172,7 +179,7 @@ describe('CampaignDetail (smoke)', () => {
 
   it('OWNERSHIP GATE — refuses access when current brand is NOT the owner', () => {
     CURRENT_BRAND = otherBrand; // viewing as Le Creuset, not Aesop
-    render(<CampaignDetail campaignId="cmp_1" onRoute={() => undefined} />);
+    renderWithRouter(<CampaignDetail campaignId="cmp_1" onRoute={() => undefined} />);
     expect(screen.getByText(/don't have access to this campaign's management view/i)).toBeInTheDocument();
     // The "View public brief" fallback CTA must be present.
     expect(screen.getByRole('button', { name: /View public brief/i })).toBeInTheDocument();
@@ -181,20 +188,20 @@ describe('CampaignDetail (smoke)', () => {
   it('OWNERSHIP GATE — "View public brief" routes to the brief view', () => {
     CURRENT_BRAND = otherBrand;
     const onRoute = vi.fn();
-    render(<CampaignDetail campaignId="cmp_1" onRoute={onRoute} />);
+    renderWithRouter(<CampaignDetail campaignId="cmp_1" onRoute={onRoute} />);
     fireEvent.click(screen.getByRole('button', { name: /View public brief/i }));
     expect(onRoute).toHaveBeenCalledWith('brief:cmp_1');
   });
 
   it('OWNERSHIP GATE — refuses when no brand is signed in (currentBrand=null)', () => {
     CURRENT_BRAND = null;
-    render(<CampaignDetail campaignId="cmp_1" onRoute={() => undefined} />);
+    renderWithRouter(<CampaignDetail campaignId="cmp_1" onRoute={() => undefined} />);
     expect(screen.getByText(/don't have access/i)).toBeInTheDocument();
   });
 
   it('renders "not found" state when the campaign id does not resolve', () => {
     HAS_CAMPAIGN = false;
-    render(<CampaignDetail campaignId="cmp_missing" onRoute={() => undefined} />);
+    renderWithRouter(<CampaignDetail campaignId="cmp_missing" onRoute={() => undefined} />);
     expect(screen.getByText(/No campaign with that id/i)).toBeInTheDocument();
   });
 });

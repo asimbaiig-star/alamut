@@ -28,6 +28,7 @@ import {
   ALL_PLATFORMS, ALL_CATEGORIES, COMMON_PRESS_OUTLETS,
 } from '../v2CreatorActions';
 import { useStore } from '@/lib/api/store';
+import { pushToast } from '@/lib/utils/toast';
 import { SwapFeaturedReviewModal } from './SwapFeaturedReviewModal';
 import type { Creator, Platform, Availability, Review } from '@/lib/api/types';
 
@@ -414,10 +415,15 @@ function IdentityBlock({ creator, v2, editing, onEdit, onClose }: {
                   className="v2-btn v2-btn-primary v2-btn-sm"
                   type="button"
                   onClick={() => {
-                    v2UpdateCreatorIdentity(creator.id, {
+                    const result = v2UpdateCreatorIdentity(creator.id, {
                       name, handle, bio, city, country, categories, portrait, cover,
                     });
-                    onClose();
+                    if (result) {
+                      pushToast('Storefront identity updated', 'good');
+                      onClose();
+                    } else {
+                      pushToast('Update failed — refresh and try again', 'bad');
+                    }
                   }}
                 >
                   {Icon.check} Save changes
@@ -721,8 +727,13 @@ function PackagesBlock({ creator, v2, editing, onEdit, onClose }: {
               className="v2-btn v2-btn-primary v2-btn-sm"
               type="button"
               onClick={() => {
-                v2UpdateLegacyRateCard(creator.id, { reel, story, post, longform });
-                onClose();
+                const result = v2UpdateLegacyRateCard(creator.id, { reel, story, post, longform });
+                if (result) {
+                  pushToast('Rate card updated', 'good');
+                  onClose();
+                } else {
+                  pushToast('Rate update failed — refresh and try again', 'bad');
+                }
               }}
             >
               {Icon.check} Save rates

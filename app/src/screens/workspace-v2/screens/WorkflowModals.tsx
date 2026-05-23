@@ -275,8 +275,13 @@ export function SendOfferModal({ campaignId, creator, defaultRate, onClose }: Se
               disabled={rate <= 0 || !message.trim() || !canSend}
               title={!canSend ? 'Admin or ops only' : undefined}
               onClick={() => {
-                v2SendOffer(campaignId, creator.id, rate, message);
-                onClose();
+                try {
+                  v2SendOffer(campaignId, creator.id, rate, message);
+                  pushToast(`Offer sent to ${creator.name.split(' ')[0]} at ${fmtUSD(rate)}`, 'good');
+                  onClose();
+                } catch (err) {
+                  pushToast(err instanceof Error ? err.message : 'Send-offer failed', 'bad');
+                }
               }}
             >
               {Icon.send} {canSend ? `Send offer (${fmtUSD(rate)})` : 'Admin/ops only'}
@@ -620,10 +625,23 @@ export function InviteCreatorsModal({
   const onSend = () => {
     if (!session?.userId || selected.size === 0) return;
     setSending(true);
+    let ok = 0;
+    const failures: string[] = [];
     for (const creatorId of selected) {
-      v2InviteCreator(campaignId, creatorId, message, session.userId);
+      try {
+        v2InviteCreator(campaignId, creatorId, message, session.userId);
+        ok++;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        if (!failures.includes(msg)) failures.push(msg);
+      }
     }
     setSending(false);
+    if (failures.length === 0) {
+      pushToast(`Invited ${ok} creator${ok === 1 ? '' : 's'}`, 'good');
+    } else {
+      pushToast(`Invited ${ok}, ${selected.size - ok} failed: ${failures[0]}`, 'bad');
+    }
     onClose();
   };
 

@@ -14,6 +14,12 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+
+// P64 — Topbar now mounts the real NotificationsBell (uses useNavigate).
+function renderWithRouter(ui: React.ReactElement) {
+  return render(<MemoryRouter>{ui}</MemoryRouter>);
+}
 
 const mockCreator = {
   id: 'c_sarah',
@@ -124,18 +130,18 @@ afterEach(() => {
 describe('CreatorHome (smoke)', () => {
   it('renders empty state when no creator + no allCreators fallback', () => {
     CURRENT_CREATOR = null;
-    render(<CreatorHome onRoute={() => undefined} />);
+    renderWithRouter(<CreatorHome onRoute={() => undefined} />);
     expect(screen.getByText(/No creator profile resolved yet/i)).toBeInTheDocument();
   });
 
   it('renders the creator first name in the topbar when a creator is linked', () => {
-    render(<CreatorHome onRoute={() => undefined} />);
+    renderWithRouter(<CreatorHome onRoute={() => undefined} />);
     // Topbar title is `Hi ${firstName}`
     expect(screen.getByText(/^Hi Sarah$/)).toBeInTheDocument();
   });
 
   it('renders the lifetime earnings number in the hero', () => {
-    render(<CreatorHome onRoute={() => undefined} />);
+    renderWithRouter(<CreatorHome onRoute={() => undefined} />);
     // Wallet lifetime = $47,800 → fmtUSD renders "$47.8K" or similar
     // Use a flexible matcher — the number could be formatted as "$47.8K"
     // or in a fmtUSDfull variant.

@@ -7,7 +7,7 @@
 
 import type { CSSProperties, ReactNode } from 'react';
 import type { V2Channel, V2Campaign } from './data';
-import { pushToast } from '@/lib/utils/toast';
+import { NotificationsBell } from '@/components/layout/NotificationsBell';
 
 // =====================================================================
 // Icons (16px stroke icons, all currentColor)
@@ -286,6 +286,14 @@ export function Topbar({
   // No call site actually passed it (all Topbar usages route their
   // own search through `actions`), so killing the prop entirely is
   // safer than leaving a tempting-but-broken affordance.
+  //
+  // P64 — the v2 topbar previously rendered a stub bell button that
+  // toasted "You're all caught up — no new notifications" regardless
+  // of actual db.notifications state. Every v2*Action pushes
+  // notifications to db.notifications, but they had no surface in v2.
+  // Now mounts the real NotificationsBell which reads from the store,
+  // shows an unread badge, and deep-links into the right surface on
+  // click (its resolver knows about `?tab=collab:` / `?tab=campaign:` etc).
   return (
     <div className="v2-topbar">
       <div>
@@ -294,14 +302,7 @@ export function Topbar({
       </div>
       <div className="v2-topbar-actions">
         {actions}
-        <button
-          className="v2-icon-btn"
-          type="button"
-          aria-label="Notifications"
-          onClick={() => pushToast("You're all caught up — no new notifications", 'default')}
-        >
-          {Icon.bell}
-        </button>
+        <NotificationsBell />
       </div>
     </div>
   );
