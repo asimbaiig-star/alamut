@@ -8,6 +8,7 @@ import { Icon } from '@/components/ui/Icon';
 import { fmtRelative, fmtMoneyFull } from '@/lib/utils/format';
 import { pushToast } from '@/lib/utils/toast';
 import { EmptyArt } from '@/components/ui/EmptyArt';
+import { Avatar } from '@/components/ui/Avatar';
 import { REF_DATE } from '@/lib/utils/campaign-metrics';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -83,7 +84,9 @@ export function AdminVerify({ hideHead = false }: AdminVerifyProps = {}) {
                   <tr key={b.id}>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <div style={{ width: 36, height: 36, borderRadius: 4, background: 'var(--paper-2)', display: 'grid', placeItems: 'center', fontFamily: 'var(--serif)', fontSize: 16 }}>{b.logoMark || b.name.slice(0,1)}</div>
+                        {/* P65 — show uploaded logoUrl when present;
+                            fall back to the curated logoMark glyph. */}
+                        <Avatar src={b.logoUrl} name={b.name} initial={b.logoMark} size={36} shape="rounded" serif />
                         <div>
                           <div style={{ fontWeight: 500 }}>{b.name}</div>
                           <div className="mono-meta">{b.website || u?.email}</div>

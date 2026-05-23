@@ -34,6 +34,7 @@ import { deriveCollab, V2_PIPELINE_STAGES } from '../v2Adapters';
 import { useStore } from '@/lib/api/store';
 import { pushToast } from '@/lib/utils/toast';
 import { CollabSidePanel } from '@/components/inbox/CollabSidePanel';
+import { Avatar } from '@/components/ui/Avatar';
 
 interface Props {
   onRoute: (r: string) => void;
@@ -423,11 +424,12 @@ function ConversationList({
               className={`v2-inbox-row ${c.id === activeId ? 'is-active' : ''}`}
               onClick={() => onSelect(c.id)}
             >
-              <div
-                className="v2-avatar v2-avatar-md"
-                style={{ backgroundImage: `url(${cpAvatar})` }}
-                aria-hidden="true"
-              />
+              {/* P65 — Avatar handles both image (creator.portrait /
+                  brand.logoUrl) and initial-fallback. Pre-fix the inbox
+                  set `backgroundImage: url(${brand.logoMark})` which is
+                  invalid CSS (a bare letter isn't a URL), so any brand
+                  without an uploaded logoUrl rendered an empty circle. */}
+              <Avatar src={cpAvatar} name={cpName} size={40} />
               <div style={{ minWidth: 0 }}>
                 <div className="v2-inbox-row-name">{cpName}</div>
                 <div className="v2-inbox-row-preview">{c.preview}</div>

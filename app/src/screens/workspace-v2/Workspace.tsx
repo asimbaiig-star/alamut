@@ -15,6 +15,7 @@ import { useV2CurrentBrand, useV2CurrentCreator, useV2Conversations } from './v2
 import { v2SweepStaleOffers } from './v2CampaignActions';
 import { useAuth } from '@/lib/auth/useAuth';
 import { api } from '@/lib/api/client';
+import { Avatar } from '@/components/ui/Avatar';
 import { BrandHome } from './screens/BrandHome';
 import { CreatorHome } from './screens/CreatorHome';
 import { Discover } from './screens/Discover';
@@ -590,7 +591,11 @@ function Sidebar({ persona, route, onRoute, isMobileOpen }: SidebarProps) {
       ? {
           name: brand.name,
           sub: `${brand.industry}${brand.verified ? ' · Verified' : ''}`,
-          avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(brand.name)}&backgroundColor=c5552b`,
+          // P65 — pre-fix this called dicebear.com (an external service)
+          // for the brand sidebar avatar, even when the brand had uploaded
+          // a real logo. Use the actual uploaded logoUrl if present; the
+          // sidebar's Avatar render falls back to the brand's initial.
+          avatar: brand.logoUrl ?? '',
         }
       : { name: 'Welcome', sub: 'Loading...', avatar: '' };
 
@@ -639,11 +644,10 @@ function Sidebar({ persona, route, onRoute, isMobileOpen }: SidebarProps) {
       </nav>
 
       <div className="v2-sidebar-foot">
-        <div
-          className="v2-avatar v2-avatar-md"
-          style={{ backgroundImage: `url(${me.avatar})` }}
-          aria-hidden="true"
-        />
+        {/* P65 — Avatar handles missing/broken images by falling back
+            to a colored initial circle. Pre-fix the brand sidebar avatar
+            called dicebear.com on every render. */}
+        <Avatar src={me.avatar} name={me.name} size={40} />
         <div className="v2-sidebar-foot-info">
           <div className="v2-sidebar-foot-name">{me.name}</div>
           <div className="v2-sidebar-foot-sub">{me.sub}</div>

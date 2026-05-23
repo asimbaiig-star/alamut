@@ -5,6 +5,7 @@
 // reactively as the editor's draft state changes.
 
 import { Pill } from '@/components/ui/Pill';
+import { Avatar } from '@/components/ui/Avatar';
 import { fmtCount } from '@/lib/utils/format';
 import type { Brand, BrandSocial } from '@/lib/api/types';
 
@@ -38,12 +39,16 @@ export function BrandProfilePreview({ brand, draft }: Props) {
       </div>
 
       <div className="storefront-preview-id">
-        <div
-          className="storefront-preview-logo"
-          aria-hidden="true"
-        >
-          {brand.logoMark || (draft.name || brand.name)[0]}
-        </div>
+        {/* P65 — render uploaded logoUrl when present, fall back to the
+            curated logoMark glyph or the first letter of the name. */}
+        <Avatar
+          src={brand.logoUrl}
+          name={draft.name || brand.name}
+          initial={brand.logoMark}
+          size={56}
+          shape="rounded"
+          serif
+        />
         <div className="storefront-preview-id-text">
           <div className="airy-meta">{draft.industry || brand.industry || 'Brand'}</div>
           <div className="storefront-preview-name">{draft.name || brand.name}</div>

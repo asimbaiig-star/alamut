@@ -19,6 +19,7 @@ import { useMemo, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useStore } from '@/lib/api/store';
 import { useAuth } from '@/lib/auth/useAuth';
+import { Avatar } from '@/components/ui/Avatar';
 import { usePersona } from '@/lib/utils/usePersona';
 import { fmtMoneyFull } from '@/lib/utils/format';
 import {
@@ -480,7 +481,9 @@ function HeroAnchorCard({ anchor, reduced }: HeroAnchorCardProps) {
           Open brief · accepting pitches
         </div>
         <div className="lp-hero-anchor-head">
-          <span className="lp-hero-anchor-mark" aria-hidden="true">{brand.logoMark || brand.name[0]}</span>
+          {/* P65 — render uploaded logoUrl when present. */}
+          <Avatar src={brand.logoUrl} name={brand.name} initial={brand.logoMark} size={44} shape="rounded" serif />
+
           <div className="lp-hero-anchor-meta">
             <div className="lp-hero-anchor-brand">{brand.name}</div>
             <div className="lp-hero-anchor-cmp mono-meta">{campaign.title}</div>
