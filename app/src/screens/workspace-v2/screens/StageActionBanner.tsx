@@ -166,8 +166,11 @@ export function StageActionBanner({
       );
     }
   } else if (stage === 'approved') {
-    title = 'Approved — awaiting publishing';
-    body = `${campaignBrand} approved your work. Funds will release to your wallet once it's marked live.`;
+    // P67 — honest copy: v2ApproveContent releases escrow to the wallet
+    // in the same mutation as the approval. Pre-fix this banner promised
+    // the release would happen later, "once it's marked live."
+    title = 'Approved — funds released, post it';
+    body = `${campaignBrand} approved your work and your payout is in your wallet. Post the content, then paste the live URL on the deliverable below so ${campaignBrand} can confirm.`;
     tone = 'moss';
     actions = (
       <button className="v2-btn v2-btn-outline v2-btn-sm" type="button" onClick={onMessageBrand}>

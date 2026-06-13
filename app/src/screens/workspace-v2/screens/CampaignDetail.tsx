@@ -43,6 +43,7 @@ import { v2RequestCollabCancel } from '../v2CollabActions';
 import { v2LeaveReview } from '../v2CampaignActions';
 import { useStore } from '@/lib/api/store';
 import { pushToast } from '@/lib/utils/toast';
+import { downloadCSV } from '@/lib/utils/csv';
 // P7 — UI gating for campaign-lifecycle buttons.
 import { useCapability } from '@/lib/permissions';
 
@@ -1262,12 +1263,19 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
  */
 function CancelCollabButton({ collab }: { collab: V2Collab }) {
   const db = useStore((s) => s.db);
+  const sessionUid = useStore((s) => s.session?.userId);
   // Look up the real Collaboration row to feed v2RequestCollabCancel —
   // the V2Collab.id is the synthetic `collab__<...>__<...>` form.
   const collabRow = db.collaborations.find(
     (c) => c.campaignId === collab.campaignId && c.creatorId === collab.creatorId,
   );
-  const me = db.users.find((u) => !!u.brandId);
+  // P67 — the requester must be the SIGNED-IN user. Pre-fix this was
+  // `db.users.find((u) => !!u.brandId)` — the first brand user in the
+  // table — so with multiple brands seeded, the cancel request could be
+  // recorded under a different brand's owner. That broke the creator-
+  // side "you opened this request" guard and misattributed the audit
+  // trail.
+  const me = sessionUid ? db.users.find((u) => u.id === sessionUid) : undefined;
   const pending = collabRow?.cancellationRequest != null;
   return (
     <button
@@ -1874,6 +1882,91 @@ function AnalyticsTab({
   const cpmDeltaPositive = perf.cpm < benchCPM;
   const cpmDeltaPct = Math.round(Math.abs(benchCPM - perf.cpm) / benchCPM * 100);
 
+  // P67 — wk/wk delta computed from the actual series (last two weeks).
+  // Pre-fix the Impressions tile showed a literal "+18% wk/wk" while
+  // its own sparkline drew a decaying curve — the two contradicted
+  // each other on the same tile.
+  const series = perf.weeklySeries;
+  const lastWk = series[series.length - 1] ?? 0;
+  const prevWk = series[series.length - 2] ?? 0;
+  const wkDelta = prevWk > 0 ? Math.round(((lastWk - prevWk) / prevWk) * 100) : 0;
+
+  // P67 — Export CSV was a dead button (no onClick). Exports the
+  // per-creator roster with stage + agreed rate + deliverable progress,
+  // plus a KPI summary row. Share report copies the same summary to
+  // the clipboard (no share backend in the demo — honest equivalent).
+  function exportCsv() {
+    const rows = collabs.map((c) => {
+      const cr = creators.find((x) => x.id === c.creatorId);
+      const done = c.deliverables.filter((d) => d.status === 'approved' || d.status === 'live').length;
+      return {
+        creator: cr?.name ?? c.creatorId,
+        handle: cr ? `@${cr.handle}` : '',
+        stage: c.stage,
+        agreedRate: c.price || 0,
+        deliverablesDone: `${done}/${c.deliverables.length}`,
+        due: c.deadline,
+      };
+    });
+    downloadCSV(`${campaign.name.replace(/[^\w-]+/g, '-')}-roster`, rows, [
+      { key: 'creator', header: 'Creator' },
+      { key: 'handle', header: 'Handle' },
+      { key: 'stage', header: 'Stage' },
+      { key: 'agreedRate', header: 'Agreed rate (USD)' },
+      { key: 'deliverablesDone', header: 'Deliverables done' },
+      { key: 'due', header: 'Due' },
+    ]);
+    pushToast('Roster CSV downloaded', 'good');
+  }
+  function shareReport() {
+    const summary = [
+      `${campaign.name} — campaign report`,
+      `Spend: $${campaign.spent.toLocaleString()} of $${campaign.budget.toLocaleString()}`,
+      `Projected impressions: ${perf!.impressions.toLocaleString()}`,
+      `Projected engagement: ${perf!.engagement.toLocaleString()} (${perf!.er}% ER)`,
+      `CPM $${perf!.cpm} · EMV $${emv.toLocaleString()} · ${roas}× ROAS`,
+      `Creators: ${collabs.length}`,
+    ].join('\n');
+    void navigator.clipboard.writeText(summary).then(
+      () => pushToast('Report summary copied to clipboard', 'good'),
+      () => pushToast('Copy failed — clipboard unavailable', 'bad'),
+    );
+  }
+
+  // P67 — Audience reached computed from the roster's actual per-creator
+  // audience data. Pre-fix the card showed hardcoded New York/LA/London
+  // + age/gender literals on every campaign. Live/paid creators first;
+  // falls back to the engaged roster when nothing is live yet.
+  const audienceCreators = (() => {
+    const byId = new Map(creators.map((c) => [c.id, c]));
+    const pick = (stages: V2Collab['stage'][]) => collabs
+      .filter((c) => stages.includes(c.stage))
+      .map((c) => byId.get(c.creatorId))
+      .filter((c): c is V2Creator => !!c);
+    const live = pick(['live', 'paid']);
+    return live.length > 0 ? live : pick(['confirmed', 'submitted', 'approved', 'live', 'paid']);
+  })();
+  const audAgg = (() => {
+    if (audienceCreators.length === 0) return null;
+    const n = audienceCreators.length;
+    const avg = (f: (a: V2Creator['audience']) => number) =>
+      Math.round(audienceCreators.reduce((s, c) => s + f(c.audience), 0) / n);
+    const age1824 = avg((a) => a.age1824 ?? 0);
+    const age2534 = avg((a) => a.age2534);
+    const age35up = Math.max(0, 100 - age1824 - age2534);
+    const female = avg((a) => a.female);
+    const marketCounts = new Map<string, number>();
+    for (const c of audienceCreators) {
+      const m = c.audience.topCity || c.country || 'Other';
+      marketCounts.set(m, (marketCounts.get(m) ?? 0) + 1);
+    }
+    const markets = [...marketCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4)
+      .map(([label, count]) => ({ label, pct: Math.round((count / n) * 100) }));
+    return { age1824, age2534, age35up, female, markets };
+  })();
+
   return (
     <div>
       {/* Toolbar — time range + Export/Share actions. */}
@@ -1903,10 +1996,10 @@ function AnalyticsTab({
           ))}
         </div>
         <div className="v2-row" style={{ gap: 8 }}>
-          <button className="v2-btn v2-btn-sm v2-btn-outline" type="button">
+          <button className="v2-btn v2-btn-sm v2-btn-outline" type="button" onClick={exportCsv}>
             {Icon.external} Export CSV
           </button>
-          <button className="v2-btn v2-btn-sm v2-btn-outline" type="button">
+          <button className="v2-btn v2-btn-sm v2-btn-outline" type="button" onClick={shareReport}>
             Share report
           </button>
         </div>
@@ -1924,8 +2017,8 @@ function AnalyticsTab({
         <KpiTile
           label="Impressions"
           value={fmtFollowers(perf.impressions)}
-          delta="+18% wk/wk"
-          deltaPositive
+          delta={`${wkDelta >= 0 ? '+' : ''}${wkDelta}% wk/wk`}
+          deltaPositive={wkDelta >= 0}
           spark={perf.weeklySeries}
         />
         <KpiTile
@@ -1935,9 +2028,12 @@ function AnalyticsTab({
           deltaPositive
           accent
         />
+        {/* P67 — CPM is dollars-per-1k-impressions (single-digit to
+            low-double-digit USD). Pre-fix this divided by 1000 and
+            suffixed "k", rendering "$0.0k" for every realistic value. */}
         <KpiTile
           label="CPM"
-          value={`$${(perf.cpm / 1000).toFixed(1)}k`}
+          value={`$${perf.cpm.toLocaleString()}`}
           delta={`${cpmDeltaPositive ? '−' : '+'}${cpmDeltaPct}% vs paid social`}
           deltaPositive={cpmDeltaPositive}
         />
@@ -2062,28 +2158,38 @@ function AnalyticsTab({
           }}>
             Audience reached
           </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-            <div>
-              <div className="v2-eyebrow" style={{ marginBottom: 8 }}>By city</div>
-              <BreakdownBar label="New York"      value={42} total={100} color="var(--v2-ink)"   pct />
-              <BreakdownBar label="Los Angeles"   value={31} total={100} color="var(--v2-ink-2)" pct />
-              <BreakdownBar label="London"        value={14} total={100} color="var(--v2-ink-3)" pct />
-              <BreakdownBar label="Toronto"       value={7}  total={100} color="var(--v2-ink-4)" pct />
-              <BreakdownBar label="Other"         value={6}  total={100} color="var(--v2-line-2)" pct />
-            </div>
-            <div>
-              <div className="v2-eyebrow" style={{ marginBottom: 8 }}>By age</div>
-              <BreakdownBar label="18–24" value={28} total={100} color="var(--v2-accent)" pct />
-              <BreakdownBar label="25–34" value={46} total={100} color="var(--v2-accent)" pct />
-              <BreakdownBar label="35–44" value={19} total={100} color="var(--v2-accent)" pct />
-              <BreakdownBar label="45+"   value={7}  total={100} color="var(--v2-accent)" pct />
-              <hr style={{ border: 0, borderTop: '1px solid var(--v2-line)', margin: '12px 0' }} />
-              <div className="v2-row" style={{ justifyContent: 'space-between', fontSize: 12, marginTop: 6 }}>
-                <span className="v2-muted">Female</span>
-                <span className="v2-tabular" style={{ fontWeight: 600 }}>78%</span>
+          {audAgg ? (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+              <div>
+                <div className="v2-eyebrow" style={{ marginBottom: 8 }}>Top markets · roster</div>
+                {audAgg.markets.map((m, i) => (
+                  <BreakdownBar
+                    key={m.label}
+                    label={m.label}
+                    value={m.pct}
+                    total={100}
+                    color={['var(--v2-ink)', 'var(--v2-ink-2)', 'var(--v2-ink-3)', 'var(--v2-ink-4)'][i] ?? 'var(--v2-line-2)'}
+                    pct
+                  />
+                ))}
+              </div>
+              <div>
+                <div className="v2-eyebrow" style={{ marginBottom: 8 }}>By age · roster avg</div>
+                <BreakdownBar label="18–24" value={audAgg.age1824} total={100} color="var(--v2-accent)" pct />
+                <BreakdownBar label="25–34" value={audAgg.age2534} total={100} color="var(--v2-accent)" pct />
+                <BreakdownBar label="35+"   value={audAgg.age35up} total={100} color="var(--v2-accent)" pct />
+                <hr style={{ border: 0, borderTop: '1px solid var(--v2-line)', margin: '12px 0' }} />
+                <div className="v2-row" style={{ justifyContent: 'space-between', fontSize: 12, marginTop: 6 }}>
+                  <span className="v2-muted">Female</span>
+                  <span className="v2-tabular" style={{ fontWeight: 600 }}>{audAgg.female}%</span>
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <p className="v2-muted" style={{ fontSize: 13, margin: 0 }}>
+              Audience data appears once creators join the roster.
+            </p>
+          )}
         </div>
 
         <div className="v2-card v2-card-pad-lg">

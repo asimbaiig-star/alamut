@@ -375,6 +375,20 @@ export function v2ResolveDispute(disputeId: string, input: {
           campaignId: camp.id,
           note: `Dispute refund · ${camp.title}`,
         });
+        // P67 — reverse the creator's pending hold for the refunded
+        // portion. The accept-time hold credited pendingBalance with
+        // net(rate); the release leg (below) decrements pending by
+        // net(release), but pre-fix the refund leg decremented nothing —
+        // after a full refund the creator's wallet showed pending money
+        // that would never arrive, forever.
+        if (creator) {
+          const refundNet = Math.round(input.refundAmount * (1 - PLATFORM_FEE - WHT));
+          db.creators = db.creators.map((c) =>
+            c.id === creator.id
+              ? { ...c, pendingBalance: Math.max(0, c.pendingBalance - refundNet) }
+              : c,
+          );
+        }
       }
       if (input.releaseAmount && input.releaseAmount > 0 && creator) {
         // Mirror v2ApproveContent's release path: net to creator after
@@ -449,6 +463,31 @@ export function v2ResolveDispute(disputeId: string, input: {
           note: `Withholding tax (${Math.round(WHT * 100)}%)`,
         });
       }
+    }
+
+    // P67 — a refund-only resolution means the deal is dead: the brand
+    // got the escrow back and no work will be paid for. Pre-fix the
+    // accepted offer stayed 'accepted' and the submission stayed
+    // 'in_review', so the recompute below left the collab parked at
+    // 'submitted' indefinitely — an un-cancellable zombie on both
+    // kanbans. Withdraw the offer + terminalize open apps so
+    // computeCollabStage's all-declined rule lands 'cancelled'.
+    // Release + partial resolutions keep the deal alive (work was paid).
+    if (input.status === 'resolved-refund') {
+      db.offers = db.offers.map((o) =>
+        o.campaignId === collab.campaignId &&
+        o.creatorId === collab.creatorId &&
+        o.status === 'accepted'
+          ? { ...o, status: 'withdrawn' as const, respondedAt: new Date(now).toISOString() }
+          : o,
+      );
+      db.applications = db.applications.map((a) =>
+        a.campaignId === collab.campaignId &&
+        a.creatorId === collab.creatorId &&
+        (a.status === 'submitted' || a.status === 'shortlisted')
+          ? { ...a, status: 'rejected' as const, decidedAt: new Date(now).toISOString() }
+          : a,
+      );
     }
 
     // Resolution unfreezes the collab.

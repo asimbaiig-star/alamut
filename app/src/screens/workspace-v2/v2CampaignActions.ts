@@ -2444,8 +2444,13 @@ export function v2ResumeCampaign(campaignId: string): Campaign {
     if (idx === -1) throw new Error("Couldn't find that campaign — refresh and try again.");
     const camp = db.campaigns[idx];
     if (camp.stage === 'live') return camp; // idempotent
-    if (camp.stage !== 'paused') {
-      throw new Error(`Only paused campaigns can be resumed — this one is ${camp.stage}.`);
+    // P67 — 'draft' is accepted too: this mutation doubles as the
+    // publish path for drafts (CampaignDetail's "Publish campaign"
+    // button on duplicated/seeded drafts). Pre-fix that button existed
+    // but the mutation threw "Only paused campaigns can be resumed —
+    // this one is draft", so drafts were unpublishable from the UI.
+    if (camp.stage !== 'paused' && camp.stage !== 'draft') {
+      throw new Error(`Only paused or draft campaigns can go live — this one is ${camp.stage}.`);
     }
     db.campaigns[idx] = {
       ...camp,

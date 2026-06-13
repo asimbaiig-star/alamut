@@ -215,6 +215,21 @@ function cancelCollabInternal(
     }
   }
 
+  // P67 — terminalize any still-open application on the pair. Pre-fix
+  // the application stayed 'submitted'/'shortlisted' after a cancel,
+  // so the ensureCollabState recompute below saw a live app signal and
+  // rolled the stage back to 'pitched' instead of 'cancelled' — the
+  // dead deal re-entered both kanbans as a ghost pitch. With the app
+  // rejected + offer withdrawn, computeCollabStage's all-declined rule
+  // lands 'cancelled' as this function always intended.
+  db.applications = db.applications.map((a) =>
+    a.campaignId === collab.campaignId &&
+    a.creatorId === collab.creatorId &&
+    (a.status === 'submitted' || a.status === 'shortlisted')
+      ? { ...a, status: 'rejected' as const, decidedAt: nowIso() }
+      : a,
+  );
+
   // Mark contract cancelled.
   if (collab.contractId) {
     const ctr = db.contracts.find((x) => x.id === collab.contractId);

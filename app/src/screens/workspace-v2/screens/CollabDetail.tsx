@@ -145,10 +145,16 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialAction]);
 
-  // For paid stage, find the actual approved+live submission
+  // For paid stage, find the actual approved+live submission.
+  // P67 — also read the dedicated `permalink` field: the creator-paste
+  // path sets ONLY that field (the LIVE: feedback entry is appended
+  // later when the brand confirms via Mark Live). Pre-fix a collab at
+  // stage 'live' via creator-pasted permalink rendered the banner's
+  // generic copy instead of the actual URL + View-post button.
   const latestSubmission = collab ? getLatestSubmissionFor(collab.campaignId, collab.creatorId) : undefined;
   const liveFeedback = latestSubmission?.feedback?.find((f) => f.text?.startsWith('LIVE: '));
-  const livePermalink = liveFeedback ? liveFeedback.text.replace('LIVE: ', '') : undefined;
+  const livePermalink = latestSubmission?.permalink
+    ?? (liveFeedback ? liveFeedback.text.replace('LIVE: ', '') : undefined);
   const myApplication = collab ? getApplicationFor(collab.campaignId, collab.creatorId) : undefined;
   const activeOffer = collab ? getActiveOfferFor(collab.campaignId, collab.creatorId) : undefined;
 
@@ -185,8 +191,12 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
     );
   }
 
-  // Net to creator after platform fee + WHT (5% + 5% in v2 design)
-  const platformFee = Math.round(collab.price * 0.05);
+  // Net to creator after platform fee + WHT. P67 — must match the
+  // data layer's actual rates (PLATFORM_FEE 10% + WHT 5% in
+  // v2CampaignActions); pre-fix this card used 5%+5% so "You'll
+  // receive" overstated the payout by 5 points vs what v2ApproveContent
+  // actually credits the wallet.
+  const platformFee = Math.round(collab.price * 0.10);
   const wht = Math.round(collab.price * 0.05);
   const net = collab.price - platformFee - wht;
 
@@ -531,9 +541,6 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
           campaignName={camp.name}
           brandName={camp.brand}
           initialPermalink={markLiveTarget.initialPermalink}
-          // Final 50% of escrow releases on brand-confirmed live (the
-          // milestone schema is 50/50 across approve and live).
-          releaseAmount={Math.round(collab.price * 0.5)}
           onClose={() => setMarkLiveTarget(null)}
         />
       )}
@@ -966,11 +973,16 @@ function PayoutTimelineCard({
   const submittedAt = collab.deliverables.find((d) => d.submittedAt)?.submittedAt;
   const approvedAt  = collab.deliverables.find((d) => d.approvedAt)?.approvedAt;
 
+  // P67 — funds hit the wallet AT approve (v2ApproveContent releases the
+  // full escrow in the same mutation). Pre-fix this river showed a
+  // separate "Wallet release · ETA 48h after approval" milestone gated
+  // on the 'paid' stage, telling the creator money was still pending
+  // after approval when it was already withdrawable.
   const milestones: Milestone[] = [
     { id: 'escrow',   label: 'Escrow funded',   date: collab.appliedAt ?? 'On confirm', done: collab.price > 0 },
     { id: 'submit',   label: 'Draft submitted', date: submittedAt ?? (submittedReached ? 'Recently' : 'Pending submit'), done: submittedReached },
-    { id: 'approve',  label: 'Approved',        date: approvedAt ?? (approvedReached ? 'Recently' : 'ETA on approve'),    done: approvedReached },
-    { id: 'wallet',   label: 'Wallet release',  date: paidReached ? 'Released' : 'ETA · 48h after approval',              done: paidReached },
+    { id: 'approve',  label: 'Approved · funds released to wallet', date: approvedAt ?? (approvedReached ? 'Recently' : 'ETA on approve'), done: approvedReached },
+    { id: 'closed',   label: 'Deal closed',     date: paidReached ? 'Complete' : 'On campaign close', done: paidReached },
   ];
 
   return (

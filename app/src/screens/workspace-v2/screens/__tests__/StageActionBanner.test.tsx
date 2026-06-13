@@ -221,10 +221,14 @@ describe('StageActionBanner', () => {
   });
 
   describe('approved stage', () => {
-    it('renders moss-tone "Approved — awaiting publishing" + Message brand', () => {
+    it('renders moss-tone funds-released copy + Message brand (P67 honest-copy)', () => {
+      // P67 — escrow releases AT approve (v2ApproveContent). The old
+      // banner promised "Funds will release ... once it's marked live",
+      // which contradicted the wallet the creator was looking at.
       const h = buildHandlers();
       render(<StageActionBanner {...baseProps({ stage: 'approved', ...h })} />);
-      expect(screen.getByText(/Approved — awaiting publishing/i)).toBeInTheDocument();
+      expect(screen.getByText(/Approved — funds released, post it/i)).toBeInTheDocument();
+      expect(screen.getByText(/payout is in your wallet/i)).toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: /Message brand/i }));
       expect(h.onMessageBrand).toHaveBeenCalledTimes(1);
     });

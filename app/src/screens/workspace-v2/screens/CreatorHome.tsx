@@ -139,11 +139,11 @@ export function CreatorHome({ onRoute }: Props) {
     }
 
     // 4. Approved content waiting to be posted live. After the brand
-    //    approves, the creator has to actually post on their platform
-    //    AND paste the public URL back here — that triggers the brand's
-    //    verify-and-confirm flow, which releases the final 50% of
-    //    escrow. Deep-link to `?action=mark-live` pops CollabDetail's
-    //    `CreatorMarkLiveModal` directly.
+    //    approves (which already released the payout to the wallet —
+    //    P67 honest-copy fix), the creator has to actually post on
+    //    their platform AND paste the public URL back here — that
+    //    triggers the brand's verify-and-confirm flow. Deep-link to
+    //    `?action=mark-live` pops CollabDetail's CreatorMarkLiveModal.
     //    Only surface this for submissions that are approved AND have
     //    no permalink yet; once the creator pastes a URL the brand owns
     //    the next action (verify + confirm live).
@@ -162,7 +162,7 @@ export function CreatorHome({ onRoute }: Props) {
         icon: '⤴',
         urgent: false,
         title: `Post & mark live`,
-        sub: `${camp.brand} approved · paste the live URL to release ${fmtUSD(Math.round(c.price * 0.5))}`,
+        sub: `${camp.brand} approved · post it and paste the live URL to wrap up`,
         route: `collab:${c.id}?action=mark-live`,
       });
     }

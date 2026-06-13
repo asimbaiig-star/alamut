@@ -20,6 +20,12 @@ import type {
   Submission, Deliverable,
 } from '@/lib/api/types';
 import { getAcceptedCreators, isCreatorAccepted, isCreatorShortlisted } from '@/lib/api/relations';
+// P67 — stage + per-slot statuses come from the SAME functions that
+// write Collaboration.stage (ensureCollabState path). Pre-P67 this
+// module carried its own parallel derivation, which drifted from the
+// stored stage in three documented ways (payout-coerced live, latest-
+// sub-only rollup, missing cleared-status check on payouts).
+import { computeCollabStage, computeSlotStatuses } from '@/lib/api/collabSync';
 import type {
   V2Creator, V2Campaign, V2Conversation, V2Channel, V2Audience,
   V2WalletLedgerEntry, V2Collab, V2CollabStage, V2Deliverable, V2PipelineStage,
@@ -461,7 +467,16 @@ function fmtDateShort(iso: string): string {
 
 function deliverableFromSubmission(
   s: Submission,
-  hasPayout: boolean,
+  /** Slot status from `computeSlotStatuses` — the SAME status that
+   *  drives the stored Collaboration.stage. P67: pre-fix this fn
+   *  recomputed status locally and coerced approved→live whenever any
+   *  payout tx existed for the pair. Escrow releases at approve-time
+   *  in this model, so that payout signal was ALWAYS present post-
+   *  approve — the kanban skipped the Approved column the instant the
+   *  brand approved, exactly the bug the stage-rollup comment claimed
+   *  was fixed. Live now requires the post-publication signal
+   *  (permalink or LIVE: feedback), nothing else. */
+  status: V2Deliverable['status'],
   label: string,
   deliverableId: string,
   /** The campaign deadline string ("May 18"). Used as the deliverable's
@@ -472,14 +487,6 @@ function deliverableFromSubmission(
    *  surface ("overdue", "next 7 days") was lying as a result. */
   campaignDeadline: string,
 ): V2Deliverable {
-  // Map submission status → deliverable status. If we already see a payout
-  // for this submission's campaign × creator, treat it as `live` (it's
-  // out in the world and the creator was paid).
-  const baseStatus: V2Deliverable['status'] =
-    s.status === 'in_review' ? 'in_review' :
-    s.status === 'revisions' ? 'revision' :
-    s.status === 'approved' && hasPayout ? 'live' :
-    s.status === 'approved' ? 'approved' : 'pending';
   // The latest brand feedback note (for revision display)
   const lastFeedback = s.feedback?.[s.feedback.length - 1]?.text;
   // Pull the live URL from the dedicated field; fall back to scanning the
@@ -491,7 +498,7 @@ function deliverableFromSubmission(
     id: s.id,
     deliverableId,
     label,
-    status: baseStatus,
+    status,
     due: campaignDeadline,
     submittedAt: fmtDateShort(s.submittedAt),
     thumb: s.files[0]?.url,
@@ -538,26 +545,9 @@ export function deliverableLabel(d: Deliverable, db: Database): string {
   return `${fmt} ${pos} · ${plat}`;
 }
 
-/**
- * Look up the Deliverable a submission belongs to. Post-P1d this is a
- * direct FK read; the `[slot:N]` notes-prefix fallback handles any rows
- * that snuck in mid-migration without `deliverableId` set.
- */
-function deliverableForSubmission(
-  s: Submission,
-  db: Database,
-): Deliverable | undefined {
-  if (s.deliverableId) {
-    const direct = db.deliverables.find((d) => d.id === s.deliverableId);
-    if (direct) return direct;
-  }
-  // Transition fallback — should be unreachable post-migrator-4.
-  const m = s.notes?.match(/^\[slot:(\d+)\]/);
-  const slotIdx = m ? parseInt(m[1], 10) : 0;
-  return db.deliverables.find(
-    (d) => d.campaignId === s.campaignId && d.index === slotIdx,
-  );
-}
+// (P67 — the old private `deliverableForSubmission` matcher moved into
+// collabSync.ts so the stored-stage computation and this projection
+// group submissions with the SAME rule. See `computeSlotStatuses`.)
 
 /**
  * Derive a V2Collab from the live store for one creator-on-one-campaign.
@@ -583,17 +573,6 @@ export function deriveCollab(campaignId: string, creatorId: string, db: Database
     (c) => c.campaignId === campaignId && c.creatorId === creatorId,
   );
 
-  // Find any payout transaction for this creator that references this campaign
-  const creatorRecord = db.creators.find((c) => c.id === creatorId);
-  const hasPayout = creatorRecord
-    ? db.transactions.some(
-        (t) =>
-          (t.kind === 'escrow_release' || t.kind === 'payout') &&
-          t.campaignId === campaignId &&
-          (t.userId === creatorRecord.userId || t.counterpartyUserId === creatorRecord.userId),
-      )
-    : false;
-
   // No relationship at all. `collabRow` covers the cold-invite case —
   // including it here lets `invited`-stage Collaboration rows with no
   // application/offer/submission survive the early return.
@@ -601,64 +580,53 @@ export function deriveCollab(campaignId: string, creatorId: string, db: Database
     return null;
   }
 
-  // Stage derivation — most-progressed signal wins
-  let stage: V2CollabStage = 'invited';
+  // ─── Stage — single source of truth (P67) ──────────────────────
+  // `computeCollabStage` is the SAME function `ensureCollabState` uses
+  // to persist Collaboration.stage, so this projection and the stored
+  // row cannot drift. (Pre-P67 this module re-derived the stage with
+  // its own rules and the two disagreed on multi-deliverable mid-states,
+  // payout-without-permalink, and pending-payout edge cases.)
+  // 'cancelled' flows through via the same typed escape as before —
+  // V2CollabStage has no 'cancelled' member; kanban callers filter it.
+  let stage = computeCollabStage(campaignId, creatorId, db) as V2CollabStage;
+
   let appliedAt: string | undefined;
   let pitch: string | undefined;
   let price = 0;
 
-  // Pitched/negotiating signal
   const latestApp = apps.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime())[0];
   if (latestApp) {
     appliedAt = fmtDateShort(latestApp.submittedAt);
     pitch = latestApp.pitch;
-    if (latestApp.status === 'submitted' || latestApp.status === 'shortlisted') stage = 'pitched';
   }
 
   const latestOffer = offers.sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime())[0];
   if (latestOffer) {
     price = latestOffer.rate;
-    if (latestOffer.status === 'pending' || latestOffer.status === 'countered') stage = 'negotiating';
-    if (latestOffer.status === 'accepted') stage = 'confirmed';
   } else if (latestApp?.proposedRate) {
     price = latestApp.proposedRate;
   }
 
-  if (accepted && stage === 'invited') stage = 'confirmed';
-
-  // ─── Multi-deliverable tracking (P1d) ──────────────────────────
-  // Iterate the campaign's structured Deliverable rows. For each one,
-  // group the (campaignId, creatorId) submissions by `deliverableId`
-  // and pick the latest. Pre-P1d this iterated parsed slots from the
-  // free-form `deliverables` string + matched submissions via the
-  // `[slot:N]` notes prefix; both are now stored fields.
-  const campDeliverables = db.deliverables
-    .filter((d) => d.campaignId === campaignId)
-    .sort((a, b) => a.index - b.index);
+  // ─── Multi-deliverable tracking (P1d, slot statuses shared P67) ──
+  // Per-slot statuses come from `computeSlotStatuses` — the same
+  // grouping + status rules that drive the stored stage above. This
+  // module only adds the display dressing (label, thumb, notes,
+  // permalink) and the synthetic pending rows for unfilled slots.
+  const slots = computeSlotStatuses(campaignId, creatorId, db);
   const deliverables: V2Deliverable[] = [];
-
-  // Group submissions by deliverableId — fall back to the legacy
-  // [slot:N] match for any row that hasn't been migrated yet.
-  const subsByDel = new Map<string, Submission[]>();
-  for (const s of subs) {
-    const matching = deliverableForSubmission(s, db);
-    if (!matching) continue;
-    const list = subsByDel.get(matching.id) ?? [];
-    list.push(s);
-    subsByDel.set(matching.id, list);
-  }
-
-  for (const del of campDeliverables) {
-    const label = deliverableLabel(del, db);
-    const delSubs = (subsByDel.get(del.id) ?? [])
-      .sort((a, b) => b.round - a.round);
-    const latest = delSubs[0];
-    if (latest) {
-      deliverables.push(deliverableFromSubmission(latest, hasPayout, label, del.id, fmtDateShort(camp.deadline)));
-    } else if (accepted || stage !== 'invited') {
+  for (const slot of slots) {
+    const label = deliverableLabel(slot.deliverable, db);
+    if (slot.latestSubmission) {
+      deliverables.push(deliverableFromSubmission(
+        slot.latestSubmission, slot.status, label, slot.deliverable.id, fmtDateShort(camp.deadline),
+      ));
+    } else if (accepted || (stage !== 'invited' && (stage as string) !== 'cancelled')) {
+      // Synthetic pending row so accepted/engaged collabs show every
+      // slot. Skipped for cold invites (nothing committed yet) and
+      // cancelled rows (dead deal — no pending work to show).
       deliverables.push({
-        id: `synth__${campaignId}__${creatorId}__${del.index}`,
-        deliverableId: del.id,
+        id: `synth__${campaignId}__${creatorId}__${slot.deliverable.index}`,
+        deliverableId: slot.deliverable.id,
         label,
         status: 'pending',
         due: fmtDateShort(camp.deadline),
@@ -666,51 +634,9 @@ export function deriveCollab(campaignId: string, creatorId: string, db: Database
     }
   }
 
-  // ─── Stage rollup ──────────────────────────────────────────────
-  // Roll up per-slot statuses into a single collab stage. Order matters:
-  // any in_review/revision wins over approved (something for brand to do).
-  //
-  // BUG FIX: pre-fix the rollup auto-flipped to 'live' as soon as
-  // `hasPayout` (the escrow release on approve) — which made the
-  // kanban skip past 'approved' the instant the brand approved.
-  // Correct flow:
-  //
-  //   submitted → approved (brand approved, payout cleared, content
-  //                          NOT yet on platform)
-  //             → live      (creator marked live with permalink — only
-  //                          set by `v2MarkContentLive`, which flips
-  //                          submission.status to 'live')
-  //             → paid      (terminal, set when campaign is closed)
-  //
-  // The `hasPayout` signal is now ignored by the live-vs-approved
-  // decision; payout timing is independent of post-publication.
-  const slotStatuses = deliverables.map((d) => d.status);
-  const allFilled = slotStatuses.length === campDeliverables.length && slotStatuses.length > 0;
-  const anyInReviewOrRevision = slotStatuses.some((s) => s === 'in_review' || s === 'revision');
-  const allApproved = allFilled && slotStatuses.every((s) => s === 'approved' || s === 'live');
-  const allLive = allFilled && slotStatuses.every((s) => s === 'live');
-
-  if (anyInReviewOrRevision) stage = 'submitted';
-  else if (allLive) stage = 'live';
-  else if (allApproved) stage = 'approved';
-
-  // Paid — terminal. MUST stay in lockstep with `computeCollabStage`
-  // (see `collabSync.ts:93`), which requires `latestSub.status === 'approved'
-  // && isLive && hasPayout && campIsClosed`. Pre-fix the read side
-  // dropped the `isLive` (and approved) check, so a closed campaign with
-  // a cleared payout but no permalink would render `paid` in the kanban
-  // while the stored Collaboration row stayed at `approved` — same shape
-  // as the original "approving content jumps straight to live" bug.
-  const submissionIsLive = allLive || allApproved
-    ? slotStatuses.some((s) => s === 'live')
-    : false;
-  if (allApproved && submissionIsLive && hasPayout && camp.stage === 'closed') {
-    stage = 'paid';
-  }
-
   // Terminal-state override: trust the stored Collaboration row when its
   // stage is terminal ('paid' or 'cancelled'). The signal-based derivation
-  // above doesn't always reach 'paid' for seeded demo data (it requires
+  // doesn't always reach 'paid' for seeded demo data (it requires
   // camp.stage === 'closed' AND a live-status submission AND payout) —
   // but a seeded Collaboration row with stage='paid' explicitly represents
   // a closed deal. Without this override, paid demo collabs render as
@@ -720,11 +646,6 @@ export function deriveCollab(campaignId: string, creatorId: string, db: Database
   if (collabRow?.stage === 'paid') {
     stage = 'paid';
   } else if (collabRow?.stage === 'cancelled') {
-    // V2CollabStage has no 'cancelled' member; we mark it on the V2Collab
-    // anyway via a typed escape so callers that opt in can render it.
-    // collabsForCampaign filters these out by default so the kanban
-    // doesn't show cancelled rows as mis-typed 'invited' (which they
-    // were pre-fix, since 'invited' is the derivation default).
     stage = 'cancelled' as V2CollabStage;
   }
 

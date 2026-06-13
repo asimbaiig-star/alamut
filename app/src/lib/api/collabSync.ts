@@ -25,6 +25,7 @@
 
 import type {
   Database, Collaboration, CollabStage, CollabHistoryEntry, Offer, Application, Submission,
+  Deliverable,
 } from './types';
 
 function newCollabId(campaignId: string, creatorId: string): string {
@@ -35,10 +36,89 @@ function newCollabId(campaignId: string, creatorId: string): string {
   return `col_${idHash}`;
 }
 
-/** Same logic as pre-P1c `deriveCollab` — but consumes the typed Database
- *  directly so it can be called from any tx context. Mirrors the copy
- *  inside migrator 3 (`_legacyComputeCollabStage`). The two stay in
- *  lockstep — when the rules change, both update. */
+/** True when an approved submission carries the post-publication signal:
+ *  the creator-pasted `permalink` field, or the legacy `LIVE: <url>`
+ *  feedback entry appended by v2MarkContentLive. Payout state is
+ *  deliberately NOT part of this — escrow releases at approve-time in
+ *  this model, so "money moved" says nothing about "post is up". */
+export function submissionIsLive(s: Submission): boolean {
+  return s.status === 'approved' && (
+    !!s.permalink || (s.feedback ?? []).some((f) => f.text.startsWith('LIVE: '))
+  );
+}
+
+/** Resolve the Deliverable a submission belongs to. Same rule as the
+ *  v2 adapter (`deliverableForSubmission`): direct FK first, then the
+ *  legacy `[slot:N]` notes prefix, then slot 0. Shared here so the
+ *  stored-stage computation and the UI projection group submissions
+ *  identically. */
+function deliverableIdForSubmission(s: Submission, db: Database): string | undefined {
+  if (s.deliverableId && db.deliverables.some((d) => d.id === s.deliverableId)) {
+    return s.deliverableId;
+  }
+  const m = s.notes?.match(/^\[slot:(\d+)\]/);
+  const slotIdx = m ? parseInt(m[1], 10) : 0;
+  return db.deliverables.find(
+    (d) => d.campaignId === s.campaignId && d.index === slotIdx,
+  )?.id;
+}
+
+export type SlotStatus = 'pending' | 'in_review' | 'revision' | 'approved' | 'live';
+
+export interface CollabSlot {
+  deliverable: Deliverable;
+  status: SlotStatus;
+  /** Latest-round submission filling this slot, if any. */
+  latestSubmission: Submission | null;
+}
+
+/** Per-deliverable slot statuses for one (campaign, creator) pair —
+ *  the shared building block for stage computation. `deriveCollab`
+ *  (v2Adapters) renders its deliverable chips from these SAME statuses,
+ *  so the stored Collaboration.stage and the kanban projection cannot
+ *  drift (P67 — pre-fix the two sides grouped/coerced independently:
+ *  the adapter flipped approved→live on any payout, the stored side
+ *  only looked at the single latest submission across all slots). */
+export function computeSlotStatuses(
+  campaignId: string,
+  creatorId: string,
+  db: Database,
+): CollabSlot[] {
+  const campDeliverables = db.deliverables
+    .filter((d) => d.campaignId === campaignId)
+    .sort((a, b) => a.index - b.index);
+  if (campDeliverables.length === 0) return [];
+  const subs = db.submissions.filter(
+    (s) => s.campaignId === campaignId && s.creatorId === creatorId,
+  );
+  const subsByDel = new Map<string, Submission[]>();
+  for (const s of subs) {
+    const delId = deliverableIdForSubmission(s, db);
+    if (!delId) continue;
+    const list = subsByDel.get(delId) ?? [];
+    list.push(s);
+    subsByDel.set(delId, list);
+  }
+  return campDeliverables.map((del) => {
+    const latest = (subsByDel.get(del.id) ?? [])
+      .sort((a, b) => b.round - a.round)[0] ?? null;
+    let status: SlotStatus = 'pending';
+    if (latest) {
+      status =
+        latest.status === 'in_review' ? 'in_review' :
+        latest.status === 'revisions' ? 'revision' :
+        submissionIsLive(latest) ? 'live' : 'approved';
+    }
+    return { deliverable: del, status, latestSubmission: latest };
+  });
+}
+
+/** Single source of truth for collab stage. Consumed by both the
+ *  stored-side (`ensureCollabState`) and the UI projection
+ *  (`deriveCollab` in v2Adapters) — P67 collapsed the two parallel
+ *  derivations into this one function so they can't drift.
+ *  (`_legacyComputeCollabStage` in migrations.ts stays frozen at its
+ *  migration-time logic by design; it only runs once per legacy store.) */
 export function computeCollabStage(
   campaignId: string,
   creatorId: string,
@@ -49,7 +129,6 @@ export function computeCollabStage(
   const subs = db.submissions.filter((s) => s.campaignId === campaignId && s.creatorId === creatorId);
 
   const acceptedOffer = offers.find((o) => o.status === 'accepted');
-  const latestSub = subs.sort((a, b) => +new Date(b.submittedAt) - +new Date(a.submittedAt))[0];
   const creator = db.creators.find((c) => c.id === creatorId);
 
   const hasPayout = creator
@@ -63,32 +142,58 @@ export function computeCollabStage(
     : false;
 
   // Cancelled = the only signals are declined/withdrawn/rejected.
+  //
+  // P67 — dropped the old `subs.length === 0` requirement. A submission
+  // can only exist under an accepted offer (v2SubmitContent gates on it);
+  // if that offer has since been withdrawn (mutual cancel, end-campaign
+  // auto-cancel, refund-only dispute resolution), the deal IS cancelled
+  // regardless of the submission history. Pre-fix those flows left the
+  // pair stuck at 'pitched'/'invited' and the dead deal re-entered the
+  // kanban funnel as a ghost row.
   const allDeclined =
     apps.every((a) => a.status === 'rejected' || a.status === 'withdrawn') &&
     offers.every((o) => o.status === 'declined' || o.status === 'withdrawn');
   if ((apps.length > 0 || offers.length > 0)
-    && allDeclined && !acceptedOffer && subs.length === 0) return 'cancelled';
+    && allDeclined && !acceptedOffer) return 'cancelled';
 
   if (acceptedOffer) {
-    // BUG FIX (workflow audit): pre-fix this short-circuited to 'paid'
-    // the moment the escrow release cleared on approve — which made
-    // the kanban skip past 'approved' AND past 'live'. Correct flow:
+    // Post-acceptance flow:
     //
-    //   confirmed → submitted (in_review)
-    //             → approved (brand approved, payout cleared, but
-    //                          content is NOT yet posted on platform)
-    //             → live      (creator marked the post live with a
-    //                          permalink — submission.status='live'
-    //                          OR a 'LIVE:' feedback entry)
-    //             → paid      (terminal — only when the campaign is
-    //                          closed AND the payout has cleared)
+    //   confirmed → submitted (any slot in_review / revision)
+    //             → approved (every slot approved, payout may have
+    //                          cleared, content NOT yet on platform)
+    //             → live      (every slot live — permalink set or
+    //                          LIVE: feedback)
+    //             → paid      (terminal — campaign closed AND payout
+    //                          cleared AND at least one slot live)
     //
-    // The payout signal alone is no longer sufficient to flip past
-    // 'approved' — the post-publication signal (live + permalink)
-    // and campaign close are both required.
+    // P67 — rolls up across ALL the campaign's Deliverable slots
+    // instead of reading the single latest submission. With the old
+    // latest-sub rule a 2-deliverable collab with one slot approved
+    // and one untouched stored 'approved' while the kanban (which
+    // already rolled up per-slot) showed 'confirmed'.
+    const slots = computeSlotStatuses(campaignId, creatorId, db);
+    if (slots.length > 0) {
+      const statuses = slots.map((s) => s.status);
+      const anyInReviewOrRevision = statuses.some((s) => s === 'in_review' || s === 'revision');
+      const allApproved = statuses.every((s) => s === 'approved' || s === 'live');
+      const allLive = statuses.every((s) => s === 'live');
+      const anyLive = statuses.some((s) => s === 'live');
+      if (anyInReviewOrRevision) return 'submitted';
+      if (allApproved) {
+        const campIsClosed = db.campaigns.find((c) => c.id === campaignId)?.stage === 'closed';
+        if (anyLive && hasPayout && campIsClosed) return 'paid';
+        if (allLive) return 'live';
+        return 'approved';
+      }
+      return 'confirmed';
+    }
+    // Legacy fallback — campaigns with no structured Deliverable rows
+    // (pre-migrator-4 test fixtures, edge seeds). Latest submission
+    // drives the stage, same rules as above scoped to one slot.
+    const latestSub = subs.sort((a, b) => +new Date(b.submittedAt) - +new Date(a.submittedAt))[0];
     if (latestSub) {
-      const isLive = !!latestSub.permalink ||
-        latestSub.feedback?.some((f) => f.text.startsWith('LIVE: '));
+      const isLive = submissionIsLive(latestSub);
       const campIsClosed = db.campaigns.find((c) => c.id === campaignId)?.stage === 'closed';
       if (latestSub.status === 'approved' && isLive && hasPayout && campIsClosed) return 'paid';
       if (latestSub.status === 'approved' && isLive) return 'live';

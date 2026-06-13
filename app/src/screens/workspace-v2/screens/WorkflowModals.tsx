@@ -547,7 +547,9 @@ export function MarkLiveModal({ submissionId, campaignName, onClose, initialPerm
               onClick={() => {
                 try {
                   v2MarkContentLive(submissionId);
-                  pushToast('Marked live — payout triggers on the dispute-window close', 'good');
+                  // P67 — honest copy: the payout already released at
+                  // approve-time; confirming live just starts tracking.
+                  pushToast('Marked live — performance tracking starts now', 'good');
                   onClose();
                 } catch (err) {
                   pushToast(err instanceof Error ? err.message : 'Mark-live failed', 'bad');
@@ -800,15 +802,12 @@ interface CreatorMarkLiveProps {
   campaignName: string;
   brandName: string;
   initialPermalink?: string;
-  /** Net amount that releases when the brand confirms live. Shown so the
-   *  creator sees what's at stake before pasting. */
-  releaseAmount: number;
   onClose: () => void;
 }
 
 export function CreatorMarkLiveModal({
   submissionId, deliverableLabel, campaignName, brandName,
-  initialPermalink, releaseAmount, onClose,
+  initialPermalink, onClose,
 }: CreatorMarkLiveProps) {
   useModalEscape(onClose);
   const [url, setUrl] = useState(initialPermalink ?? '');
@@ -876,9 +875,14 @@ export function CreatorMarkLiveModal({
         </header>
 
         <div style={{ padding: '14px 20px 8px' }}>
+          {/* P67 — honest copy: escrow released in full when the brand
+              approved (it's already in the creator's wallet). Pre-fix
+              this paragraph promised a "final 50%" release on confirm —
+              a milestone schema that doesn't exist in the data layer. */}
           <p style={{ fontSize: 13.5, lineHeight: 1.55, margin: '0 0 12px', color: 'var(--v2-ink-2)' }}>
             Post your approved content on the platform first, then paste the public URL here. {brandName} will verify it's
-            live and confirm — that releases the final <strong>{fmtUSD(releaseAmount)}</strong> from escrow to your wallet.
+            live and confirm — that completes this deliverable and starts performance tracking. Your payout already
+            released to your wallet when the draft was approved.
           </p>
 
           <label className="v2-eyebrow" style={{ display: 'block', marginBottom: 6 }}>
@@ -907,7 +911,7 @@ export function CreatorMarkLiveModal({
             <div className="v2-muted" style={{
               fontSize: 12, marginTop: 6, color: 'var(--v2-gold)',
             }}>
-              Unrecognized host — paste a link to Instagram, TikTok, YouTube, X, LinkedIn, Threads, Snapchat, Facebook, or Pinterest.
+              Unrecognized host — paste a link to Instagram, TikTok, YouTube, X, LinkedIn, or Substack.
             </div>
           )}
           {url.trim() && urlCheck.recognized && (

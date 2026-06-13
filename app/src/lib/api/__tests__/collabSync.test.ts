@@ -10,7 +10,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { computeCollabStage, ensureCollabState } from '../collabSync';
-import type { Database } from '../types';
+import type { Database, Deliverable } from '../types';
 import {
   buildDb, buildCampaign, buildCreator, buildBrand,
   buildOffer, buildApplication, buildSubmission, buildTransaction,
@@ -269,6 +269,99 @@ describe('computeCollabStage — 9 stage rules', () => {
       })],
     });
     expect(computeCollabStage('cmp_1', 'cr_1', db)).toBe('confirmed');
+  });
+});
+
+// P67 — multi-deliverable stage rollup. Pre-P67 `computeCollabStage`
+// read only the single latest submission across all slots, so a 2-
+// deliverable collab with one slot approved + one untouched stored
+// 'approved' while the kanban (which rolled up per-slot) showed
+// 'confirmed'. These pin the shared rollup so both sides agree.
+describe('computeCollabStage — multi-deliverable rollup (P67)', () => {
+  function buildDel(p: Partial<Deliverable> & { id: string; index: number }): Deliverable {
+    return {
+      campaignId: 'cmp_1',
+      platform: 'instagram',
+      format: 'reel',
+      quantity: 1,
+      dueOffsetDays: null,
+      specs: null,
+      ...p,
+    };
+  }
+
+  function setup(extras: Partial<Database> = {}): Database {
+    return setupBaseDb({
+      offers: [buildOffer({ id: 'off_1', campaignId: 'cmp_1', creatorId: 'cr_1', status: 'accepted' })],
+      deliverables: [
+        buildDel({ id: 'del_a', index: 0 }),
+        buildDel({ id: 'del_b', index: 1, format: 'story' }),
+      ],
+      ...extras,
+    });
+  }
+
+  it('returns "confirmed" when only one of two slots has a submission', () => {
+    const db = setup({
+      submissions: [buildSubmission({
+        id: 'sub_1', campaignId: 'cmp_1', creatorId: 'cr_1',
+        status: 'approved', deliverableId: 'del_a',
+      })],
+    });
+    // One slot approved, one slot empty → NOT all-approved → confirmed.
+    expect(computeCollabStage('cmp_1', 'cr_1', db)).toBe('confirmed');
+  });
+
+  it('returns "submitted" when any slot is in_review even if another is approved', () => {
+    const db = setup({
+      submissions: [
+        buildSubmission({ id: 'sub_a', campaignId: 'cmp_1', creatorId: 'cr_1', status: 'approved', deliverableId: 'del_a' }),
+        buildSubmission({ id: 'sub_b', campaignId: 'cmp_1', creatorId: 'cr_1', status: 'in_review', deliverableId: 'del_b' }),
+      ],
+    });
+    expect(computeCollabStage('cmp_1', 'cr_1', db)).toBe('submitted');
+  });
+
+  it('returns "approved" only when EVERY slot is approved-or-live', () => {
+    const db = setup({
+      submissions: [
+        buildSubmission({ id: 'sub_a', campaignId: 'cmp_1', creatorId: 'cr_1', status: 'approved', deliverableId: 'del_a' }),
+        buildSubmission({ id: 'sub_b', campaignId: 'cmp_1', creatorId: 'cr_1', status: 'approved', deliverableId: 'del_b' }),
+      ],
+    });
+    expect(computeCollabStage('cmp_1', 'cr_1', db)).toBe('approved');
+  });
+
+  it('returns "live" only when EVERY slot is live', () => {
+    const db = setup({
+      submissions: [
+        buildSubmission({ id: 'sub_a', campaignId: 'cmp_1', creatorId: 'cr_1', status: 'approved', deliverableId: 'del_a', permalink: 'https://instagram.com/p/a' }),
+        buildSubmission({ id: 'sub_b', campaignId: 'cmp_1', creatorId: 'cr_1', status: 'approved', deliverableId: 'del_b', permalink: 'https://instagram.com/p/b' }),
+      ],
+    });
+    expect(computeCollabStage('cmp_1', 'cr_1', db)).toBe('live');
+  });
+
+  it('one slot live + one slot approved → stays "approved" (not all live)', () => {
+    const db = setup({
+      submissions: [
+        buildSubmission({ id: 'sub_a', campaignId: 'cmp_1', creatorId: 'cr_1', status: 'approved', deliverableId: 'del_a', permalink: 'https://instagram.com/p/a' }),
+        buildSubmission({ id: 'sub_b', campaignId: 'cmp_1', creatorId: 'cr_1', status: 'approved', deliverableId: 'del_b' }),
+      ],
+    });
+    expect(computeCollabStage('cmp_1', 'cr_1', db)).toBe('approved');
+  });
+
+  it('returns "cancelled" when the only offer was withdrawn even with a submission on file (P67 dead-deal fix)', () => {
+    // A submission can only exist under an accepted offer; if that
+    // offer is later withdrawn (mutual cancel / refund-only dispute),
+    // the deal is dead. Pre-P67 the lingering submission kept the pair
+    // at 'submitted' forever — a zombie row on both kanbans.
+    const db = setupBaseDb({
+      offers: [buildOffer({ id: 'off_1', campaignId: 'cmp_1', creatorId: 'cr_1', status: 'withdrawn' })],
+      submissions: [buildSubmission({ id: 'sub_1', campaignId: 'cmp_1', creatorId: 'cr_1', status: 'in_review' })],
+    });
+    expect(computeCollabStage('cmp_1', 'cr_1', db)).toBe('cancelled');
   });
 });
 

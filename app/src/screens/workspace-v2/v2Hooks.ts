@@ -345,7 +345,10 @@ export function v2ToggleSavedBrief(campaignId: string) {
   // StaleVersionError we silently drop the mirror (the next toggle
   // will re-fetch a fresh version). savedBriefs is a low-stakes
   // bookmark list — no toast needed for a race.
-  if (creatorId && nextSavedBriefs !== undefined) {
+  // P67 — gate on isSupabaseConfigured like every other mirror; pre-fix
+  // this one skipped the check, so unconfigured local dev logged a
+  // mirror-failure warning on every bookmark toggle.
+  if (creatorId && nextSavedBriefs !== undefined && isSupabaseConfigured()) {
     void (async () => {
       try {
         const { updateCreatorInSupabase } = await import('@/lib/data/creatorsRepo');
@@ -464,6 +467,16 @@ export function v2SendMessage(
       const prevArchived = thread.archivedFor ?? [];
       const nextArchived = prevArchived.filter((u) => u === viewerId);
       const archivedChanged = prevArchived.length !== nextArchived.length;
+      // P67 — clear the snooze for non-sender participants so an urgent
+      // reply bubbles a snoozed thread back into their inbox (the
+      // v2SnoozeThread contract always promised this; pre-fix it was
+      // never implemented and a snoozed thread sat hidden with unread
+      // messages until the timer ran out). The sender's own snooze
+      // survives, same logic as archive above.
+      const prevSnoozed = thread.snoozedFor ?? {};
+      const nextSnoozed = Object.fromEntries(
+        Object.entries(prevSnoozed).filter(([uid]) => uid === viewerId),
+      );
       threadPatch = {
         lastMessageAt: now,
         unreadFor: nextUnreadFor,
@@ -474,6 +487,7 @@ export function v2SendMessage(
         lastMessageAt: now,
         unreadFor: nextUnreadFor,
         archivedFor: nextArchived,
+        snoozedFor: nextSnoozed,
       };
     }
   });
@@ -713,8 +727,10 @@ export function v2CanWithdraw(amount: number): { ok: true } | { ok: false; reaso
   if (!creator.payout?.account || creator.payout.account.trim().length === 0) {
     return { ok: false, reason: 'no-bank-account' };
   }
+  // P67 — 'in-review' counts too: an admin picking the case up must not
+  // unlock the withdrawal that 'open' was blocking.
   const hasOpenDispute = db.disputes.some(
-    (d) => d.status === 'open' && d.collaborationId &&
+    (d) => (d.status === 'open' || d.status === 'in-review') && d.collaborationId &&
       db.collaborations.some((c) => c.id === d.collaborationId && c.creatorId === creator.id),
   );
   if (hasOpenDispute) return { ok: false, reason: 'open-dispute' };
@@ -798,8 +814,9 @@ export function v2RequestWithdrawal(amount: number): boolean {
     //      brand could still raise a dispute (submission.disputeWindowClosesAt > now).
     //      Held funds = sum of those payout amounts.
     const nowMs = Date.now();
+    // P67 — mirror v2CanWithdraw: 'in-review' blocks too.
     const hasOpenDispute = db.disputes.some(
-      (d) => d.status === 'open' && d.collaborationId &&
+      (d) => (d.status === 'open' || d.status === 'in-review') && d.collaborationId &&
         db.collaborations.some((c) => c.id === d.collaborationId && c.creatorId === creator.id),
     );
     if (hasOpenDispute) return;
