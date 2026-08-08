@@ -6,7 +6,9 @@ the pre-migration design phases 1–40). Append new sessions at the
 bottom. Designed to be read into a fresh context window to recover
 state quickly after a reset.
 
-**Last updated:** 2026-05-15
+**Last updated:** 2026-08-08 (Phases 58-67 reconstructed from git
+history — see the 2026-05-22 → 2026-06-13 session entry. Code through
+`d5201d0` / Phase 67 is the current `origin/main`.)
 
 ---
 
@@ -19,7 +21,16 @@ and end-to-end persistence for every meaningful action. Two completed
 audits have hardened the workspace UI: a 40-item functional sweep
 shipped real validation/wiring across most modal flows + home
 dashboards, and a follow-up modal sweep added input validation +
-data-loss guards across ten dialogs.
+data-loss guards across ten dialogs. Phases 54-67 then ran a long
+consistency + honesty campaign over workspace-v2: fake/literal data
+replaced with live derivations, ~35 surface mismatches fixed, **every
+`v2*` mutation converted from silent `return null` to specific thrown
+errors with toasting callers** (Phases 62-64), a shared `<Avatar>`,
+and finally a single source of truth for collab-stage computation plus
+the 10%/5% fee and escrow-copy corrections (Phase 67). Suite is at
+**444 tests**, persist schema **v15**. Still deliberately absent: real
+platform OAuth, real-money infra, realtime presence, SSR/OG tags,
+observability.
 
 ---
 
@@ -324,12 +335,15 @@ migration 029 for the policy)_
 - **Sentry / observability** — flagged in the architecture-map's
   product-readiness recap. Zero observability today; first prod bug
   is invisible. ~30-min wire-up; should ship before paying customers.
-- **Dead-code purge candidate** — 3 orphan files unused since initial
-  commit (`CampaignCalendar.tsx`, `CampaignTimeline.tsx`,
-  `ComingSoon.tsx`) + 7 dead exports across `v2CreatorActions.ts`
-  (rate-card add/update/remove, work/review reorder) and
-  `v2DisputeActions.ts`. Identified in the Phase 53 audit; left in
-  place because the user may still ship those features.
+- **Dead-code purge candidate** — _partially resolved. `ComingSoon.tsx`
+  deleted (Phase 55 C-batch); Phase 58 separately purged 24 other dead
+  files (~4,500 lines — 22 unused modals + `InboxView` +
+  `CreatorProfileDrawer` + `NotificationPrefsCard`)._ Still standing from
+  the original Phase 53 finding: `CampaignCalendar.tsx` +
+  `CampaignTimeline.tsx` (2 orphan files unused since initial commit) +
+  7 dead exports across `v2CreatorActions.ts` (rate-card
+  add/update/remove, work/review reorder) and `v2DisputeActions.ts`.
+  Left in place because the user may still ship those features.
 
 ---
 
@@ -1188,7 +1202,7 @@ need integrations that aren't in scope:
 
 | Item | Why it needs backend |
 |---|---|
-| NotificationsBell mount | User deferred pending feature consolidation decision |
+| ~~NotificationsBell mount~~ | ~~User deferred pending feature consolidation decision~~ — **RESOLVED in Phase 64** (`5eafaef`): real bell now mounted in v2 `lib.tsx`, replacing the stub that toasted "all caught up" |
 | Real platform OAuth (Instagram / TikTok / YouTube / etc.) | Each platform's OAuth + insights API; ConnectPlatformModal has the scaffolding but no real provider credentials |
 | Realtime presence (typing indicator, online status) | Supabase Realtime presence channel — adds latency + reconnect logic |
 | Realtime workflow UPDATE subscriptions | Currently INSERT-only; UPDATEs work in same-tab via store mutations, only matters cross-tab |
@@ -1206,7 +1220,9 @@ need integrations that aren't in scope:
   preserves local seed when Supabase doesn't carry the column.
 - **Schema version bump (`store.ts:82`)** is required whenever a new
   Creator/Brand/etc. seeded field is added — Zustand persist won't
-  flush stale state without it. Current: v14 (Phase 56 audience +
+  flush stale state without it. Current: **v15** (Phase 59 storefront
+  content preservation — work / rateCards / featuredReviewIds /
+  savedBriefs / pressMentions / pastClients; v14 was Phase 56 audience +
   storefront-pulse seed).
 - **`computeMatchScore` in v2Adapters** is the shared helper for any
   brief↔creator match scoring across surfaces (BriefDetail,
@@ -1220,6 +1236,193 @@ need integrations that aren't in scope:
   and `subjectKind: 'creator'`. Both directions of review fire
   `v2LeaveReview` with the right `reviewType`; surfaces consume via
   `db.reviews.filter(r => r.targetId === ...)`.
+
+---
+
+### 2026-05-22 → 2026-06-13 — Phases 58-67 — post-migration sweep + Fable-5 audit
+
+> _Reconstructed 2026-08-08 from git history (`dc6c958..d5201d0`, 14
+> commits). These sessions shipped and were pushed to `origin/main` but
+> were never written up in the log before the working laptop was lost;
+> the entries below are recovered from commit messages + diffstats, so
+> they summarise **what** landed without the usual live-verification
+> colour. Test counts are as stated in each commit (438 through P66,
+> 444 after P67)._
+
+A four-week run that executed the Phase 58 punch list, hardened every
+`v2*` mutation against silent failure, unified collab-stage computation,
+and did one aborted landing-page experiment. Net direction: no new
+backend surface (still no real OAuth / payments / realtime presence),
+but the client got materially more honest — actions now throw
+user-readable errors instead of no-oping, and money/stage math was
+reconciled to a single source of truth.
+
+#### Phase 58 — 15-item bug-fix sweep — commit `0e7b9b2`, 40 files
+
+Closed the 31-item audit list except the intentionally-deferred backend
+items (real platform OAuth, realtime presence, SSR, PDF gen, >25 MB
+uploads).
+
+- **Critical:** TopupModal submit was a no-op (button closed the modal,
+  no transaction) → wired to `api.wallet.topUp`; RouteOutlet now
+  branches on persona (a creator with a stale route could land on
+  brand chrome); mobile inbox drawer added (at <760px the conversation
+  list was `display:none`, stranding the user on one thread).
+- **High:** dead-code purge — **24 files / ~4,500 net lines removed**
+  (22 unused modals + `InboxView` + `CreatorProfileDrawer` +
+  `NotificationPrefsCard`); Storefront audience honest-copy;
+  `Brand.preferredCreatorTier` + `Brand.monthlyBudgetBand` added to
+  schema and actually persisted by the onboarding wizard (was collected
+  then dropped).
+- **Medium:** `v2ArchiveCampaign` / `v2UnarchiveCampaign` /
+  `v2DuplicateCampaign` + Settings UI; `Thread.snoozedFor` +
+  `v2SnoozeThread` (1h / until-tomorrow / unsnooze); bulk "Decline all"
+  on the Pitched column; inbox message-**body** search; shared
+  `<EmptyState>` wired into Campaigns + MyCollabs; `useModalEscape(onClose)`
+  hook applied across 10 modals; initial-boot loading skeleton.
+- **Low / mobile:** decorative Topbar `search` prop removed; MarkLive
+  URL allowlist realigned to the `Platform` union; upload-modal + wizard
+  responsive fixes. (Full single-column pipeline-kanban deferred.)
+
+#### Phase 59 — seed augmentation for demo coverage — commit `201b0b5`, 2 files (seed +192 / store +52)
+
+Closed data-shape gaps so every feature has live demo material on the
+Sarah + Hannah accounts.
+
+- Sarah: `work[6]`, `rateCards[6]`, `featuredReviewIds[3]`,
+  `savedBriefs[5]`, `pressMentions[3]`, `pastClients[6]`.
+- Aesop: `offerTemplates[3]`, `savedCreators[8]`, tier `$$$`, budget
+  band, + 3 lifecycle campaigns (draft / paused / archived) to demo the
+  wizard-publish, pause-resume, and "Archived (1)" toggle flows.
+- **Demo-flow offers (the big one):** 2 pending + 2 countered offers
+  seeded (were 0 of each) so the Accept / Counter / Decline modals, the
+  `StageActionBanner` branches, and the brand-kanban "creator countered"
+  affordance all render against live data.
+- **Critical overlay fix:** `store.ts` `overlayCreators` + own-PII
+  overlay now preserve local `work` / `pressMentions` /
+  `featuredReviewIds` / `savedBriefs` / `rateCards` / `pastClients`
+  when the Supabase row returns empty arrays (same pattern as Phase 56's
+  audience preservation — otherwise every page load wiped Sarah's
+  portfolio). **Persist bumped 14 → 15.**
+
+#### Phases 60 + 61 — landing-page hero experiment — ⟲ REVERTED
+
+Shipped then discarded within the same day:
+
+- `a7d07a9` P60 — `/landing-preview` animated-SVG hero (motion/react
+  draw-on, count-up, real cleared-payout anchor card, rotating
+  creator×brand pairs).
+- `db8890f` P61 — `/landing-preview-video` Remotion hero loop (new
+  sibling `/marketing` project, rendered webm/mp4/poster into
+  `app/public/`).
+- `4581c1b` P61.1 — imperative `.play()` autoplay fix for the video.
+- **`35ddf5e` REVERT** — per product call the new hero direction wasn't
+  a fit. Removed both preview routes, `AnimatedHeroIllustration`,
+  `CoverPreview`, the entire `/marketing` Remotion project, and the
+  committed video assets. **Production `/` (Cover.tsx) was never touched
+  across P60/P61, so the live landing is exactly as it was.** Original
+  commits remain in history if the direction is ever resurrected.
+
+#### Analytics — commit `cf7acf2`
+
+`@vercel/analytics` `<Analytics />` mounted at the App root — auto-tracks
+pageviews on deployed builds only (gated on production hostname, no-op
+in `npm run dev`).
+
+#### Phase 62 — silent-failure fixes (round 1) — commits `20bf8a5`, `21a2e66`
+
+Root anti-pattern: actions returned `Foo | null` with multiple silent
+`return null` paths, and callers fired-and-forgot with no toast — so a
+failed submit showed a **fake success screen**.
+
+- `20bf8a5` — `v2SubmitContent`: 5 silent paths → specific thrown
+  errors; return type tightened to `Submission`; ContentUploadModal no
+  longer advances to "Submitted!" on a null; success toast added.
+- `21a2e66` — same treatment for `v2AcceptOffer`, `v2DeclineOffer`,
+  `v2CounterOffer`, `v2ApproveContent` (incl. the escrow-drain
+  no-accepted-offer fallback); callers in CollabDetail / CampaignDetail
+  / WorkflowModals / ContentReviewModal wrapped with try/catch + success
+  toast; one test flipped from asserting silent no-op to asserting throw.
+
+#### Phase 63 — silent-failure sweep (round 2) — commit `80b1f42`, 10 files
+
+Systematic follow-up: **15 more `v2*` mutations** converted to throw
+specific messages, across submission/offer workflow (`v2RequestRevision`,
+`v2WithdrawApplication`, `v2WithdrawOffer`, `v2AcceptCounter`,
+`v2CounterCounter`, `v2RejectApplication`, `v2MarkContentLive`),
+campaign lifecycle (`v2EndCampaign`, `v2Pause/Resume/Archive/Unarchive/
+Duplicate/LaunchCampaign`), and collab/dispute/outreach
+(`v2RequestCollabCancel`, `v2Agree/DeclineCollabCancel`,
+`v2WithdrawDispute`, `v2AddDisputeMessage`, `v2ArchiveOutreach`). All
+callers wrapped; dispute + collab tests flipped from no-op to `.toThrow()`.
+
+#### Phase 64 — 14-item product audit — commit `5eafaef`, 7 files
+
+- **Fixed:** the v2 Topbar mounted a **stub bell** that toasted "all
+  caught up" regardless of real `db.notifications` — the actual
+  `NotificationsBell` (deep-linking + unread badge + grouped display) is
+  now wired into `lib.tsx` (closes the long-standing "NotificationsBell
+  mount" deferral). Also: `v2SendOffer` silent paths → thrown messages
+  (budget-cap error even reports remaining commit headroom); Storefront
+  identity + legacy rate-card edits now toast; InviteCreatorsModal
+  per-creator try/catch.
+- **Verified OK (no change):** capability gating on approve/revise,
+  `v2CanWithdraw` pre-checks, submission-viewer URL-scheme safety,
+  `deriveCollab` paid-vs-live guards, money math (`net = round(rate ×
+  0.85)`), archive-vs-end semantics, empty states.
+
+#### Phase 65 — shared `<Avatar>` component — commit `b027498`, 6 files
+
+Brand/creator pictures were inconsistent (real image on some surfaces,
+a bare letter or empty circle on others). New
+`app/src/components/ui/Avatar.tsx`: renders `<img>` for a real
+URL (http/https/data/blob/path), else a deterministic name-hash colored
+circle with initials; detects bare-letter `src` as no-image (legacy
+guard). Fixes the v2 Inbox `backgroundImage: url("A")` empty-circle bug
+and kills the per-render **dicebear external call** in the sidebar.
+Migrated the 5 highest-impact sites; several already-working creator
+portrait surfaces left for a follow-up.
+
+#### Phase 66 — Kanban/List segmented toggle styling — commit `001cfce`, 3 files
+
+`.v2-segmented` / `.v2-segmented-btn` were referenced across 3 surfaces
+but had **zero CSS defined** — rendering as bare browser buttons. Added
+pill-track styling (active/inactive/hover/focus-visible states, press
+scale, icon slot) to `workspace-v2-campaign-mgmt.css`; MyCollabs toggle
+gets kanban/list icons + `aria-pressed` + `role="group"`. Storefront
+status and wizard gender-skew toggles inherit the polish for free.
+
+#### Phase 67 — Fable-5 audit — commit `d5201d0`, 13 files — **444 tests**
+
+The most structural fix of the run.
+
+- **Unified stage computation (core):** two parallel derivations existed
+  — stored `Collaboration.stage` (`collabSync.computeCollabStage`) and
+  the kanban projection (`v2Adapters.deriveCollab`) — and drifted three
+  ways (approved→live coercion on any payout tx, single-latest-submission
+  rollup, dropped cleared-status gate). `collabSync` now owns the single
+  source of truth (`computeCollabStage` + `computeSlotStatuses`);
+  `deriveCollab` delegates. Verified: a {approved 2, pitched 4, cancelled
+  5} campaign renders exactly {Approved 2, Pitched 4}, column count ==
+  card count.
+- **Dead-deal cancellation:** all-declined rule no longer requires zero
+  submissions — a withdrawn offer (mutual cancel / end-campaign /
+  refund-only dispute) resolves to `cancelled` even with a submission on
+  file, killing zombie `submitted` rows on both kanbans.
+- **Money correctness:** CollabDetail payout card used 5%+5% fees; data
+  layer charges **10%+5%** — card now matches ($354 fee on $3,538, not
+  $177). Refund path reverses the creator's pending hold (full refund
+  previously left phantom pending balance forever). `in-review` disputes
+  now block withdrawal alongside `open`.
+- **Honest copy:** escrow releases **at approve**, not at mark-live —
+  StageActionBanner, CreatorMarkLiveModal, CreatorHome tile, MarkLive
+  toast and the payout-timeline all rewritten; fictional `releaseAmount`
+  prop dropped.
+- **Functional:** `v2ResumeCampaign` accepts `draft` (Publish works);
+  CampaignDetail analytics CPM `$0.0k`→`$12`, wk/wk delta computed from
+  series, audience roster-derived, Export CSV / Share report wired;
+  CancelCollabButton uses the signed-in user as actor; `v2SendMessage`
+  clears recipient snooze; live-permalink reads `submission.permalink`.
 
 ## Commit hashes for traceability
 
@@ -1288,3 +1491,17 @@ Recent commits in chronological order — all on origin/main:
 | `ee8e82f` | Phase 56 | Adapter honors paid/cancelled terminal stages |
 | `917cd55` | Phase 56 H-batch | 6 cross-surface mismatches + Supabase overlay race fix |
 | `97926be` | Phase 57 M-batch | 5 medium-severity consistency alignments |
+| `0e7b9b2` | Phase 58 | 15-item bug-fix sweep (Topup wire, mobile drawer, 24-file dead-code purge, archive/duplicate/snooze, empty states, modal ESC) |
+| `201b0b5` | Phase 59 | Seed augmentation — Sarah/Aesop demo data + pending/countered offers + overlay preservation fix (persist 14→15) |
+| `a7d07a9` | Phase 60 | ⟲ reverted — /landing-preview animated-SVG hero |
+| `db8890f` | Phase 61 | ⟲ reverted — /landing-preview-video Remotion loop |
+| `4581c1b` | Phase 61.1 | ⟲ reverted — Remotion autoplay fix |
+| `35ddf5e` | Revert | Discards P60 + P61 + P61.1 (production `/` was never touched) |
+| `cf7acf2` | Analytics | @vercel/analytics pageview tracking (production-only) |
+| `20bf8a5` | Phase 62 | Fix silent submit-content failure + success toast |
+| `21a2e66` | Phase 62 | Surface silent failures — Accept / Counter / Decline / Approve |
+| `80b1f42` | Phase 63 | Silent-failure sweep — 15 more v2 actions throw specific messages |
+| `5eafaef` | Phase 64 | 14-item product audit — NotificationsBell wired + v2SendOffer/storefront/invite toasts + 8 verifications |
+| `b027498` | Phase 65 | Shared `<Avatar>` component — logoUrl surfaces everywhere; kills dicebear external call |
+| `001cfce` | Phase 66 | Style the `.v2-segmented` Kanban/List toggle (had zero CSS) |
+| `d5201d0` | Phase 67 | Fable-5 audit — unify collab stage computation + 10%/5% fee fix + honest escrow copy (444 tests) |
