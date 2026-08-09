@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
+import { installErrorHandlers } from './lib/utils/errorReporting';
 
 import './styles/tokens.css';
 import './styles/base.css';
@@ -10,6 +11,11 @@ import './styles/landing.css';
 import './styles/screens.css';
 import './styles/responsive.css';
 import './styles/print.css';
+
+// Capture unhandled errors + promise rejections before anything else
+// runs, so a failure during boot is still recorded. See
+// lib/utils/errorReporting.ts for the two reporting seams.
+installErrorHandlers();
 
 // Stale-chunk recovery — when Vercel deploys new build hashes while a
 // user has an old tab open, code-split imports start 404ing ("Unable

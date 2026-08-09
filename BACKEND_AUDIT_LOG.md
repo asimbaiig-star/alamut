@@ -1781,6 +1781,55 @@ Verified live at 375px: **no horizontal overflow** on the storefront
 present in the loaded stylesheet. Typecheck clean, **457/457 tests**,
 production build clean.
 
+---
+
+### 2026-08-09 — Phase E (operations) + email-verification decision
+
+**Decision: ship the beta without email verification.** Confirmation is
+switched off in the Supabase dashboard, which collapses the remaining
+launch blocker to a single checkbox — with no confirmation mail sent at
+signup, the built-in 2-emails/hour cap (F39) stops mattering and custom
+SMTP is no longer needed to open signups. No code change was required:
+`signUp` already branches on whether Supabase returns a session, so
+confirmations-off takes the `signed_in` path and writes the profile
+immediately. Two copy lines that promised a confirmation step were made
+mode-agnostic so they stay true in either configuration. Accepted
+trade-off: a typo'd signup email is unrecoverable until SMTP exists, and
+password reset can't reach users at scale.
+
+- **Observability (was: zero — "first prod bug is invisible").** New
+  `lib/utils/errorReporting.ts` captures unhandled exceptions, unhandled
+  promise **rejections** (the likelier failure here — every fire-and-forget
+  mirror write is one, and they previously vanished silently), and
+  ErrorBoundary render crashes through one reporter that de-duplicates
+  repeats within 10s. **No new dependency on purpose:** installing an SDK
+  for an account that doesn't exist buys nothing, so the module does the
+  part that has to live in the app either way and exposes two seams —
+  `window.__alamutErrors` (last 25 errors with stacks, so a beta tester
+  can be asked to paste real diagnostics instead of "it didn't work") and
+  an optional `VITE_ERROR_WEBHOOK` that POSTs JSON to any collector.
+  Swapping in Sentry later touches one function.
+- **F6 · bundle split.** All 24 v2 screens were static imports in one
+  chunk, so every signin downloaded `CampaignDetail` (3,096 lines) and
+  both onboarding wizards — which run exactly once per account. Only the
+  two persona landing screens stay eager (they're the post-signin first
+  paint, so lazy-loading them would just add a fetch to the critical
+  path); the rest load on demand behind a new Suspense boundary in the
+  route outlet, with the sidebar and chrome staying mounted so a chunk
+  fetch reads as the content area filling in. **Workspace chunk
+  571 KB → 153 KB (140 KB → 40 KB gzip), a 73% cut.**
+- **F5 · README.** Rewrote it: the old one claimed "fully client-side —
+  no backend, no env vars, no API calls" and "377 tests" for an app with
+  20 Postgres tables, 29 migrations, required env vars and 457 tests. Now
+  documents the real stack, the env table, the Vercel auto-deploy, the
+  beta/simulated-payments framing, the dev-only demo buttons, and the
+  three Supabase operational gotchas (7-day pause + keep-alive, the
+  2/hour email cap, Site URL) so the next person doesn't rediscover them.
+
+Typecheck clean, **457/457 tests**, production build clean.
+
+**All 39 audit findings are now closed or explicitly deferred.**
+
 ## Commit hashes for traceability
 
 Recent commits in chronological order — all on origin/main:

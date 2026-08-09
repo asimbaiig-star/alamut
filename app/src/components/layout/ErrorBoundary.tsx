@@ -3,6 +3,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Logo } from '@/components/ui/Logo';
+import { reportError } from '@/lib/utils/errorReporting';
 
 interface Props {
   children: ReactNode;
@@ -20,8 +21,10 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
-    // Surface to console for debugging; in a real app you'd ship this to Sentry/etc.
-    console.error('[Alamut] uncaught error in render tree:', error, info);
+    // Route through the shared reporter so render crashes land in the same
+    // buffer/webhook as window errors and unhandled rejections, with the
+    // component stack attached (which the plain error doesn't carry).
+    reportError(error, { kind: 'render', componentStack: info.componentStack ?? undefined });
   }
 
   reset = () => {

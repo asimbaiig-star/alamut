@@ -160,7 +160,8 @@ export function PrivacyPage() {
       <p>
         To run the product: showing your storefront to brands, matching
         briefs to creators, delivering messages and notifications, and
-        sending account emails (confirmation, password reset). We use{' '}
+        sending account emails where applicable (for example a password
+        reset). We use{' '}
         privacy-respecting page-view analytics (Vercel Analytics) to
         understand aggregate usage — no advertising trackers, no selling or
         renting your data to anyone.

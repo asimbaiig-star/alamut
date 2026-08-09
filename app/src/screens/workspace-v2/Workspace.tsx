@@ -5,7 +5,7 @@
 // under one URL today; we can promote nested URLs later when the
 // surface is ready to be promoted out of preview.
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import '@/styles/workspace-v2.css';
 import '@/styles/workspace-v2-campaign-mgmt.css';
@@ -16,32 +16,44 @@ import { v2SweepStaleOffers } from './v2CampaignActions';
 import { useAuth } from '@/lib/auth/useAuth';
 import { api } from '@/lib/api/client';
 import { Avatar } from '@/components/ui/Avatar';
+// F6 — chunk split. All 24 screens used to be static imports, so the
+// single Workspace chunk was ~571 KB (140 KB gzip) and every signin paid
+// for CampaignDetail (3,096 lines) and both onboarding wizards even
+// though most sessions never open them.
+//
+// EAGER: the two persona landing screens — they render immediately after
+// signin, so lazy-loading them would only add a fetch to the critical
+// path. Everything else is at least one click away and loads on demand
+// behind the Suspense boundary in the outlet above.
 import { BrandHome } from './screens/BrandHome';
 import { CreatorHome } from './screens/CreatorHome';
-import { Discover } from './screens/Discover';
-import { Inbox } from './screens/Inbox';
-import { BrandWallet } from './screens/BrandWallet';
-import { BrandProfile } from './screens/BrandProfile';
-import { BrandAnalytics } from './screens/BrandAnalytics';
-import { CreatorWallet } from './screens/CreatorWallet';
-import { BrowseBriefs } from './screens/BrowseBriefs';
-import { Storefront } from './screens/Storefront';
-import { Campaigns } from './screens/Campaigns';
-import { CampaignDetail } from './screens/CampaignDetail';
-import { NewCampaignWizard } from './screens/NewCampaignWizard';
-import { MyCollabs } from './screens/MyCollabs';
-import { BriefDetail } from './screens/BriefDetail';
-import { CollabDetail } from './screens/CollabDetail';
-import { CreatorProfile } from './screens/CreatorProfile';
-import { KycTax } from './screens/KycTax';
-import { Analytics } from './screens/Analytics';
-import { PublicStorefront } from './screens/PublicStorefront';
+
+// LAZY: one-click-away or once-per-account surfaces, biggest first.
+const CampaignDetail = lazy(() => import('./screens/CampaignDetail').then((m) => ({ default: m.CampaignDetail })));
+const Storefront = lazy(() => import('./screens/Storefront').then((m) => ({ default: m.Storefront })));
+const CollabDetail = lazy(() => import('./screens/CollabDetail').then((m) => ({ default: m.CollabDetail })));
+const BrowseBriefs = lazy(() => import('./screens/BrowseBriefs').then((m) => ({ default: m.BrowseBriefs })));
+const Spark = lazy(() => import('./screens/Spark').then((m) => ({ default: m.Spark })));
+const Discover = lazy(() => import('./screens/Discover').then((m) => ({ default: m.Discover })));
+const Inbox = lazy(() => import('./screens/Inbox').then((m) => ({ default: m.Inbox })));
+const Campaigns = lazy(() => import('./screens/Campaigns').then((m) => ({ default: m.Campaigns })));
+const MyCollabs = lazy(() => import('./screens/MyCollabs').then((m) => ({ default: m.MyCollabs })));
+const BriefDetail = lazy(() => import('./screens/BriefDetail').then((m) => ({ default: m.BriefDetail })));
+const CreatorProfile = lazy(() => import('./screens/CreatorProfile').then((m) => ({ default: m.CreatorProfile })));
+const PublicStorefront = lazy(() => import('./screens/PublicStorefront').then((m) => ({ default: m.PublicStorefront })));
+const BrandWallet = lazy(() => import('./screens/BrandWallet').then((m) => ({ default: m.BrandWallet })));
+const CreatorWallet = lazy(() => import('./screens/CreatorWallet').then((m) => ({ default: m.CreatorWallet })));
+const BrandProfile = lazy(() => import('./screens/BrandProfile').then((m) => ({ default: m.BrandProfile })));
+const BrandAnalytics = lazy(() => import('./screens/BrandAnalytics').then((m) => ({ default: m.BrandAnalytics })));
+const Analytics = lazy(() => import('./screens/Analytics').then((m) => ({ default: m.Analytics })));
+const Calendar = lazy(() => import('./screens/Calendar').then((m) => ({ default: m.Calendar })));
+const KycTax = lazy(() => import('./screens/KycTax').then((m) => ({ default: m.KycTax })));
+const NewCampaignWizard = lazy(() => import('./screens/NewCampaignWizard').then((m) => ({ default: m.NewCampaignWizard })));
+// Run exactly once per account, yet shipped on every page load pre-split.
+const CreatorOnboardingV2 = lazy(() => import('./screens/CreatorOnboardingV2').then((m) => ({ default: m.CreatorOnboardingV2 })));
+const BrandOnboardingV2 = lazy(() => import('./screens/BrandOnboardingV2').then((m) => ({ default: m.BrandOnboardingV2 })));
 // `DealRoom` retired on §2.5 — `deal:<convId>` now opens Inbox with
 // the matching thread + detailed side panel via `forceThreadId`.
-import { CreatorOnboardingV2 } from './screens/CreatorOnboardingV2';
-import { BrandOnboardingV2 } from './screens/BrandOnboardingV2';
-import { Spark } from './screens/Spark';
-import { Calendar } from './screens/Calendar';
 
 type Persona = 'brand' | 'creator';
 
@@ -378,7 +390,13 @@ export function WorkspaceV2() {
 
         <Sidebar persona={persona} route={route} onRoute={go} isMobileOpen={mobileNavOpen} />
         <main className="v2-main">
-          <RouteOutlet route={route} onRoute={go} persona={persona} />
+          {/* F6 — the heavier screens below are lazy-loaded, so the outlet
+              needs a Suspense boundary. Sidebar + chrome stay mounted, so
+              a chunk fetch reads as the content area filling in rather
+              than a full-page loading state. */}
+          <Suspense fallback={<div className="v2-content" aria-busy="true" />}>
+            <RouteOutlet route={route} onRoute={go} persona={persona} />
+          </Suspense>
         </main>
       </div>
     </div>

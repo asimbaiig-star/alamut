@@ -204,7 +204,11 @@ export function SignUp() {
               </p>
               <ul className="auth-airy-bullets">
                 <li><span className="auth-airy-bullets-num">01</span><span>Free to sign up. No card required.</span></li>
-                <li><span className="auth-airy-bullets-num">02</span><span>Your account works on any device — confirm your email and sign in.</span></li>
+                {/* Mode-agnostic: the project may or may not have email
+                    confirmation switched on, and signUp branches on whether
+                    Supabase returns a session. Don't promise a confirmation
+                    step the user may never see. */}
+                <li><span className="auth-airy-bullets-num">02</span><span>Your account works on any device — sign in from anywhere.</span></li>
                 <li><span className="auth-airy-bullets-num">03</span><span>Beta: payments are simulated, so no real money moves yet.</span></li>
               </ul>
             </div>
