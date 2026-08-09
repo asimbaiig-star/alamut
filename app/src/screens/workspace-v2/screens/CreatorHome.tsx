@@ -634,6 +634,15 @@ function BriefMatches({ me, campaigns, myCollabs, onRoute }: {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="v2-row" style={{ gap: 6, alignItems: 'center' }}>
                   <span style={{ fontWeight: 600, fontSize: 13.5 }}>{campaign.brand}</span>
+                  {/* F19 — flag seeded brands here too; this tile is where
+                      most creators meet their first brief. */}
+                  {campaign.brandIsDemo && (
+                    <span
+                      className="v2-pill"
+                      style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px' }}
+                      title="Sample content — this brand is part of the Alamut demo and won't respond to applications."
+                    >Demo</span>
+                  )}
                   <span
                     className="v2-pill"
                     style={{

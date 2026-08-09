@@ -1586,6 +1586,84 @@ profile** ("Hi Beta · Karachi · @betaonecreator"). Typecheck clean,
 F22 Site URL + redirect allowlist → production domain; F39 custom SMTP
 or confirmations off; F7 Pro upgrade / keep-alive.
 
+---
+
+### 2026-08-09 — Phase B (beta-honest product)
+
+#### F30 — escrow over-release. **Severity was understated in the audit.**
+
+The audit recorded "full escrow release on partial approval". Writing a
+regression test first showed it is worse: `v2ApproveContent` released the
+whole accepted-offer rate on *every* approval, and its only idempotency
+guard was per-submission (`sub.status === 'approved'`). So an
+N-deliverable collab paid the creator **N× the agreed rate** — a 4-slot
+collab released **$6,600 against a $1,650 offer** (test asserted 1650,
+got 6600) and drove `campaign.spent` to 4× budget.
+
+Fixed with per-slot release: each approved deliverable releases
+`floor(rate / slotCount)`, with the last-indexed slot absorbing the
+remainder so the shares sum to **exactly** the agreed rate at any slot
+count. Extra guards: a slot whose earlier revision round was already
+approved releases nothing (a deliverable can collect several
+submissions); an unresolvable slot takes the base share, deliberately
+erring toward under-release since escrow left behind can be refunded
+while an over-release cannot be clawed back; campaigns with no
+structured deliverable rows keep whole-rate behaviour. Fee/WHT now
+compute on the share, not the gross.
+
+New `v2EscrowRelease.test.ts` pins the contract: partial approval
+releases only its share and leaves escrow behind for the rest; approving
+everything sums to exactly the rate; uneven splits don't drift;
+single-slot collabs unchanged; re-approval is a no-op.
+
+#### F19 — seed-world collision, resolved by labelling
+
+Real creators could apply to seeded campaigns whose brands will never
+reply. Hiding the seed would leave a ghost-town marketplace, so demo
+content is now **labelled** instead.
+
+New `lib/utils/demoData.ts` keys off the **owning user**, not the
+entity id: every real account's `User.id` comes from
+`deterministicUserId()`, which always yields the `u_x_` prefix, and no
+seeded user id uses it. Chosen over id-pattern matching (seed ids come
+in several shapes — `b_aesop`, `b_gb04`, `cmp_aesop_draft` — while real
+ids are random base36 that could resemble anything) and over a local
+`demo: true` flag (which Postgres hydration would drop, since
+`user_id` is a migrated column and works identically from either
+source). An unresolvable brand is treated as demo — over-labelling is
+the safe direction.
+
+`brandIsDemo` rides along on the `V2Campaign` projection. Surfaced as a
+**Demo** pill + honest meta line ("Sample brief · no real brand behind
+it") on the BrowseBriefs letterhead and the CreatorHome
+briefs-matching-you tile — the two places a creator meets their first
+brief. Verified live on a real account: all **152** briefs labelled.
+`demoData.test.ts` asserts the invariant against the actual seed, so a
+future seed change that breaks the prefix rule fails the build rather
+than silently disabling the badge.
+
+#### F16 / F23 — payout + wallet fiction removed
+
+Creator payout step promised real settlement ("Pakistan-domestic settles
+same day", "1% fee", "$25 wire fee", "KYC verification (CNIC + selfie)
+typically clears in under 5 minutes"); brand onboarding threatened a
+"$5K minimum wallet funding" before any creator could confirm. Both
+rewritten to state that payments are simulated, that no account numbers
+are collected during the beta, and that settlement terms land when real
+payouts do. Method choices are kept — they're a real preference worth
+capturing. Also killed "Verified · pays in 3 days" on brief cards.
+
+#### F34 (cont.) — demo credentials no longer public
+
+The one-click Creator/Brand demo sign-in is now gated behind
+`import.meta.env.DEV`. On the public deployment those buttons handed any
+visitor a seeded account holding real-looking escrow figures plus shared
+demo state they could mutate for every other visitor. Local dev keeps
+them. **Note for demos:** signing in as Sarah/Hannah on production now
+requires typing the seed credentials.
+
+Typecheck clean, **457/457 tests**, production build clean.
+
 ## Commit hashes for traceability
 
 Recent commits in chronological order — all on origin/main:

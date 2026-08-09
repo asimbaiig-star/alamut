@@ -308,12 +308,12 @@ export function CreatorOnboardingV2({ onRoute }: Props) {
             )}
 
             {step === 'payout' && (
-              <Card title="Where should we send your earnings?" sub="Pakistan-domestic settles same day. International wire takes 2–3 business days.">
+              <Card title="How would you want to get paid?" sub="Payments are simulated during the beta — this sets your preference for when real payouts launch.">
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <PayoutMethod
                     id="bank"
                     name="Pakistani bank account"
-                    detail="Domestic ACH · same day · no FX fee"
+                    detail="Domestic bank transfer"
                     icon={Icon.wallet}
                     selected={s.payoutMethod === 'bank'}
                     onSelect={() => update({ payoutMethod: 'bank' })}
@@ -321,7 +321,7 @@ export function CreatorOnboardingV2({ onRoute }: Props) {
                   <PayoutMethod
                     id="jazzcash"
                     name="JazzCash mobile wallet"
-                    detail="Instant settlement · 1% fee"
+                    detail="Mobile wallet transfer"
                     icon={Icon.send}
                     selected={s.payoutMethod === 'jazzcash'}
                     onSelect={() => update({ payoutMethod: 'jazzcash' })}
@@ -329,7 +329,7 @@ export function CreatorOnboardingV2({ onRoute }: Props) {
                   <PayoutMethod
                     id="wire"
                     name="International wire"
-                    detail="USD · 2–3 business days · $25 wire fee"
+                    detail="USD, for creators outside Pakistan"
                     icon={Icon.external}
                     selected={s.payoutMethod === 'wire'}
                     onSelect={() => update({ payoutMethod: 'wire' })}
@@ -344,7 +344,10 @@ export function CreatorOnboardingV2({ onRoute }: Props) {
                   fontSize: 12.5,
                   color: 'var(--v2-ink-2)',
                 }}>
-                  We'll collect the actual account number after publishing. KYC verification (CNIC + selfie) typically clears in under 5 minutes.
+                  We don't ask for account numbers during the beta, and no
+                  real money moves — wallet balances and escrow are simulated
+                  so you can see how the flow works. Settlement times and fees
+                  will be confirmed here when real payouts go live.
                 </div>
               </Card>
             )}

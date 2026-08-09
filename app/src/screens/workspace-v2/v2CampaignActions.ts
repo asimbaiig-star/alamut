@@ -32,7 +32,7 @@ import { getAcceptedCreators } from '@/lib/api/relations';
 // records, and appends a history entry if the stage changed. This is how we
 // keep Collaboration.stage in lockstep with the apps/offers/subs source of
 // truth without rewriting every mutation to dual-write.
-import { ensureCollabState } from '@/lib/api/collabSync';
+import { ensureCollabState, deliverableIdForSubmission } from '@/lib/api/collabSync';
 // P1d §1.5 — net-new campaigns materialize structured Deliverable rows
 // from the wizard's free-form `placement` string at create-time, so
 // submissions can attach via Submission.deliverableId without waiting
@@ -1151,7 +1151,60 @@ export function v2ApproveContent(submissionId: string): Submission {
       // would drain escrow on an arbitrary share of the campaign budget.
       throw new Error("Can't release escrow — no accepted offer found for this creator on this campaign. Check the offer status before approving.");
     }
-    const gross = acceptedOffer.rate;
+    // F30 — PER-DELIVERABLE RELEASE.
+    //
+    // The accepted offer's rate covers the WHOLE collab (e.g. "$1,650 flat
+    // for 1 IG post + 1 Reel"), but this function runs once per approved
+    // submission and used to release `acceptedOffer.rate` every time. Its
+    // only idempotency guard was per-submission, so an N-deliverable
+    // collab paid the creator N× the agreed rate and drove campaign.spent
+    // to N× budget (a 4-slot collab released $6,600 against a $1,650
+    // offer). Now each slot releases only its share.
+    //
+    // Shares are integer-split with the remainder landing on the
+    // last-indexed slot, so the shares sum to EXACTLY the agreed rate
+    // regardless of slot count — no drift, no over- or under-payment.
+    const slots = db.deliverables
+      .filter((d) => d.campaignId === sub.campaignId)
+      .sort((a, b) => a.index - b.index);
+    const slotCount = slots.length;
+
+    // Guard against a second release for the same slot: a deliverable can
+    // collect multiple submissions across revision rounds, and approving
+    // round 2 after round 1 was already approved must not pay twice.
+    const thisDelId = deliverableIdForSubmission(sub, db);
+    const slotAlreadyPaid = thisDelId
+      ? db.submissions.some(
+          (other) =>
+            other.id !== sub.id &&
+            other.status === 'approved' &&
+            other.campaignId === sub.campaignId &&
+            other.creatorId === sub.creatorId &&
+            deliverableIdForSubmission(other, db) === thisDelId,
+        )
+      : false;
+
+    let gross: number;
+    if (slotAlreadyPaid) {
+      // Slot's money already left escrow on an earlier round — approve the
+      // submission but move no funds.
+      gross = 0;
+    } else if (slotCount <= 1) {
+      // Single deliverable, or a legacy campaign with no structured
+      // deliverable rows: the whole rate belongs to this approval.
+      gross = acceptedOffer.rate;
+    } else {
+      const base = Math.floor(acceptedOffer.rate / slotCount);
+      const slotIdx = thisDelId ? slots.findIndex((d) => d.id === thisDelId) : -1;
+      gross = slotIdx === slotCount - 1
+        // Last slot absorbs the rounding remainder.
+        ? acceptedOffer.rate - base * (slotCount - 1)
+        // Unresolvable slot (-1) also takes `base` — deliberately the
+        // conservative side: under-releasing leaves money in escrow (the
+        // brand can be made whole), over-releasing cannot be undone.
+        : base;
+    }
+
     const fee = Math.round(gross * PLATFORM_FEE);
     const tax = Math.round(gross * WHT);
     const net = gross - fee - tax;

@@ -52,7 +52,7 @@ export function submissionIsLive(s: Submission): boolean {
  *  legacy `[slot:N]` notes prefix, then slot 0. Shared here so the
  *  stored-stage computation and the UI projection group submissions
  *  identically. */
-function deliverableIdForSubmission(s: Submission, db: Database): string | undefined {
+export function deliverableIdForSubmission(s: Submission, db: Database): string | undefined {
   if (s.deliverableId && db.deliverables.some((d) => d.id === s.deliverableId)) {
     return s.deliverableId;
   }

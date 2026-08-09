@@ -101,6 +101,10 @@ export interface V2Campaign {
    *  "Verified · pays in 3 days" badge on the editorial CampaignTile
    *  so it's data-driven instead of a hardcoded string. */
   brandVerified: boolean;
+  /** F19 — true when the posting brand is seeded demo data (nobody real
+   *  owns it), so surfaces can label the brief instead of letting a real
+   *  creator apply to a brand that will never reply. */
+  brandIsDemo?: boolean;
   /** Mirrors `Brand.logoUrl`. When set, the CampaignTile letterhead
    *  band renders the uploaded image instead of the brand-initial
    *  glyph so brand uploads propagate to every creator surface. */

@@ -123,18 +123,24 @@ export function SignIn() {
                 Pick up wherever you left off.
               </p>
 
-              <div className="airy-card auth-airy-demo-card">
-                <div className="airy-eyebrow" style={{ marginBottom: 'var(--space-sm)' }}>
-                  Demo accounts · one click
+              {/* Local dev only. On the public deployment these buttons
+                  would hand any visitor the seeded demo accounts — which
+                  hold real-looking escrow figures and shared demo state
+                  that a stranger could mutate for everyone. */}
+              {import.meta.env.DEV && (
+                <div className="airy-card auth-airy-demo-card">
+                  <div className="airy-eyebrow" style={{ marginBottom: 'var(--space-sm)' }}>
+                    Demo accounts · one click · dev only
+                  </div>
+                  <div className="auth-airy-demo-grid">
+                    <button className="btn btn-sm btn-ghost" type="button" onClick={() => fillDemo('creator')}>Creator</button>
+                    <button className="btn btn-sm btn-ghost" type="button" onClick={() => fillDemo('brand')}>Brand</button>
+                  </div>
+                  <p className="airy-meta auth-airy-demo-help">
+                    Pre-filled with seed credentials. Click <strong>Sign in</strong> after.
+                  </p>
                 </div>
-                <div className="auth-airy-demo-grid">
-                  <button className="btn btn-sm btn-ghost" type="button" onClick={() => fillDemo('creator')}>Creator</button>
-                  <button className="btn btn-sm btn-ghost" type="button" onClick={() => fillDemo('brand')}>Brand</button>
-                </div>
-                <p className="airy-meta auth-airy-demo-help">
-                  Pre-filled with seed credentials. Click <strong>Sign in</strong> after.
-                </p>
-              </div>
+              )}
             </div>
           </aside>
 

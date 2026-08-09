@@ -26,6 +26,7 @@ import { getAcceptedCreators, isCreatorAccepted, isCreatorShortlisted } from '@/
 // stored stage in three documented ways (payout-coerced live, latest-
 // sub-only rollup, missing cleared-status check on payouts).
 import { computeCollabStage, computeSlotStatuses } from '@/lib/api/collabSync';
+import { isDemoBrand } from '@/lib/utils/demoData';
 import type {
   V2Creator, V2Campaign, V2Conversation, V2Channel, V2Audience,
   V2WalletLedgerEntry, V2Collab, V2CollabStage, V2Deliverable, V2PipelineStage,
@@ -225,6 +226,10 @@ export function campaignToV2(c: Campaign, db: Database): V2Campaign {
     category: c.category,
     createdAt: c.createdAt,
     brandVerified: brand?.verified ?? false,
+    // F19 — is this a seeded demo brand nobody real owns? Surfaces let
+    // creators know a brief won't get a reply before they spend effort
+    // applying to it.
+    brandIsDemo: isDemoBrand(brand),
     brandLogoUrl: brand?.logoUrl,
     escrowHeld: c.escrowHeld,
     assets: c.assets,

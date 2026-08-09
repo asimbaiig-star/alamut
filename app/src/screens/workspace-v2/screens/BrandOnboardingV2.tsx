@@ -11,7 +11,7 @@
 // brand-specific.
 
 import { useState } from 'react';
-import { Icon, fmtUSD } from '../lib';
+import { Icon } from '../lib';
 import { useV2CurrentBrand } from '../v2Hooks';
 import { v2UpdateBrand } from '../v2CampaignActions';
 import { pushToast } from '@/lib/utils/toast';
@@ -373,7 +373,10 @@ export function BrandOnboardingV2({ onRoute }: Props) {
                   fontSize: 12.5,
                   color: 'var(--v2-ink-2)',
                 }}>
-                  <strong>Heads up:</strong> No card on file yet. We'll ask you to fund your wallet (minimum {fmtUSD(parseInt(s.monthlyBudget, 10) || 5000)}) before any creator can confirm a campaign.
+                  <strong>Heads up:</strong> Payments are simulated during the
+                  beta — no card, no real funding required. Your wallet and
+                  escrow balances are play money so you can run a campaign
+                  end to end and see exactly how the money would move.
                 </div>
               </section>
             )}

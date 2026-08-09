@@ -1079,11 +1079,22 @@ function CampaignTile({ campaign, onOpen }: {
             </div>
           )}
           <div style={{ minWidth: 0 }}>
-            <div className="v2-ct-brand">{campaign.brand}</div>
+            <div className="v2-row" style={{ gap: 6, alignItems: 'center', minWidth: 0 }}>
+              <div className="v2-ct-brand">{campaign.brand}</div>
+              {/* F19 — a seeded brand won't answer. Say so up front rather
+                  than letting the creator write a pitch for nobody. */}
+              {campaign.brandIsDemo && (
+                <span className="v2-pill v2-pill-draft" title="Sample content — this brand is part of the Alamut demo and won't respond to applications.">
+                  Demo
+                </span>
+              )}
+            </div>
             <div className="v2-ct-brand-meta">
-              {campaign.brandVerified
-                ? 'Verified · pays in 3 days'
-                : 'Unverified brand · use caution'}
+              {campaign.brandIsDemo
+                ? 'Sample brief · no real brand behind it'
+                : campaign.brandVerified
+                  ? 'Verified brand'
+                  : 'Unverified brand · use caution'}
             </div>
           </div>
         </div>
