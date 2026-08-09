@@ -40,6 +40,50 @@ const chance = (p: number) => rng() < p;
 const NOW = new Date();
 const dayAgo = (d: number) => new Date(NOW.getTime() - d * 86_400_000).toISOString();
 const dayAhead = (d: number) => new Date(NOW.getTime() + d * 86_400_000).toISOString();
+
+/** F28 — keep generated campaign titles distinct within a single brand.
+ *  Keyed `brandId::title`; on a collision we append an edition qualifier
+ *  (and fall back to a numeric suffix if those run out) so a brand's own
+ *  campaign list is never ambiguous. */
+const usedCampaignTitles = new Set<string>(
+  // Pre-register the hand-written campaigns (cmp_1..4 + the three
+  // cmp_aesop_* lifecycle demos) so the generator can't reuse one of
+  // their titles for the same brand. Without this, generated `cmp_g0`
+  // took "Studio Notes" on b_aesop — the exact collision with cmp_3 that
+  // made Aesop's own campaign list ambiguous.
+  [
+    'b_aesop::Spring Renewal',
+    'b_lecreuset::Slow Sundays',
+    'b_aesop::Studio Notes',
+    'b_lecreuset::Holiday Tables',
+    'b_aesop::Quiet Objects 2026 — Q3 (draft)',
+    'b_aesop::Reset Skincare — Spring',
+    'b_aesop::Hand-care kit · launch teaser',
+  ],
+);
+const TITLE_QUALIFIERS = [
+  'Spring', 'Summer', 'Autumn', 'Winter', 'Vol. II', 'Vol. III',
+  'Encore', 'Reprise', 'Late Edition',
+];
+function uniqueCampaignTitle(brandId: string, base: string): string {
+  const key = (t: string) => `${brandId}::${t}`;
+  if (!usedCampaignTitles.has(key(base))) {
+    usedCampaignTitles.add(key(base));
+    return base;
+  }
+  for (const q of TITLE_QUALIFIERS) {
+    const candidate = `${base} · ${q}`;
+    if (!usedCampaignTitles.has(key(candidate))) {
+      usedCampaignTitles.add(key(candidate));
+      return candidate;
+    }
+  }
+  let n = 2;
+  while (usedCampaignTitles.has(key(`${base} (${n})`))) n++;
+  const fallback = `${base} (${n})`;
+  usedCampaignTitles.add(key(fallback));
+  return fallback;
+}
 // Deadlines are stored as ISO date strings (YYYY-MM-DD) so consumers can
 // `new Date(d)` for math + formatting. Display sites format with locale.
 const friendlyDeadline = (offsetDays: number) => {
@@ -963,7 +1007,21 @@ function genCampaign(
   const brand = forcedBrand || pick(allBrands);
   const cat = pick(brand.preferredCategories.length ? brand.preferredCategories : CATEGORIES_POOL);
   const titles = CAMPAIGN_TEMPLATES[cat] || CAMPAIGN_TEMPLATES.Lifestyle;
-  const title = `${pick(titles)}${chance(0.3) ? ' ' + (2025 + range(0, 2)) : ''}`;
+  // F28 — de-duplicate per brand, and never date a campaign in the past.
+  //
+  // Pre-fix the title was `pick(titles)` plus an optional year from
+  // `2025 + range(0, 2)`, which produced two problems: the small template
+  // pool collided constantly (nine "Studio Notes"-family campaigns
+  // existed, including two LIVE ones under the same brand — the brand's
+  // own campaign list couldn't be told apart), and the year could land on
+  // 2025, so briefs read "Spring Capsule 2025" in 2026.
+  //
+  // Dedup is per brand on purpose: two different brands both running a
+  // "Studio Notes" campaign is realistic, one brand running two is not.
+  const title = uniqueCampaignTitle(
+    brand.id,
+    `${pick(titles)}${chance(0.3) ? ' ' + (NOW.getFullYear() + range(0, 1)) : ''}`,
+  );
   const numTargetCreators = range(1, 4);
   const deliv = pick([
     '1 Reel + 2 stories',
@@ -1309,7 +1367,16 @@ function genCampaign(
     // from `deliverablesText` and write the FK list back).
     deliverablesText: deliv,
     deliverableIds: [],
-    deadline: friendlyDeadline(stageIdx <= 2 ? range(3, 30) : -range(1, 30)),
+    // F21 — key the deadline off the campaign's real 4-value `stage`, not
+    // the internal pipeline depth. `stageIdx` counts production progress
+    // (draft→live→shortlist→offer→production→posted→reporting→closed), and
+    // everything from 'shortlist' onward collapses to stage='live' — so any
+    // campaign past the offer step got a deadline in the PAST while still
+    // advertising itself as Live and accepting applications. 75 of 138 live
+    // campaigns read "Deadline passed", which made the whole marketplace
+    // look abandoned to a browsing creator. Only closed campaigns should
+    // sit in the past.
+    deadline: friendlyDeadline(stage === 'closed' ? -range(1, 30) : range(3, 30)),
     postedAt, reach, engagement,
     createdAt,
     history: hist,

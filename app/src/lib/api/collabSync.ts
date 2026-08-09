@@ -318,6 +318,28 @@ export function ensureCollabState(
       try {
         const { isSupabaseConfigured } = await import('@/lib/supabase');
         if (!isSupabaseConfigured()) return;
+
+        // F1 — only mirror rows the signed-in user actually owns.
+        //
+        // RLS lets a user write a collaboration only when they're the
+        // brand side or the creator side of it. Every other row is
+        // guaranteed to come back 403, so attempting them was pure noise:
+        // a single sign-in fired ~32 doomed writes (30×403 + 2×409) that
+        // filled the console with red and made real failures impossible
+        // to spot. Deciding ownership here — rather than at each of the
+        // ~15 call sites — keeps the guarantee in one place.
+        //
+        // `store` is imported dynamically (like the version write-back
+        // below) because store.ts pulls in this module.
+        const { useStore: store } = await import('@/lib/api/store');
+        const { db: liveDb, session } = store.getState();
+        const me = session ? liveDb.users.find((u) => u.id === session.userId) : undefined;
+        const owns = !!me && (
+          (!!me.creatorId && me.creatorId === collabSnapshot.creatorId) ||
+          (!!me.brandId && me.brandId === collabSnapshot.brandId)
+        );
+        if (!owns) return;
+
         const { writeCollabInSupabase } = await import('@/lib/data/collaborationsRepo');
         const updated = await writeCollabInSupabase(collabSnapshot, expectedVersion);
         // Write the bumped version back to local state so the next

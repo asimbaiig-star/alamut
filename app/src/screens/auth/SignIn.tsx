@@ -20,6 +20,7 @@ export function SignIn() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [emailErr, setEmailErr] = useState<string | null>(null);
+  const [passwordErr, setPasswordErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [magicToken, setMagicToken] = useState<string | null>(null);
@@ -32,6 +33,16 @@ export function SignIn() {
   };
 
   const goAfterAuth = (role: string) => {
+    // F27 — drop the previous session's stored workspace route.
+    //
+    // `alamut.v2.route` persists the last screen so a reload resumes where
+    // you were, but it isn't scoped to a user. Signing in as a brand on a
+    // browser that last held a creator's `collab:<id>` route restored that
+    // deep link — and `routeFitsPersona` waves drilldown prefixes through
+    // for both personas — landing the brand on a full-page "You don't have
+    // access to this collaboration" with no way out. A fresh sign-in should
+    // start at the persona's home anyway.
+    try { localStorage.removeItem('alamut.v2.route'); } catch { /* private mode */ }
     // Phase F cutover · brand and creator land on the v2 workspace.
     // Admin still goes to the legacy admin portal (Phase H pending).
     if (role === 'admin') navigate('/admin/home');
@@ -40,6 +51,18 @@ export function SignIn() {
 
   const submitPassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    // F2 — validate before calling the API. Submitting an empty form used
+    // to reach Supabase and surface its raw copy ("missing email or
+    // phone"), which reads like an internal error to a user who simply
+    // hasn't typed anything yet.
+    const eErr = validateEmail(email);
+    const pErr = password ? null : 'Password is required.';
+    setEmailErr(eErr);
+    setPasswordErr(pErr);
+    if (eErr || pErr) {
+      setErr(null);
+      return;
+    }
     setBusy(true); setErr(null);
     try {
       const u = await api.auth.signIn(email, password);
@@ -92,6 +115,12 @@ export function SignIn() {
     setEmail(which === 'creator' ? 'sarah@alamut.test' : which === 'brand' ? 'hannah@aesop.test' : 'admin@alamut.test');
     setPassword('demo1234');
     setMode('password');
+    // F3 — clear any stale failure. Pre-fix, a previous "Wrong email or
+    // password" stayed on screen after the fields were replaced with
+    // known-good credentials, so the form looked broken before submit.
+    setErr(null);
+    setEmailErr(null);
+    setPasswordErr(null);
   };
 
   return (
@@ -187,7 +216,7 @@ export function SignIn() {
                         autoCorrect="off"
                         spellCheck={false}
                         value={email}
-                        onChange={(e) => { setEmail(e.target.value); if (emailErr) setEmailErr(null); }}
+                        onChange={(e) => { setEmail(e.target.value); if (emailErr) setEmailErr(null); if (err) setErr(null); }}
                         onBlur={(e) => setEmailErr(validateEmail(e.target.value))}
                         placeholder="you@example.com"
                         required
@@ -203,10 +232,12 @@ export function SignIn() {
                         type="password"
                         autoComplete="current-password"
                         value={password}
-                        onChange={(e) => setPassword(e.target.value)}
+                        onChange={(e) => { setPassword(e.target.value); if (passwordErr) setPasswordErr(null); if (err) setErr(null); }}
                         required
-                        aria-invalid={!!err || undefined}
+                        aria-invalid={!!passwordErr || !!err || undefined}
+                        aria-describedby={passwordErr ? 'signin-password-error' : undefined}
                       />
+                      {passwordErr && <span id="signin-password-error" className="field-error" role="alert">{passwordErr}</span>}
                     </div>
                     {err && <div id="signin-error" className="field-error" role="alert">{err}</div>}
                     <Button type="submit" loading={busy} iconRight={<Icon.arrow s={14} />}>Sign in</Button>
@@ -224,7 +255,7 @@ export function SignIn() {
                         autoCorrect="off"
                         spellCheck={false}
                         value={email}
-                        onChange={(e) => { setEmail(e.target.value); if (emailErr) setEmailErr(null); }}
+                        onChange={(e) => { setEmail(e.target.value); if (emailErr) setEmailErr(null); if (err) setErr(null); }}
                         onBlur={(e) => setEmailErr(validateEmail(e.target.value))}
                         placeholder="you@example.com"
                         required

@@ -12,6 +12,7 @@
 
 import { useState } from 'react';
 import { Icon } from '../lib';
+import { listAnd } from '@/lib/utils/format';
 import { useV2CurrentBrand } from '../v2Hooks';
 import { v2UpdateBrand } from '../v2CampaignActions';
 import { pushToast } from '@/lib/utils/toast';
@@ -136,6 +137,29 @@ export function BrandOnboardingV2({ onRoute }: Props) {
 
   const toggleArr = <T extends string>(arr: T[], v: T): T[] =>
     arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v];
+
+  // F13 — see CreatorOnboardingV2: report what's missing rather than just
+  // disabling Continue. The brand "About" field is the usual casualty.
+  const blockedReason: string | null = (() => {
+    if (step === 'company') {
+      const missing: string[] = [];
+      if (!s.companyName.trim()) missing.push('your company name');
+      if (!s.industry)           missing.push('an industry');
+      if (!s.about.trim())       missing.push('a short description');
+      return missing.length ? `Add ${listAnd(missing)} to continue.` : null;
+    }
+    if (step === 'preferences') {
+      const missing: string[] = [];
+      if (s.categories.length === 0) missing.push('at least one category');
+      if (s.regions.length === 0)    missing.push('a region');
+      if (!s.creatorTier)            missing.push('a creator tier');
+      return missing.length ? `Pick ${listAnd(missing)} to continue.` : null;
+    }
+    if (step === 'launch') {
+      return s.firstBriefMode ? null : 'Choose how you want to start.';
+    }
+    return 'Finish this step to continue.';
+  })();
 
   const canProceed = (() => {
     if (step === 'company')     return s.companyName.trim() && s.industry && s.about.trim();
@@ -439,8 +463,12 @@ export function BrandOnboardingV2({ onRoute }: Props) {
           <button className="v2-btn v2-btn-ghost" type="button" onClick={back} disabled={idx === 0}>
             {Icon.arrow}<span style={{ marginLeft: 6 }}>Back</span>
           </button>
-          <span className="v2-muted" style={{ fontSize: 12 }}>
-            Step {idx + 1} of {STEPS.length} · {STEPS[idx].label}
+          <span className="v2-muted" style={{ fontSize: 12, textAlign: 'center' }}>
+            {blockedReason ? (
+              <span style={{ color: 'var(--v2-accent)' }} role="status">{blockedReason}</span>
+            ) : (
+              <>Step {idx + 1} of {STEPS.length} · {STEPS[idx].label}</>
+            )}
           </span>
           {step === 'launch' ? (
             <button

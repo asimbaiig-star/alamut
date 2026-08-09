@@ -1664,6 +1664,77 @@ requires typing the seed credentials.
 
 Typecheck clean, **457/457 tests**, production build clean.
 
+---
+
+### 2026-08-09 — Phase C (flow correctness)
+
+- **F13 · wizards told the user nothing.** Continue was `disabled` with no
+  explanation, so a creator who missed the bio field (it sits below the
+  fold on the channel step) saw a dead button and no reason why. Both
+  wizards now compute a `blockedReason` instead of a boolean and name the
+  missing fields in the footer ("Add your handle and a short bio to
+  continue"). New `listAnd()` formats the field list.
+- **F1 · 403 spam gated at the source.** A sign-in fired ~32 doomed
+  collaboration mirror writes (30×403 + 2×409) because the mirror ran for
+  every recomputed collab regardless of ownership. Rather than chase the
+  ~15 call sites, the guard now sits inside the mirror itself: it resolves
+  the signed-in user and skips any row where they're neither the brand nor
+  the creator side — exactly what RLS would reject. Store is imported
+  dynamically, matching the existing version write-back, since store.ts
+  pulls in collabSync.
+- **F27 · persona route dead-end.** `alamut.v2.route` persists the last
+  screen but isn't scoped to a user, and `routeFitsPersona` waves
+  `collab:`/`campaign:` drilldowns through for both personas — so a brand
+  signing in on a browser that last held a creator's `collab:<id>` landed
+  on a full-page "You don't have access" with no navigation. Sign-in now
+  clears the stored route, and that denial state got a persona-aware
+  "Go to my workspace" CTA.
+- **F2/F3 · sign-in errors.** Empty submit reached Supabase and surfaced
+  its raw "missing email or phone"; now validated client-side with a
+  proper per-field message (`passwordErr` state added — only `emailErr`
+  existed). Stale failures clear on input change and when the demo
+  buttons refill the form.
+- **F21/F28 · seed freshness.** Two separate causes, both found by
+  measuring rather than reading: (1) the deadline used `stageIdx`, the
+  *internal pipeline depth* (draft→…→closed), but everything from
+  'shortlist' onward collapses to `stage='live'`, so any campaign past the
+  offer step got a **past** deadline while still advertising as Live —
+  **75 of 138 live campaigns read "Deadline passed"**, making the
+  marketplace look abandoned. Now keyed off the real 4-value stage, so
+  only closed campaigns sit in the past (75 → 3). (2) Titles were
+  `pick(titles)` plus a year from `2025 + range(0,2)`, giving both
+  collisions (nine "Studio Notes", two of them live under the same brand)
+  and past-dated names ("Spring Capsule 2025"). Now per-brand unique with
+  the hand-written cmp_1..4 / cmp_aesop_* titles pre-registered so the
+  generator can't reuse them, and the year is derived from `NOW`. Verified
+  after reseed: **zero** same-brand duplicates, zero past-year titles.
+  Persist bumped **15 → 16** to flush stale cached dates — safe now in a
+  way it wasn't pre-Phase A, since real profiles live in Postgres and
+  re-hydrate on sign-in.
+- **F18/F20/F25/F29 · polish.** Publish step interpolates the real handle
+  (was the literal string `alamut.co/@{handle}`). The 6-month earnings
+  chart shows an honest empty state instead of six 2px stub bars on a $0
+  account (the `Math.max(barH - 5, 2)` floor drew history that didn't
+  exist). BrandHome says "Welcome" rather than "Welcome back" until the
+  brand has a campaign. Campaign Budget·Spend now surfaces escrow-committed
+  funds, which are deducted at confirm time but only counted as `spent` at
+  approve time — a campaign with a confirmed creator read "0% spent" with
+  real money locked against it.
+
+Typecheck clean, **457/457 tests**, production build clean.
+
+#### Outstanding — needs a Postgres write (owner only)
+
+`cmp_1` / `cmp_2` / `cmp_3` still show May 2026 deadlines. Those rows are
+**hydrated from Postgres**, so the seed fix can't reach them and the anon
+key is correctly refused by RLS. One statement in the Supabase SQL editor
+fixes it:
+
+```sql
+update campaigns set deadline = (current_date + interval '21 days')::date
+where id in ('cmp_1','cmp_2','cmp_3');
+```
+
 ## Commit hashes for traceability
 
 Recent commits in chronological order — all on origin/main:

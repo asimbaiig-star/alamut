@@ -39,6 +39,15 @@ export function fmtDateShort(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+/** Join a list into readable prose: ["a"] → "a", ["a","b"] → "a and b",
+ *  ["a","b","c"] → "a, b and c". Used by form validation copy that names
+ *  the fields still missing. */
+export function listAnd(items: string[]): string {
+  if (items.length === 0) return '';
+  if (items.length === 1) return items[0];
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+}
+
 export function cn(...classes: (string | false | null | undefined)[]): string {
   return classes.filter(Boolean).join(' ');
 }

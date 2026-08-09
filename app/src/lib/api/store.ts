@@ -88,7 +88,20 @@ export const useStore = create<StoreState>()(
       //     Supabase returns empty arrays for them
       // Existing v14 state doesn't have any of these; bumping flushes.
       // (14 was Phase 56 audience + storefront-pulse seed.)
-      version: 15,
+      //
+      // v16 (F21/F28) — flush stale seed dates. The seed computes every
+      // date relative to `NOW` at module-load, but a persisted store
+      // freezes whatever was computed the day it was first written. A
+      // store seeded in May 2026 still served May deadlines in August:
+      // 75 of 138 "live" campaigns showed a deadline already in the past,
+      // and briefs read "Due May 20" months later. Bumping regenerates
+      // the seed against today, and picks up the per-brand unique titles
+      // from the same finding.
+      //
+      // Safe to flush now in a way it wasn't before Phase A: real
+      // accounts' profiles live in Postgres, so a wipe re-hydrates them
+      // on next sign-in instead of destroying them.
+      version: 16,
       // Forward-only data migrations layered on top of Zustand's persist
       // versioning. After rehydration, walk `db.migrationVersion + 1` to
       // CURRENT_MIGRATION_VERSION and run each migrator. Idempotent;

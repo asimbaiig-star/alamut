@@ -175,7 +175,23 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
       <>
         <Topbar title="Collaboration" crumb="Access" />
         <div className="v2-content">
-          <p className="v2-muted">You don't have access to this collaboration.</p>
+          {/* F27 — this used to be a terminal dead-end: no nav, no CTA. A
+              brand landing here from a stale creator route had to edit the
+              URL or clear storage to escape. */}
+          <p className="v2-muted">
+            You don't have access to this collaboration — it belongs to a
+            different account.
+          </p>
+          <button
+            className="v2-btn v2-btn-primary"
+            type="button"
+            style={{ marginTop: 12 }}
+            // Persona-aware: 'home' is the brand dashboard, so a creator
+            // viewing someone else's collab needs 'creator-home' instead.
+            onClick={() => onRoute(currentCreator ? 'creator-home' : 'home')}
+          >
+            Go to my workspace
+          </button>
         </div>
       </>
     );

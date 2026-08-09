@@ -17,7 +17,7 @@ import { Icon, fmtUSD, fmtFollowers, PLATFORM_META } from '../lib';
 import { useV2CurrentCreator } from '../v2Hooks';
 import { v2UpdateCreatorIdentity, v2AddCreatorChannel } from '../v2CreatorActions';
 import { pushToast } from '@/lib/utils/toast';
-import { parseNumberInput } from '@/lib/utils/format';
+import { parseNumberInput, listAnd } from '@/lib/utils/format';
 
 interface Props {
   onRoute: (r: string) => void;
@@ -140,15 +140,42 @@ export function CreatorOnboardingV2({ onRoute }: Props) {
   const back = () => idx > 0 && setStep(STEPS[idx - 1].id);
   const update = (patch: Partial<State>) => setS((prev) => ({ ...prev, ...patch }));
 
-  // Step-specific validation
-  const canProceed = (() => {
-    if (step === 'platform') return !!s.platform;
-    if (step === 'channel')  return s.handle.trim() && s.followers.trim() && s.bio.trim() && s.category;
-    if (step === 'rates')    return s.reelRate && s.storyRate && s.comboRate;
-    if (step === 'payout')   return !!s.payoutMethod;
-    if (step === 'publish')  return s.agreedTerms;
-    return false;
+  // Step-specific validation.
+  //
+  // F13 — returns WHAT'S MISSING, not just a boolean. The Continue button
+  // was disabled with no explanation, so a creator who skipped the bio
+  // field (easy: it sits below the fold on the channel step) saw a dead
+  // button and no reason why, and had no way to work out what to fix.
+  const blockedReason: string | null = (() => {
+    if (step === 'platform') {
+      return s.platform ? null : 'Pick where you create to continue.';
+    }
+    if (step === 'channel') {
+      const missing: string[] = [];
+      if (!s.handle.trim())    missing.push('your handle');
+      if (!s.followers.trim()) missing.push('follower count');
+      if (!s.category)         missing.push('a category');
+      if (!s.bio.trim())       missing.push('a short bio');
+      return missing.length ? `Add ${listAnd(missing)} to continue.` : null;
+    }
+    if (step === 'rates') {
+      const missing: string[] = [];
+      if (!s.reelRate)  missing.push('Reel');
+      if (!s.storyRate) missing.push('Stories');
+      if (!s.comboRate) missing.push('the combo');
+      return missing.length
+        ? `Set a rate for ${listAnd(missing)} — brands use these to send offers.`
+        : null;
+    }
+    if (step === 'payout') {
+      return s.payoutMethod ? null : 'Choose how you\'d want to get paid.';
+    }
+    if (step === 'publish') {
+      return s.agreedTerms ? null : 'Agree to the terms to publish your storefront.';
+    }
+    return 'Finish this step to continue.';
   })();
+  const canProceed = blockedReason === null;
 
   return (
     <div data-surface="v2" className="v2-onboarding">
@@ -355,7 +382,10 @@ export function CreatorOnboardingV2({ onRoute }: Props) {
             {step === 'publish' && (
               <Card
                 title="You're ready to go live"
-                sub="Your storefront will be visible at alamut.co/@{handle} once you publish. Brand teams can find and book you immediately."
+                // F18 — this rendered the literal template text
+                // "alamut.co/@{handle}" because the string was never
+                // interpolated. Show the creator's real handle.
+                sub={`Your storefront will be visible at alamut.co/@${s.handle.trim() || 'yourhandle'} once you publish. Brand teams can find and book you immediately.`}
               >
                 <div style={{
                   background: 'linear-gradient(135deg, var(--v2-accent-soft), var(--v2-paper))',
@@ -433,8 +463,12 @@ export function CreatorOnboardingV2({ onRoute }: Props) {
           >
             {Icon.arrow} <span style={{ marginLeft: 6 }}>Back</span>
           </button>
-          <span className="v2-muted" style={{ fontSize: 12 }}>
-            Step {idx + 1} of {STEPS.length} · {STEPS[idx].label}
+          <span className="v2-muted" style={{ fontSize: 12, textAlign: 'center' }}>
+            {blockedReason ? (
+              <span style={{ color: 'var(--v2-accent)' }} role="status">{blockedReason}</span>
+            ) : (
+              <>Step {idx + 1} of {STEPS.length} · {STEPS[idx].label}</>
+            )}
           </span>
           {step === 'publish' ? (
             <button

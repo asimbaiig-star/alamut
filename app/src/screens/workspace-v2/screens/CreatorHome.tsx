@@ -442,6 +442,23 @@ function EarningsSparkline({ data, monthLabels }: { data: number[]; monthLabels:
   const max = Math.max(...data, 1);
   const w = 240;
   const h = 80;
+  // F20 — a brand-new creator has six $0 months, but the bar height floor
+  // (`Math.max(barH - 5, 2)`) still drew a visible stub for each one, so
+  // the chart implied six months of earnings history on a $0 account. Say
+  // there's nothing yet instead of drawing a lie.
+  if (!data.some((v) => v > 0)) {
+    return (
+      <div
+        style={{
+          height: 100, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          textAlign: 'center', fontSize: 12.5, color: 'rgba(251,247,238,0.55)',
+          border: '1px dashed rgba(251,247,238,0.18)', borderRadius: 10, padding: '0 16px',
+        }}
+      >
+        No earnings yet — your first payout will show up here.
+      </div>
+    );
+  }
   return (
     <svg viewBox={`0 0 ${w} ${h + 30}`} style={{ width: '100%', height: 100 }}>
       {data.map((v, i) => {

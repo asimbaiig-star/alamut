@@ -258,7 +258,10 @@ export function BrandHome({ onRoute }: Props) {
   return (
     <>
       <Topbar
-        title={`Welcome back${brand ? `, ${brand.name.split(/\s+/)[0]}` : ''}`}
+        // F25 — "Welcome back" greeted first-time brands who had never
+        // been here before. Only claim a return visit once they've
+        // actually got a campaign on the board.
+        title={`${campaigns.length > 0 ? 'Welcome back' : 'Welcome'}${brand ? `, ${brand.name.split(/\s+/)[0]}` : ''}`}
         crumb={
           <span>
             {getGreeting()}

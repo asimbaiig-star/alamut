@@ -505,7 +505,16 @@ function CockpitHero({
             }}
           >
             <span className="v2-muted" style={{ whiteSpace: 'nowrap' }}>
-              {Math.round(spendPct * 100)}% spent · {Math.round(timePct * 100)}% time elapsed
+              {Math.round(spendPct * 100)}% spent
+              {/* F29 — surface money already committed to escrow. Escrow is
+                  deducted from the wallet at confirm time but only counts as
+                  `spent` at approve time, so a campaign with a confirmed
+                  creator read "0% spent" while real funds were locked
+                  against it — the brand couldn't see where the money went. */}
+              {campaign.escrowHeld > 0 && (
+                <> · {fmtUSD(campaign.escrowHeld)} in escrow</>
+              )}
+              {' · '}{Math.round(timePct * 100)}% time elapsed
             </span>
             <span
               style={{
