@@ -1424,6 +1424,114 @@ The most structural fix of the run.
   CancelCollabButton uses the signed-in user as actor; `v2SendMessage`
   clears recipient snooze; live-permalink reads `submission.permalink`.
 
+---
+
+### 2026-08-08 — Launch-readiness audit (Fable-5) — full app vs "public beta" bar
+
+> **Target agreed with Asim:** public beta, self-launchable — real
+> Supabase auth + real strangers using it end-to-end, investor-grade
+> polish, payments simulated. Everything below is judged against that
+> bar, not the old "prototype" bar. Audit ran live against the restored
+> Supabase project (`iddpnsnlmfhnxyhbhyvx`, un-paused 2026-08-08 after
+> ~8 weeks asleep; laptop loss meant `.env.local` was recreated from
+> the dashboard the same day).
+
+#### Verified healthy (worth protecting)
+
+- Real Supabase auth works end-to-end (demo accounts exist in hosted
+  GoTrue; token grant verified live). All 20 tables hydrate on boot.
+- RLS **proven** live: anon reads of creators/transactions/messages
+  return empty; cross-owner writes rejected (403s). No
+  `dangerouslySetInnerHTML`/`eval` anywhere; no service keys in the
+  bundle; Supabase-path signups store `passwordHash: ''` locally.
+- Core deal spine works: accept offer → escrow funded → submit
+  content → brand review (checklist modal) → approve → ledger writes
+  −$1,650 / +$1,402 / −$165 (10%) / −$83 (5% WHT), balanced to the
+  cent (P67 math holding live).
+- Both onboarding wizards are investor-grade (live preview panes);
+  fresh-account empty states honest; ErrorBoundary wraps App;
+  typecheck/build/444 tests clean; storefront public page polished
+  with proper per-page titles + handle-level 404.
+
+#### Findings — 🔴 launch blockers
+
+| # | Finding |
+|---|---|
+| F11 | **Every new signup is trapped in one browser.** Profile writes fire without a session → RLS rejects → creator/brand row never reaches Postgres. Return visit (other device / cleared storage): auth 200, then "no Alamut profile exists" → forced logout. Verified live with a real test signup. Root cause: signup continues on local state without awaiting a Supabase session. |
+| F24 | **Brand onboarding dead-ends at "Get started"** — awaits the Supabase brand row that F11 never wrote (`406` on `.single()`), fails silently; button does nothing. "Skip for now" accidentally rescues. |
+| F10 | Signup never shows a "check your email" step though Supabase sends a confirmation email. |
+| F22 | Supabase Site URL is `localhost:5173` — every auth email link redirects somewhere real users can't reach (verified from Asim's phone). |
+| F39 | Supabase built-in SMTP is rate-limited to a handful of emails/hour — public signups will stop receiving confirmations almost immediately. Custom SMTP (e.g. Resend/Postmark) required, or disable confirmations for beta. |
+| F17 | Signup terms checkbox links ("creator agreement", "payment terms") are `href="#"` — the legal docs don't exist. Real emails are being collected with no ToS/privacy policy. |
+| F19 | **Seed-world collision (product decision):** real creators can apply to fake campaigns whose fake brands never respond. Label demo content, wall it off, or curate a real launch state. |
+| F7 | Free-tier Supabase pauses after ~1wk idle (this is how the project was found). Pro upgrade or keep-alive needed before strangers arrive. |
+| F30 | **Full escrow release on partial approval.** Multi-deliverable collab (1 post + 1 Reel, $1,650 flat): approving the first deliverable released the full $1,650; the outstanding Reel now has zero escrow behind it, and the kanban still shows the deal in Confirmed · $1.6K. Release policy needs per-slot logic (release on all-approved, or pro-rata). |
+
+#### Findings — 🟠 high
+
+| # | Finding |
+|---|---|
+| F13 | Silent validation blocks strand users mid-wizard on both personas (empty bio / brand description → Continue silently no-ops, no message, no field highlight). |
+| F1 | ~32 doomed `collaborations` mirror writes per signin (403/409 spam) — boot-time stage recompute mirrors every seed collab instead of only owned rows. |
+| F2/F3 | Signin: raw GoTrue error copy ("missing email or phone") on empty submit; stale error not cleared when demo buttons fill the form. |
+| F9/F16/F23 | Honesty gaps: "passwords stored locally in plain text" copy on signup (stale — untrue for real signups); payout step promises real KYC/settlement ("CNIC + selfie clears in under 5 minutes", "$25 wire fee"); brand onboarding threatens "$5K minimum wallet funding". All fiction during a simulated-payments beta. |
+| F27 | Cross-persona route restore: brand signin lands on creator's last route → full-page "You don't have access" dead-end with no way home. Reset route on persona change + add a Go-home CTA. |
+| F28 | Seed generator title collisions: nine "Studio Notes"-family campaigns, including two live ones under the same brand — the brand's own campaign list is ambiguous (audit walked into the wrong twin). |
+| F34 | Public one-click **Admin** demo access on `/signin` — remove for launch. |
+| F38 | `public/architecture-map.html` ships to production — internal architecture disclosure. |
+
+#### Findings — 🟡 medium/polish
+
+F4 signin "no real auth" copy (stale) · F5 README "no backend" (stale) ·
+F6 Workspace chunk 557KB (split later) · F8 signup "data stays in this
+browser" copy · F12 onboarding platform cards + footer buttons have no
+accessible names · F14 self-reported follower/ER numbers presented
+unlabeled · F15 creator city list Pakistan-only (make market focus
+explicit) · F18 publish step renders literal `alamut.co/@{handle}` ·
+F20 phantom bars in 6-month chart on all-$0 fresh accounts · F21 stale
+seed dates everywhere ("Due May 20" in August, "Deadline passed" on
+live campaigns, "Spring Capsule 2025") · F25 "Welcome back" greeting
+for first-time brand · F26 kanban cards not keyboard-accessible ·
+F29 escrow-committed funds invisible in campaign Budget·Spend ("0%
+spent" with $1.6K in escrow) · F31 storefront top-nav overflows on
+mobile (no collapse) · F32 campaign-header action buttons clip on
+mobile · F33 unknown top-level routes silently redirect to `/` (no 404
+surface; storefront handles do have one) · F35 no favicon · F36 no
+meta description/OG/Twitter tags at all · F37 no robots.txt/sitemap.
+
+#### Revamp plan (phased, sized for sessions)
+
+- **Phase A — un-brick real users (blockers, ~1-2 sessions):**
+  rework signup to await/handle the Supabase session: email-confirm
+  screen + resend + unconfirmed-signin handling (F10); write
+  creator/brand profile rows *after* a session exists, with retry on
+  first confirmed signin so F11's stranded auth users self-heal; fix
+  brand Get-started await (F24); set Site URL + redirect allowlist to
+  the prod domain (F22); wire custom SMTP or disable confirmations
+  (F39); minimal ToS + privacy pages and real links (F17); remove
+  admin quick-pick (F34) + architecture-map from public/ (F38);
+  Supabase Pro / keep-alive decision (F7).
+- **Phase B — beta-honest product (decisions + copy, ~1 session):**
+  seed-world strategy (label demo brands/campaigns "Demo", or
+  segregate); escrow release policy for multi-slot collabs (F30);
+  honesty sweep across F4/F8/F9/F16/F23; demo-account buttons gated to
+  non-production; currency + market-focus decisions (F14/F15).
+- **Phase C — flow correctness (~1-2 sessions):** inline validation
+  messages in both wizards (F13); signin error UX (F2/F3); persona
+  route reset + access-denied CTA (F27); gate collab mirror to owned
+  rows (F1); seed regeneration — unique titles, future-dated deadlines
+  (F21/F28); escrow visibility in Budget·Spend (F29); F18/F20/F25
+  fixes.
+- **Phase D — polish/a11y/mobile (~1 session):** a11y names +
+  keyboard cards (F12/F26); mobile overflows (F31/F32); 404 surface
+  (F33); favicon + OG/meta + robots (F35-37); phantom-bars fix.
+- **Phase E — ops (~half session):** Sentry wire-up; README refresh
+  (F5); bundle split (F6) when convenient.
+
+Suggested order: A → B → C → D → E. A alone makes real signups viable;
+A+B is a defensible soft launch to friendlies; through D is the
+investor-grade public beta.
+
 ## Commit hashes for traceability
 
 Recent commits in chronological order — all on origin/main:
