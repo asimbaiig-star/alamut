@@ -1,0 +1,56 @@
+# Keep the Supabase project awake.
+#
+# Free-tier Supabase pauses a project after 7 days with no activity —
+# that's exactly how this project was found asleep in August 2026 after
+# the previous laptop was lost. A paused project also becomes eligible
+# for deletion after 90 days, so this workflow is data protection, not
+# just convenience.
+#
+# It runs daily and makes one trivial authenticated REST read. Any API
+# request counts as activity, so a single request per day is plenty of
+# margin against a 7-day threshold. Replace this with a Supabase Pro
+# upgrade whenever that becomes an option — Pro projects never pause.
+#
+# On the key below: `VITE_SUPABASE_ANON_KEY` is the *publishable* key.
+# It is designed to be public — it already ships inside the JS bundle to
+# every visitor's browser, and every table is protected by row-level
+# security (verified in the 2026-08-08 audit: anonymous reads of
+# creators / transactions / messages all return empty). It is NOT the
+# service-role key, which must never appear anywhere in this repo.
+#
+# Caveat: GitHub disables scheduled workflows on a repo with no commits
+# for 60 days. If you go quiet that long, push anything (or hit "Run
+# workflow" below) to re-arm it.
+
+name: Supabase keep-alive
+
+on:
+  schedule:
+    # 06:15 UTC daily — off the hour to avoid the top-of-hour rush.
+    - cron: '15 6 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST
+        env:
+          SUPABASE_URL: https://iddpnsnlmfhnxyhbhyvx.supabase.co
+          SUPABASE_ANON_KEY: sb_publishable_GgDmCH_tCE-zM7DNJHxiDw__TPqgJtT
+        run: |
+          set -euo pipefail
+          # brands_public is the sanitized public view (migration 025) —
+          # no owner emails, no wallet figures. `limit=1` keeps it cheap.
+          code=$(curl -sS -o /tmp/body.txt -w '%{http_code}' \
+            "$SUPABASE_URL/rest/v1/brands_public?select=id&limit=1" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY")
+          echo "HTTP $code"
+          head -c 200 /tmp/body.txt || true
+          echo
+          if [ "$code" != "200" ]; then
+            echo "::error::Supabase ping failed with HTTP $code — the project may be paused, or the anon key rotated. Check the dashboard."
+            exit 1
+          fi
+          echo "Supabase is awake."
