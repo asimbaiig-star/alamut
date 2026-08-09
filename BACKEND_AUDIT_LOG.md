@@ -1830,6 +1830,47 @@ Typecheck clean, **457/457 tests**, production build clean.
 
 **All 39 audit findings are now closed or explicitly deferred.**
 
+---
+
+### 2026-08-09 — og:image card + how to regenerate it
+
+The social preview card (`app/public/og-image.jpg`, 1200×630) is generated
+locally from `app/public/og-image.source.svg`. Getting the **real** brand
+faces into it took three attempts, so the constraints are worth recording:
+
+1. **`sips` ignores `@font-face` entirely** — it only renders fonts
+   installed on the machine. Base64-embedding Fraunces in the SVG was
+   tested directly and silently fell back to Helvetica. The first shipped
+   card therefore used Palatino/Helvetica stand-ins.
+2. **`qlmanage -t` does use WebKit and loads webfonts correctly**, but it
+   renders at its own viewport width and then upscales to `-s`, so a
+   1200px-wide page came out magnified ~1.5× with the right edge clipped
+   and the footer cropped. Unusable for exact-size output.
+3. **What works:** temporarily copy the two TTFs into `~/Library/Fonts/`,
+   render with `sips`, then remove them. The SVG references the faces by
+   their *internal family names* — `Fraunces SemiBold` and
+   `Switzer Medium`, not `Fraunces`/`Switzer`.
+
+Headline sizing was measured in-browser against the real loaded face
+rather than estimated (`ctx.measureText`): at 82px the two lines come out
+736px and 832px against 1056px of usable width. An earlier by-hand
+estimate of 0.52em/char said 82px fit when it didn't.
+
+To regenerate after editing the source SVG:
+
+```bash
+# Fonts (once): Fraunces from Google Fonts, Switzer from Fontshare.
+# Google serves TTF instead of woff2 only for an old-Safari UA.
+cp fraunces600.ttf ~/Library/Fonts/__tmp_fraunces.ttf
+cp switzer500.ttf  ~/Library/Fonts/__tmp_switzer.ttf
+sips -s format png app/public/og-image.source.svg --out /tmp/og.png
+sips -s format jpeg -s formatOptions 90 /tmp/og.png --out app/public/og-image.jpg
+rm ~/Library/Fonts/__tmp_fraunces.ttf ~/Library/Fonts/__tmp_switzer.ttf
+```
+
+`og:image:width`/`height` and `twitter:card=summary_large_image` are set
+in `index.html`; keep the 1200×630 ratio or the large card gets cropped.
+
 ## Commit hashes for traceability
 
 Recent commits in chronological order — all on origin/main:

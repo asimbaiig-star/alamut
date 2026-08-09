@@ -31,9 +31,11 @@
     />
     <meta property="og:url" content="https://alamut-six.vercel.app/" />
     <!-- Preview card. Absolute URL is required — crawlers don't resolve
-         relative paths. Edit `public/og-image.source.svg` and re-run:
-           sips -s format jpeg -s formatOptions 88 <(rasterised png) …
-         (see BACKEND_AUDIT_LOG.md for the one-liner). -->
+         relative paths. The source SVG sits next to it in public/ and
+         references the real brand faces by their installed family names
+         ("Fraunces SemiBold" / "Switzer Medium"); see BACKEND_AUDIT_LOG.md
+         for the regeneration recipe, which needs those two fonts present
+         because sips can't use @font-face. -->
     <meta property="og:image" content="https://alamut-six.vercel.app/og-image.jpg" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
