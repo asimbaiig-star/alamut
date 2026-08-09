@@ -106,48 +106,51 @@ function deterministicUserId(email: string): string {
   return `u_x_${hash.toString(36)}`;
 }
 
-async function signUp(input: SignUpInput) {
-  const email = input.email.trim().toLowerCase();
-  if (!email || !input.password) throw new ApiError('invalid_input', 'Email and password are required.');
-  if (input.password.length < 6) throw new ApiError('weak_password', 'Password must be at least 6 characters.');
+/** Profile fields we stash in Supabase `auth.users.user_metadata` at
+ *  sign-up time. This is the durable, cross-device record of what the
+ *  user told us during signup — it survives email confirmation, a
+ *  different device, and a cleared browser. `ensureProfileForSession`
+ *  reads it back to build the Creator/Brand row once a real session
+ *  exists (RLS requires one, which is why we can't write the profile
+ *  during an unconfirmed sign-up). */
+type SignupMetadata = {
+  role?: 'creator' | 'brand';
+  name?: string;
+  city?: string;
+  country?: string;
+  brand_name?: string;
+  industry?: string;
+};
 
-  const db = useStore.getState().db;
-  if (db.users.some((u) => u.email === email)) {
-    throw new ApiError('email_taken', 'An account with that email already exists.');
-  }
+/** Result of a sign-up attempt.
+ *  - `signed_in`: a Supabase session came back (email confirmation is
+ *    off, or already-confirmed) — the profile exists and the user is in.
+ *  - `needs_confirmation`: Supabase accepted the credential but issued
+ *    no session because it emailed a confirmation link. We deliberately
+ *    create NO local user/session here: the profile is written on the
+ *    first confirmed sign-in from the metadata above. Pre-fix this path
+ *    faked a local success, and the profile write silently 401'd —
+ *    stranding the account in one browser forever (audit F11). */
+export type SignUpResult =
+  | { status: 'signed_in'; user: User }
+  | { status: 'needs_confirmation'; email: string };
 
-  // Phase 1 — when Supabase is configured, create the auth.users row
-  // first. That's where the actual credential lives; the local User
-  // row exists only to carry role + brandId/creatorId pointers the
-  // rest of the app reads.
-  const supaConfigured = isSupabaseConfigured();
-  if (supaConfigured) {
-    const sb = getSupabase();
-    const { data: authData, error: authError } = await sb.auth.signUp({
-      email,
-      password: input.password,
-    });
-    if (authError) {
-      if (/already registered|already exists/i.test(authError.message)) {
-        throw new ApiError('email_taken', 'An account with that email already exists.');
-      }
-      if (/password/i.test(authError.message)) {
-        throw new ApiError('weak_password', authError.message);
-      }
-      throw new ApiError('invalid_input', authError.message);
-    }
-    // If email confirmation is enabled in the Supabase project, signUp
-    // returns user but no session. We treat that as a normal success —
-    // the SignIn screen will surface the "confirm your email" path.
-    void authData;
-  } else {
-    await sleep(LATENCY);
-  }
-
-  // Local mutation: create the Brand/Creator + User. User.id is
-  // derived from email so cross-device sign-in resolves to the same id.
-  const userId = deterministicUserId(email);
-  const user = tx<User>((d) => {
+/** Build the local Creator/Brand + User rows. Shared by signUp (local
+ *  path / immediate-session path) and by ensureProfileForSession (the
+ *  post-confirmation path), so both produce identical shapes. */
+function createLocalProfile(input: {
+  email: string;
+  role: 'creator' | 'brand';
+  name: string;
+  city?: string;
+  country?: string;
+  brandName?: string;
+  industry?: string;
+}): User {
+  const userId = deterministicUserId(input.email);
+  return tx<User>((d) => {
+    const existing = d.users.find((u) => u.id === userId);
+    if (existing) return existing;
     let creatorId: string | undefined;
     let brandId: string | undefined;
     if (input.role === 'creator') {
@@ -182,50 +185,215 @@ async function signUp(input: SignUpInput) {
       d.brands.push(newBrand);
     }
     const u: User = {
-      id: userId, email, passwordHash: '', role: input.role,
+      id: userId, email: input.email, passwordHash: '', role: input.role,
       status: 'active', createdAt: nowISO(),
       creatorId, brandId,
     };
     d.users.push(u);
     return u;
   });
+}
 
-  // Mirror the new Brand/Creator to Supabase so cross-device sign-in
-  // can resolve role + profile via owner_email. Fire-and-forget — the
-  // local tx() has already committed; if the mirror fails (network /
-  // RLS), local UX continues and a retry path can sync later.
-  if (supaConfigured) {
-    if (input.role === 'creator' && user.creatorId) {
-      const newCreator = useStore.getState().db.creators.find((c) => c.id === user.creatorId);
-      if (newCreator) {
-        void (async () => {
-          try {
-            const { insertCreatorInSupabase } = await import('@/lib/data/creatorsRepo');
-            await insertCreatorInSupabase(newCreator, email);
-          } catch (err) {
-            // eslint-disable-next-line no-console
-            console.warn('[creator signup mirror] failed:', err instanceof Error ? err.message : err);
-          }
-        })();
-      }
-    } else if (input.role === 'brand' && user.brandId) {
-      const newBrand = useStore.getState().db.brands.find((b) => b.id === user.brandId);
-      if (newBrand) {
-        void (async () => {
-          try {
-            const { insertBrandInSupabase } = await import('@/lib/data/brandsRepo');
-            await insertBrandInSupabase(newBrand, email);
-          } catch (err) {
-            // eslint-disable-next-line no-console
-            console.warn('[brand signup mirror] failed:', err instanceof Error ? err.message : err);
-          }
-        })();
-      }
+/** Push the local Creator/Brand row to Postgres. Awaited (not
+ *  fire-and-forget) wherever the caller can act on failure — a profile
+ *  that never lands in Postgres is an account that can't sign in from
+ *  anywhere else. Requires a live Supabase session for RLS to allow the
+ *  insert. Idempotent-ish: a duplicate-key error is treated as success
+ *  because it means the row is already there. */
+async function mirrorProfileToSupabase(user: User, email: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    if (user.role === 'creator' && user.creatorId) {
+      const row = useStore.getState().db.creators.find((c) => c.id === user.creatorId);
+      if (!row) return;
+      const { insertCreatorInSupabase } = await import('@/lib/data/creatorsRepo');
+      await insertCreatorInSupabase(row, email);
+    } else if (user.role === 'brand' && user.brandId) {
+      const row = useStore.getState().db.brands.find((b) => b.id === user.brandId);
+      if (!row) return;
+      const { insertBrandInSupabase } = await import('@/lib/data/brandsRepo');
+      await insertBrandInSupabase(row, email);
     }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // Already present (duplicate key / unique violation) — fine.
+    if (/duplicate key|already exists|23505/i.test(msg)) return;
+    throw new ApiError('mirror_failed', msg);
+  }
+}
+
+async function signUp(input: SignUpInput): Promise<SignUpResult> {
+  const email = input.email.trim().toLowerCase();
+  if (!email || !input.password) throw new ApiError('invalid_input', 'Email and password are required.');
+  if (input.password.length < 6) throw new ApiError('weak_password', 'Password must be at least 6 characters.');
+
+  const db = useStore.getState().db;
+  if (db.users.some((u) => u.email === email)) {
+    throw new ApiError('email_taken', 'An account with that email already exists.');
   }
 
-  // Auto sign-in on signup
+  // Phase 1 — when Supabase is configured, create the auth.users row
+  // first. That's where the actual credential lives; the local User
+  // row exists only to carry role + brandId/creatorId pointers the
+  // rest of the app reads.
+  const supaConfigured = isSupabaseConfigured();
+  if (!supaConfigured) {
+    // Local-only mode (no env vars, and the test suite): unchanged
+    // behaviour — create the profile and sign straight in.
+    await sleep(LATENCY);
+    const user = createLocalProfile({
+      email, role: input.role, name: input.name,
+      city: input.city, country: input.country,
+      brandName: input.brandName, industry: input.industry,
+    });
+    useStore.getState().setSession({ userId: user.id, issuedAt: nowISO() });
+    return { status: 'signed_in', user };
+  }
+
+  const sb = getSupabase();
+  const metadata: SignupMetadata = {
+    role: input.role,
+    name: input.name,
+    ...(input.city ? { city: input.city } : {}),
+    ...(input.country ? { country: input.country } : {}),
+    ...(input.brandName ? { brand_name: input.brandName } : {}),
+    ...(input.industry ? { industry: input.industry } : {}),
+  };
+  const { data: authData, error: authError } = await sb.auth.signUp({
+    email,
+    password: input.password,
+    // Durable copy of the signup answers — see SignupMetadata.
+    options: { data: metadata },
+  });
+  if (authError) {
+    if (/already registered|already exists/i.test(authError.message)) {
+      throw new ApiError('email_taken', 'An account with that email already exists.');
+    }
+    if (/password/i.test(authError.message)) {
+      throw new ApiError('weak_password', authError.message);
+    }
+    throw new ApiError('invalid_input', authError.message);
+  }
+
+  // No session => the project has email confirmation on and just sent
+  // the link. Stop here: no local user, no local session, nothing that
+  // pretends the account is usable. The caller shows "check your email".
+  if (!authData.session) {
+    return { status: 'needs_confirmation', email };
+  }
+
+  // Session in hand — the profile write will pass RLS. Await it so a
+  // failure surfaces instead of silently stranding the account.
+  const user = createLocalProfile({
+    email, role: input.role, name: input.name,
+    city: input.city, country: input.country,
+    brandName: input.brandName, industry: input.industry,
+  });
+  await mirrorProfileToSupabase(user, email);
   useStore.getState().setSession({ userId: user.id, issuedAt: nowISO() });
+  return { status: 'signed_in', user };
+}
+
+/** Finish setting up a profile for an already-authenticated user.
+ *
+ *  Used by the finish-setup flow reached from a `profile_setup_required`
+ *  sign-in: the credential and session exist, but there's no
+ *  Creator/Brand row and no sign-up metadata to rebuild one from (an
+ *  account created before sign-up metadata shipped, or one whose
+ *  profile write failed). Because a session IS present here, the
+ *  Postgres write passes RLS.
+ *
+ *  Throws if there's no live session — this must never be a way to
+ *  create a profile for an unauthenticated email. */
+async function completeProfileSetup(input: {
+  role: 'creator' | 'brand';
+  name: string;
+  city?: string;
+  country?: string;
+  brandName?: string;
+  industry?: string;
+}): Promise<User> {
+  if (!isSupabaseConfigured()) throw new ApiError('invalid_input', 'Supabase not configured.');
+  const sb = getSupabase();
+  const { data } = await sb.auth.getUser();
+  const email = data.user?.email?.toLowerCase();
+  if (!email) {
+    throw new ApiError('not_found', 'You need to be signed in to finish setting up your profile.');
+  }
+  const existing = useStore.getState().db.users.find((u) => u.email === email);
+  if (existing) {
+    useStore.getState().setSession({ userId: existing.id, issuedAt: nowISO() });
+    return existing;
+  }
+  const user = createLocalProfile({ email, ...input });
+  await mirrorProfileToSupabase(user, email);
+  // Persist the answers to auth metadata too, so any future device
+  // rebuilds the profile automatically via ensureProfileForSession.
+  try {
+    const meta: SignupMetadata = {
+      role: input.role, name: input.name,
+      ...(input.city ? { city: input.city } : {}),
+      ...(input.country ? { country: input.country } : {}),
+      ...(input.brandName ? { brand_name: input.brandName } : {}),
+      ...(input.industry ? { industry: input.industry } : {}),
+    };
+    await sb.auth.updateUser({ data: meta });
+  } catch { /* non-fatal — the profile row is already written */ }
+  useStore.getState().setSession({ userId: user.id, issuedAt: nowISO() });
+  return user;
+}
+
+/** Re-send the confirmation email for a pending sign-up. */
+async function resendConfirmation(email: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  const sb = getSupabase();
+  const { error } = await sb.auth.resend({ type: 'signup', email: email.trim().toLowerCase() });
+  if (error) throw new ApiError('invalid_input', error.message);
+}
+
+/** Self-heal for authenticated users with no profile row.
+ *
+ *  Reached when Supabase auth succeeds but neither the local store nor
+ *  Postgres has a Creator/Brand owned by this email — i.e. the sign-up
+ *  couldn't write the profile because it had no session (email
+ *  confirmation pending), or the write failed at the time. Now that a
+ *  session exists, rebuild the profile from the sign-up metadata and
+ *  push it to Postgres.
+ *
+ *  Returns the User on success, or null when there's no metadata to
+ *  rebuild from (in which case the caller should route the user into a
+ *  finish-setup flow rather than dead-ending). */
+async function ensureProfileForSession(): Promise<User | null> {
+  if (!isSupabaseConfigured()) return null;
+  const sb = getSupabase();
+  const { data } = await sb.auth.getUser();
+  const authUser = data.user;
+  if (!authUser?.email) return null;
+  const email = authUser.email.toLowerCase();
+
+  // Already resolvable? Nothing to do.
+  const local = useStore.getState().db.users.find((u) => u.email === email);
+  if (local) return local;
+  const resolved = await resolveUserFromSupabaseByEmail(email);
+  if (resolved) {
+    tx((d) => { if (!d.users.some((u) => u.id === resolved.id)) d.users.push(resolved); });
+    return resolved;
+  }
+
+  const meta = (authUser.user_metadata ?? {}) as SignupMetadata;
+  const role = meta.role === 'brand' ? 'brand' : meta.role === 'creator' ? 'creator' : null;
+  if (!role) return null; // No signup metadata — caller handles setup.
+
+  const user = createLocalProfile({
+    email,
+    role,
+    name: meta.name || (role === 'brand' ? meta.brand_name || 'My brand' : email.split('@')[0]),
+    city: meta.city,
+    country: meta.country,
+    brandName: meta.brand_name,
+    industry: meta.industry,
+  });
+  await mirrorProfileToSupabase(user, email);
   return user;
 }
 
@@ -280,6 +448,39 @@ async function resolveUserFromSupabaseByEmail(email: string): Promise<User | nul
         createdAt: now,
         brandId: brand!.id,
       };
+
+  // Pull the user's OWN profile row into the local store. Boot
+  // hydration ran before this session existed, so the row this User
+  // points at isn't in `db` yet — without this the workspace renders a
+  // nameless "Loading…" profile (and falls back to seed values) even
+  // though sign-in succeeded.
+  try {
+    if (creator) {
+      const { fetchOwnCreatorFromSupabase } = await import('@/lib/data/creatorsRepo');
+      const own = await fetchOwnCreatorFromSupabase();
+      if (own) {
+        tx((d) => {
+          const idx = d.creators.findIndex((c) => c.id === own.id);
+          if (idx === -1) d.creators.push(own);
+          else d.creators[idx] = { ...d.creators[idx], ...own };
+        });
+      }
+    } else {
+      const { fetchOwnBrandFromSupabase } = await import('@/lib/data/brandsRepo');
+      const own = await fetchOwnBrandFromSupabase();
+      if (own) {
+        tx((d) => {
+          const idx = d.brands.findIndex((b) => b.id === own.id);
+          if (idx === -1) d.brands.push(own);
+          else d.brands[idx] = { ...d.brands[idx], ...own };
+        });
+      }
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[auth] own-profile fetch failed:', err instanceof Error ? err.message : err);
+  }
+
   return user;
 }
 
@@ -309,7 +510,12 @@ async function signIn(email: string, password: string) {
         throw new ApiError('bad_password', 'Wrong email or password.');
       }
       if (/confirm/i.test(error.message)) {
-        throw new ApiError('not_found', 'Confirm your email before signing in.');
+        // Distinct code so the sign-in screen can offer "resend link"
+        // instead of showing a generic not-found.
+        throw new ApiError(
+          'email_not_confirmed',
+          'Check your email and confirm your address before signing in.',
+        );
       }
       throw new ApiError('not_found', error.message);
     }
@@ -341,14 +547,26 @@ async function signIn(email: string, password: string) {
     }
 
     if (!localUser) {
-      // Real auth succeeded but neither the local store nor Postgres
-      // has a brand/creator owned by this email. This means signup
-      // never completed the profile-creation step — sign out of
-      // Supabase so we don't sit in a half-signed-in state.
-      await sb.auth.signOut();
+      // Real auth succeeded but neither the local store nor Postgres has
+      // a Creator/Brand owned by this email — the sign-up never managed
+      // to write the profile (no session at the time, because email
+      // confirmation was pending). We now HAVE a session, so rebuild the
+      // profile from the sign-up metadata instead of dead-ending.
+      //
+      // Pre-fix this signed the user out and threw "no Alamut profile
+      // exists", permanently bricking every account created on another
+      // device or before confirming (audit F11).
+      localUser = (await ensureProfileForSession()) ?? undefined;
+    }
+
+    if (!localUser) {
+      // Authenticated but genuinely nothing to rebuild from (metadata
+      // missing — e.g. an account created before this code shipped).
+      // Keep the session alive and let the caller route into setup; do
+      // NOT sign out, or the user can never get anywhere.
       throw new ApiError(
-        'not_found',
-        'Signed in to auth but no Alamut profile exists for this email yet.',
+        'profile_setup_required',
+        "Your account is confirmed but its profile isn't set up yet. Choose your account type to finish.",
       );
     }
     if (localUser.status === 'suspended') {
@@ -1613,7 +1831,13 @@ async function markAllNotificationsRead() {
 // ============ EXPORT ============
 
 export const api = {
-  auth: { signUp, signIn, requestMagicLink, verifyMagicLink, signOut, currentUser, profileForUser },
+  auth: {
+    signUp, signIn, requestMagicLink, verifyMagicLink, signOut, currentUser, profileForUser,
+    // Phase A (launch readiness): email-confirmation support + the
+    // self-heal path for authenticated users whose profile row never
+    // landed in Postgres.
+    resendConfirmation, ensureProfileForSession, completeProfileSetup,
+  },
   campaigns: { create: createCampaign, update: updateCampaign, transition: transitionCampaign },
   applications: { apply: applyToCampaign, decide: decideApplication },
   offers: { send: sendOffer, respond: respondToOffer, counter: counterOffer, acceptCounter },

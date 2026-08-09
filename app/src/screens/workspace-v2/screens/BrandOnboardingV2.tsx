@@ -110,9 +110,19 @@ export function BrandOnboardingV2({ onRoute }: Props) {
         ...(s.monthlyBudget ? { monthlyBudgetBand: s.monthlyBudget } : {}),
       });
     } catch (err) {
-      pushToast(err instanceof Error ? err.message : 'Could not save your brand profile');
-      setSubmitting(false);
-      return;
+      // F24 — never trap the user on the last wizard step. Pre-fix a
+      // failed save (e.g. the brand row not yet in Postgres, so the
+      // `.single()` read 406'd) returned early and left "Get started"
+      // doing nothing at all, with no way forward but "Skip for now".
+      // The wizard's answers are already in local state, so warn and
+      // continue into the workspace — the profile can be completed
+      // from Brand profile.
+      pushToast(
+        err instanceof Error
+          ? `Saved locally — couldn't sync your brand profile: ${err.message}`
+          : 'Saved locally — couldn\'t sync your brand profile',
+        'bad',
+      );
     }
     setSubmitting(false);
     routeAfterFinish();

@@ -377,7 +377,7 @@ export function CreatorOnboardingV2({ onRoute }: Props) {
                     onChange={(e) => update({ agreedTerms: e.target.checked })}
                   />
                   <span>
-                    I agree to the Alamut <a href="#">creator agreement</a> and <a href="#">payment terms</a>. I confirm the information above is accurate.
+                    I agree to the Alamut <a href="/terms" target="_blank" rel="noreferrer">terms of service</a> and <a href="/privacy" target="_blank" rel="noreferrer">privacy policy</a>. I confirm the information above is accurate.
                   </span>
                 </label>
               </Card>

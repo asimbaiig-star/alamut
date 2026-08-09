@@ -63,6 +63,12 @@ const RateCalculator = lazy(() =>
 // Phase 52e — public Top Creators directory.
 const CreatorsDirectory = lazy(() =>
   import('./screens/tools/CreatorsDirectory').then((m) => ({ default: m.CreatorsDirectory })));
+// Phase A (launch-readiness) — Terms + Privacy. Real pages behind the
+// signup agreement checkbox; also linked from the Cover footer.
+const TermsPage = lazy(() =>
+  import('./screens/legal/LegalPage').then((m) => ({ default: m.TermsPage })));
+const PrivacyPage = lazy(() =>
+  import('./screens/legal/LegalPage').then((m) => ({ default: m.PrivacyPage })));
 
 // Phase 57 — workspace v2 (Pakistan-first revamp from the Claude Design
 // handoff). Mounted as a parallel preview surface at /v2 so the
@@ -106,6 +112,8 @@ export const router = createBrowserRouter([
   { path: '/creators', element: lazyRoute(CreatorsDirectory) },
   { path: '/signup', element: <SignUp /> },
   { path: '/signin', element: <SignIn /> },
+  { path: '/terms', element: lazyRoute(TermsPage) },
+  { path: '/privacy', element: lazyRoute(PrivacyPage) },
   { path: '/accept-invite', element: <AcceptInvite /> },
   { path: '/c/:handle', element: lazyRoute(PublicCreator) },
   // Phase B+C — workspace v2. Owns its own shell + sidebar; no

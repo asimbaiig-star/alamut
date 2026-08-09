@@ -1532,6 +1532,60 @@ Suggested order: A → B → C → D → E. A alone makes real signups viable;
 A+B is a defensible soft launch to friendlies; through D is the
 investor-grade public beta.
 
+---
+
+### 2026-08-09 — Phase A (launch blockers) — code work
+
+Executes the Phase A plan from the 2026-08-08 audit. **Root-cause fix:**
+sign-up treated Supabase as fire-and-forget, so the profile write had no
+session and RLS rejected it — bricking every real account (F11).
+
+- **Sign-up answers now persist to `auth.users.user_metadata`** (role,
+  name, city, country, brand_name, industry). That's the durable,
+  cross-device record the profile is rebuilt from later. `signUp` returns
+  a discriminated `SignUpResult`: `needs_confirmation` (no session — we
+  create NO local user/session and the UI shows a check-your-email screen
+  with resend, F10) or `signed_in` (session in hand → profile written and
+  the Postgres mirror **awaited**, so a failure surfaces instead of
+  silently stranding the account).
+- **`ensureProfileForSession()`** — self-heal. On sign-in where auth
+  succeeds but no Creator/Brand exists, rebuild the profile from
+  metadata now that a session exists. Where there's no metadata to
+  rebuild from (accounts predating this change), sign-in throws
+  `profile_setup_required` **without signing the user out** and the
+  screen routes to `/signup?finish=1&email=…`;
+  **`completeProfileSetup()`** writes the profile against the live
+  session (and backfills the metadata for future devices). Password
+  field is hidden in that mode — the credential already exists.
+- **Cross-device own-profile fetch** — `resolveUserFromSupabaseByEmail`
+  now pulls the signed-in user's own Creator/Brand row into the store
+  (`fetchOwnCreatorFromSupabase` / `fetchOwnBrandFromSupabase`). Boot
+  hydration runs before the session exists, so without this a
+  cross-device sign-in rendered a nameless "Loading…" profile and fell
+  back to seed values ("Hi Sarah" for a different user).
+- **F24** brand onboarding no longer dead-ends: a failed profile sync
+  warns and continues into the workspace instead of leaving "Get
+  started" inert with only "Skip for now" as an escape.
+- **F17** real `/terms` + `/privacy` pages (beta-honest: simulated
+  payments, demo participants, Supabase storage, deletion by email),
+  linked from the sign-up agreement checkbox and the Cover footer.
+- **F34/F38** admin one-click demo access removed from `/signin`;
+  `public/architecture-map.html` deleted from the served bundle.
+- **F8** stale sign-up copy replaced ("data stays in this browser" /
+  "passwords stored locally in plain text" — both untrue for real
+  accounts).
+
+**Verified live against the restored project:** fresh sign-up → confirm
+screen + `200 /auth/v1/signup` with metadata, no fake session; stranded
+account → finish-setup → **`201 /rest/v1/creators`** (row actually
+created in Postgres); then **full localStorage wipe → sign-in → correct
+profile** ("Hi Beta · Karachi · @betaonecreator"). Typecheck clean,
+444/444 tests, production build clean.
+
+**Still open in Phase A** (dashboard-side, needs the account owner):
+F22 Site URL + redirect allowlist → production domain; F39 custom SMTP
+or confirmations off; F7 Pro upgrade / keep-alive.
+
 ## Commit hashes for traceability
 
 Recent commits in chronological order — all on origin/main:

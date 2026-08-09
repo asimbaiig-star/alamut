@@ -46,6 +46,14 @@ export function SignIn() {
       pushToast(`Welcome back`, 'good');
       goAfterAuth(u.role);
     } catch (e) {
+      // Authenticated but no profile to resolve (and nothing to rebuild
+      // one from) — send them to the finish-setup form rather than
+      // leaving them stuck on the sign-in screen. The session is still
+      // live, so the profile write there will succeed.
+      if (e instanceof ApiError && e.code === 'profile_setup_required') {
+        navigate(`/signup?finish=1&email=${encodeURIComponent(email.trim().toLowerCase())}`);
+        return;
+      }
       setErr(e instanceof ApiError ? e.message : 'Sign in failed.');
     } finally {
       setBusy(false);
@@ -112,7 +120,7 @@ export function SignIn() {
                 Welcome <em>back</em>.
               </h1>
               <p className="airy-lede">
-                Pick up wherever you left off. Your session lives in this browser only — no real auth, no real card.
+                Pick up wherever you left off.
               </p>
 
               <div className="airy-card auth-airy-demo-card">
@@ -122,7 +130,6 @@ export function SignIn() {
                 <div className="auth-airy-demo-grid">
                   <button className="btn btn-sm btn-ghost" type="button" onClick={() => fillDemo('creator')}>Creator</button>
                   <button className="btn btn-sm btn-ghost" type="button" onClick={() => fillDemo('brand')}>Brand</button>
-                  <button className="btn btn-sm btn-ghost" type="button" onClick={() => fillDemo('admin')}>Admin</button>
                 </div>
                 <p className="airy-meta auth-airy-demo-help">
                   Pre-filled with seed credentials. Click <strong>Sign in</strong> after.

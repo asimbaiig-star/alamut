@@ -18,8 +18,14 @@ export function SignUp() {
   const initialRole = (params.get('role') as 'creator' | 'brand') || 'creator';
   const [role, setRole] = useState<'creator' | 'brand'>(initialRole);
 
+  // Finish-setup mode (`?finish=1&email=…`): the visitor already has a
+  // confirmed Supabase account + live session but no Creator/Brand row.
+  // Same form, but we skip auth sign-up and only write the profile.
+  const finishMode = params.get('finish') === '1';
+  const finishEmail = params.get('email') ?? '';
+
   const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(finishMode ? finishEmail : '');
   const [password, setPassword] = useState('');
   const [brandName, setBrandName] = useState('');
   const [industry, setIndustry] = useState('');
@@ -29,6 +35,11 @@ export function SignUp() {
   const [err, setErr] = useState<string | null>(null);
   const [emailErr, setEmailErr] = useState<string | null>(null);
   const [passwordErr, setPasswordErr] = useState<string | null>(null);
+  // Phase A · F10 — when the Supabase project has email confirmation
+  // on, signUp returns `needs_confirmation` and NO session. We show a
+  // check-your-email screen instead of pretending the account is live.
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+  const [resent, setResent] = useState(false);
 
   const validateEmail = (v: string) => {
     if (!v.trim()) return 'Email is required.';
@@ -47,7 +58,24 @@ export function SignUp() {
     e.preventDefault();
     setBusy(true); setErr(null);
     try {
-      const user = await api.auth.signUp({
+      if (finishMode) {
+        // Account + session already exist — just create the profile.
+        const user = await api.auth.completeProfileSetup({
+          role,
+          name: role === 'brand' ? (brandName || name) : name,
+          brandName: role === 'brand' ? brandName : undefined,
+          industry: role === 'brand' ? industry : undefined,
+          city: role === 'creator' ? city : undefined,
+          country: role === 'creator' ? country : undefined,
+        });
+        pushToast(`Welcome, ${user.email}`, 'good');
+        try {
+          localStorage.setItem('alamut.v2.route', role === 'creator' ? 'onboarding-creator' : 'onboarding-brand');
+        } catch { /* fall through to /v2 home */ }
+        navigate('/v2');
+        return;
+      }
+      const result = await api.auth.signUp({
         email, password, role,
         name: role === 'brand' ? (brandName || name) : name,
         brandName: role === 'brand' ? brandName : undefined,
@@ -55,7 +83,11 @@ export function SignUp() {
         city: role === 'creator' ? city : undefined,
         country: role === 'creator' ? country : undefined,
       });
-      pushToast(`Welcome, ${user.email}`, 'good');
+      if (result.status === 'needs_confirmation') {
+        setPendingEmail(result.email);
+        return;
+      }
+      pushToast(`Welcome, ${result.user.email}`, 'good');
       // Phase F cutover · drop new signups into the v2 onboarding wizard
       // by setting the v2 route in localStorage before navigating to /v2.
       // The legacy `/onboarding/{role}` routes remain wired for any old
@@ -71,6 +103,68 @@ export function SignUp() {
       setBusy(false);
     }
   };
+
+  // F10 — confirmation pending. Terminal state for this screen: the
+  // account exists in auth but has no usable session yet, so the only
+  // real actions are "go check your inbox" or "resend".
+  if (pendingEmail) {
+    return (
+      <div data-surface="landing-light" className="lp-light-root auth-airy auth-landing-light">
+        <TileHalo />
+        <header className="airy-topnav auth-landing-topnav">
+          <div className="airy-topnav-inner">
+            <Link to="/" aria-label="Alamut home" className="airy-topnav-logo">
+              <Logo size={20} tag="ALAMUT" />
+            </Link>
+            <div className="airy-topnav-actions">
+              <Link to="/signin" className="lp-topnav-signin">Sign in</Link>
+            </div>
+          </div>
+        </header>
+        <main className="airy-section auth-airy-main">
+          <div className="airy-card" style={{ maxWidth: 520, margin: '0 auto', padding: 'var(--space-xl)' }}>
+            <div className="airy-stack">
+              <div className="airy-eyebrow">One more step</div>
+              <h1 className="airy-h-section">Confirm your email.</h1>
+              <p className="airy-lede">
+                We sent a confirmation link to <strong>{pendingEmail}</strong>.
+                Open it to activate your account, then sign in.
+              </p>
+              <p className="airy-meta">
+                Can't find it? Check spam. The link opens Alamut and finishes
+                setting up your profile.
+              </p>
+              {err && <div className="field-error" role="alert">{err}</div>}
+              <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap', alignItems: 'center' }}>
+                <Button onClick={() => navigate('/signin')} iconRight={<Icon.arrow s={14} />}>
+                  Go to sign in
+                </Button>
+                <Button
+                  variant="ghost"
+                  loading={busy}
+                  disabled={resent}
+                  onClick={async () => {
+                    setBusy(true); setErr(null);
+                    try {
+                      await api.auth.resendConfirmation(pendingEmail);
+                      setResent(true);
+                      pushToast('Confirmation email resent', 'good');
+                    } catch (e) {
+                      setErr(e instanceof ApiError ? e.message : 'Could not resend the email.');
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  {resent ? 'Email resent' : 'Resend email'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div data-surface="landing-light" className="lp-light-root auth-airy auth-landing-light">
@@ -110,8 +204,8 @@ export function SignUp() {
               </p>
               <ul className="auth-airy-bullets">
                 <li><span className="auth-airy-bullets-num">01</span><span>Free to sign up. No card required.</span></li>
-                <li><span className="auth-airy-bullets-num">02</span><span>Persisted in your browser — your data stays here in this demo.</span></li>
-                <li><span className="auth-airy-bullets-num">03</span><span>Switch roles any time from the sidebar.</span></li>
+                <li><span className="auth-airy-bullets-num">02</span><span>Your account works on any device — confirm your email and sign in.</span></li>
+                <li><span className="auth-airy-bullets-num">03</span><span>Beta: payments are simulated, so no real money moves yet.</span></li>
               </ul>
             </div>
           </aside>
@@ -191,37 +285,44 @@ export function SignUp() {
                       onBlur={(e) => setEmailErr(validateEmail(e.target.value))}
                       placeholder="you@example.com"
                       required
+                      readOnly={finishMode}
                       aria-invalid={!!emailErr || undefined}
                       aria-describedby={emailErr ? 'signup-email-error' : undefined}
                     />
                     {emailErr && <span id="signup-email-error" className="field-error" role="alert">{emailErr}</span>}
                   </div>
 
-                  <div className="field">
-                    <label htmlFor="signup-password" className="field-label">Password</label>
-                    <input
-                      id="signup-password"
-                      type="password"
-                      autoComplete="new-password"
-                      value={password}
-                      onChange={(e) => { setPassword(e.target.value); if (passwordErr) setPasswordErr(null); }}
-                      onBlur={(e) => setPasswordErr(validatePassword(e.target.value))}
-                      placeholder="At least 6 characters"
-                      required
-                      minLength={6}
-                      aria-invalid={!!passwordErr || undefined}
-                      aria-describedby={passwordErr ? 'signup-password-error' : 'signup-password-help'}
-                    />
-                    {passwordErr ? (
-                      <span id="signup-password-error" className="field-error" role="alert">{passwordErr}</span>
-                    ) : (
-                      <span id="signup-password-help" className="field-help">For this demo, passwords are stored locally in plain text — never use a real one.</span>
-                    )}
-                  </div>
+                  {/* Finish-setup mode already has a credential + session
+                      — asking for a password again would be wrong. */}
+                  {!finishMode && (
+                    <div className="field">
+                      <label htmlFor="signup-password" className="field-label">Password</label>
+                      <input
+                        id="signup-password"
+                        type="password"
+                        autoComplete="new-password"
+                        value={password}
+                        onChange={(e) => { setPassword(e.target.value); if (passwordErr) setPasswordErr(null); }}
+                        onBlur={(e) => setPasswordErr(validatePassword(e.target.value))}
+                        placeholder="At least 6 characters"
+                        required
+                        minLength={6}
+                        aria-invalid={!!passwordErr || undefined}
+                        aria-describedby={passwordErr ? 'signup-password-error' : 'signup-password-help'}
+                      />
+                      {passwordErr ? (
+                        <span id="signup-password-error" className="field-error" role="alert">{passwordErr}</span>
+                      ) : (
+                        <span id="signup-password-help" className="field-help">At least 6 characters.</span>
+                      )}
+                    </div>
+                  )}
 
                   {err && <div id="signup-error" className="field-error" role="alert">{err}</div>}
 
-                  <Button type="submit" loading={busy} iconRight={<Icon.arrow s={14} />}>Create account</Button>
+                  <Button type="submit" loading={busy} iconRight={<Icon.arrow s={14} />}>
+                    {finishMode ? 'Finish setup' : 'Create account'}
+                  </Button>
                 </form>
 
                 <hr className="airy-divider" style={{ margin: 'var(--space-md) 0' }} />

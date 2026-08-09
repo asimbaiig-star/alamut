@@ -111,6 +111,8 @@ export function Cover() {
                 <li><a href="mailto:hello@alamut.co">hello@alamut.co</a></li>
                 <li><Link to="/for-brands">For brands</Link></li>
                 <li><Link to="/signin">Sign in</Link></li>
+                <li><Link to="/terms">Terms</Link></li>
+                <li><Link to="/privacy">Privacy</Link></li>
               </ul>
             </div>
           </div>
