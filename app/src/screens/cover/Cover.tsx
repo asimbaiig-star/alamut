@@ -54,7 +54,7 @@ export function Cover() {
 
   useEffect(() => {
     const prevTitle = document.title;
-    document.title = 'Alamut · Where creators get paid by real brands';
+    document.title = 'Alamut · The operating system for the creator economy';
     return () => { document.title = prevTitle; };
   }, []);
 
