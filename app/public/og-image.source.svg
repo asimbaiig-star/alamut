@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <!-- Alamut social preview card (og:image), 1200x630.
+       Brand language taken from the app: paper #FBF7EE ground, terracotta
+       #b55f40 accent (the resolved value of oklch(0.58 0.12 40)), ink
+       #1a1714, serif display for the headline. Text is drawn with system
+       serif/sans families rather than the webfonts, because sips
+       rasterises without network access — Palatino/Helvetica are the
+       closest always-present stand-ins for Fraunces/Switzer. -->
+
+  <defs>
+    <linearGradient id="warm" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FBF7EE"/>
+      <stop offset="55%" stop-color="#F7EFE2"/>
+      <stop offset="100%" stop-color="#F1E4D4"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="0.12" cy="0.1" r="0.55">
+      <stop offset="0%" stop-color="#b55f40" stop-opacity="0.20"/>
+      <stop offset="100%" stop-color="#b55f40" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#warm)"/>
+  <rect width="1200" height="630" fill="url(#halo)"/>
+
+  <!-- Logo mark: rounded terracotta tile with the Alamut 'A' -->
+  <rect x="72" y="70" width="64" height="64" rx="15" fill="#b55f40"/>
+  <path d="M104 84.5 L119 118.5 H111.2 L104 100.7 L96.8 118.5 H89 Z" fill="#FBF7EE"/>
+
+  <text x="152" y="105" font-family="Palatino,Georgia,serif" font-size="34"
+        font-weight="600" fill="#1a1714" letter-spacing="-0.5">Alamut</text>
+  <text x="152" y="126" font-family="Helvetica,Arial,sans-serif" font-size="12.5"
+        fill="#8a7f72" letter-spacing="3.2">CREATOR — BRAND MARKETPLACE</text>
+
+  <!-- Headline -->
+  <text x="72" y="268" font-family="Palatino,Georgia,serif" font-size="76"
+        fill="#1a1714" letter-spacing="-1.6">Where creators get paid</text>
+  <text x="72" y="352" font-family="Palatino,Georgia,serif" font-size="76"
+        fill="#b55f40" letter-spacing="-1.6">by real brands.</text>
+
+  <!-- Supporting line -->
+  <text x="72" y="424" font-family="Helvetica,Arial,sans-serif" font-size="26"
+        fill="#5c5349">Post a brief, negotiate, deliver, get paid through escrow —</text>
+  <text x="72" y="461" font-family="Helvetica,Arial,sans-serif" font-size="26"
+        fill="#5c5349">tracked end to end, without the agency markup.</text>
+
+  <!-- Footer rule + meta -->
+  <rect x="72" y="524" width="1056" height="1" fill="#1a1714" opacity="0.12"/>
+  <text x="72" y="562" font-family="Helvetica,Arial,sans-serif" font-size="19"
+        font-weight="600" fill="#1a1714">alamut-six.vercel.app</text>
+
+  <!-- Beta pill, right-aligned. Payments are simulated in the beta, so the
+       card says so rather than implying live money. -->
+  <rect x="906" y="540" width="222" height="34" rx="17" fill="#b55f40" opacity="0.12"/>
+  <text x="1017" y="562" text-anchor="middle" font-family="Helvetica,Arial,sans-serif"
+        font-size="14.5" font-weight="600" fill="#9a4f34" letter-spacing="0.4">PUBLIC BETA</text>
+</svg>
