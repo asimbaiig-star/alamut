@@ -4,6 +4,41 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Alamut — Creator & Brand Workspace</title>
+
+    <!-- F35 — favicon. Inline SVG data URI so there's no binary asset to
+         keep in sync with the brand; #b55f40 is the resolved value of the
+         terracotta accent token (oklch(0.58 0.12 40)). -->
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23b55f40'/%3E%3Cpath d='M16 7.5 L23.5 24.5 H19.6 L16 15.6 L12.4 24.5 H8.5 Z' fill='%23FBF7EE'/%3E%3C/svg%3E"
+    />
+    <meta name="theme-color" content="#b55f40" />
+
+    <!-- F36 — description + social cards. These MUST live in the static
+         HTML: the app sets some tags client-side, but crawlers (Facebook,
+         LinkedIn, Slack, iMessage) don't run JS, so a shared link
+         previewed as a bare URL with no title or blurb. -->
+    <meta
+      name="description"
+      content="Alamut is a creator–brand marketplace: brands post briefs, creators apply and negotiate, content gets reviewed, and every deal is tracked end to end. Currently in public beta."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Alamut" />
+    <meta property="og:title" content="Alamut — where creators get paid by real brands" />
+    <meta
+      property="og:description"
+      content="Brands post briefs, creators apply and negotiate, content gets reviewed, and every deal is tracked end to end. Public beta — payments are simulated."
+    />
+    <meta property="og:url" content="https://alamut-six.vercel.app/" />
+    <!-- og:image intentionally omitted: platforms need a raster (PNG/JPG)
+         image and we don't have one yet. A missing image degrades to a
+         text-only preview; pointing at a nonexistent file would 404. -->
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Alamut — where creators get paid by real brands" />
+    <meta
+      name="twitter:description"
+      content="A creator–brand marketplace with briefs, negotiation, review and escrow-tracked deals. Public beta."
+    />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preconnect" href="https://api.fontshare.com" />

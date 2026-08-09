@@ -1735,6 +1735,52 @@ update campaigns set deadline = (current_date + interval '21 days')::date
 where id in ('cmp_1','cmp_2','cmp_3');
 ```
 
+---
+
+### 2026-08-09 — Phase D (polish · a11y · mobile · SEO)
+
+- **F35/F36/F37 · the app had no identity when shared.** No favicon, no
+  meta description, no OG/Twitter tags at all — a link pasted into Slack,
+  iMessage or LinkedIn previewed as a bare URL. These now live in static
+  `index.html` on purpose: the app sets some tags client-side, but
+  crawlers don't run JS, so client-side OG tags are invisible to exactly
+  the consumers they exist for. Favicon is an inline SVG data URI (no
+  binary asset to keep in sync); `#b55f40` is the resolved value of the
+  terracotta accent token `oklch(0.58 0.12 40)`. Added `robots.txt`
+  (signed-in surfaces disallowed — a crawler only gets the SPA shell
+  there) and a hand-maintained `sitemap.xml` covering the public
+  marketing + tool pages. **`og:image` deliberately omitted** — platforms
+  need a raster image and we have none; a missing image degrades to a
+  text-only preview, whereas pointing at a nonexistent file would 404.
+- **F33 · real 404.** The catch-all was `<Navigate to="/" replace />`, so
+  every typo, dead outbound link and renamed route silently rendered the
+  marketing homepage — the visitor never learned the page didn't exist.
+  New `NotFound` screen with both exits (homepage / browse creators),
+  since a 404 can be reached by either a visitor or a returning user.
+- **F26 · kanban cards were mouse-only.** Both boards rendered clickable
+  `<article onClick>` with `cursor: pointer` but no `role`, no
+  `tabIndex`, and no key handling — the entire pipeline was unreachable by
+  keyboard and invisible to screen readers. Now button semantics +
+  Enter/Space + descriptive `aria-label` on CampaignDetail and MyCollabs.
+- **F12 · unnamed controls.** Onboarding platform cards conveyed their
+  selected state only through a CSS class and a check glyph; added
+  `aria-pressed` + explicit labels. The three icon-only `v2-brand` home
+  buttons had no accessible name at all.
+- **F31/F32 · mobile overflow.** The storefront top-nav put the wordmark,
+  four section jump-links and a long CTA in one non-wrapping row — it
+  couldn't fit 375px. Jump-links now drop below 720px (every section is
+  still reachable by scrolling) and the CTA collapses from "Brief Sarah on
+  Alamut" to "Brief Sarah". Campaign-header actions (Pause / End / Add
+  creators) wrap instead of clipping the primary action off-screen. Both
+  needed classes + media queries — the originals were inline styles, which
+  can't be responsive.
+
+Verified live at 375px: **no horizontal overflow** on the storefront
+(`bodyScrollWidth === innerWidth === 375`), section nav computed
+`display: none`, CTA reads "Brief Sarah", and the topbar wrap rule is
+present in the loaded stylesheet. Typecheck clean, **457/457 tests**,
+production build clean.
+
 ## Commit hashes for traceability
 
 Recent commits in chronological order — all on origin/main:

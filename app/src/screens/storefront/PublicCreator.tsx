@@ -183,7 +183,9 @@ export function PublicCreator() {
           }}>
             Alamut
           </Link>
-          <nav className="v2-row" style={{ gap: 14, marginLeft: 18, fontSize: 13 }} aria-label="Sections">
+          {/* F31 — class-based so a media query can drop these below 720px
+              (see workspace-v2.css). Inline styles couldn't be responsive. */}
+          <nav className="sf-topnav-sections" aria-label="Sections">
             <a href="#work" style={{ color: 'var(--v2-ink-2)', textDecoration: 'none' }}>Work</a>
             <a href="#audience" style={{ color: 'var(--v2-ink-2)', textDecoration: 'none' }}>Audience</a>
             <a href="#rates" style={{ color: 'var(--v2-ink-2)', textDecoration: 'none' }}>Rates</a>
@@ -191,11 +193,12 @@ export function PublicCreator() {
           </nav>
           <span style={{ flex: 1 }} />
           <button
-            className="v2-btn v2-btn-primary v2-btn-sm"
+            className="v2-btn v2-btn-primary v2-btn-sm sf-topnav-cta"
             type="button"
             onClick={() => nav('/signup?role=brand')}
           >
-            Brief {firstName} on Alamut {Icon.arrow}
+            {/* On mobile this collapses to "Brief Sarah" so the button fits. */}
+            Brief {firstName}<span className="sf-cta-long"> on Alamut</span> {Icon.arrow}
           </button>
         </div>
       </header>

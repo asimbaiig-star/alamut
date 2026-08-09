@@ -609,7 +609,7 @@ function Sidebar({ persona, route, onRoute, isMobileOpen }: SidebarProps) {
       id="v2-sidebar"
       className={['v2-sidebar', isMobileOpen ? 'is-open' : ''].filter(Boolean).join(' ')}
     >
-      <button className="v2-brand" type="button" onClick={() => onRoute(persona === 'creator' ? 'creator-home' : 'home')}>
+      <button className="v2-brand" type="button" aria-label="Alamut — go to your workspace" onClick={() => onRoute(persona === 'creator' ? 'creator-home' : 'home')}>
         <div className="v2-brand-mark" aria-hidden="true">
           <svg viewBox="0 0 32 32" width="20" height="20">
             <path d="M16 4 L28 26 L22 26 L16 14 L10 26 L4 26 Z" fill="var(--v2-paper)" />

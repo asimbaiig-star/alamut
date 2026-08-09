@@ -237,6 +237,17 @@ function CollabKanban({ stages, items, campaigns, onRoute }: {
                     key={collab.id}
                     className="v2-kanban-card"
                     onClick={() => onRoute(`collab:${collab.id}`)}
+                    // F26 — see CampaignDetail: click-only cards were
+                    // unreachable by keyboard and invisible to assistive tech.
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Open collaboration with ${camp.brand} — ${camp.name}`}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        onRoute(`collab:${collab.id}`);
+                      }
+                    }}
                   >
                     <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 4 }}>
                       {camp.brand}

@@ -182,7 +182,7 @@ export function CreatorOnboardingV2({ onRoute }: Props) {
       <div className="v2-onboarding-shell">
         {/* Header */}
         <header className="v2-onboarding-header">
-          <button className="v2-brand" type="button" onClick={() => onRoute('creator-home')}>
+          <button className="v2-brand" type="button" aria-label="Alamut — go to your workspace" onClick={() => onRoute('creator-home')}>
             <div className="v2-brand-mark" aria-hidden="true">
               <svg viewBox="0 0 32 32" width="20" height="20">
                 <path d="M16 4 L28 26 L22 26 L16 14 L10 26 L4 26 Z" fill="var(--v2-paper)" />
@@ -230,6 +230,11 @@ export function CreatorOnboardingV2({ onRoute }: Props) {
                         type="button"
                         className={`v2-onboarding-platform-card ${selected ? 'is-selected' : ''}`}
                         onClick={() => update({ platform: p.id })}
+                        // F12 — the selected state was conveyed only by a
+                        // CSS class and a check glyph, so assistive tech
+                        // couldn't tell which platform was chosen.
+                        aria-pressed={selected}
+                        aria-label={`${meta.name} — ${p.tagline}`}
                       >
                         <div className="v2-channel-icon" style={{ background: meta.color, width: 36, height: 36, borderRadius: 10 }}>
                           {meta.icon}

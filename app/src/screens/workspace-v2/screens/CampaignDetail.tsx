@@ -1237,6 +1237,19 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
         isOverdue ? 'is-overdue' : '',
       ].filter(Boolean).join(' ')}
       onClick={handleCardClick}
+      // F26 — the card was a click-only <article>: mouse users could open
+      // a creator's collaboration, keyboard and screen-reader users could
+      // not reach it at all. Button semantics + Enter/Space make the whole
+      // pipeline navigable without a mouse.
+      role="button"
+      tabIndex={0}
+      aria-label={`Open ${creator.name}'s collaboration`}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleCardClick();
+        }
+      }}
     >
       <div className="v2-row" style={{ gap: 8, marginBottom: 8 }}>
         <div

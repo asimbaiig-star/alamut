@@ -69,6 +69,9 @@ const TermsPage = lazy(() =>
   import('./screens/legal/LegalPage').then((m) => ({ default: m.TermsPage })));
 const PrivacyPage = lazy(() =>
   import('./screens/legal/LegalPage').then((m) => ({ default: m.PrivacyPage })));
+// F33 — real 404 instead of a silent redirect to the homepage.
+const NotFound = lazy(() =>
+  import('./screens/legal/NotFound').then((m) => ({ default: m.NotFound })));
 
 // Phase 57 — workspace v2 (Pakistan-first revamp from the Claude Design
 // handoff). Mounted as a parallel preview surface at /v2 so the
@@ -213,5 +216,7 @@ export const router = createBrowserRouter([
     ],
   },
 
-  { path: '*', element: <Navigate to="/" replace /> },
+  // F33 — was `<Navigate to="/" replace />`, which made every dead link,
+  // typo and renamed route look like the marketing homepage.
+  { path: '*', element: lazyRoute(NotFound) },
 ]);

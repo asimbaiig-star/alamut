@@ -280,6 +280,32 @@ body:has([data-surface="v2"]) {
   align-items: center;
 }
 
+/* F32 — campaign-header actions clipped off-screen on mobile.
+   "Pause campaign", "End" and "Add creators" sat in a non-wrapping row, so
+   on a 375px viewport the primary action was pushed past the right edge
+   with no way to reach it. Let the row wrap and allow it to start a new
+   line under the title instead of competing with it for width. */
+@media (max-width: 720px) {
+  [data-surface="v2"] .v2-topbar-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    row-gap: 6px;
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+/* F31 — public storefront top-nav overflowed horizontally. The section
+   jump-links (Work / Audience / Rates / Reviews) plus the wordmark and a
+   long CTA can't fit 375px. Drop the jump-links on narrow screens — every
+   section is still reachable by scrolling — and let the CTA shrink. */
+.sf-topnav-sections { display: flex; gap: 14px; margin-left: 18px; font-size: 13px; }
+@media (max-width: 720px) {
+  .sf-topnav-sections { display: none; }
+  .sf-topnav-cta { font-size: 12px; padding-inline: 10px; }
+  .sf-topnav-cta .sf-cta-long { display: none; }
+}
+
 /* =====================================================================
    Content
    ===================================================================== */

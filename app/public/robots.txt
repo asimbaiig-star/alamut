@@ -1,0 +1,22 @@
+# Alamut — robots.txt (audit F37)
+#
+# Public marketing + storefront pages are crawlable; anything behind auth
+# or that only makes sense to a signed-in user is not. These paths are
+# client-routed, so a crawler would otherwise just get the SPA shell and
+# index a meaningless duplicate of the homepage for each one.
+
+User-agent: *
+Allow: /
+
+# Signed-in surfaces (SPA shell only to a crawler — nothing to index).
+Disallow: /v2
+Disallow: /admin
+Disallow: /onboarding
+# Auth + account flows.
+Disallow: /signin
+Disallow: /signup
+Disallow: /accept-invite
+# Deal deep links are private by definition.
+Disallow: /deal/
+
+Sitemap: https://alamut-six.vercel.app/sitemap.xml
