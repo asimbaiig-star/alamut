@@ -341,13 +341,19 @@ function EarningsHero({ wallet, myCollabs, onRoute }: {
     };
   }, [db, session]);
 
-  // Sparkline points — fall back to scaled wallet preview if there's
-  // no real payout history yet (fresh accounts).
-  const sparkData = useMemo(() => {
-    if (stats.sparkData.some((v) => v > 0)) return stats.sparkData;
-    const peak = Math.max(wallet.available, 1500);
-    return [0.4, 0.55, 0.72, 0.66, 0.85, 1.0].map((f) => Math.round(peak * f));
-  }, [stats.sparkData, wallet.available]);
+  // Sparkline points — the creator's REAL monthly payout totals, always.
+  //
+  // F20 (round 2). This used to fabricate a curve when there was no payout
+  // history: `Math.max(wallet.available, 1500)` scaled by a hardcoded
+  // rising ramp `[0.4, 0.55, 0.72, 0.66, 0.85, 1.0]`. On a brand-new $0
+  // account that drew a confident $600 → $1,500 climb immediately above
+  // the words "Lifetime: $0" — inventing six months of earnings for
+  // someone who had never been paid.
+  //
+  // The Phase C fix added an honest empty state inside EarningsSparkline,
+  // but it never fired: this fallback meant the component never received
+  // zeros. Passing the real series through is what actually fixes it.
+  const sparkData = stats.sparkData;
 
   const deltaCopy = stats.thisMonthDelta === null
     ? 'no prior data yet'
