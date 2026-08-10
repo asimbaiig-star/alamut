@@ -699,58 +699,12 @@ export function collabsForCampaign(campaignId: string, db: Database): V2Collab[]
     .filter((c) => (c.stage as string) !== 'cancelled');
 }
 
-/** Compute the per-creator match score against a campaign brief. Lifted
- *  from BriefDetail.tsx so CreatorHome's BriefMatches tile can share it
- *  (pre-fix that tile showed positional `[94, 87, 72]` scores — top brief
- *  was always 94%, second 87%, third 72%, regardless of fit). Returns an
- *  overall score from 0–100, mean of five facets (audience, niche, ER,
- *  geo, history). Stays in this adapters module so V2-shaped consumers
- *  don't need to import the BriefDetail component just for the calc. */
-export function computeMatchScore(
-  creator: V2Creator,
-  rawCreator: Creator | null,
-  campaign: V2Campaign,
-  db: Database,
-): number {
-  // Audience: scale age2534 share to [40, 98].
-  const audienceCore = creator.audience?.age2534 ?? 0;
-  const audience = Math.max(40, Math.min(98, 40 + audienceCore));
-
-  // Niche: 100 when campaign category in creator categories; 80 partial; 50 otherwise.
-  const myCats = creator.categories ?? [];
-  // V2Campaign doesn't carry `category` directly — pull from raw db.campaigns
-  const rawCampaign = db.campaigns.find((c) => c.id === campaign.id);
-  const campaignCat = (rawCampaign?.category ?? '').toLowerCase();
-  const niche = !campaignCat || myCats.length === 0 ? 50
-    : myCats.some((c) => c.toLowerCase() === campaignCat) ? 100
-    : myCats.some((c) => campaignCat.split(/\s+/).some((w) => w && c.toLowerCase().includes(w))) ? 80
-    : 50;
-
-  // ER: linear from 4% to 12%.
-  const myER = creator.channels?.[0]?.engagement ?? 0;
-  const er = Math.max(20, Math.min(100, Math.round(((myER - 2) / 10) * 100)));
-
-  // Geo: exact city in placement (100), country partial (70), neither (40).
-  const placement = (campaign.placement ?? '').toLowerCase();
-  const city = (creator.city ?? '').toLowerCase();
-  const country = (creator.country ?? '').toLowerCase();
-  const geo = !placement || !city ? 40
-    : placement.includes(city) ? 100
-    : country && placement.includes(country) ? 70
-    : 40;
-
-  // History: any prior offer between creator + the campaign's brand.
-  const brand = db.brands.find((b) => b.name === campaign.brand);
-  const hasPriorHistory = rawCreator && brand
-    ? db.offers.some((o) =>
-        o.creatorId === rawCreator.id &&
-        db.campaigns.find((c) => c.id === o.campaignId)?.brandId === brand.id,
-      )
-    : false;
-  const history = hasPriorHistory ? 95 : 50;
-
-  return Math.round((audience + niche + er + geo + history) / 5);
-}
+// `computeMatchScore` was removed in the product audit. It was one of two
+// disagreeing scorers (the same creator saw 48% here and 71% in
+// BrowseBriefs), it read `audience.age2534` which only seeded creators
+// have, and its `geo` facet compared the creator's city against
+// `campaign.placement` — the deliverables text, not a location. Fit now
+// lives in ./matching.ts as a single implementation.
 
 /** All collabs for one creator (creator-side My collaborations). */
 export function collabsForCreator(creatorId: string, db: Database): V2Collab[] {

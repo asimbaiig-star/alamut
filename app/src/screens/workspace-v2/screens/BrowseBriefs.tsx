@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon, Topbar } from '../lib';
 import { type V2Campaign } from '../data';
 import { useV2AllCampaigns, useV2CurrentCreator, v2ToggleSavedBrief } from '../v2Hooks';
+import { matchCreatorToCampaign } from '../matching';
 import { useStore } from '@/lib/api/store';
 import type { Creator } from '@/lib/api/types';
 
@@ -891,85 +892,12 @@ function deliverableGlyph(placement: string): string {
 // creator or insufficient data for a personal match score. The real
 // `computeMatch()` below produces creator-specific reasons whenever
 // the viewer is a creator.
-function fallbackReasonsFor(category: string | undefined): string[] {
-  const c = (category ?? '').toLowerCase();
-  if (c.includes('fashion'))   return ['Fashion audience', 'Lahore 18–34 women', 'Mid-tier rate'];
-  if (c.includes('beauty'))    return ['Beauty audience', 'High craft signal', 'Mid-tier rate'];
-  if (c.includes('lifestyle')) return ['Lifestyle voice', 'City match', 'Aligned rate'];
-  if (c.includes('food'))      return ['Food vertical', 'High ER', 'Rate aligned'];
-  if (c.includes('tech'))      return ['Tech voice', 'B2C audience', 'Premium tier'];
-  if (c.includes('b2b') || c.includes('finance')) return ['LinkedIn voice', 'Karachi pros', 'Thought-leader tier'];
-  if (c.includes('wellness'))  return ['Wellness vertical', 'Mature audience', 'Calm-aesthetic match'];
-  return ['Niche fit', 'City match', 'Rate aligned'];
-}
-
-// Real creator-vs-campaign match. Ports BriefDetail's `facets` logic
-// (audience/niche/ER/geo/history) and adds rate alignment. Returns the
-// overall %, plus the top 3 *qualifying* reasons in priority order so
-// the tile's "why this match" list is personalised to the viewer.
-function computeMatch(
-  creator: Creator | undefined,
-  campaign: V2Campaign,
-  perCreator: number,
-): { overall: number; reasons: string[] } {
-  if (!creator) {
-    // No creator context — fall back to the synthesised score the
-    // pre-personalised tile used (88 + id-hash modulo).
-    return {
-      overall: 88 + ((campaign.id.charCodeAt(0) || 0) % 10),
-      reasons: fallbackReasonsFor(campaign.category),
-    };
-  }
-  const myCats = creator.categories ?? [];
-  // Audience: heuristic that scales with how rich the creator profile
-  // signal is (proxy via number of categories).
-  const audience = Math.min(98, 75 + myCats.length * 2);
-  // Niche: 92 if any creator category matches the campaign category.
-  const niche = campaign.category && myCats.some((c) => c.toLowerCase() === campaign.category!.toLowerCase())
-    ? 92
-    : 70;
-  // Engagement: scaled off the creator's top channel ER (0–10% range).
-  const erPct = creator.platforms?.[0]?.engagement ?? 0;
-  const er = erPct > 0 ? Math.min(96, 60 + Math.round(erPct * 6)) : 75;
-  // Geo: 90 if the campaign placement text mentions the creator's city.
-  const geo = creator.city && (campaign.placement ?? '').toLowerCase().includes(creator.city.toLowerCase())
-    ? 90
-    : 78;
-  // History: 95 if they've worked with this brand before.
-  const history = (creator.pastClients ?? []).includes(campaign.brand) ? 95 : 60;
-  // Rate alignment: 90 if the per-creator allocation matches the
-  // creator's rate-card ballpark (within 25%); 60 otherwise. We pull a
-  // representative number off rateCard.post when available.
-  const ratePost = parseInt((creator.rateCard?.post ?? '').replace(/[^0-9]/g, ''), 10);
-  const rateAligned = !Number.isNaN(ratePost) && ratePost > 0
-    ? Math.abs(perCreator - ratePost) / ratePost <= 0.25
-    : false;
-  const rate = rateAligned ? 90 : 65;
-
-  const overall = Math.round((audience + niche + er + geo + history + rate) / 6);
-
-  // Pick the top three reasons that pass a "qualifies" threshold so we
-  // only surface positive signals (not "you don't match"). Each reason
-  // has a one-line label keyed off the campaign + creator.
-  const candidates: { score: number; label: string }[] = [];
-  if (niche >= 90)    candidates.push({ score: niche, label: `${campaign.category ?? 'Niche'} fit` });
-  if (history >= 90)  candidates.push({ score: history, label: `Worked with ${campaign.brand}` });
-  if (er >= 90)       candidates.push({ score: er, label: `${erPct.toFixed(1)}% ER` });
-  if (geo >= 85)      candidates.push({ score: geo, label: `${creator.city} audience` });
-  if (audience >= 92) candidates.push({ score: audience, label: 'Audience overlap' });
-  if (rateAligned)    candidates.push({ score: rate, label: 'Rate aligned' });
-
-  // Fill in with category fallbacks if fewer than three qualified.
-  const reasons = candidates
-    .sort((a, b) => b.score - a.score)
-    .map((c) => c.label);
-  while (reasons.length < 3) {
-    const filler = fallbackReasonsFor(campaign.category)[reasons.length];
-    if (!filler || reasons.includes(filler)) break;
-    reasons.push(filler);
-  }
-  return { overall, reasons: reasons.slice(0, 3) };
-}
+// Match scoring now lives in ../matching.ts as a single shared
+// implementation. The two functions previously here (fallbackReasonsFor +
+// computeMatch) were removed in the product audit: every facet had a floor,
+// so the score could not fall below 71, and the 'why this match' reasons were
+// a lookup keyed only on campaign category — they described the brief, not
+// the creator reading it.
 
 function CampaignTile({ campaign, onOpen }: {
   campaign: V2Campaign;
@@ -993,11 +921,18 @@ function CampaignTile({ campaign, onOpen }: {
   );
   const urgent = daysLeft <= 5;
 
-  // Real match — driven by creator profile signal against the campaign.
-  // Falls back to the synthesised hash-based score for non-creator viewers.
-  const { overall: matchPct, reasons: fitReasons } = useMemo(
-    () => computeMatch(meRaw, campaign, perCreator),
-    [meRaw, campaign, perCreator],
+  // Fit against the creator's real profile signal. Returns score === null
+  // when there isn't enough to judge — see matching.ts for why that's
+  // better than the old floor-based score, which could never fall below
+  // 71 and so displayed "71% match" on every brief in the marketplace.
+  const { score: matchPct, reasons: fitReasons, insufficient } = useMemo(
+    () => matchCreatorToCampaign(
+      meRaw,
+      db.campaigns.find((c) => c.id === campaign.id),
+      db,
+      perCreator,
+    ),
+    [meRaw, campaign.id, db, perCreator],
   );
 
   // Posted-days-ago — uses real createdAt if available, otherwise a
@@ -1112,20 +1047,32 @@ function CampaignTile({ campaign, onOpen }: {
             <h3 className="v2-ct-title">{campaign.name}</h3>
             <p className="v2-ct-blurb">{campaign.brief}</p>
           </div>
-          <div className="v2-ct-match-card">
-            <div className="v2-ct-match-top">
-              <span className="v2-ct-match-pct v2-tabular">
-                {matchPct}
-                <span className="v2-ct-match-pct-pct">%</span>
-              </span>
-              <span className="v2-ct-match-label">match</span>
+          {/* When there isn't enough profile signal we say so and name the
+              fix, rather than printing a confident number. */}
+          {matchPct === null ? (
+            <div className="v2-ct-match-card">
+              <div className="v2-ct-match-top">
+                <span className="v2-ct-match-pct v2-tabular">—</span>
+                <span className="v2-ct-match-label">fit unknown</span>
+              </div>
+              <p className="v2-ct-match-hint">{insufficient}</p>
             </div>
-            <ul className="v2-ct-match-reasons">
-              {fitReasons.map((r, i) => (
-                <li key={i}><span className="v2-ct-check">✓</span>{r}</li>
-              ))}
-            </ul>
-          </div>
+          ) : (
+            <div className="v2-ct-match-card">
+              <div className="v2-ct-match-top">
+                <span className="v2-ct-match-pct v2-tabular">
+                  {matchPct}
+                  <span className="v2-ct-match-pct-pct">%</span>
+                </span>
+                <span className="v2-ct-match-label">match</span>
+              </div>
+              <ul className="v2-ct-match-reasons">
+                {fitReasons.map((r, i) => (
+                  <li key={i}><span className="v2-ct-check">✓</span>{r}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
 
         {/* Three-pillar data band */}

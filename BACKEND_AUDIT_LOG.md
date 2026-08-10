@@ -1873,7 +1873,7 @@ in `index.html`; keep the 1200×630 ratio or the large card gets cropped.
 
 ---
 
-### 2026-08-09 — PRODUCT audit (sweep COMPLETE, fixes not started)
+### 2026-08-09 — PRODUCT audit (sweep complete; Tier 1 item 1 DONE)
 
 > **⚠️ Read this section first if resuming cold. The audit sweep is
 > COMPLETE; none of the fixes are implemented yet. The ranked plan at the

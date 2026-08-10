@@ -14,7 +14,8 @@ import {
   useV2AllCampaigns, useV2CreatorWallet, useV2CurrentCreator, useV2Creators,
   useV2MyCollabs,
 } from '../v2Hooks';
-import { creatorToV2, computeMatchScore } from '../v2Adapters';
+import { creatorToV2 } from '../v2Adapters';
+import { matchCreatorToCampaign } from '../matching';
 import { useStore } from '@/lib/api/store';
 import type { V2Campaign, V2Creator } from '../data';
 import { RecentActivityCard } from './BrandHome';
@@ -606,13 +607,25 @@ function BriefMatches({ me, campaigns, myCollabs, onRoute }: {
     // Now we compute the real per-(creator, campaign) score via
     // computeMatchScore (lifted from BriefDetail), rank by it, and
     // surface the top 3 matches.
+    // Now shares the single scorer in ../matching. `match` is null when
+    // the creator's profile has too little signal to judge fit — in that
+    // case we fall back to recency rather than fabricating a ranking, and
+    // the tile shows what to add instead of a made-up percentage.
     const appliedIds = new Set(myCollabs.map((c) => c.campaignId));
     const rawMe = db.creators.find((c) => c.id === me.id) ?? null;
-    return campaigns
+    const scored = campaigns
       .filter((c) => c.status !== 'Completed' && !appliedIds.has(c.id))
-      .map((c) => ({ campaign: c, match: computeMatchScore(me, rawMe, c, db) }))
-      .sort((a, b) => b.match - a.match)
-      .slice(0, 3);
+      .map((c) => {
+        const raw = db.campaigns.find((x) => x.id === c.id);
+        const perCreator = Math.round(c.budget / Math.max(c.creators.length, 4));
+        const { score, insufficient } = matchCreatorToCampaign(rawMe, raw, db, perCreator);
+        return { campaign: c, match: score, insufficient };
+      });
+    const rankable = scored.some((s) => s.match !== null);
+    return (rankable
+      ? scored.sort((a, b) => (b.match ?? -1) - (a.match ?? -1))
+      : scored.sort((a, b) => +new Date(b.campaign.createdAt) - +new Date(a.campaign.createdAt))
+    ).slice(0, 3);
   }, [campaigns, myCollabs, me, db]);
 
   return (
@@ -647,7 +660,7 @@ function BriefMatches({ me, campaigns, myCollabs, onRoute }: {
           <div className="v2-muted" style={{ padding: '20px 8px', fontSize: 13, textAlign: 'center' }}>
             No new briefs right now. We'll surface fresh matches when brands post.
           </div>
-        ) : open.map(({ campaign, match }) => {
+        ) : open.map(({ campaign, match, insufficient }) => {
           const perCreator = Math.round(campaign.budget / Math.max(campaign.creators.length || 4, 1));
           return (
             <div key={campaign.id} className="v2-home-brief-match">
@@ -672,10 +685,13 @@ function BriefMatches({ me, campaigns, myCollabs, onRoute }: {
                       fontSize: 10,
                       fontWeight: 700,
                       padding: '1px 6px',
-                      background: match >= 85 ? 'var(--v2-moss-soft)' : 'var(--v2-bg-2)',
-                      color: match >= 85 ? 'var(--v2-moss)' : 'var(--v2-ink-3)',
+                      background: match !== null && match >= 85 ? 'var(--v2-moss-soft)' : 'var(--v2-bg-2)',
+                      color: match !== null && match >= 85 ? 'var(--v2-moss)' : 'var(--v2-ink-3)',
                     }}
-                  >{match}% match</span>
+                    // `match === null` means there isn't enough profile
+                    // signal to score honestly; the hint names the fix.
+                    title={match === null ? insufficient : undefined}
+                  >{match === null ? 'fit unknown' : `${match}% match`}</span>
                 </div>
                 <div className="v2-muted v2-home-brief-name">{campaign.name}</div>
                 <div className="v2-row" style={{ gap: 8, marginTop: 4 }}>
