@@ -1873,9 +1873,11 @@ in `index.html`; keep the 1200×630 ratio or the large card gets cropped.
 
 ---
 
-### 2026-08-09 — PRODUCT audit (in progress) — "does this add meaning?"
+### 2026-08-09 — PRODUCT audit (sweep COMPLETE, fixes not started)
 
-> **⚠️ IN PROGRESS. Read this section first if resuming cold.**
+> **⚠️ Read this section first if resuming cold. The audit sweep is
+> COMPLETE; none of the fixes are implemented yet. The ranked plan at the
+> end of this section is where the next session starts.**
 >
 > **Goal shift.** The 2026-08-08 audit asked *"is anything broken or
 > dishonest?"* — all 39 findings (F1–F39) are closed across Phases A–E.
@@ -1936,18 +1938,77 @@ The deal machinery: escrow, the pipeline kanban, submit → review →
 revision → approve, the deal room, the wallet ledger. All correct after
 Phases A–E, and honest in its empty states.
 
-#### Status / next steps
+#### Remaining creator surfaces (swept)
 
-- ✅ **Creator side swept**: Storefront, Analytics, Wallet, Browse
-  campaigns (+ the earlier end-to-end flow walkthrough).
-- ⏳ **Not yet swept**: creator Inbox, Calendar, My collaborations; and
-  the **entire brand side** (Home, Spark, Discover creators, My campaigns
-  + 5 CampaignDetail tabs, Inbox, Calendar, Analytics, Wallet, Brand
-  profile). Prime suspects for more of the same pattern: **Discover's
-  creator ranking** (where the hiring decision is actually made) and
-  **brand Analytics**.
-- ⏳ **Then**: ranked opportunity plan — each item tagged with the job it
-  serves, effort, and whether it needs anything from Asim.
+| id | Finding |
+|---|---|
+| **P-9** | Creator **Inbox** empty state instructs an impossible action — with 0 conversations it says "Pick a conversation on the left to view the thread", but the list is empty. Compare My collaborations, which handles emptiness properly. |
+| **P-9b** | My collaborations renders **two overlapping empty states** ("No collaborations yet" + "No active collaborations yet"). Cosmetic. |
+
+**Good, protect as-is:** My collaborations' empty state (honest, two useful
+CTAs — "Browse campaigns" / "Polish my storefront"); Calendar (honest
+crumb, correct month, empty grid); Wallet (all $0, correct, good nudge to
+add a payout method).
+
+#### Brand side (swept, as a real brand account)
+
+Created a real brand via the Phase A finish-setup path — `201` on
+`/rest/v1/brands`, so the recovery flow works end to end.
+
+| id | Finding |
+|---|---|
+| **P-10** | **Discover doesn't discriminate.** Header claims "115 creators in network · **115 match**" — i.e. the entire network matches. Scores *do* vary (76–99, unlike the creator side's constant), but **110 of 115 land in 76–99** and 5 score 0. A ranking where 96% of the network is top-quartile can't support a hiring decision. This is where the brand's core job happens. |
+| **P-11** | **Contradictory audience data in a decision surface.** A male creator's card read "100% female · 0% 25–34" alongside 704K reach. Seeded values surface as fact on the screen a brand hires from. |
+| **P-12** | Finish-setup defaults to the **creator** narrative ("Build a body of real work") for an account that signed up as a brand — it can't know the role. Narrow: only affects accounts created before sign-up metadata shipped, since `ensureProfileForSession` now heals from metadata automatically. |
+
+**Brand Analytics is exemplary and is the template for the fix.** On a
+zero-campaign account it shows "Analytics unlock once content goes live"
+with an explanation and a CTA — no invented deltas. **The codebase
+already knows how to do this correctly**; creator Analytics simply
+doesn't follow it. That makes P-3 a low-risk change rather than a design
+question.
+
+#### RANKED PLAN (next session starts here)
+
+**Tier 1 — code only, no dependencies, fixes the central finding**
+
+1. **Rebuild matching** (P-1, P-2, P-10). Score from signals a real
+   account actually has; derive "why this match" from the creator instead
+   of a category lookup; widen the distribution so it discriminates; stop
+   claiming everything matches. Serves the #1 job on *both* sides.
+2. **Honest analytics** (P-3). Delete the hardcoded `delta=` literals;
+   adopt brand-Analytics' "unlock once there's data" pattern for
+   creators.
+3. **Stop assigning a stranger's face** (P-4). Drop the hardcoded
+   portrait; prompt for a real photo, fall back to the existing initials
+   `Avatar`.
+4. **Finish the honesty pass** (P-5, P-7): the "brands cross-check your
+   numbers" tip and "tax certificates auto-generated quarterly".
+5. **Recover abandoned onboarding** (P-8) + Inbox empty state (P-9) +
+   duplicate empty state (P-9b) + finish-setup role default (P-12).
+
+**Tier 2 — needs Asim; each unlocks a differentiator**
+
+6. **Make Spark real** (P-6) — needs `ANTHROPIC_API_KEY` in Supabase
+   secrets + deploy the existing `spark-chat` Edge Function. Has a
+   per-conversation API cost. This is what substantiates "operating
+   system" rather than "directory".
+7. **Verify creator metrics** — per-platform OAuth apps (Meta / TikTok /
+   Google / X) registered on each dev portal. The scaffolding exists
+   (`connectPlatform`, migration 024). This is the trust foundation the
+   whole "without the agency markup" claim rests on.
+
+**Tier 3 — product depth, code-only but larger**
+
+8. **Cold-start trust**: a brand-new creator has no track record, so
+   nothing makes them hireable. Reviews only exist post-collab.
+9. **Pricing guidance**: nothing helps a creator set or defend a rate;
+   the `/tools/*-calculator` pages exist publicly but aren't wired into
+   the creator's own workflow.
+
+**Suggested order:** Tier 1 in the order listed (1 first — it's the
+biggest single lever and touches both personas), then unblock 6 and 7
+with Asim, then Tier 3.
 
 **Dependencies only Asim can supply:** `ANTHROPIC_API_KEY` in Supabase
 secrets (Spark), per-platform dev-portal apps (OAuth metric
