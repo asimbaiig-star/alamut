@@ -12,12 +12,13 @@
 // top, form fields below, sticky action bar at the bottom. Live
 // preview tile on the right when there's room (≥ 1100px).
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Icon, fmtUSD, fmtFollowers, PLATFORM_META } from '../lib';
 import { useV2CurrentCreator } from '../v2Hooks';
 import { v2UpdateCreatorIdentity, v2AddCreatorChannel } from '../v2CreatorActions';
 import { pushToast } from '@/lib/utils/toast';
 import { parseNumberInput, listAnd } from '@/lib/utils/format';
+import { suggestRateBand } from '@/screens/tools/rateGuidance';
 
 interface Props {
   onRoute: (r: string) => void;
@@ -134,6 +135,17 @@ export function CreatorOnboardingV2({ onRoute }: Props) {
     setSubmitting(false);
     onRoute('creator-home');
   }
+
+  // T3.1 — the band shown on the rates step, derived from the platform,
+  // follower count and engagement the creator entered on the previous step.
+  // null when we have no benchmark for their platform, or before they've
+  // filled in the numbers.
+  const rateBand = useMemo(() => {
+    if (!s.platform) return null;
+    const followers = parseNumberInput(s.followers, { min: 0 });
+    const eng = parseNumberInput(s.engagement, { min: 0, integer: false });
+    return suggestRateBand(s.platform, followers, eng);
+  }, [s.platform, s.followers, s.engagement]);
 
   const idx = STEPS.findIndex((x) => x.id === step);
   const next = () => idx < STEPS.length - 1 && setStep(STEPS[idx + 1].id);
@@ -316,6 +328,52 @@ export function CreatorOnboardingV2({ onRoute }: Props) {
 
             {step === 'rates' && (
               <Card title="Set your rates" sub="Brands use this to send offers without negotiating from scratch. You can change anytime.">
+                {/* T3.1 — this step used to be three empty boxes with no
+                    guidance whatsoever, so a creator with no idea what to
+                    charge simply guessed. We already collected platform,
+                    followers and engagement on the previous step, which is
+                    exactly what the public rate calculator needs — so show
+                    the same band here. `suggestRateBand` returns null for
+                    platforms we have no benchmark for (LinkedIn / X /
+                    Newsletter), in which case nothing is shown rather than
+                    a made-up number. */}
+                {rateBand && (
+                  <div
+                    style={{
+                      background: 'var(--v2-bg-1)', border: '1px solid var(--v2-line)',
+                      borderRadius: 10, padding: 14, marginBottom: 16,
+                    }}
+                  >
+                    <div className="v2-eyebrow" style={{ marginBottom: 6 }}>
+                      Typical range for your size on {rateBand.platform}
+                    </div>
+                    <div className="v2-row" style={{ gap: 10, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                      <strong style={{ fontSize: 20, fontFamily: 'var(--v2-font-display)' }}>
+                        {fmtUSD(rateBand.low)} – {fmtUSD(rateBand.high)}
+                      </strong>
+                      <span className="v2-muted" style={{ fontSize: 12 }}>
+                        per Reel · midpoint {fmtUSD(rateBand.median)}
+                      </span>
+                    </div>
+                    <p className="v2-muted" style={{ fontSize: 12, lineHeight: 1.45, margin: '8px 0 0' }}>
+                      A benchmark from your follower count and engagement — not a quote.
+                      Brands negotiate, and your niche and deliverable move the number.
+                      Pricing under the band costs you money; well over it costs you replies.
+                    </p>
+                    <button
+                      type="button"
+                      className="v2-btn v2-btn-ghost v2-btn-sm"
+                      style={{ marginTop: 10 }}
+                      onClick={() => update({
+                        reelRate: String(rateBand.median),
+                        storyRate: String(Math.round(rateBand.median * 0.45)),
+                        comboRate: String(Math.round(rateBand.median * 1.5)),
+                      })}
+                    >
+                      Use these as a starting point
+                    </button>
+                  </div>
+                )}
                 <Field label="Instagram Reel" sub="60–90s vertical · 1 round of revisions">
                   <RateInput value={s.reelRate} onChange={(v) => update({ reelRate: v })} />
                 </Field>
