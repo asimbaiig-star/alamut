@@ -163,7 +163,17 @@ export function creatorToV2(c: Creator): V2Creator {
     // beyond the first N from the public storefront and other surfaces
     // (s19 fix — public storefront was missing categories 4+ and brands 5+).
     categories: c.categories,
-    score: Math.round((c.rating ?? 4.5) * 20),
+    // P-10 — this is the creator's REVIEW RATING rescaled to 0–100, and
+    // nothing more. It was previously surfaced in Discover as an "Alamut
+    // score" and used as the default sort for hiring decisions, which made
+    // a review average look like a fit score. Worse, the `?? 4.5` default
+    // handed a creator with **no reviews at all** a flattering 90.
+    //
+    // Now: no reviews ⇒ null, so callers must say "no reviews yet" instead
+    // of inventing a number. Actual fit lives in ./matching.ts.
+    score: typeof c.rating === 'number' && c.rating > 0
+      ? Math.round(c.rating * 20)
+      : null,
     priceTier: priceTier(rate),
     priceMin: allMins.length > 0 ? Math.min(...allMins) : Math.round(rate * 0.5),
     priceMax: allMaxs.length > 0 ? Math.max(...allMaxs) : Math.round(rate * 1.8),

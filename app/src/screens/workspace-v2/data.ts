@@ -42,7 +42,9 @@ export interface V2Creator {
   bio: string;
   /** Full categories list (no slice). Consumers truncate as needed. */
   categories: string[];
-  score: number;
+  /** Review rating rescaled to 0-100, or null when the creator has no
+   *  reviews yet. NOT a fit score — see matching.ts. */
+  score: number | null;
   priceTier: '$' | '$$' | '$$$' | '$$$$';
   priceMin: number;
   priceMax: number;

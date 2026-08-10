@@ -204,7 +204,10 @@ export function Discover({ onRoute }: Props) {
     }
     if (filters.priceMax < 1_000_000) r = r.filter((c) => c.rate <= filters.priceMax);
 
-    if (sort === 'score') r.sort((a, b) => b.score - a.score);
+    // Unreviewed creators sort last rather than inheriting a default
+    // rating. The label for this sort is corrected below too — it ranks
+    // by review rating, which is not the same thing as fit (P-10).
+    if (sort === 'score') r.sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
     else if (sort === 'followers') {
       r.sort((a, b) =>
         Math.max(...b.channels.map((ch) => ch.followers)) -
@@ -300,7 +303,10 @@ export function Discover({ onRoute }: Props) {
     <>
       <Topbar
         title="Discover Creators"
-        crumb={`${allCreators.length} creators in network · ${results.length} match`}
+        // P-10 — this used to read "115 creators in network · 115 match",
+        // i.e. it claimed the entire network matched. `results` is just
+        // the filtered list, so say that instead of overclaiming fit.
+        crumb={`${allCreators.length} creators in network · ${results.length} shown`}
       />
       <div className="v2-content">
         {/* ─── Unified search ─────────────────────────────────────── */}
@@ -463,7 +469,7 @@ export function Discover({ onRoute }: Props) {
                     backgroundRepeat: 'no-repeat',
                   }}
                 >
-                  <option value="score">Sort · Alamut score</option>
+                  <option value="score">Sort · Review rating</option>
                   <option value="followers">Sort · Followers</option>
                   <option value="er">Sort · Engagement</option>
                   <option value="price-low">Sort · Price low → high</option>

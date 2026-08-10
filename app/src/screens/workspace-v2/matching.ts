@@ -234,6 +234,103 @@ export function matchCreatorToCampaign(
   return { score, reasons, facetsUsed: scored.map((f) => f.key) };
 }
 
+/**
+ * Score how well `creator` fits a BRAND's stated preferences — the brand
+ * side of Discover, where there's no single campaign to match against.
+ *
+ * Why this exists (P-10): Discover's "Alamut score" was
+ * `Math.round((creator.rating ?? 4.5) * 20)` — the creator's star rating
+ * rescaled, not a fit score at all. Ratings sit around 3.8–5.0, which is
+ * why 110 of 115 creators scored 76–99, and an **unrated** creator
+ * defaulted to 4.5 → a flattering 90. A brand sorting by it was sorting by
+ * review average, mislabelled as fit, with newcomers given an unearned 90.
+ *
+ * Same rules as `matchCreatorToCampaign`: absent signal never flatters,
+ * and too little signal returns `null` rather than a confident number.
+ */
+export function matchCreatorToBrand(
+  creator: Creator | null | undefined,
+  brandId: string | null | undefined,
+  db: Database,
+): MatchResult {
+  const brand = brandId ? db.brands.find((b) => b.id === brandId) : undefined;
+  if (!creator || !brand) {
+    return { score: null, reasons: [], facetsUsed: [], insufficient: 'No brand context.' };
+  }
+
+  const facets: Facet[] = [];
+
+  // ---- Category overlap against what the brand says it wants.
+  const myCats = (creator.categories ?? []).map((c) => c.toLowerCase());
+  const wantCats = (brand.preferredCategories ?? []).map((c) => c.toLowerCase());
+  if (myCats.length > 0 && wantCats.length > 0) {
+    const hits = myCats.filter((c) => wantCats.includes(c)).length;
+    facets.push({
+      key: 'category',
+      value: hits >= 2 ? 100 : hits === 1 ? 80 : 20,
+      weight: 0.4,
+      reason: hits > 0 ? `Works in ${brand.preferredCategories.find((c) => myCats.includes(c.toLowerCase()))}` : undefined,
+    });
+  }
+
+  // ---- Region: does the creator sit in a market the brand targets?
+  const regions = (brand.preferredRegions ?? []).map((r) => r.toLowerCase());
+  const city = (creator.city ?? '').toLowerCase();
+  const country = (creator.country ?? '').toLowerCase();
+  if (regions.length > 0 && (city || country)) {
+    const cityHit = !!city && regions.some((r) => r.includes(city));
+    const countryHit = !!country && regions.some((r) => r.includes(country) || r.includes('wide') || r.includes('international'));
+    facets.push({
+      key: 'region',
+      value: cityHit ? 100 : countryHit ? 70 : 25,
+      weight: 0.25,
+      reason: cityHit ? `Based in ${creator.city}` : undefined,
+    });
+  }
+
+  // ---- Engagement on the creator's primary (largest) channel.
+  const primary = (creator.platforms ?? []).slice()
+    .sort((a, b) => (b.followers ?? 0) - (a.followers ?? 0))[0];
+  if (primary && (primary.engagement ?? 0) > 0) {
+    const v = scoreEngagement(primary.engagement);
+    facets.push({
+      key: 'engagement',
+      value: v,
+      weight: 0.2,
+      reason: v >= 80 ? `${primary.engagement.toFixed(1)}% engagement on ${primary.name}` : undefined,
+    });
+  }
+
+  // ---- Prior work with this brand — a bonus only, never a penalty.
+  if ((creator.pastClients ?? []).includes(brand.name)) {
+    facets.push({ key: 'history', value: 100, weight: 0.15, reason: `Has worked with ${brand.name}` });
+  }
+
+  const scored = facets.filter((f) => f.value !== null);
+  if (scored.length < MIN_FACETS_TO_SCORE) {
+    return {
+      score: null,
+      reasons: [],
+      facetsUsed: scored.map((f) => f.key),
+      insufficient: wantCats.length === 0
+        ? 'Set your preferred categories and regions in Brand profile to rank creators by fit.'
+        : "This creator's profile is too sparse to judge fit.",
+    };
+  }
+
+  const totalWeight = scored.reduce((s, f) => s + f.weight, 0);
+  const score = Math.round(
+    scored.reduce((s, f) => s + (f.value as number) * f.weight, 0) / totalWeight,
+  );
+  const reasons = scored
+    .filter((f) => f.reason && (f.value as number) >= 65)
+    .sort((a, b) => (b.value as number) - (a.value as number))
+    .map((f) => f.reason as string)
+    .slice(0, 3);
+
+  return { score, reasons, facetsUsed: scored.map((f) => f.key) };
+}
+
 /** Tell the creator exactly what to add to unlock matching. */
 function insufficiencyHint(creator: Creator): string {
   const missing: string[] = [];

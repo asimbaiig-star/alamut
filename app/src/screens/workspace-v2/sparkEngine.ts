@@ -187,7 +187,7 @@ function filterCreators(text: string, context: SparkContext): { creators: V2Crea
     );
   }
 
-  candidates.sort((a, b) => b.score - a.score);
+  candidates.sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
   return { creators: candidates.slice(0, 5), criteria };
 }
 
@@ -296,7 +296,7 @@ function handleCompare(text: string, context: SparkContext): { reply: SparkMessa
   else if (context.shortlist.length >= 2) {
     chosen = context.shortlist.slice(0, 3).map((id) => pool().creators.find((c) => c.id === id)!).filter(Boolean);
   } else {
-    chosen = pool().creators.slice().sort((a, b) => b.score - a.score).slice(0, 2);
+    chosen = pool().creators.slice().sort((a, b) => (b.score ?? -1) - (a.score ?? -1)).slice(0, 2);
   }
 
   return {

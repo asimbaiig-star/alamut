@@ -187,7 +187,10 @@ export function BrandHome({ onRoute }: Props) {
     const scored = creators
       .map((c) => ({
         c,
-        score: c.score + (savedSet.has(c.id) ? 30 : 0) + (campaigns.some((cm) => cm.creators.includes(c.id)) ? 10 : 0),
+        // `c.score` is the review rating (null when unreviewed) — an
+        // unrated creator sorts as 0 here rather than borrowing a
+        // flattering default. See ScoreBadge / matching.ts (P-10).
+        score: (c.score ?? 0) + (savedSet.has(c.id) ? 30 : 0) + (campaigns.some((cm) => cm.creators.includes(c.id)) ? 10 : 0),
       }))
       .sort((a, b) => b.score - a.score);
     return scored[0]?.c;
@@ -200,7 +203,7 @@ export function BrandHome({ onRoute }: Props) {
   const outcomes = useMemo(() => {
     const accepted = creators.filter((c) => campaigns.some((cm) => cm.creators.includes(c.id)));
     const pool = accepted.length >= 3 ? accepted : creators;
-    const sorted = [...pool].sort((a, b) => b.score - a.score);
+    const sorted = [...pool].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
     const reachOf = (c: typeof pool[number]) => c.channels.reduce((s, ch) => s + ch.followers, 0);
     const erOf = (c: typeof pool[number]) =>
       c.channels.reduce((s, ch) => s + ch.engagement, 0) / Math.max(c.channels.length, 1);

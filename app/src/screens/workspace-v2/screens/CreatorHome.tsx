@@ -784,7 +784,7 @@ function StorefrontPulse({ me, onRoute }: { me: V2Creator; onRoute: (r: string) 
           sub={inquiriesDelta === 0 ? 'same as last week' : `${inquiriesDelta > 0 ? '↑' : '↓'} ${Math.abs(inquiriesDelta)} this week`}
         />
         <PulseStat
-          n={`${(me.score / 20).toFixed(1)}`}
+          n={me.score === null ? '—' : `${(me.score / 20).toFixed(1)}`}
           l="avg rating"
           sub={reviewCount > 0 ? `from ${reviewCount} collab${reviewCount === 1 ? '' : 's'}` : 'no reviews yet'}
         />

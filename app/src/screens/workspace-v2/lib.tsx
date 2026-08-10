@@ -121,10 +121,25 @@ export function PlatformChip({ platform, followers, engagement }: {
   );
 }
 
-export function ScoreBadge({ score }: { score: number }) {
+/** The creator's review rating on a 0–100 scale. `null` means they have no
+ *  reviews yet — say so rather than printing a number. Pre-fix the adapter
+ *  defaulted an unrated creator to 4.5 stars, so a brand-new creator with
+ *  zero reviews rendered a confident "90" here (P-10). */
+export function ScoreBadge({ score }: { score: number | null }) {
+  if (score === null) {
+    return (
+      <div className="v2-score" title="No reviews yet — this creator hasn't completed a collab on Alamut">
+        <span className="v2-score-dot">○</span>
+        New
+      </div>
+    );
+  }
   const tier = score >= 90 ? 'good' : score >= 80 ? 'mid' : 'low';
   return (
-    <div className={`v2-score ${tier === 'good' ? 'v2-score-good' : tier === 'mid' ? 'v2-score-mid' : ''}`}>
+    <div
+      className={`v2-score ${tier === 'good' ? 'v2-score-good' : tier === 'mid' ? 'v2-score-mid' : ''}`}
+      title={`Average review rating: ${(score / 20).toFixed(1)} / 5`}
+    >
       <span className="v2-score-dot">●</span>
       {score}
     </div>

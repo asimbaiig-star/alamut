@@ -783,7 +783,9 @@ function ComparisonBlock({ block, onSave, onRoute }: {
 }) {
   const creators = block.creatorIds.map((id) => getCreator(id)).filter((x): x is NonNullable<typeof x> => !!x);
   const rows: { label: string; values: (string | number)[] }[] = [
-    { label: 'Score', values: creators.map((c) => c.score) },
+    // Review rating, not a fit score — 'New' when they have no reviews
+    // yet rather than a defaulted number (P-10).
+    { label: 'Rating', values: creators.map((c) => c.score === null ? 'New' : c.score) },
     { label: 'City', values: creators.map((c) => c.city) },
     { label: 'Categories', values: creators.map((c) => c.categories.slice(0, 2).join(' · ')) },
     { label: 'Followers', values: creators.map((c) => fmtFollowers(c.channels.reduce((s, ch) => s + ch.followers, 0))) },
