@@ -452,7 +452,12 @@ function ChannelsBlock({ creator, editing, onEdit, onClose }: {
   return (
     <Block
       label="Channels"
-      tip="Add each platform you publish on. Brands cross-check follower + engagement numbers against your linked profile, so keep them current."
+      // P-5 — this used to claim brands "cross-check follower + engagement
+      // numbers against your linked profile", implying verification that
+      // doesn't exist: these figures are self-entered and nothing checks
+      // them. Say what's actually true, and why keeping them honest still
+      // matters to the creator.
+      tip="Add each platform you publish on. These figures are self-reported for now — brands see them as you enter them, so keep them accurate: a mismatch with your public profile is the fastest way to lose a deal."
       action={
         <>
           {editing && (

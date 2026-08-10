@@ -227,7 +227,15 @@ export function CreatorWallet({ onRoute }: Props) {
             <div className="v2-card v2-card-pad">
               <div className="v2-eyebrow" style={{ marginBottom: 8 }}>Tax docs</div>
               <p className="v2-muted" style={{ fontSize: 12.5, lineHeight: 1.5, margin: '0 0 12px' }}>
-                Tax certificates auto-generated quarterly. We deduct withholding on each payout.
+                {/* P-7 — this promised "Tax certificates auto-generated
+                    quarterly", which isn't built (year-end form generation
+                    is a known-deferred item needing real payment infra).
+                    Withholding genuinely is applied per payout in the
+                    simulated ledger, and the export below is real, so those
+                    stay. */}
+                Withholding is deducted on each payout and itemised in your ledger.
+                Formal tax certificates aren't issued yet — export a statement below
+                for your records.
               </p>
               <button
                 className="v2-btn v2-btn-outline"

@@ -1873,7 +1873,7 @@ in `index.html`; keep the 1200×630 ratio or the large card gets cropped.
 
 ---
 
-### 2026-08-09 — PRODUCT audit (sweep complete; Tier 1 item 1 DONE)
+### 2026-08-09 — PRODUCT audit (sweep complete; **TIER 1 COMPLETE**)
 
 > **⚠️ Read this section first if resuming cold. The audit sweep is
 > COMPLETE; none of the fixes are implemented yet. The ranked plan at the
@@ -2015,6 +2015,45 @@ question.
    numbers" tip and "tax certificates auto-generated quarterly".
 5. **Recover abandoned onboarding** (P-8) + Inbox empty state (P-9) +
    duplicate empty state (P-9b) + finish-setup role default (P-12).
+
+**Tier 1 status: all five items shipped.** Verified live on the real
+empty-profile account (`asim.baiig+prod1@gmail.com`), where every fix is
+visible on one screen: honest "No earnings yet" chart, "fit unknown"
+instead of a fabricated 71%, Demo labels on seeded briefs, and the new
+storefront-completeness nudge listing all three gaps.
+
+Items 2–5 in detail:
+- **2. ✅ Honest analytics (P-3).** All **four** deltas were hardcoded, not
+  three as the sweep recorded: `"+8.2%"`, `"+0.6pt"`,
+  `"+12pt"/"−4pt"`, and `earningsDelta = "+18%"` — under a comment reading
+  "derived from real data". Removed rather than approximated (there's no
+  stored per-period history), and creator Analytics now has the locked
+  state brand Analytics already had.
+- **3. ✅ Stock portrait (P-4).** `createLocalProfile` hardcoded one
+  Unsplash URL, so every new creator got the same stranger's face. Now
+  empty, which makes the shared `Avatar` fall back to initials. **Note:**
+  this only affects newly created profiles — accounts made before the fix
+  (e.g. `prod1`) still carry the old URL in Postgres.
+- **4. ✅ False claims (P-5, P-7).** Storefront no longer claims brands
+  "cross-check follower + engagement numbers against your linked profile"
+  (nothing verifies them; it now says self-reported and why accuracy still
+  matters). Wallet no longer promises "Tax certificates auto-generated
+  quarterly" — withholding genuinely is applied and the CSV export is
+  real, so those stayed.
+- **5. ✅ Empty states + recovery (P-8, P-9, P-9b, P-12).** Inbox
+  distinguishes "no messages yet" from "none selected" instead of telling
+  users to pick from an empty list. MyCollabs' duplicate empty state is
+  gone (both were gated on the *same* `allCollabs.length === 0`, so both
+  always rendered). A Today item now names exactly which storefront gaps
+  block matching. Finish-setup is role-neutral rather than pitching a
+  recovering brand "Build a body of real work".
+- **Bonus, same overclaim class:** CreatorHome's "152 brands looking for
+  your audience" asserted every open brief targets this creator; now "152
+  open briefs on Alamut right now".
+
+**Also worth knowing:** making `V2Creator.score` nullable surfaced **10
+call sites** that assumed a number always exists — a useful measure of how
+deep the always-show-a-number habit ran.
 
 **Tier 2 — needs Asim; each unlocks a differentiator**
 

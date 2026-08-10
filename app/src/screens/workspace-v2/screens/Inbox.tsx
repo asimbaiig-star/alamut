@@ -293,8 +293,24 @@ export function Inbox({ onRoute, persona, forceThreadId, forcePanelMode }: Props
           />
         ) : (
           <div className="v2-inbox-empty v2-inbox-thread">
-            <div className="v2-eyebrow">No conversation selected</div>
-            <p className="v2-muted">Pick a conversation on the left to view the thread.</p>
+            {/* P-9 — with an empty list this used to say "Pick a conversation
+                on the left", instructing an action the user can't take
+                because there's nothing there. Distinguish "nothing yet" from
+                "nothing selected". */}
+            {conversations.length === 0 ? (
+              <>
+                <div className="v2-eyebrow">No messages yet</div>
+                <p className="v2-muted">
+                  When you apply to a brief or a brand reaches out, the conversation
+                  shows up here.
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="v2-eyebrow">No conversation selected</div>
+                <p className="v2-muted">Pick a conversation on the left to view the thread.</p>
+              </>
+            )}
           </div>
         )}
         {active && campaign && counterparty && (

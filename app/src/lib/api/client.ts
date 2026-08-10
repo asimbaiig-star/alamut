@@ -160,7 +160,13 @@ function createLocalProfile(input: {
         name: input.name, handle: '@' + input.name.toLowerCase().replace(/\s+/g, ''),
         tagline: '', bio: '', city: input.city || '', country: input.country || '',
         languages: [], categories: [],
-        portrait: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=600&h=750&fit=crop',
+        // P-4 — this was a hardcoded Unsplash URL, so EVERY new creator got
+        // the same specific stranger's face as their portrait, on a
+        // storefront whose own caption reads "Use a real photo, not a
+        // graphic". Empty string means the shared `Avatar` component falls
+        // back to deterministic initials, which is honest, and the
+        // storefront prompts for a real photo.
+        portrait: '',
         work: [], platforms: [],
         reach: 0, engagement: 0, rating: 0, tier: 'Rising',
         responseHrs: 24,

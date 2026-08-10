@@ -22,6 +22,11 @@ export function SignUp() {
   // confirmed Supabase account + live session but no Creator/Brand row.
   // Same form, but we skip auth sign-up and only write the profile.
   const finishMode = params.get('finish') === '1';
+  // P-12 — in finish-setup mode we don't know which role the account
+  // originally signed up as (these are accounts predating sign-up
+  // metadata), so the tab defaulted to 'creator' and a recovering BRAND
+  // was greeted with "Build a body of real work". Neutralise the hero
+  // copy in that mode and make the role choice the explicit first step.
   const finishEmail = params.get('email') ?? '';
 
   const [name, setName] = useState('');
@@ -188,16 +193,22 @@ export function SignUp() {
           <aside className="auth-airy-side">
             <div className="airy-stack-lg">
               <div className="airy-eyebrow">
-                {role === 'creator' ? 'For creators' : 'For brands'}
+                {finishMode ? 'Finish setting up' : role === 'creator' ? 'For creators' : 'For brands'}
               </div>
               <h1 className="airy-h-display auth-airy-h">
-                {role === 'creator'
+                {finishMode
+                  // Role-neutral: we can't know which one this account meant,
+                  // so don't pitch them the wrong side (P-12).
+                  ? <>One step to <em>finish</em> your account.</>
+                  : role === 'creator'
                   ? <>Build a body of <em>real work</em>.</>
                   : <>Run campaigns end-to-end, <em>without</em> the markup.</>
                 }
               </h1>
               <p className="airy-lede">
-                {role === 'creator'
+                {finishMode
+                  ? 'Your sign-in is confirmed — we just need to know whether you’re here as a creator or a brand, then a few details to set up your profile.'
+                  : role === 'creator'
                   ? 'Apply to live briefs, manage drafts, and get paid through escrow — all from one console.'
                   : 'Brief, shortlist, approve, and pay creators globally from a single wallet.'
                 }

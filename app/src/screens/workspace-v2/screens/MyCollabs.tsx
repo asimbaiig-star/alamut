@@ -147,42 +147,11 @@ export function MyCollabs({ onRoute }: Props) {
           <CollabsList collabs={collabs} campaigns={campaigns} onRoute={onRoute} />
         )}
 
-        {/* ─── Empty state (no collabs of either kind) ───────────────── */}
-        {allCollabs.length === 0 && (
-          <div className="v2-card v2-card-pad-lg" style={{ textAlign: 'center', padding: 60 }}>
-            <div style={{
-              width: 56,
-              height: 56,
-              borderRadius: 999,
-              background: 'var(--v2-accent-soft)',
-              color: 'var(--v2-accent)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 14px',
-            }}>{Icon.campaign}</div>
-            <h3 style={{
-              fontFamily: 'var(--v2-font-display)',
-              fontSize: 22,
-              fontWeight: 500,
-              margin: '0 0 6px',
-              letterSpacing: '-0.02em',
-            }}>
-              No active collaborations yet
-            </h3>
-            <p className="v2-muted" style={{ margin: '0 0 18px', maxWidth: 420, marginLeft: 'auto', marginRight: 'auto' }}>
-              Browse open briefs from brands and apply with a pitch. Once you're confirmed,
-              the campaign will show up here so you can track deliverables and payment.
-            </p>
-            <button
-              type="button"
-              className="v2-btn v2-btn-primary"
-              onClick={() => onRoute('creator-campaigns')}
-            >
-              {Icon.search} Browse open briefs
-            </button>
-          </div>
-        )}
+        {/* P-9b — a second, bespoke empty state used to render here on the
+            same `allCollabs.length === 0` condition as the shared
+            <EmptyState> above, so a creator with no collabs saw both
+            "No collaborations yet" and "No active collaborations yet"
+            stacked. Removed; the shared component (two CTAs) wins. */}
       </div>
     </>
   );

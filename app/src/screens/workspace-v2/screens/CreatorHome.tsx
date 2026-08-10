@@ -196,6 +196,34 @@ export function CreatorHome({ onRoute }: Props) {
       }
     }
 
+    // 6. P-8 — storefront materially incomplete. Onboarding can be
+    //    abandoned (or skipped outright) with nothing pulling the creator
+    //    back, which leaves a storefront that can't win work: brands see no
+    //    bio and no proof of audience, and fit can't even be scored without
+    //    a category and a channel (see matching.ts). Surfaced here because
+    //    Today is the list creators actually act on.
+    if (creator) {
+      const gaps: string[] = [];
+      if ((creator.platforms ?? []).length === 0) gaps.push('a channel');
+      if (!creator.bio?.trim()) gaps.push('a bio');
+      if ((creator.categories ?? []).length === 0) gaps.push('a category');
+      if (gaps.length > 0) {
+        const list = gaps.length === 1
+          ? gaps[0]
+          : `${gaps.slice(0, -1).join(', ')} and ${gaps[gaps.length - 1]}`;
+        items.push({
+          id: 'storefront-gaps',
+          icon: '◗',
+          // Urgent when there's no channel at all — without one the
+          // storefront has no proof of audience and briefs can't be matched.
+          urgent: (creator.platforms ?? []).length === 0,
+          title: `Add ${list} to your storefront`,
+          sub: 'Brands see this first — and briefs can’t be matched to you without it',
+          route: 'storefront',
+        });
+      }
+    }
+
     return items;
   }, [myCollabs, allCampaigns, me.id, creator, db]);
 
@@ -644,8 +672,14 @@ function BriefMatches({ me, campaigns, myCollabs, onRoute }: {
               // Pluralize off the filtered (open-brief) count, not the
               // total campaigns count — pre-fix 1 open + 5 total read
               // "1 brands looking for your audience".
+              //
+              // Same overclaim class as Discover's "115 of 115 match"
+              // (P-10): "looking for YOUR audience" asserted that every
+              // open brief targets this specific creator, which nothing
+              // establishes — especially for a creator with no categories
+              // or channels. State the count, not a claim about fit.
               const n = campaigns.filter((c) => c.status !== 'Completed').length;
-              return `${n} brand${n === 1 ? '' : 's'} looking for your audience`;
+              return `${n} open brief${n === 1 ? '' : 's'} on Alamut right now`;
             })()}
           </h3>
         </div>
