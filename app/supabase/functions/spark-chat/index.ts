@@ -36,7 +36,18 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 // @ts-ignore
 const env = (k: string) => Deno.env.get(k) ?? '';
 
-const ANTHROPIC_MODEL = 'claude-sonnet-4-6';
+// Current-generation Sonnet. Sonnet 4.6 (the previous pin) still works, but
+// this tier is the right one for Spark: short conversational replies where
+// latency and cost matter more than peak reasoning.
+//
+// Two Sonnet 5 behaviours are handled explicitly in the request below:
+//   1. Adaptive thinking is ON by default when `thinking` is omitted, and
+//      `max_tokens` caps thinking + reply TOGETHER. Left alone, a 600-token
+//      budget could be spent thinking and return a truncated sentence. Spark
+//      writes 2-4 sentences and needs no reasoning, so thinking is disabled.
+//   2. `effort` defaults to `high`. For a short chat reply that's wasted
+//      spend, so we ask for `low`.
+const ANTHROPIC_MODEL = 'claude-sonnet-5';
 
 interface SparkRequest {
   input: string;
@@ -84,14 +95,19 @@ serve(async (req: Request) => {
     return jsonResp({ error: 'input is required' }, 400);
   }
 
-  const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+  // The API rejects a conversation whose first message is `assistant`, and
+  // rejects empty text content outright. Spark's own opening greeting is a
+  // 'spark' turn, and non-text blocks (creator cards, projections) carry no
+  // `text` — so a naive 1:1 map produces a 400 on the very first real
+  // exchange. Drop empty turns, then drop any leading assistant turns.
+  const mapped: Array<{ role: 'user' | 'assistant'; content: string }> = [];
   for (const m of body.history ?? []) {
-    messages.push({
-      role: m.from === 'user' ? 'user' : 'assistant',
-      content: m.text ?? '',
-    });
+    const content = (m.text ?? '').trim();
+    if (!content) continue;
+    mapped.push({ role: m.from === 'user' ? 'user' : 'assistant', content });
   }
-  messages.push({ role: 'user', content: body.input });
+  while (mapped.length > 0 && mapped[0].role === 'assistant') mapped.shift();
+  const messages = [...mapped, { role: 'user' as const, content: body.input }];
 
   const ctxLine = body.context && (body.context.brand || body.context.category || body.context.budget)
     ? `Brand: ${body.context.brand ?? '—'}, Category: ${body.context.category ?? '—'}, Budget: ${body.context.budget ?? '—'}, Region: ${body.context.region ?? '—'}`
@@ -116,7 +132,9 @@ serve(async (req: Request) => {
       },
       body: JSON.stringify({
         model: ANTHROPIC_MODEL,
-        max_tokens: 600,
+        max_tokens: 800,
+        thinking: { type: 'disabled' },
+        output_config: { effort: 'low' },
         system: systemPrompt,
         messages,
       }),
@@ -131,17 +149,29 @@ serve(async (req: Request) => {
   }
 
   const data = await upstream.json();
+
+  // A refusal returns HTTP 200 with an empty/partial `content`, so reading
+  // content blindly would surface a blank reply as if it were an answer.
+  // Fall back to the scripted engine (503) rather than showing nothing.
+  if (data?.stop_reason === 'refusal') {
+    return jsonResp({ error: 'declined', code: 'refusal' }, 503);
+  }
+
   const text: string = (data?.content ?? [])
     .filter((c: any) => c?.type === 'text')
     .map((c: any) => c?.text ?? '')
     .join('\n')
     .trim() || 'Got it — what part of the plan should we tackle next?';
 
+  // Truncated mid-sentence: say so rather than presenting a cut-off reply as
+  // a complete thought.
+  const truncated = data?.stop_reason === 'max_tokens';
+
   const out: SparkResponse = {
     reply: {
       id: `s_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       from: 'spark',
-      blocks: [{ kind: 'text', body: text }],
+      blocks: [{ kind: 'text', body: truncated ? `${text}…` : text }],
     },
   };
   return jsonResp(out, 200);
