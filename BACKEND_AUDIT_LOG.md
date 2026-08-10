@@ -1972,10 +1972,39 @@ question.
 
 **Tier 1 — code only, no dependencies, fixes the central finding**
 
-1. **Rebuild matching** (P-1, P-2, P-10). Score from signals a real
-   account actually has; derive "why this match" from the creator instead
-   of a category lookup; widen the distribution so it discriminates; stop
-   claiming everything matches. Serves the #1 job on *both* sides.
+1. **✅ DONE (creator side) — Rebuild matching** (P-1, P-2). New
+   `matching.ts` is the single scorer; both previous ones are deleted.
+   Rules: a missing signal returns `null` and never contributes a
+   flattering default; fewer than two scoreable facets yields
+   `score: null` plus a hint naming what to add; facets use their full
+   range; reasons come only from facets that genuinely qualified.
+
+   **Why 71% was inevitable:** the old BrowseBriefs scorer floored every
+   facet (audience ≥75, niche ≥70, ER ≥75, geo ≥78, history ≥60, rate
+   ≥65), so its minimum possible output was (75+70+75+78+60+65)/6 = 71.
+   The number could not look bad.
+
+   **Two further bugs found while implementing, both fixed:**
+   - `geo` compared the creator's city against `campaign.placement` —
+     which is the *deliverables* text ("1 IG post + 1 Reel"), not a
+     location — so that facet could essentially never match. The
+     campaign's real location field is `region`.
+   - engagement was `max()` across platforms, but the metric isn't
+     comparable across types: a seeded newsletter **open rate** of 42 was
+     surfacing as Sarah's headline "42.0% engagement". Now scores off the
+     largest-audience channel.
+
+   **Verified live:** Sarah went from a constant 71% to **36–75 across 7
+   distinct values**, with creator-specific reasons ("Lifestyle is your
+   niche", "You've worked with Le Creuset"). The empty-profile account
+   went from 152 fake percentages to **zero**, now reading "Add a category
+   and a channel to your storefront to see how well briefs match you."
+   13 tests in `matching.test.ts`; 470 total.
+
+   **⏳ STILL OPEN (P-10, brand side):** Discover has NOT been rewired to
+   the new scorer. It still uses its own ranking (76–99 for 110 of 115
+   creators) and its header still claims "115 creators in network · 115
+   match". That is the next slice of this item.
 2. **Honest analytics** (P-3). Delete the hardcoded `delta=` literals;
    adopt brand-Analytics' "unlock once there's data" pattern for
    creators.
