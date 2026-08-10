@@ -577,16 +577,21 @@ export function MarkLiveModal({ submissionId, campaignName, onClose, initialPerm
 
 interface InviteCreatorsProps {
   campaignId: string;
-  /** Creator IDs already engaged on this campaign (existing collab,
-   *  offer, or application) — filtered out of the picker so the brand
-   *  doesn't double-invite. */
-  excludeCreatorIds: string[];
+  /** Creator IDs already engaged on this campaign, mapped to WHY. Shown
+   *  as disabled rows carrying the reason rather than omitted.
+   *
+   *  Pre-fix they were filtered out silently, which reads as a bug: on a
+   *  seeded Aesop campaign Sarah Johnson is in flight on 25 of 28
+   *  campaigns, so a brand searching for a creator they know exists found
+   *  nothing and concluded the picker was broken. Hiding the row hid the
+   *  explanation with it. */
+  inFlightReasons: Record<string, string>;
   campaignTitle: string;
   onClose: () => void;
 }
 
 export function InviteCreatorsModal({
-  campaignId, excludeCreatorIds, campaignTitle, onClose,
+  campaignId, inFlightReasons, campaignTitle, onClose,
 }: InviteCreatorsProps) {
   useModalEscape(onClose);
   const allCreators = useV2Creators();
@@ -599,21 +604,24 @@ export function InviteCreatorsModal({
   const [sending, setSending] = useState(false);
   const canInvite = useCapability('application.invite');
 
-  const candidates = useMemo(() => {
-    const exclude = new Set(excludeCreatorIds);
+  const { candidates, matchTotal } = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return allCreators
-      .filter((c) => !exclude.has(c.id))
-      .filter((c) => {
-        if (!q) return true;
-        return (
-          c.name.toLowerCase().includes(q) ||
-          c.handle.toLowerCase().includes(q) ||
-          (c.categories ?? []).some((cat) => cat.toLowerCase().includes(q))
-        );
-      })
-      .slice(0, 50);
-  }, [allCreators, excludeCreatorIds, query]);
+    const matched = allCreators.filter((c) => {
+      if (!q) return true;
+      return (
+        c.name.toLowerCase().includes(q) ||
+        c.handle.toLowerCase().includes(q) ||
+        (c.categories ?? []).some((cat) => cat.toLowerCase().includes(q))
+      );
+    });
+    // Natural order is kept deliberately. Sorting in-flight creators to the
+    // bottom seemed tidier, but combined with the 50-row cap it pushed them
+    // off the end — so the creator a brand was hunting for was invisible
+    // AGAIN, just for a different reason. Their real position (named demo
+    // creators first) is what makes them findable, and the disabled row
+    // carries the explanation.
+    return { candidates: matched.slice(0, 50), matchTotal: matched.length };
+  }, [allCreators, inFlightReasons, query]);
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -693,30 +701,41 @@ export function InviteCreatorsModal({
             <p className="v2-muted" style={{ fontSize: 13, padding: '20px 0', textAlign: 'center' }}>
               {query.trim()
                 ? `No creators match "${query.trim()}".`
-                : 'Every creator is already engaged on this campaign.'}
+                : 'No creators in the network yet.'}
+            </p>
+          )}
+          {matchTotal > candidates.length && (
+            <p className="v2-muted" style={{ fontSize: 12, padding: '2px 0 6px' }}>
+              Showing {candidates.length} of {matchTotal}
+              {query.trim() ? ' matches' : ' creators'} — search by name, handle,
+              or category to narrow it down.
             </p>
           )}
           {candidates.map((c) => {
             const isOn = selected.has(c.id);
+            const inFlight = inFlightReasons[c.id];
             return (
               <label
                 key={c.id}
                 className="v2-row"
+                title={inFlight ? `${c.name} — ${inFlight}` : undefined}
                 style={{
                   gap: 12,
                   padding: 10,
                   borderRadius: 10,
                   border: `1px solid ${isOn ? 'var(--v2-accent)' : 'var(--v2-border)'}`,
                   background: isOn ? 'var(--v2-accent-soft)' : 'transparent',
-                  cursor: 'pointer',
+                  cursor: inFlight ? 'not-allowed' : 'pointer',
+                  opacity: inFlight ? 0.55 : 1,
                   alignItems: 'center',
                 }}
               >
                 <input
                   type="checkbox"
                   checked={isOn}
+                  disabled={!!inFlight}
                   onChange={() => toggle(c.id)}
-                  aria-label={`Select ${c.name}`}
+                  aria-label={inFlight ? `${c.name} — ${inFlight}` : `Select ${c.name}`}
                 />
                 <div
                   className="v2-avatar v2-avatar-sm"
@@ -728,6 +747,7 @@ export function InviteCreatorsModal({
                   <div className="v2-muted" style={{ fontSize: 12 }}>
                     @{c.handle}
                     {c.categories?.length ? ` · ${c.categories.slice(0, 2).join(' · ')}` : ''}
+                    {inFlight ? ` · ${inFlight}` : ''}
                   </div>
                 </div>
                 {c.rate > 0 && (

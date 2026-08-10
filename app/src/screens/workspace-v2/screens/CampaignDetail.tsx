@@ -323,13 +323,30 @@ export function CampaignDetail({
         <InviteCreatorsModal
           campaignId={campaignId}
           campaignTitle={campaign.name}
-          excludeCreatorIds={Array.from(new Set([
-            // Anyone with an application, offer, or collab on this campaign
-            // is already "in flight" and shouldn't be re-invited.
-            ...db.applications.filter((a) => a.campaignId === campaignId).map((a) => a.creatorId),
-            ...db.offers.filter((o) => o.campaignId === campaignId).map((o) => o.creatorId),
-            ...db.collaborations.filter((c) => c.campaignId === campaignId).map((c) => c.creatorId),
-          ]))}
+          // Anyone with an application, offer, or collab on this campaign is
+          // already in flight and can't be re-invited — but the picker now
+          // SHOWS them with the reason instead of dropping them, so a brand
+          // searching for someone they know exists gets an explanation
+          // rather than an apparently-broken list. Most specific reason
+          // wins: an accepted collab beats an offer, which beats an
+          // application.
+          inFlightReasons={(() => {
+            const reasons: Record<string, string> = {};
+            for (const a of db.applications) {
+              if (a.campaignId === campaignId) reasons[a.creatorId] = 'Already applied';
+            }
+            for (const o of db.offers) {
+              if (o.campaignId !== campaignId) continue;
+              reasons[o.creatorId] =
+                o.status === 'accepted' ? 'Offer accepted'
+                : o.status === 'declined' ? 'Declined your offer'
+                : 'Offer already sent';
+            }
+            for (const c of db.collaborations) {
+              if (c.campaignId === campaignId) reasons[c.creatorId] = 'Already on this campaign';
+            }
+            return reasons;
+          })()}
           onClose={() => setInviteOpen(false)}
         />
       )}
