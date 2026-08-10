@@ -2055,6 +2055,47 @@ Items 2–5 in detail:
 call sites** that assumed a number always exists — a useful measure of how
 deep the always-show-a-number habit ran.
 
+**Tier 3 — COMPLETE (code-only, no dependencies).**
+
+- **T3.1 ✅ Pricing guidance.** The public /tools/*-calculator pages could
+  already turn followers + engagement into a defensible band, but that maths
+  was trapped in the marketing site — onboarding step 3 was three empty
+  boxes, so a creator with no reference point simply guessed. New
+  `rateGuidance.ts` re-exposes the same formula (one definition; tuning
+  `calculatorConstants` moves both) and the wizard now shows a band computed
+  from what step 2 already collected, with a "use these as a starting point"
+  action. Honesty rule kept: only instagram/tiktok/youtube have a published
+  benchmark, so LinkedIn / X / Newsletter get **no band at all** rather than
+  an invented one. Engagement is clamped so "90" (meaning 9.0%) can't
+  produce a 30x rate. 9 tests.
+- **T3.2 ✅ Cold-start trust.** T1.1 made Discover honest about newcomers
+  ("New" instead of a defaulted 90) but that left a new creator with nothing
+  to offer and a brand nothing to weigh — nobody takes the first chance and
+  the marketplace can't bootstrap. New `creatorTrust.ts` scores what is
+  actually checkable: identity verified, channel ownership confirmed,
+  profile complete enough to brief against, rates published, 3+ portfolio
+  samples, completed collabs. Explicitly **not** a quality score, and the UI
+  says so. Two deliberate choices: it distinguishes what *we* verified from
+  what the creator asserts (listing a channel is their claim; figures are
+  self-entered until platform OAuth lands), and it **stays silent rather
+  than shaming** — zero signals returns null, not "0 of 7", and it goes
+  quiet entirely once there's a real track record. Every unmet signal
+  carries an actionable todo, so the brand's evidence list is also the
+  creator's to-do list. 12 tests. Surfaced on the Discover card.
+
+**Tier 2 prep done (code-only).** `spark-chat` was pinned to
+`claude-sonnet-4-6` and would have failed in confusing ways on first use.
+Now on `claude-sonnet-5`, with three real fixes: thinking is disabled
+explicitly (it is ON by default on Sonnet 5, and `max_tokens` caps thinking
++ reply *together* — the old 600-token budget could have been spent thinking
+and returned a truncated sentence); effort lowered from the `high` default;
+and two request-shape bugs that would have 400'd on the first real exchange
+— the API rejects a conversation whose first message is `assistant` (Spark's
+own greeting is a 'spark' turn) and rejects empty text content (Spark's
+non-text blocks carry no text). It also now handles `stop_reason`, which the
+old code ignored: a refusal returns HTTP 200 with empty content, so reading
+content blindly showed a blank reply as an answer.
+
 **Tier 2 — needs Asim; each unlocks a differentiator**
 
 6. **Make Spark real** (P-6) — needs `ANTHROPIC_API_KEY` in Supabase
