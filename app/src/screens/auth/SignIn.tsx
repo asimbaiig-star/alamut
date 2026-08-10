@@ -13,6 +13,11 @@ import { TileHalo } from '@/components/layout/TileHalo';
 import { api, ApiError } from '@/lib/api/client';
 import { pushToast } from '@/lib/utils/toast';
 
+// Demo quick-pick visibility. ON by default so the public beta is walkable
+// without a signup; set VITE_HIDE_DEMO_LOGINS=true to hide it (Vercel env
+// var, no code change or redeploy of source needed).
+const DEMO_LOGINS_ENABLED = import.meta.env.VITE_HIDE_DEMO_LOGINS !== 'true';
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function SignIn() {
@@ -63,9 +68,18 @@ export function SignIn() {
       setErr(null);
       return;
     }
+    await doSignIn(email, password);
+  };
+
+  // Sign in with explicit credentials. The demo buttons below call this
+  // directly rather than filling the form and re-submitting — a setState
+  // followed by a submit in the same tick would still read the OLD email
+  // and password, so a "one-click" button built that way signs in as
+  // whoever was typed before.
+  const doSignIn = async (em: string, pw: string) => {
     setBusy(true); setErr(null);
     try {
-      const u = await api.auth.signIn(email, password);
+      const u = await api.auth.signIn(em, pw);
       pushToast(`Welcome back`, 'good');
       goAfterAuth(u.role);
     } catch (e) {
@@ -74,7 +88,7 @@ export function SignIn() {
       // leaving them stuck on the sign-in screen. The session is still
       // live, so the profile write there will succeed.
       if (e instanceof ApiError && e.code === 'profile_setup_required') {
-        navigate(`/signup?finish=1&email=${encodeURIComponent(email.trim().toLowerCase())}`);
+        navigate(`/signup?finish=1&email=${encodeURIComponent(em.trim().toLowerCase())}`);
         return;
       }
       setErr(e instanceof ApiError ? e.message : 'Sign in failed.');
@@ -111,16 +125,27 @@ export function SignIn() {
     }
   };
 
-  const fillDemo = (which: 'creator' | 'brand' | 'admin') => {
-    setEmail(which === 'creator' ? 'sarah@alamut.test' : which === 'brand' ? 'hannah@aesop.test' : 'admin@alamut.test');
-    setPassword('demo1234');
+  // Deliberately NOT 'admin' — A3 removed the admin quick-pick and it stays
+  // removed. These two are creator + brand demo personas only.
+  const DEMO_ACCOUNTS = {
+    creator: { email: 'sarah@alamut.test', label: 'Sarah — creator' },
+    brand: { email: 'hannah@aesop.test', label: 'Aesop — brand' },
+  } as const;
+
+  const useDemoAccount = async (which: keyof typeof DEMO_ACCOUNTS) => {
+    const em = DEMO_ACCOUNTS[which].email;
+    const pw = 'demo1234';
+    // Mirror into the form so the fields reflect what's being used (and the
+    // visitor can see the credentials), then sign in with the explicit
+    // values rather than the not-yet-committed state.
+    setEmail(em);
+    setPassword(pw);
     setMode('password');
-    // F3 — clear any stale failure. Pre-fix, a previous "Wrong email or
-    // password" stayed on screen after the fields were replaced with
-    // known-good credentials, so the form looked broken before submit.
+    // F3 — clear any stale failure so the form doesn't look broken.
     setErr(null);
     setEmailErr(null);
     setPasswordErr(null);
+    await doSignIn(em, pw);
   };
 
   return (
@@ -152,21 +177,41 @@ export function SignIn() {
                 Pick up wherever you left off.
               </p>
 
-              {/* Local dev only. On the public deployment these buttons
-                  would hand any visitor the seeded demo accounts — which
-                  hold real-looking escrow figures and shared demo state
-                  that a stranger could mutate for everyone. */}
-              {import.meta.env.DEV && (
+              {/* Demo quick-pick. B4 originally gated this to local dev,
+                  because on a public URL it hands any visitor the seeded
+                  accounts — whose state is SHARED, so one visitor's edits
+                  are the next visitor's starting point.
+                  
+                  That's now a deliberate product decision: the whole point
+                  of the public beta is that people can walk the product
+                  without signing up. Kept switchable without a code change
+                  — set VITE_HIDE_DEMO_LOGINS=true in Vercel to hide it. */}
+              {DEMO_LOGINS_ENABLED && (
                 <div className="airy-card auth-airy-demo-card">
                   <div className="airy-eyebrow" style={{ marginBottom: 'var(--space-sm)' }}>
-                    Demo accounts · one click · dev only
+                    Explore the demo · one click
                   </div>
                   <div className="auth-airy-demo-grid">
-                    <button className="btn btn-sm btn-ghost" type="button" onClick={() => fillDemo('creator')}>Creator</button>
-                    <button className="btn btn-sm btn-ghost" type="button" onClick={() => fillDemo('brand')}>Brand</button>
+                    <button
+                      className="btn btn-sm btn-ghost"
+                      type="button"
+                      disabled={busy}
+                      onClick={() => useDemoAccount('creator')}
+                    >
+                      {DEMO_ACCOUNTS.creator.label}
+                    </button>
+                    <button
+                      className="btn btn-sm btn-ghost"
+                      type="button"
+                      disabled={busy}
+                      onClick={() => useDemoAccount('brand')}
+                    >
+                      {DEMO_ACCOUNTS.brand.label}
+                    </button>
                   </div>
                   <p className="airy-meta auth-airy-demo-help">
-                    Pre-filled with seed credentials. Click <strong>Sign in</strong> after.
+                    Signs you straight in to a fully-populated demo account. It's
+                    sample data shared by everyone exploring — poke at anything.
                   </p>
                 </div>
               )}
