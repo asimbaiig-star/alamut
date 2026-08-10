@@ -153,11 +153,53 @@ export function Analytics({ onRoute }: Props) {
     return live;
   }, [db.submissions, db.campaigns, db.offers, creator.id, me.channels]);
 
-  // ─── Total payouts (for reach-over-time relative comparison)
-  const lastWindowAvg = windowedTransactions.length > 0
-    ? earningsInWindow / windowedTransactions.length
-    : 0;
-  const earningsDelta = lastWindowAvg > 0 ? '+18%' : 'no payouts';
+  // P-3 — every delta on this screen used to be a hardcoded string
+  // ("+8.2%", "+0.6pt", "+12pt"/"−4pt", "+18%"), so a creator with zero
+  // reach, zero engagement and zero applications was shown confident
+  // upward trends. There is no stored historical series to compare
+  // against, so the honest answer is to show no delta at all rather than
+  // invent one. When per-period history lands, compute them here.
+  const earningsDelta: string | undefined = undefined;
+
+  // Has this creator generated ANY of the data this screen reports on? If
+  // not, show the same "unlocks once there's data" state brand Analytics
+  // already uses, instead of a grid of zeros decorated with fake trends.
+  const hasAnySignal =
+    me.channels.length > 0 ||
+    myApps.length > 0 ||
+    db.transactions.some((t) => t.kind === 'payout' && t.userId === myUserId);
+
+  // Nothing to report on yet. Brand Analytics already handles this case
+  // properly ("Analytics unlock once content goes live"); this mirrors it
+  // rather than rendering a grid of zeros. Range buttons are omitted too —
+  // there's nothing for them to filter.
+  if (!hasAnySignal) {
+    return (
+      <>
+        <Topbar title="Analytics" crumb="Reach · engagement · audience · earnings" />
+        <div className="v2-content">
+          <div className="v2-card v2-card-pad" style={{ textAlign: 'center', padding: '48px 24px' }}>
+            <div style={{ fontSize: 26, marginBottom: 10, color: 'var(--v2-ink-3)' }}>◐</div>
+            <h3 style={{ fontFamily: 'var(--v2-font-display)', fontSize: 19, marginBottom: 8 }}>
+              Analytics unlock once you have a channel and a collab
+            </h3>
+            <p className="v2-muted" style={{ fontSize: 13.5, lineHeight: 1.55, maxWidth: 460, margin: '0 auto 18px' }}>
+              You'll see reach, engagement, audience breakdown and earnings here as
+              you add channels to your storefront and complete collaborations.
+            </p>
+            <div className="v2-row" style={{ gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <button className="v2-btn v2-btn-primary" type="button" onClick={() => onRoute('storefront')}>
+                Add a channel
+              </button>
+              <button className="v2-btn v2-btn-ghost" type="button" onClick={() => onRoute('creator-campaigns')}>
+                Browse briefs
+              </button>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -190,22 +232,16 @@ export function Analytics({ onRoute }: Props) {
             label="Total reach"
             value={fmtFollowers(totalReach)}
             sub={`across ${me.channels.length} channel${me.channels.length === 1 ? '' : 's'}`}
-            delta="+8.2%"
-            positive
           />
           <KpiTile
             label="Avg engagement"
             value={`${avgER}%`}
             sub="industry avg 2.4%"
-            delta="+0.6pt"
-            positive
           />
           <KpiTile
             label="Deal close rate"
             value={`${closeRatePct}%`}
             sub={`${myAccepted.length} of ${myApps.length} applications accepted`}
-            delta={closeRatePct >= 50 ? '+12pt' : '−4pt'}
-            positive={closeRatePct >= 50}
           />
           <KpiTile
             label={`Earnings (${range})`}
