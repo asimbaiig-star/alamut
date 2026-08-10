@@ -1871,6 +1871,94 @@ rm ~/Library/Fonts/__tmp_fraunces.ttf ~/Library/Fonts/__tmp_switzer.ttf
 `og:image:width`/`height` and `twitter:card=summary_large_image` are set
 in `index.html`; keep the 1200×630 ratio or the large card gets cropped.
 
+---
+
+### 2026-08-09 — PRODUCT audit (in progress) — "does this add meaning?"
+
+> **⚠️ IN PROGRESS. Read this section first if resuming cold.**
+>
+> **Goal shift.** The 2026-08-08 audit asked *"is anything broken or
+> dishonest?"* — all 39 findings (F1–F39) are closed across Phases A–E.
+> Asim's new bar: the app should be *"completely functional… but at the
+> same time it should add meaning to the workflows of creators and brands
+> alike."* That is a **product** question, not a defect question, so it
+> needs a different test.
+>
+> **The test each surface is judged against:** for the persona standing
+> in front of it, does this screen *advance the job they came to do*, or
+> does it add work / mislead?
+>
+> - **Creator jobs:** get discovered by brands worth having · win the deal
+>   at a fair rate · deliver without friction · get paid reliably · build
+>   a track record that compounds.
+> - **Brand jobs:** find creators who'll actually perform · judge whether
+>   they're worth the rate · run the campaign without chasing people ·
+>   know whether it worked · repeat more efficiently.
+>
+> **Surface inventory:** 9 brand routes + 9 creator routes + ~8 drilldowns
+> (`campaign:` with 5 tabs, `brief:`, `collab:`, `creator:`, `public:`,
+> `campaign-new`, 2 onboarding wizards) + 8 public pages + 5 admin.
+>
+> **Method note:** audit as the *real* account `asim.baiig+prod1@gmail.com`
+> (creator, password in Asim's keeping), **not** a seeded demo account —
+> real accounts lack the seeded audience/history data, which is precisely
+> what exposes the findings below. Seeded accounts hide them.
+
+#### THE CENTRAL FINDING — the app performs informing rather than informing
+
+Wherever Alamut lacks real data it renders convincing-looking data
+instead. Each instance reads as polish; together they hollow out exactly
+the surfaces meant to replace what a talent agency does (verify the
+reach, judge the fit). **P-1 … P-6 below are one root cause, not six
+bugs.** The Phase C "phantom earnings curve" fix was the same pattern
+mistaken for an isolated slip.
+
+| id | Finding | Evidence |
+|---|---|---|
+| **P-1** | **All 152 briefs show the identical 71% match.** The discovery surface ranks nothing. | Verified live, real account |
+| **P-2** | **"Why this match" reasons ignore the creator entirely** — a lookup keyed only on campaign category. A creator with no categories/channels/audience was shown "✓ Wellness vertical ✓ Mature audience ✓ Calm-aesthetic match"; sibling branches hardcode "Lahore 18–34 women", "Karachi pros". | `BrowseBriefs.tsx:895-903` (`matchReasons(category)`) |
+| **P-3** | **Analytics deltas are string literals.** A zero-everything account showed "+8.2%" reach growth, "+0.6pt" engagement, "−4pt" close rate on 0-of-0 applications. | `Analytics.tsx:193,200` |
+| **P-4** | **Every new creator is assigned the same stranger's face** as their portrait — on the very screen captioned "Use a real photo, not a graphic." | `client.ts:163` (hardcoded Unsplash URL in `createLocalProfile`) |
+| **P-5** | **Storefront claims brands "cross-check follower + engagement numbers against your linked profile."** Nothing verifies anything; metrics are self-entered. | `Storefront.tsx:455` |
+| **P-6** | **Spark is a scripted engine** — the feature that would carry an agency's judgment. Real LLM path exists but is dormant (needs `spark-chat` Edge Function deployed + `ANTHROPIC_API_KEY` in Supabase secrets). | `sparkEngine.ts:1` |
+| **P-7** | Wallet promises "Tax certificates auto-generated quarterly" — 1099/tax-doc generation is a known-deferred item, so this is an unkept promise (same class as the F16 payout fiction). | Live, creator Wallet |
+| **P-8** | Onboarding is abandonable with no recovery nudge: `prod1` left the wizard at step 1 and has a storefront with no bio, no channels, and a stranger's photo, with nothing prompting a fix. | Live |
+
+`computeMatchScore` (`v2Adapters.ts:709`) is the root of P-1: of its four
+signals, three collapse for a real account — `audience.age2534` exists
+only on seeded creators (floors at 40), `channels[0].engagement` is
+self-entered, geo string-matches the creator's city against a campaign's
+free-text `placement`. Only `niche` works.
+
+#### What is genuinely good (protect this)
+
+The deal machinery: escrow, the pipeline kanban, submit → review →
+revision → approve, the deal room, the wallet ledger. All correct after
+Phases A–E, and honest in its empty states.
+
+#### Status / next steps
+
+- ✅ **Creator side swept**: Storefront, Analytics, Wallet, Browse
+  campaigns (+ the earlier end-to-end flow walkthrough).
+- ⏳ **Not yet swept**: creator Inbox, Calendar, My collaborations; and
+  the **entire brand side** (Home, Spark, Discover creators, My campaigns
+  + 5 CampaignDetail tabs, Inbox, Calendar, Analytics, Wallet, Brand
+  profile). Prime suspects for more of the same pattern: **Discover's
+  creator ranking** (where the hiring decision is actually made) and
+  **brand Analytics**.
+- ⏳ **Then**: ranked opportunity plan — each item tagged with the job it
+  serves, effort, and whether it needs anything from Asim.
+
+**Dependencies only Asim can supply:** `ANTHROPIC_API_KEY` in Supabase
+secrets (Spark), per-platform dev-portal apps (OAuth metric
+verification). Everything else — real match scoring, honest analytics,
+removing the stock-portrait default — is code-only.
+
+**Also still pending from Phase A (non-blocking):** Supabase Site URL →
+production domain + optional Gmail-app-password SMTP; only matters once
+password reset or any auth email is in play. Email confirmation is
+deliberately OFF, which is why signups work without SMTP.
+
 ## Commit hashes for traceability
 
 Recent commits in chronological order — all on origin/main:
