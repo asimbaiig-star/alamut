@@ -18,6 +18,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { fmtUSD, fmtFollowers, Icon, ScoreBadge, PLATFORM_META, Topbar } from '../lib';
 import { type V2Creator } from '../data';
 import { useV2Creators } from '../v2Hooks';
+import { useStore } from '@/lib/api/store';
+import { computeTrustProfile, trustSummary } from '../creatorTrust';
 
 interface Props {
   onRoute: (r: string) => void;
@@ -1001,6 +1003,18 @@ function CreatorCard({ creator, onClick }: {
   creator: V2Creator;
   onClick: () => void;
 }) {
+  // T3.2 — cold start. A creator with no reviews now correctly shows "New"
+  // rather than a defaulted 90 (T1.1), but that left a brand with nothing to
+  // judge them on. Summarise what IS checkable — identity verified, channel
+  // ownership confirmed, profile complete enough to brief against — and say
+  // plainly that's what it is. Returns null once they have a real track
+  // record, since reviews are better evidence by then.
+  const db = useStore((s) => s.db);
+  const trust = useMemo(() => {
+    const raw = db.creators.find((c) => c.id === creator.id);
+    return trustSummary(computeTrustProfile(raw, db));
+  }, [db, creator.id]);
+
   const topChannel = creator.channels.reduce(
     (a, b) => a.followers > b.followers ? a : b,
     creator.channels[0],
@@ -1067,6 +1081,18 @@ function CreatorCard({ creator, onClick }: {
           />
           <ScoreBadge score={creator.score} />
         </div>
+
+        {/* Cold-start evidence, shown only for creators without a track
+            record and only when there's something positive to report. */}
+        {trust && (
+          <div
+            className="v2-muted"
+            style={{ fontSize: 11, marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}
+            title="Profile completeness and verification — not a performance rating"
+          >
+            <span aria-hidden="true">◇</span>{trust}
+          </div>
+        )}
 
         {/* Name + verified glyph + handle/city. */}
         <div className="v2-row" style={{ marginTop: 8, gap: 6 }}>
