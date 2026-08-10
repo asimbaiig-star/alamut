@@ -23,6 +23,7 @@ import type {
   Contract, ContractDeliverableSnapshot, Dispute, DisputeCategory, DisputeStatus,
   Review, AdminRole, User, Creator,
 } from './types';
+import { isDemoCreator } from '@/lib/utils/demoData';
 
 export const CURRENT_MIGRATION_VERSION = 9;
 
@@ -886,8 +887,16 @@ function migrateP5(db: Database): void {
 
 function migrateP6(db: Database): void {
   for (const c of db.creators) {
-    // §5.5 — reset every Platform's verified flag.
-    if (c.platforms && c.platforms.length > 0) {
+    // §5.5 — reset every Platform's verified flag on REAL creators, so a
+    // real badge only ever comes from an actual platform connect.
+    //
+    // Demo creators are exempt: they're showcase furniture, pre-verified in
+    // seed.ts and labelled "Demo" wherever a real user can act on them.
+    // Un-verifying them made the demo world look broken (Sarah's own
+    // channels read unverified on her storefront) while protecting nobody —
+    // and because this migrator runs after hydrate, it silently defeated
+    // the seed's pre-verification.
+    if (c.platforms && c.platforms.length > 0 && !isDemoCreator(c)) {
       c.platforms = c.platforms.map((p) => ({ ...p, verified: false }));
     }
     // §5.6 — drop the stored profileCompletion field. Optional cast

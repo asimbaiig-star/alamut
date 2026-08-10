@@ -1079,7 +1079,21 @@ function CreatorCard({ creator, onClick }: {
             }}
             aria-label={creator.name}
           />
-          <ScoreBadge score={creator.score} />
+          <div className="v2-row" style={{ gap: 6, alignItems: 'center' }}>
+            {/* Demo accounts are pre-verified for the showcase (seed.ts), so
+                they'd otherwise show strong verification and trust signals
+                that a real creator has to earn — with nothing marking them
+                as sample data. Same pill as demo briefs (F19). */}
+            {creator.isDemo && (
+              <span
+                className="v2-pill v2-pill-draft"
+                title="Sample profile — part of the Alamut demo world. Its verified badges and metrics are illustrative, not earned."
+              >
+                Demo
+              </span>
+            )}
+            <ScoreBadge score={creator.score} />
+          </div>
         </div>
 
         {/* Cold-start evidence, shown only for creators without a track

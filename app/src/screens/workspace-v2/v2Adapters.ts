@@ -26,7 +26,7 @@ import { getAcceptedCreators, isCreatorAccepted, isCreatorShortlisted } from '@/
 // stored stage in three documented ways (payout-coerced live, latest-
 // sub-only rollup, missing cleared-status check on payouts).
 import { computeCollabStage, computeSlotStatuses } from '@/lib/api/collabSync';
-import { isDemoBrand } from '@/lib/utils/demoData';
+import { isDemoBrand, isDemoCreator } from '@/lib/utils/demoData';
 import type {
   V2Creator, V2Campaign, V2Conversation, V2Channel, V2Audience,
   V2WalletLedgerEntry, V2Collab, V2CollabStage, V2Deliverable, V2PipelineStage,
@@ -163,6 +163,7 @@ export function creatorToV2(c: Creator): V2Creator {
     // beyond the first N from the public storefront and other surfaces
     // (s19 fix — public storefront was missing categories 4+ and brands 5+).
     categories: c.categories,
+    isDemo: isDemoCreator(c),
     // P-10 — this is the creator's REVIEW RATING rescaled to 0–100, and
     // nothing more. It was previously surfaced in Discover as an "Alamut
     // score" and used as the default sort for hiring decisions, which made

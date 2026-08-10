@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type { Database, Session } from './types';
+import { isDemoCreator } from '@/lib/utils/demoData';
 import { SEED } from './seed';
 import { runPendingMigrations, CURRENT_MIGRATION_VERSION } from './migrations';
 
@@ -58,6 +59,24 @@ function createSafeStorage(): Storage {
 }
 
 const safeStorage = createSafeStorage();
+
+
+// Demo creators are showcase data and the SEED is their authority — Postgres
+// holds rows that were pushed before these fields existed, which is why the
+// overlay below already prefers local `work` / `pressMentions` / rate cards.
+// Verification is the same class of staleness: the remote rows carry
+// `verified: false` on platforms, so a plain remote-wins merge silently
+// un-verifies Sarah's channels on every page load and the seed's
+// pre-verification never shows up. Only demo rows are touched; a real
+// creator's verification always comes from the server.
+function preferSeedVerification<T extends { verified?: boolean }>(
+  merged: T[],
+  local: T[] | undefined,
+  isDemo: boolean,
+): T[] {
+  if (!isDemo) return merged;
+  return merged.map((p, i) => ({ ...p, verified: local?.[i]?.verified ?? p.verified }));
+}
 
 export const useStore = create<StoreState>()(
   persist(
@@ -385,7 +404,9 @@ if (typeof window !== 'undefined') {
               (remoteVal && remoteVal.length > 0) ? remoteVal : (localVal && localVal.length > 0 ? localVal : remoteVal);
             return {
               ...r,
-              platforms: mergedPlatforms,
+              verified: isDemoCreator(row) ? row.verified : r.verified,
+              kycVerifiedAt: isDemoCreator(row) ? (row.kycVerifiedAt ?? r.kycVerifiedAt) : r.kycVerifiedAt,
+              platforms: preferSeedVerification(mergedPlatforms, row.platforms, isDemoCreator(row)),
               // Storefront content arrays — seed only.
               work: arr(r.work, row.work) ?? [],
               pressMentions: arr(r.pressMentions, row.pressMentions) ?? [],
@@ -464,7 +485,9 @@ if (typeof window !== 'undefined') {
                       (remoteVal && remoteVal.length > 0) ? remoteVal : (localVal && localVal.length > 0 ? localVal : remoteVal);
                     return {
                       ...ownCreator,
-                      platforms: mergedPlatforms,
+                      verified: isDemoCreator(c) ? c.verified : ownCreator.verified,
+                      kycVerifiedAt: isDemoCreator(c) ? (c.kycVerifiedAt ?? ownCreator.kycVerifiedAt) : ownCreator.kycVerifiedAt,
+                      platforms: preferSeedVerification(mergedPlatforms, c.platforms, isDemoCreator(c)),
                       work: arr(ownCreator.work, c.work) ?? [],
                       pressMentions: arr(ownCreator.pressMentions, c.pressMentions) ?? [],
                       featuredReviewIds: arr(ownCreator.featuredReviewIds, c.featuredReviewIds),

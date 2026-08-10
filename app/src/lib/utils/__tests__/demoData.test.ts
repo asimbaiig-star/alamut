@@ -66,3 +66,48 @@ describe('the seed itself upholds the invariant', () => {
     expect(db.campaigns.every((c) => isDemoCampaign(c, db.brands))).toBe(true);
   });
 });
+
+// =====================================================================
+// Demo pre-verification (seed.ts) — the safety property
+// =====================================================================
+//
+// Seeded demo accounts are pre-verified so the showcase looks coherent.
+// The pass is gated on isDemoCreator/isDemoBrand, and these tests pin the
+// property that actually matters: it can only ever touch seeded rows. If
+// someone widens the gate, or the real-user prefix drifts, this fails.
+
+describe('SEED demo pre-verification', () => {
+  it('marks every seeded creator verified, including their channels', () => {
+    const demo = SEED.creators.filter((c) => isDemoCreator(c));
+    expect(demo.length).toBeGreaterThan(50); // the seeded network
+    demo.forEach((c) => {
+      expect(c.verified).toBe(true);
+      expect(c.kycVerifiedAt).toBeTruthy();
+      (c.platforms ?? []).forEach((p) => {
+        expect(p.verified).toBe(true);
+      });
+    });
+  });
+
+  it("verifies Sarah's newsletter, which the raw seed left unverified", () => {
+    const sarah = SEED.creators.find((c) => c.id === 'c_sarah')!;
+    const newsletter = sarah.platforms.find((p) => p.name === 'Newsletter')!;
+    expect(newsletter.verified).toBe(true);
+  });
+
+  it('marks every seeded brand verified', () => {
+    SEED.brands.filter((b) => isDemoBrand(b)).forEach((b) => {
+      expect(b.verified).toBe(true);
+    });
+  });
+
+  it('never touches a real account — the whole safety property', () => {
+    // No row carrying the real-user prefix may appear in the seed at all,
+    // so the pass has nothing real to reach. This is the invariant that
+    // keeps "pre-verified demo data" from ever meaning "verified stranger".
+    const realCreators = SEED.creators.filter((c) => !isDemoCreator(c));
+    const realBrands = SEED.brands.filter((b) => !isDemoBrand(b));
+    expect(realCreators).toEqual([]);
+    expect(realBrands).toEqual([]);
+  });
+});

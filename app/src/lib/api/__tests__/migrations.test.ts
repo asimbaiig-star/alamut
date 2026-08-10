@@ -332,18 +332,37 @@ describe('runPendingMigrations — full chain v0 → v9', () => {
     expect(adminAfter?.adminRoles).toEqual(['super']);
   });
 
-  it('migrator 9 (P6) — resets Platform.verified to false + drops profileCompletion', () => {
+  it('migrator 9 (P6) — resets Platform.verified on REAL creators only', () => {
     const db = makePreMigrationDb();
     // Pre-migration: every channel verified=true (per the seed at top).
     expect(db.creators[0].platforms[0].verified).toBe(true);
 
+    // The fixture creator's `u_creator` id has no `u_x_` prefix, so it reads
+    // as seeded demo data. Add a genuinely real creator alongside it so this
+    // test pins both halves of the contract.
+    const realCreator = {
+      ...db.creators[0],
+      id: 'cr_real',
+      userId: 'u_x_real',
+      platforms: db.creators[0].platforms.map((pf) => ({ ...pf, verified: true })),
+    };
+    db.creators.push(realCreator);
+
     runPendingMigrations(db);
 
-    // Reset to false — creator has to re-verify via the OAuth flow.
-    expect(db.creators[0].platforms[0].verified).toBe(false);
+    // A REAL creator is reset — a verified badge must come from an actual
+    // platform connect, never from persisted data.
+    const real = db.creators.find((c) => c.id === 'cr_real')!;
+    expect(real.platforms[0].verified).toBe(false);
 
-    // profileCompletion field deleted (was 75 before).
+    // A DEMO creator keeps it — showcase data is pre-verified in seed.ts and
+    // labelled 'Demo' wherever a real user can act on it. Un-verifying these
+    // made the demo world look broken while protecting nobody.
+    expect(db.creators[0].platforms[0].verified).toBe(true);
+
+    // profileCompletion field deleted (was 75 before) — for both.
     expect(db.creators[0].profileCompletion).toBeUndefined();
+    expect(real.profileCompletion).toBeUndefined();
   });
 
   it('idempotent — running the chain twice produces the same result as once', () => {
@@ -383,8 +402,10 @@ describe('runPendingMigrations — full chain v0 → v9', () => {
     expect(db.offers[0].rounds.length).toBeGreaterThan(0);
     // Migrator 8 ran (admin user has adminRoles).
     expect(db.users.find((u) => u.id === 'u_admin')?.adminRoles).toEqual(['super']);
-    // Migrator 9 ran (platform.verified = false).
-    expect(db.creators[0].platforms[0].verified).toBe(false);
+    // Migrator 9 ran. The fixture creator is demo data (its `u_creator` id
+    // has no `u_x_` prefix), so its verification is preserved by design —
+    // assert on the field migrator 9 changes for every creator instead.
+    expect(db.creators[0].profileCompletion).toBeUndefined();
 
     expect(db.migrationVersion).toBe(9);
   });

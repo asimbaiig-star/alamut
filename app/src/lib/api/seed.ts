@@ -15,6 +15,10 @@ import type {
   Offer, Platform, Referral, RetainerConfig, Submission, Thread,
   Transaction, User,
 } from './types';
+// Demo predicates — the single definition of "nobody real owns this row".
+// Used by the pre-verification pass at the bottom of this file so it can only
+// ever touch seeded accounts.
+import { isDemoCreator, isDemoBrand } from '@/lib/utils/demoData';
 
 // ============ PRNG (deterministic) ============
 function mulberry32(seed: number) {
@@ -2319,10 +2323,52 @@ const seededTestimonials: import('./types').Testimonial[] = [
   },
 ];
 
+// =====================================================================
+// Demo-account pre-verification
+// =====================================================================
+//
+// The demo world is a showcase: Sarah, Amir, Yuki, Aesop et al. exist so a
+// visitor can see what a populated, working marketplace looks like. Leaving
+// their metrics half-verified undercut that — Sarah's newsletter read
+// "unverified", the 100+ generated network creators had verification decided
+// by `chance()`, and no seeded creator had `kycVerifiedAt` at all, so every
+// one of them failed the identity check on their own KYC page.
+//
+// Done as one normalization pass rather than editing ~20 scattered flags:
+// it stays correct as the seed grows, and it's gated on the SAME demo
+// predicates the rest of the app uses (`userId` without the `u_x_` real-user
+// prefix), so it is structurally incapable of marking a real signup as
+// verified. `demoData.test.ts` asserts that prefix invariant against this
+// very seed.
+//
+// This does NOT contradict the honesty work: these accounts are labelled as
+// demo wherever a real user can act on them. Verified demo data is set
+// dressing, and it stays legible as such.
+
+const DEMO_VERIFIED_AT = '2026-05-01T00:00:00.000Z';
+
+function preVerifyDemoCreators(creators: Creator[]): Creator[] {
+  return creators.map((c) => {
+    if (!isDemoCreator(c)) return c;
+    return {
+      ...c,
+      verified: true,
+      kycVerifiedAt: c.kycVerifiedAt ?? DEMO_VERIFIED_AT,
+      // Channel ownership confirmed on every listed platform — this is what
+      // the matching scorer and the cold-start trust signals read.
+      platforms: (c.platforms ?? []).map((pf) => ({ ...pf, verified: true })),
+    };
+  });
+}
+
+function preVerifyDemoBrands(brands: Brand[]): Brand[] {
+  return brands.map((b) => (isDemoBrand(b) ? { ...b, verified: true } : b));
+}
+
 export const SEED: Database = {
   users: allUsers,
-  creators: [...allCreators, ...pendingApplications.map((p) => p.creator)],
-  brands: allBrands,
+  creators: preVerifyDemoCreators([...allCreators, ...pendingApplications.map((p) => p.creator)]),
+  brands: preVerifyDemoBrands(allBrands),
   campaigns: allCampaigns,
   applications: allApplications,
   offers: allOffers,

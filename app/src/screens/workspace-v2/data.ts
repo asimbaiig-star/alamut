@@ -45,6 +45,11 @@ export interface V2Creator {
   /** Review rating rescaled to 0-100, or null when the creator has no
    *  reviews yet. NOT a fit score — see matching.ts. */
   score: number | null;
+  /** True when this is seeded demo data (nobody real owns it). Demo accounts
+   *  are pre-verified for the showcase (see seed.ts), so the surfaces that
+   *  show verification or trust signals must label them — otherwise a demo
+   *  creator silently outranks a real one on evidence they didn't earn. */
+  isDemo?: boolean;
   priceTier: '$' | '$$' | '$$$' | '$$$$';
   priceMin: number;
   priceMax: number;
