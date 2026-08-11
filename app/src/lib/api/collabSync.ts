@@ -216,6 +216,90 @@ export function computeCollabStage(
  *  for accept/withdraw, brand user for offer-send/approve, system for
  *  scheduled events). `reason` is an optional free-form annotation
  *  ('campaign-ended', 'dispute-raised', etc.). */
+/** Canonical stage ordering for the pipeline, owned by the data layer that
+ *  produces these stages. `V2_STAGE_META.order` in v2Adapters mirrors this for
+ *  UI purposes; a test asserts the two agree so they cannot drift. */
+export const COLLAB_STAGE_ORDER: CollabStage[] = [
+  'invited', 'pitched', 'negotiating', 'confirmed',
+  'submitted', 'approved', 'live', 'paid',
+];
+
+const stageRank = (s: CollabStage): number => {
+  const i = COLLAB_STAGE_ORDER.indexOf(s);
+  // 'cancelled' (and anything unlisted) ranks below every pipeline stage, so
+  // merging never lets a terminal row mask real progress.
+  return i === -1 ? -1 : i;
+};
+
+/** Merge two Collaboration rows that describe the SAME (campaign, creator).
+ *
+ *  Duplicates exist because `store.ts`'s overlay merges remote rows by `id`,
+ *  while a collaboration is logically keyed by (campaignId, creatorId): the
+ *  locally-materialized row (migrator 3, generated id) and the Supabase row
+ *  (its own id) describe one pair under two ids, so the remote one was
+ *  appended rather than merged.
+ *
+ *  That is actively harmful, not cosmetic: `ensureCollabState` below finds by
+ *  pair and updates only the FIRST match, so the other row never advances and
+ *  the two disagree about stage forever — observed live as one row at
+ *  'confirmed' and its twin at 'submitted' for the same pair. Both then get
+ *  mirrored to Postgres under separate ids.
+ *
+ *  Nothing is discarded: the furthest stage wins, histories are unioned and
+ *  re-sorted, the earliest creation and latest update are kept, and a set
+ *  value beats a null on every nullable field. Deleting a row outright would
+ *  risk losing whichever history fragment only it carried.
+ */
+export function mergeCollabRows(a: Collaboration, b: Collaboration): Collaboration {
+  const primary = stageRank(b.stage) > stageRank(a.stage) ? b : a;
+  const other = primary === a ? b : a;
+
+  const seen = new Set<string>();
+  const history = [...(a.history ?? []), ...(b.history ?? [])]
+    .filter((h) => {
+      // Same transition recorded in both rows — keep one.
+      const key = `${h.at}|${h.from ?? ''}|${h.to}|${h.actorUserId}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((x, y) => x.at - y.at);
+
+  return {
+    ...primary,
+    // Prefer the primary's identity so whichever row the rest of the store
+    // already references stays valid.
+    createdAt: Math.min(a.createdAt, b.createdAt),
+    updatedAt: Math.max(a.updatedAt, b.updatedAt),
+    agreedRate: primary.agreedRate || other.agreedRate,
+    acceptedOfferId: primary.acceptedOfferId ?? other.acceptedOfferId,
+    contractId: primary.contractId ?? other.contractId,
+    cancelledAt: primary.cancelledAt ?? other.cancelledAt,
+    cancellationReason: primary.cancellationReason ?? other.cancellationReason,
+    cancellationRequest: primary.cancellationRequest ?? other.cancellationRequest,
+    escrowFrozen: primary.escrowFrozen || other.escrowFrozen,
+    history,
+  };
+}
+
+/** Collapse every duplicate (campaignId, creatorId) pair down to one row.
+ *  Order-stable: the first occurrence of a pair keeps its position. */
+export function dedupeCollabRows(rows: Collaboration[]): Collaboration[] {
+  const byPair = new Map<string, number>();
+  const out: Collaboration[] = [];
+  for (const row of rows) {
+    const key = `${row.campaignId}|${row.creatorId}`;
+    const at = byPair.get(key);
+    if (at === undefined) {
+      byPair.set(key, out.length);
+      out.push(row);
+    } else {
+      out[at] = mergeCollabRows(out[at], row);
+    }
+  }
+  return out;
+}
+
 export function ensureCollabState(
   campaignId: string,
   creatorId: string,

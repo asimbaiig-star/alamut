@@ -233,3 +233,28 @@ describe('furthestPipelineStage tolerates duplicate collab rows', () => {
     expect(furthestPipelineStage('cmp_1', 'cr_1', db)).toBe('submitted');
   });
 });
+
+describe('action lists must never include a terminal collab', () => {
+  it('isActiveCollab excludes cancelled even when work is outstanding', () => {
+    // The trap this documents: brand "Needs you now" / Content review and the
+    // creator's Today list key off DELIVERABLE status, not stage. A collab
+    // cancelled after confirmation can still carry an in_review or overdue
+    // deliverable, so without a stage guard those surfaces would ask both
+    // sides to act on a dead deal — and approving it would release escrow.
+    //
+    // While cancelled rows were filtered out upstream this was unreachable;
+    // surfacing them made the guard load-bearing. Every action path funnels
+    // through isActiveCollab.
+    const cancelledWithWork = {
+      stage: 'cancelled' as V2CollabStage,
+      deliverables: [{ status: 'in_review' }],
+    };
+    expect(isActiveCollab(cancelledWithWork)).toBe(false);
+
+    const confirmedWithWork = {
+      stage: 'confirmed' as V2CollabStage,
+      deliverables: [{ status: 'in_review' }],
+    };
+    expect(isActiveCollab(confirmedWithWork)).toBe(true);
+  });
+});

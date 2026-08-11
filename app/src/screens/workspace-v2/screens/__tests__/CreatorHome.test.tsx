@@ -85,7 +85,11 @@ vi.mock('@/lib/api/store', () => ({
   tx: () => undefined,
 }));
 
-vi.mock('../../v2Adapters', () => ({
+// Spread the REAL module and override only what this suite needs. The old
+// mock enumerated its exports, so every new adapter export broke it — the
+// same drift hazard the stage model itself was fixed for.
+vi.mock('../../v2Adapters', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../v2Adapters')>()),
   creatorToV2: (c: typeof mockCreator) => ({
     id: c.id,
     handle: c.handle,
@@ -107,7 +111,6 @@ vi.mock('../../v2Adapters', () => ({
     rate: 1500,
     pastBrands: [],
   }),
-  V2_PIPELINE_STAGES: [],
 }));
 
 vi.mock('../../useRecentActivity', () => ({

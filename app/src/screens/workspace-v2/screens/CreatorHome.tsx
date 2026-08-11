@@ -14,7 +14,7 @@ import {
   useV2AllCampaigns, useV2CreatorWallet, useV2CurrentCreator, useV2Creators,
   useV2MyCollabs,
 } from '../v2Hooks';
-import { creatorToV2 } from '../v2Adapters';
+import { creatorToV2, isActiveCollab } from '../v2Adapters';
 import { matchCreatorToCampaign } from '../matching';
 import { useStore } from '@/lib/api/store';
 import type { V2Campaign, V2Creator } from '../data';
@@ -40,7 +40,14 @@ export function CreatorHome({ onRoute }: Props) {
   const allCreators = useV2Creators();
   const wallet = useV2CreatorWallet();
   const allCampaigns = useV2AllCampaigns();
-  const myCollabs = useV2MyCollabs();
+  const allMyCollabs = useV2MyCollabs();
+  // Action lists run on ACTIVE collabs only. Two of the Today generators below
+  // key off deliverable/submission status without checking stage, so a collab
+  // cancelled AFTER confirmation could still tell the creator to "Resubmit" or
+  // to post content for a deal that isn't going ahead. Cancelled collabs used
+  // to be filtered out upstream, which hid this; they're now surfaced (in
+  // MyCollabs' "Closed" group), so the guard belongs here.
+  const myCollabs = allMyCollabs.filter(isActiveCollab);
   const db = useStore((s) => s.db);
 
   const me = creator ? creatorToV2(creator) : allCreators[0];

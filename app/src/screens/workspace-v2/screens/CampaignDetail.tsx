@@ -182,7 +182,13 @@ export function CampaignDetail({
   const activeCollabs = collabs.filter(isActiveCollab);
   const closedCollabs = collabs.filter((c) => !isActiveCollab(c));
 
-  const awaitingReview = collabs.filter((c) =>
+  // Action paths run on ACTIVE collabs only. These filter on deliverable
+  // status alone, so a collab cancelled AFTER confirmation can still carry an
+  // in_review or overdue deliverable — which would ask the brand to review or
+  // chase content for a collaboration that isn't going ahead. That was
+  // unreachable while cancelled rows were filtered out upstream; surfacing
+  // them (correctly) exposed it, so the guard belongs here now.
+  const awaitingReview = activeCollabs.filter((c) =>
     c.deliverables.some((d) => d.status === 'in_review'),
   ).length;
   const daysLeft = Math.max(0, Math.ceil((+new Date(campaign.deadline) - Date.now()) / 86_400_000));
@@ -235,7 +241,7 @@ export function CampaignDetail({
             daysLeft={daysLeft}
           />
           <NeedsYouCard
-            collabs={collabs}
+            collabs={activeCollabs}
             creators={creators}
             awaitingReview={awaitingReview}
             onJumpToContent={() => setTab('content')}
@@ -279,7 +285,10 @@ export function CampaignDetail({
         {tab === 'brief' && <BriefView campaign={campaign} onEditSettings={() => setTab('settings')} />}
         {tab === 'content' && (
           <ContentReviewTab
-            collabs={collabs}
+            // Active only — see the awaitingReview note above. Reviewing
+            // content for a collab that isn't going ahead is a dead end, and
+            // approving it would release escrow on a cancelled deal.
+            collabs={activeCollabs}
             creators={creators}
             onReview={setReviewing}
             onRoute={onRoute}
@@ -391,8 +400,9 @@ export function CampaignDetail({
 //   1. Status header — stage pill, name, brand, days-left meta
 //   2. Pacing bar — spend % filled bar with a time-elapsed marker; the
 //      fill color flips ahead-of-pace / behind / on-pace
-//   3. Lifecycle bar — distribution of creators across briefed →
-//      invited → confirmed → producing → reviewing → live
+//   3. Roster distribution — how many creators sit in each real stage
+//      right now (see RosterDistribution). This used to be a cumulative
+//      funnel over invented phase names; the comment outlived it.
 // =====================================================================
 
 function CockpitHero({

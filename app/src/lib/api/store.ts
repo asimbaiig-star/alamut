@@ -4,6 +4,7 @@ import type { Database, Session } from './types';
 import { isDemoCreator } from '@/lib/utils/demoData';
 import { SEED } from './seed';
 import { runPendingMigrations, CURRENT_MIGRATION_VERSION } from './migrations';
+import { dedupeCollabRows } from './collabSync';
 
 interface StoreState {
   db: Database;
@@ -435,7 +436,17 @@ if (typeof window !== 'undefined') {
             applications: overlay(s.db.applications, applications),
             offers: overlay(s.db.offers, offers),
             creators: overlayCreators(s.db.creators, creators),
-            collaborations: overlay(s.db.collaborations ?? [], collaborations),
+            // Collaborations are keyed by (campaignId, creatorId), NOT by id:
+            // the locally-materialized row and the Supabase row for the same
+            // pair carry different ids, so the generic id-based `overlay`
+            // appended the remote one and produced two rows for one pair.
+            // Verified live — 3 pairs duplicated, with the twin rows
+            // disagreeing about stage. `dedupeCollabRows` merges by pair
+            // (furthest stage wins, histories unioned) so nothing is lost and
+            // no duplicate survives the hydrate.
+            collaborations: dedupeCollabRows(
+              overlay(s.db.collaborations ?? [], collaborations),
+            ),
             submissions: overlay(s.db.submissions, submissions),
             deliverables: overlay(s.db.deliverables ?? [], deliverables),
             contracts: overlay(s.db.contracts ?? [], contracts),
