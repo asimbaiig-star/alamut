@@ -412,9 +412,19 @@ function CockpitHero({
   collabs: V2Collab[];
   daysLeft: number;
 }) {
-  const TOTAL_DAYS = 30; // demo assumption — most live campaigns are 4 weeks
-  const elapsed = Math.max(0, TOTAL_DAYS - daysLeft);
-  const timePct = Math.min(1, elapsed / TOTAL_DAYS);
+  // Real campaign duration, not a fixed 30 days. The old `TOTAL_DAYS = 30`
+  // "demo assumption" made the time-elapsed marker and the ahead/behind-pace
+  // verdict wrong for every campaign that isn't exactly four weeks long: a
+  // 90-day campaign with 60 days left read as "100% time elapsed", and a
+  // 7-day one under-reported. The campaign knows when it was created and when
+  // it is due, so derive it.
+  const startMs = +new Date(campaign.createdAt);
+  const endMs = +new Date(campaign.deadline);
+  const totalDays = Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs
+    ? Math.max(1, Math.round((endMs - startMs) / 86_400_000))
+    : Math.max(1, daysLeft); // no usable start date — treat today as day one
+  const elapsed = Math.max(0, totalDays - daysLeft);
+  const timePct = Math.min(1, elapsed / totalDays);
   const spendPct = campaign.budget > 0 ? Math.min(1, campaign.spent / campaign.budget) : 0;
   const pacing = spendPct - timePct; // + = ahead, - = behind
 

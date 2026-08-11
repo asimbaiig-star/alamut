@@ -20,7 +20,7 @@ import {
   useV2Campaigns, useV2Creators,
 } from '../v2Hooks';
 import { useStore } from '@/lib/api/store';
-import { collabsForCampaign, collabsForCreator } from '../v2Adapters';
+import { collabsForCampaign, collabsForCreator, isActiveCollab } from '../v2Adapters';
 import type { V2Collab, V2Deliverable } from '../data';
 
 interface Props { onRoute: (r: string) => void; }
@@ -102,7 +102,12 @@ export function Calendar({ onRoute }: Props) {
       for (const camp of campaigns) {
         const collabs = collabsForCampaign(camp.id, db);
         for (const collab of collabs) {
-          if (collab.stage === 'paid') continue;
+          // Skip terminal stages: 'paid' is finished, and a cancelled collab
+          // isn't going ahead — its deliverable dates aren't real deadlines
+          // for anyone. Cancelled rows used to be filtered out upstream so
+          // this gate only needed 'paid'; they're surfaced now, so it needs
+          // both.
+          if (collab.stage === 'paid' || !isActiveCollab(collab)) continue;
           for (const del of collab.deliverables) {
             if (del.status === 'live') continue;
             const date = parseDue(del.due);
@@ -122,7 +127,9 @@ export function Calendar({ onRoute }: Props) {
     } else if (persona === 'creator' && creator) {
       const collabs = collabsForCreator(creator.id, db);
       for (const collab of collabs) {
-        if (collab.stage === 'paid') continue;
+        // Same as the brand branch above — a terminal collab carries no live
+        // deadlines.
+        if (collab.stage === 'paid' || !isActiveCollab(collab)) continue;
         const camp = campaigns.find((c) => c.id === collab.campaignId);
         for (const del of collab.deliverables) {
           if (del.status === 'live') continue;

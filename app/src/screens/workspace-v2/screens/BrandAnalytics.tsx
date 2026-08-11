@@ -13,7 +13,7 @@
 import { useMemo, useState } from 'react';
 import { fmtFollowers, fmtUSD, Icon, Topbar } from '../lib';
 import { useV2Campaigns, useV2Creators, useV2CurrentBrand } from '../v2Hooks';
-import { collabsForCampaign } from '../v2Adapters';
+import { collabsForCampaign, isActiveCollab } from '../v2Adapters';
 import { useStore } from '@/lib/api/store';
 import type { V2CampaignPerf, V2Collab, V2Creator } from '../data';
 import { pushToast } from '@/lib/utils/toast';
@@ -53,7 +53,10 @@ export function BrandAnalytics({ onRoute }: Props) {
     for (const camp of campaigns) {
       _spent += camp.spent;
       _budget += camp.budget;
-      const collabs = collabsForCampaign(camp.id, db);
+      // Active only. Portfolio aggregates shouldn't count creators who are out
+      // of the running — cancelled rows were filtered out upstream before, so
+      // this accumulator never used to see them.
+      const collabs = collabsForCampaign(camp.id, db).filter(isActiveCollab);
       allCollabsAcc.push(...collabs);
       const perf = derivePerf(camp, collabs, creators);
       if (!perf) continue;
