@@ -146,6 +146,42 @@
     grid-template-columns: repeat(8, 220px);
   }
 }
+/* Phase headers sit on the grid's first row, each spanning its own columns
+   (2 + 2 + 4 = 8). Using the SAME grid rather than three nested containers
+   keeps one horizontal scroller and keeps the headers aligned to the columns
+   beneath them.
+
+   Why group at all: a flat left-to-right board implies `invited → pitched` is
+   a progression. It isn't — they're parallel entry paths (brand-invited vs
+   creator-pitched) that converge at `negotiating`. Sitting side by side under
+   one "Sourcing" header reads as siblings instead of sequence. */
+[data-surface="v2"] .v2-kanban-phase {
+  padding: 0 4px 10px;
+  border-bottom: 1px solid var(--v2-line);
+  margin-bottom: 12px;
+  min-width: 0;
+}
+[data-surface="v2"] .v2-kanban-phase-label {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--v2-ink-2);
+}
+[data-surface="v2"] .v2-kanban-phase-count {
+  font-size: 11px;
+  color: var(--v2-ink-3);
+  margin-left: 6px;
+}
+[data-surface="v2"] .v2-kanban-phase-hint {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--v2-ink-4);
+  margin: 3px 0 0;
+  /* The hint can be longer than its columns; don't let it stretch the grid. */
+  max-width: 100%;
+}
+
 [data-surface="v2"] .v2-kanban-col {
   min-width: 220px;
   display: flex;

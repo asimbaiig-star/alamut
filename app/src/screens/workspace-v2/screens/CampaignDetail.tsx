@@ -19,14 +19,14 @@
 // a card with a review opens the ContentReviewModal; otherwise drills
 // into the creator profile.
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { fmtUSD, fmtFollowers, Icon, StagePill, Topbar } from '../lib';
 import {
   useV2CampaignById, useV2CollabsForCampaign, useV2Creators,
   useV2CurrentBrand,
   v2AddCampaignAsset, v2RemoveCampaignAsset,
 } from '../v2Hooks';
-import { V2_PIPELINE_STAGES, V2_STAGE_META, isActiveCollab } from '../v2Adapters';
+import { V2_PIPELINE_STAGES, V2_STAGE_META, V2_BOARD_PHASES, isActiveCollab, furthestPipelineStage } from '../v2Adapters';
 import { Avatar } from '@/components/ui/Avatar';
 import type {
   V2Campaign, V2Collab, V2Creator, V2CampaignPerf, V2Deliverable,
@@ -952,6 +952,26 @@ function PipelineKanban({ collabs, creators, onReview, onRoute, onSendOffer, onM
 }) {
   return (
     <div className="v2-kanban">
+      {/* Phase headers occupy the grid's first row, each spanning its stages'
+          columns. The board is otherwise unchanged — same 8 columns, same
+          order, same cards — but "Sourcing" over Invited + Pitched stops the
+          board implying one leads to the other. */}
+      {V2_BOARD_PHASES.map((phase) => {
+        const inPhase = collabs.filter((c) => phase.stages.includes(c.stage)).length;
+        return (
+          <div
+            key={phase.id}
+            className="v2-kanban-phase"
+            style={{ gridColumn: `span ${phase.stages.length}` }}
+          >
+            <div>
+              <span className="v2-kanban-phase-label">{phase.label}</span>
+              <span className="v2-kanban-phase-count">{inPhase}</span>
+            </div>
+            <p className="v2-kanban-phase-hint">{phase.hint}</p>
+          </div>
+        );
+      })}
       {V2_PIPELINE_STAGES.map((stage) => {
         const items = collabs.filter((c) => c.stage === stage.id);
         // Per-column committed spend — sum of agreed rates for collabs
@@ -1976,6 +1996,126 @@ export function derivePerf(
   };
 }
 
+// =====================================================================
+// Conversion funnel — of everyone sourced, how far did they get?
+// =====================================================================
+//
+// The cockpit's distribution bar answers "where is the roster now". This
+// answers the different, analytical question, and lives here rather than in
+// the hero because it's a review-the-campaign question, not a daily one.
+//
+// Two things make an honest funnel here non-obvious:
+//
+//   1. The journey BRANCHES. `invited` and `pitched` are parallel entry paths
+//      (brand-initiated vs creator-initiated) that converge at `negotiating`.
+//      So "sourced" is the union of both entries, and the first meaningful
+//      shared step is the convergence point — not either entry stage.
+//
+//   2. Current stage is NOT how far someone got. `cancelled` is terminal and
+//      says nothing about reach, and a collab can be cancelled AFTER being
+//      booked. Counting by current stage would either understate conversion
+//      (treating every cancelled pair as never-booked) or overstate it. So
+//      each step reads `furthestPipelineStage`, which walks the collab's
+//      transition history.
+
+function ConversionFunnel({ campaignId, collabs }: {
+  campaignId: string;
+  collabs: V2Collab[];
+}) {
+  const db = useStore((st) => st.db);
+
+  const steps = useMemo(() => {
+    // Furthest in-pipeline stage each pair ever reached, from history.
+    const reach = collabs.map((c) => {
+      const st = furthestPipelineStage(campaignId, c.creatorId, db);
+      return st ? V2_STAGE_META[st].order : 0;
+    });
+    const atLeast = (order: number) => reach.filter((r) => r >= order).length;
+    const rows: { id: string; label: string; count: number; note: string }[] = [
+      { id: 'sourced', label: 'Sourced', count: collabs.length,
+        note: 'Invited by you, or pitched to you' },
+      { id: 'talking', label: 'In conversation', count: atLeast(V2_STAGE_META.negotiating.order),
+        note: 'Where both entry paths converge — terms on the table' },
+      { id: 'booked', label: 'Booked', count: atLeast(V2_STAGE_META.confirmed.order),
+        note: 'Offer accepted' },
+      { id: 'content', label: 'Content in', count: atLeast(V2_STAGE_META.submitted.order),
+        note: 'Submitted at least one deliverable' },
+      { id: 'live', label: 'Live', count: atLeast(V2_STAGE_META.live.order),
+        note: 'Published on their channels' },
+      { id: 'paid', label: 'Paid', count: atLeast(V2_STAGE_META.paid.order),
+        note: 'Funds released' },
+    ];
+    return rows;
+  }, [collabs, campaignId, db]);
+
+  const sourced = steps[0].count;
+  if (sourced === 0) {
+    return (
+      <section className="v2-card v2-card-pad" style={{ marginBottom: 16 }}>
+        <div className="v2-eyebrow" style={{ marginBottom: 6 }}>Conversion</div>
+        <p className="v2-muted" style={{ fontSize: 12.5, margin: 0 }}>
+          Nobody sourced yet — invite creators or wait for pitches, and this
+          will show where they drop off.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="v2-card v2-card-pad" style={{ marginBottom: 16 }}>
+      <div className="v2-row" style={{ justifyContent: 'space-between', marginBottom: 4 }}>
+        <div className="v2-eyebrow">Conversion</div>
+        <div className="v2-muted" style={{ fontSize: 11 }}>
+          furthest stage each creator reached
+        </div>
+      </div>
+      <p className="v2-muted" style={{ fontSize: 11.5, margin: '0 0 14px' }}>
+        Counted by how far each creator actually got, not where they sit now —
+        so someone who booked and later fell through still counts as booked.
+      </p>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {steps.map((step, i) => {
+          const pct = step.count / sourced;
+          const prev = i > 0 ? steps[i - 1].count : null;
+          const dropped = prev !== null ? prev - step.count : 0;
+          return (
+            <div key={step.id}>
+              <div className="v2-row" style={{ justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                <span style={{ fontSize: 12.5, fontWeight: 550 }}>{step.label}</span>
+                <span className="v2-row" style={{ gap: 8, alignItems: 'baseline' }}>
+                  {dropped > 0 && (
+                    <span
+                      className="v2-muted"
+                      style={{ fontSize: 11 }}
+                      title={`${dropped} didn't get past ${steps[i - 1].label.toLowerCase()}`}
+                    >
+                      −{dropped}
+                    </span>
+                  )}
+                  <span className="v2-tabular" style={{ fontSize: 12.5 }}>{step.count}</span>
+                  <span className="v2-muted v2-tabular" style={{ fontSize: 11, minWidth: 34, textAlign: 'right' }}>
+                    {Math.round(pct * 100)}%
+                  </span>
+                </span>
+              </div>
+              <div style={{ height: 6, background: 'var(--v2-bg-2)', borderRadius: 3, overflow: 'hidden', margin: '4px 0 2px' }}>
+                <div style={{
+                  width: `${pct * 100}%`,
+                  height: '100%',
+                  background: pct === 1 ? 'var(--v2-moss)' : 'var(--v2-accent)',
+                  transition: 'width .3s',
+                }} />
+              </div>
+              <div className="v2-muted" style={{ fontSize: 11 }}>{step.note}</div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function AnalyticsTab({
   perf, campaign, collabs, creators,
 }: {
@@ -1988,8 +2128,15 @@ function AnalyticsTab({
   const [range, setRange] = useState<'campaign' | '7d' | 'live'>('campaign');
   void range; // visual-only filter; the demo perf series is rangeless
 
+  // Roster conversion doesn't depend on content-performance data, so it shows
+  // even when `perf` is empty — a campaign with no live content yet still has
+  // a sourcing-to-booking story worth seeing.
+  const funnel = <ConversionFunnel campaignId={campaign.id} collabs={collabs} />;
+
   if (!perf) {
     return (
+      <>
+      {funnel}
       <div className="v2-card v2-card-pad-lg" style={{ textAlign: 'center' }}>
         <div style={{ fontSize: 28, marginBottom: 10, opacity: 0.4 }}>◐</div>
         <div style={{
@@ -2004,6 +2151,7 @@ function AnalyticsTab({
           You'll see impressions, engagement, audience, and ROI here as posts publish.
         </div>
       </div>
+      </>
     );
   }
 
@@ -2101,6 +2249,13 @@ function AnalyticsTab({
 
   return (
     <div>
+      {/* Roster conversion sits above content performance: "did the roster
+          convert" is the question you ask before "how did the content do".
+          Rendered in BOTH branches of this tab — it was briefly only in the
+          no-perf branch, which hid it from exactly the campaigns that have
+          enough data to make it interesting. */}
+      {funnel}
+
       {/* Toolbar — time range + Export/Share actions. */}
       <div
         className="v2-row"

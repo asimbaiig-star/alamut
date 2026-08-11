@@ -477,24 +477,31 @@ export const V2_STAGE_META: Record<V2CollabStage, {
   inPipeline: boolean;
   /** Creator-side grouping. 'closed' = out of the running, shown but inert. */
   activeGroup: 'pre-acceptance' | 'post-acceptance' | 'closed';
+  /** Board phase. Grouping the columns under these stops the left-to-right
+   *  board implying `invited → pitched` is a progression: they are parallel
+   *  entry paths (brand-initiated vs creator-initiated) that converge at
+   *  `negotiating`, and sitting side by side under one "Sourcing" header
+   *  reads as siblings rather than sequence. */
+  phase: 'sourcing' | 'booking' | 'production' | 'closed';
   /** Shown to whoever is looking at a terminal collab so the outcome is
    *  explicit instead of the record just disappearing. */
   outcomeNote?: string;
 }> = {
-  invited:     { label: 'Invited',     color: 'var(--v2-ink-3)', order: 1, inPipeline: true,  activeGroup: 'pre-acceptance' },
-  pitched:     { label: 'Pitched',     color: 'var(--v2-info)',  order: 2, inPipeline: true,  activeGroup: 'pre-acceptance' },
-  negotiating: { label: 'Negotiating', color: 'var(--v2-gold)',  order: 3, inPipeline: true,  activeGroup: 'pre-acceptance' },
-  confirmed:   { label: 'Confirmed',   color: 'var(--v2-accent)', order: 4, inPipeline: true, activeGroup: 'post-acceptance' },
-  submitted:   { label: 'Submitted',   color: '#8B5CF6',         order: 5, inPipeline: true,  activeGroup: 'post-acceptance' },
-  approved:    { label: 'Approved',    color: 'var(--v2-moss)',  order: 6, inPipeline: true,  activeGroup: 'post-acceptance' },
-  live:        { label: 'Live',        color: 'var(--v2-moss)',  order: 7, inPipeline: true,  activeGroup: 'post-acceptance' },
-  paid:        { label: 'Paid',        color: 'var(--v2-ink)',   order: 8, inPipeline: true,  activeGroup: 'post-acceptance' },
+  invited:     { label: 'Invited',     color: 'var(--v2-ink-3)', order: 1, inPipeline: true,  activeGroup: 'pre-acceptance', phase: 'sourcing' },
+  pitched:     { label: 'Pitched',     color: 'var(--v2-info)',  order: 2, inPipeline: true,  activeGroup: 'pre-acceptance', phase: 'sourcing' },
+  negotiating: { label: 'Negotiating', color: 'var(--v2-gold)',  order: 3, inPipeline: true,  activeGroup: 'pre-acceptance', phase: 'booking' },
+  confirmed:   { label: 'Confirmed',   color: 'var(--v2-accent)', order: 4, inPipeline: true, activeGroup: 'post-acceptance', phase: 'booking' },
+  submitted:   { label: 'Submitted',   color: '#8B5CF6',         order: 5, inPipeline: true,  activeGroup: 'post-acceptance', phase: 'production' },
+  approved:    { label: 'Approved',    color: 'var(--v2-moss)',  order: 6, inPipeline: true,  activeGroup: 'post-acceptance', phase: 'production' },
+  live:        { label: 'Live',        color: 'var(--v2-moss)',  order: 7, inPipeline: true,  activeGroup: 'post-acceptance', phase: 'production' },
+  paid:        { label: 'Paid',        color: 'var(--v2-ink)',   order: 8, inPipeline: true,  activeGroup: 'post-acceptance', phase: 'production' },
   cancelled:   {
     label: 'Not proceeding',
     color: 'var(--v2-ink-4)',
     order: 99,
     inPipeline: false,
     activeGroup: 'closed',
+    phase: 'closed',
     outcomeNote: 'Every offer and application here was declined or withdrawn, so this collaboration isn\'t going ahead.',
   },
 };
@@ -506,6 +513,78 @@ export const V2_PIPELINE_STAGES: V2PipelineStage[] =
     .filter((s) => V2_STAGE_META[s].inPipeline)
     .sort((a, b) => V2_STAGE_META[a].order - V2_STAGE_META[b].order)
     .map((s) => ({ id: s, label: V2_STAGE_META[s].label, color: V2_STAGE_META[s].color }));
+
+/** Board phases in left-to-right order, with the stages under each. Derived
+ *  from V2_STAGE_META so a stage can never be missing from the board. */
+type BoardPhaseId = 'sourcing' | 'booking' | 'production';
+
+export const V2_BOARD_PHASES: {
+  id: BoardPhaseId;
+  label: string;
+  hint: string;
+  stages: V2CollabStage[];
+}[] = ([
+  {
+    id: 'sourcing',
+    label: 'Sourcing',
+    // Stated explicitly because the column order alone implies a sequence.
+    hint: 'Two ways in — you invited them, or they pitched you. Neither leads to the other.',
+    stages: [],
+  },
+  { id: 'booking',    label: 'Booking',    hint: 'Terms on the table, then locked in.', stages: [] },
+  { id: 'production', label: 'Production', hint: 'Content in, approved, live, paid.',   stages: [] },
+] as { id: BoardPhaseId; label: string; hint: string; stages: V2CollabStage[] }[]).map((p) => ({
+  ...p,
+  stages: (Object.keys(V2_STAGE_META) as V2CollabStage[])
+    .filter((s) => V2_STAGE_META[s].phase === p.id)
+    .sort((a, b) => V2_STAGE_META[a].order - V2_STAGE_META[b].order),
+}));
+
+/** The furthest IN-PIPELINE stage this pair ever reached.
+ *
+ *  A conversion funnel can't read the current stage alone: `cancelled` is
+ *  terminal and carries no information about how far the pair actually got,
+ *  and a collab can be cancelled AFTER being booked (see
+ *  `Collaboration.cancellationRequest`, "populated when either party requests
+ *  cancellation post-confirmation"). Counting a cancelled collab as never
+ *  having booked would understate conversion; counting it by its order-99
+ *  stage would overstate everything.
+ *
+ *  `history` is the audit trail of every transition, so the max in-pipeline
+ *  stage across it — plus the current stage — is the honest answer. Falls back
+ *  to the current stage when history is empty (seeded rows, pre-migrator data).
+ */
+export function furthestPipelineStage(
+  campaignId: string,
+  creatorId: string,
+  db: Database,
+): V2CollabStage | null {
+  // `filter`, not `find`: the store can hold MORE THAN ONE Collaboration row
+  // for the same (campaign, creator) pair. Verified in the live seeded world —
+  // 3 pairs are duplicated, e.g. Sarah on cmp_1 has a seeded row at
+  // 'confirmed' and a migrator-materialized row at 'submitted'. A `.find()`
+  // would read whichever happens to be first and could understate how far the
+  // pair actually got. Merging every matching row's history is correct whether
+  // or not the duplication is ever cleaned up.
+  const rows = db.collaborations.filter(
+    (c) => c.campaignId === campaignId && c.creatorId === creatorId,
+  );
+  const derived = deriveCollab(campaignId, creatorId, db);
+  const seen: V2CollabStage[] = [];
+  if (derived) seen.push(derived.stage);
+  for (const row of rows) {
+    if ((row.stage as string) in V2_STAGE_META) seen.push(row.stage as V2CollabStage);
+    for (const h of row.history ?? []) {
+      if (h.to && (h.to as string) in V2_STAGE_META) seen.push(h.to as V2CollabStage);
+      if (h.from && (h.from as string) in V2_STAGE_META) seen.push(h.from as V2CollabStage);
+    }
+  }
+  const inPipeline = seen.filter((st) => V2_STAGE_META[st].inPipeline);
+  if (inPipeline.length === 0) return null;
+  return inPipeline.reduce((best, st) =>
+    V2_STAGE_META[st].order > V2_STAGE_META[best].order ? st : best,
+  );
+}
 
 /** True when the collab is still somewhere in the pipeline. Use this for any
  *  "how many creators" count so badges, totals and column sums agree — a
