@@ -160,8 +160,20 @@ export function Calendar({ onRoute }: Props) {
     return m;
   }, [entries]);
 
+  /** Is this entry genuinely late? Shared by the topbar crumb and the calendar
+   *  cell highlight so the two cannot disagree.
+   *
+   *  Pre-fix the crumb counted EVERY past-dated entry while the cell (below)
+   *  excluded approved and live work — so the header claimed "288 overdue"
+   *  while the grid highlighted far fewer, and neither number could be
+   *  reconciled with the other. Approved work isn't late; it's done. */
+  const isOverdueEntry = (e: CalendarEntry): boolean =>
+    +e.date < +TODAY
+    && e.deliverable.status !== 'approved'
+    && e.deliverable.status !== 'live';
+
   /** Counts for the topbar crumb. */
-  const overdueCount = entries.filter((e) => +e.date < +TODAY).length;
+  const overdueCount = entries.filter(isOverdueEntry).length;
   const next7 = entries.filter((e) => {
     const days = (+e.date - +TODAY) / DAY_MS;
     return days >= 0 && days <= 7;
@@ -252,7 +264,6 @@ export function Calendar({ onRoute }: Props) {
               const key = dayKey(d);
               const sameMonth = d.getMonth() === cursor.getMonth();
               const isToday = key === dayKey(TODAY);
-              const isPast = +d < +TODAY;
               const dayEntries = byDay.get(key) ?? [];
               return (
                 <div
@@ -282,7 +293,8 @@ export function Calendar({ onRoute }: Props) {
                     {isToday && <span style={{ fontSize: 10, marginLeft: 4 }}>· today</span>}
                   </div>
                   {dayEntries.slice(0, 3).map((e) => {
-                    const overdue = isPast && !isToday && e.deliverable.status !== 'approved' && e.deliverable.status !== 'live';
+                    // Same predicate as the crumb count above.
+                    const overdue = !isToday && isOverdueEntry(e);
                     return (
                       <button
                         key={e.deliverable.id}

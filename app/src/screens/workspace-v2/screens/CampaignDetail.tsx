@@ -2145,6 +2145,7 @@ function AnalyticsTab({
   creators: V2Creator[];
 }) {
   const [metric, setMetric] = useState<'impressions' | 'engagement' | 'er'>('engagement');
+  const [range, setRange] = useState<'campaign' | '7d' | '30d'>('campaign');
 
   // Roster conversion doesn't depend on content-performance data, so it shows
   // even when `perf` is empty — a campaign with no live content yet still has
@@ -2184,7 +2185,20 @@ function AnalyticsTab({
   // Pre-fix the Impressions tile showed a literal "+18% wk/wk" while
   // its own sparkline drew a decaying curve — the two contradicted
   // each other on the same tile.
-  const series = perf.weeklySeries;
+  // Windowed to the range the user picked, mirroring BrandAnalytics' already
+  // working chip group: each weeklySeries entry is one week, so "7d" is the
+  // most recent entry and "30d" the most recent four.
+  //
+  // I first deleted this control as inert rather than wiring it — wrong call:
+  // the sibling surface had already solved it against the same data shape, so
+  // removal traded a fixable gap for an inconsistency between two analytics
+  // screens. (Whether the series itself is measured or projected is a separate
+  // and still-open question; it applies equally to both surfaces.)
+  const series = range === '7d'
+    ? perf.weeklySeries.slice(-1)
+    : range === '30d'
+    ? perf.weeklySeries.slice(-4)
+    : perf.weeklySeries;
   const lastWk = series[series.length - 1] ?? 0;
   const prevWk = series[series.length - 2] ?? 0;
   const wkDelta = prevWk > 0 ? Math.round(((lastWk - prevWk) / prevWk) * 100) : 0;
@@ -2279,14 +2293,30 @@ function AnalyticsTab({
         className="v2-row"
         style={{ justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}
       >
-        {/* The Campaign-to-date / Last 7d / Since live toggle used to live
-            here and did nothing — `void range` said so in the code. Removed
-            rather than wired up: the underlying series is seven weekly buckets
-            with no timestamps, so "Last 7d" could only be produced by
-            inventing range-specific numbers. A control that can't keep its
-            promise is worse than no control. Restore it when there is real
-            time-series data to slice. */}
-        <div />
+        {/* Range chips — same labels and slicing as BrandAnalytics so the two
+            analytics surfaces behave identically. */}
+        <div className="v2-row" style={{ gap: 6 }}>
+          {([
+            { id: 'campaign', label: 'Campaign-to-date' },
+            { id: '7d',       label: 'Last 7d' },
+            { id: '30d',      label: 'Last 30d' },
+          ] as const).map((r) => (
+            <button
+              key={r.id}
+              type="button"
+              onClick={() => setRange(r.id)}
+              aria-pressed={range === r.id}
+              className="v2-btn v2-btn-sm"
+              style={{
+                background: range === r.id ? 'var(--v2-ink)' : 'transparent',
+                color: range === r.id ? 'var(--v2-paper)' : 'var(--v2-ink-2)',
+                border: `1px solid ${range === r.id ? 'var(--v2-ink)' : 'var(--v2-line)'}`,
+              }}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
         <div className="v2-row" style={{ gap: 8 }}>
           <button className="v2-btn v2-btn-sm v2-btn-outline" type="button" onClick={exportCsv}>
             {Icon.external} Export CSV
@@ -2311,7 +2341,7 @@ function AnalyticsTab({
           value={fmtFollowers(perf.impressions)}
           delta={`${wkDelta >= 0 ? '+' : ''}${wkDelta}% wk/wk`}
           deltaPositive={wkDelta >= 0}
-          spark={perf.weeklySeries}
+          spark={series}
         />
         <KpiTile
           label="Engagement rate"
@@ -2380,7 +2410,7 @@ function AnalyticsTab({
               ))}
             </div>
           </div>
-          <BigPerfChart points={perf.weeklySeries} metric={metric} perf={perf} />
+          <BigPerfChart points={series} metric={metric} perf={perf} />
         </div>
 
         <div className="v2-card v2-card-pad-lg">

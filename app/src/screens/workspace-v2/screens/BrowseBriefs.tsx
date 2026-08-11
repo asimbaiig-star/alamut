@@ -191,7 +191,13 @@ export function BrowseBriefs({ onRoute, initialFilter }: Props) {
     <>
       <Topbar
         title="Browse campaigns"
-        crumb={`${liveCount} live briefs · matching your audience`}
+        // "matching your audience" claimed every live brief targets this
+        // creator — nothing establishes that, least of all for someone with no
+        // categories or channels yet. The same overclaim was fixed on
+        // CreatorHome and Discover; this sibling was missed then and turned up
+        // in the app-wide QA walk. State the count, not a claim about fit —
+        // per-brief fit is on each card, and says "fit unknown" when it is.
+        crumb={`${liveCount} live brief${liveCount === 1 ? '' : 's'} · newest first`}
       />
       <div className="v2-content">
         {/* Hero search — dominant first-touch element. Soft tinted
