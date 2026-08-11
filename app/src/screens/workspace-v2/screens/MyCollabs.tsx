@@ -17,7 +17,7 @@
 import { useState } from 'react';
 import { fmtUSD, Icon, StagePill, Topbar, EmptyState } from '../lib';
 import { useV2AllCampaigns, useV2MyCollabs } from '../v2Hooks';
-import { V2_PIPELINE_STAGES } from '../v2Adapters';
+import { V2_PIPELINE_STAGES, V2_STAGE_META } from '../v2Adapters';
 import type { V2Collab, V2CollabStage } from '../data';
 
 interface Props {
@@ -26,8 +26,19 @@ interface Props {
 
 type View = 'kanban' | 'list';
 
-const PRE_ACCEPTANCE_STAGES: V2CollabStage[] = ['invited', 'pitched', 'negotiating'];
-const POST_ACCEPTANCE_STAGES: V2CollabStage[] = ['confirmed', 'submitted', 'approved', 'live', 'paid'];
+// Derived from V2_STAGE_META rather than re-listed here. Pre-fix these were
+// two hardcoded arrays covering 8 stages, and the state machine's 9th
+// (`cancelled`) matched NEITHER — so a creator whose pitch was declined
+// watched the collab vanish from this page with no record, unable to tell
+// whether the brand passed or the app lost their application.
+const stagesInGroup = (group: 'pre-acceptance' | 'post-acceptance' | 'closed'): V2CollabStage[] =>
+  (Object.keys(V2_STAGE_META) as V2CollabStage[])
+    .filter((s) => V2_STAGE_META[s].activeGroup === group)
+    .sort((a, b) => V2_STAGE_META[a].order - V2_STAGE_META[b].order);
+
+const PRE_ACCEPTANCE_STAGES = stagesInGroup('pre-acceptance');
+const POST_ACCEPTANCE_STAGES = stagesInGroup('post-acceptance');
+const CLOSED_STAGES = stagesInGroup('closed');
 
 export function MyCollabs({ onRoute }: Props) {
   const [view, setView] = useState<View>('kanban');
@@ -36,6 +47,7 @@ export function MyCollabs({ onRoute }: Props) {
 
   const negotiating = allCollabs.filter((c) => PRE_ACCEPTANCE_STAGES.includes(c.stage));
   const collabs = allCollabs.filter((c) => POST_ACCEPTANCE_STAGES.includes(c.stage));
+  const closed = allCollabs.filter((c) => CLOSED_STAGES.includes(c.stage));
 
   const pendingReview = collabs.filter((c) =>
     c.deliverables.some((d) => d.status === 'in_review'),
@@ -45,6 +57,9 @@ export function MyCollabs({ onRoute }: Props) {
   if (negotiating.length > 0) crumbParts.push(`${negotiating.length} open offer${negotiating.length === 1 ? '' : 's'}`);
   crumbParts.push(`${collabs.length} active`);
   if (pendingReview > 0) crumbParts.push(`${pendingReview} pending review`);
+  // Reported separately on purpose — a closed collab is neither an open offer
+  // nor active work, and folding it into either would overstate both.
+  if (closed.length > 0) crumbParts.push(`${closed.length} closed`);
 
   return (
     <>
@@ -145,6 +160,55 @@ export function MyCollabs({ onRoute }: Props) {
 
         {collabs.length > 0 && view === 'list' && (
           <CollabsList collabs={collabs} campaigns={campaigns} onRoute={onRoute} />
+        )}
+
+        {/* ─── Closed (terminal) ─────────────────────────────────────
+            Shown rather than dropped. A declined pitch used to disappear
+            from this page entirely, which reads as data loss: the creator
+            can't tell whether the brand passed on them or the app lost the
+            application. Inert by design — nothing here is actionable. */}
+        {closed.length > 0 && (
+          <section style={{ marginTop: 32 }}>
+            <SectionHeader
+              eyebrow="Closed"
+              count={closed.length}
+              hint="Didn't go ahead — the brand passed, or the offer was withdrawn. Kept here so you have the record; your storefront is unaffected."
+            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {closed.map((c) => {
+                const camp = campaigns.find((x) => x.id === c.campaignId);
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => onRoute(`collab:${c.id}`)}
+                    className="v2-row"
+                    style={{
+                      gap: 10, alignItems: 'center', padding: '10px 12px', borderRadius: 10,
+                      border: '1px solid var(--v2-border)', background: 'transparent',
+                      cursor: 'pointer', textAlign: 'left', width: '100%', opacity: 0.75,
+                    }}
+                  >
+                    <span
+                      className="v2-kanban-dot"
+                      style={{ background: V2_STAGE_META[c.stage].color, flexShrink: 0 }}
+                    />
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ fontSize: 13, fontWeight: 550 }}>
+                        {camp?.name ?? 'Campaign'}
+                      </span>
+                      <span className="v2-muted" style={{ fontSize: 11.5, display: 'block' }}>
+                        {camp?.brand ?? ''}
+                      </span>
+                    </span>
+                    <span className="v2-muted" style={{ fontSize: 11.5 }}>
+                      {V2_STAGE_META[c.stage].label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
         )}
 
         {/* P-9b — a second, bespoke empty state used to render here on the

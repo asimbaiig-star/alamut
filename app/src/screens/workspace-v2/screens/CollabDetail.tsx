@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'react';
 import { fmtUSD, Icon, StagePill, Topbar } from '../lib';
 import { useV2AllCampaigns, useV2CollabById, useV2CurrentCreator, v2EnsureThreadFor } from '../v2Hooks';
-import { V2_PIPELINE_STAGES } from '../v2Adapters';
+import { V2_STAGE_META } from '../v2Adapters';
 import type { V2Collab, V2CollabStage, V2Deliverable } from '../data';
 import { ContentUploadModal } from './ContentUploadModal';
 import { CounterOfferModal, CreatorMarkLiveModal } from './WorkflowModals';
@@ -197,15 +197,28 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
     );
   }
   const camp = campaigns.find((c) => c.id === collab.campaignId);
-  const stageMeta = V2_PIPELINE_STAGES.find((s) => s.id === collab.stage);
-  if (!camp || !stageMeta) {
+  // Two different failures used to share one message here. `stageMeta` came
+  // from a `V2_PIPELINE_STAGES.find()`, which returns undefined for any
+  // terminal stage — so a cancelled collab hit this branch and reported
+  // "Campaign data unavailable" even though the campaign was perfectly fine.
+  // The record was simply unreachable behind a misleading error.
+  //
+  // Stage metadata now comes from V2_STAGE_META, which covers EVERY stage by
+  // construction, so this guard is only about genuinely missing campaign data.
+  const stageMeta = V2_STAGE_META[collab.stage];
+  if (!camp) {
     return (
       <>
         <Topbar title="Collaboration" crumb="Campaign missing" />
-        <div className="v2-content"><p className="v2-muted">Campaign data unavailable.</p></div>
+        <div className="v2-content">
+          <p className="v2-muted">
+            This collaboration points at a campaign that no longer exists.
+          </p>
+        </div>
       </>
     );
   }
+  const isClosed = !V2_STAGE_META[collab.stage].inPipeline;
 
   // Net to creator after platform fee + WHT. P67 — must match the
   // data layer's actual rates (PLATFORM_FEE 10% + WHT 5% in
@@ -331,7 +344,13 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
                 <div className="v2-eyebrow">Current stage</div>
                 <StagePill stage={stageMeta.label} />
               </div>
-              <CollabTimeline stage={collab.stage} />
+              {/* A stage timeline is meaningless for a terminal collab — it
+                  would render progress through a pipeline this pair has left.
+                  Suppressed rather than replaced: StageActionBanner directly
+                  below already explains the outcome, and it serves four
+                  surfaces, so duplicating the message here just said the same
+                  thing twice in one card. */}
+              {!isClosed && <CollabTimeline stage={collab.stage} />}
 
               <StageActionBanner
                 stage={collab.stage}

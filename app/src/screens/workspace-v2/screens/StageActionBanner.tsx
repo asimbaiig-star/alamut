@@ -189,6 +189,12 @@ export function StageActionBanner({
         rel="noopener noreferrer"
       >{Icon.external} View post</a>
     ) : null;
+  } else if (stage === 'cancelled') {
+    // Explicit branch so a terminal collab explains itself. Pre-fix no branch
+    // matched, `if (!title) return null` fired, and the creator got a blank
+    // space where an explanation belonged.
+    title = 'This collaboration isn\'t going ahead';
+    body = 'Every offer and application here was declined or withdrawn. Nothing more to do — the record stays for your reference.';
   } else if (stage === 'paid') {
     title = `Paid — ${activeOfferRate ? fmtUSD(Math.round(activeOfferRate * 0.85)) : ''} received`;
     body = 'Funds are in your wallet. Withdraw to bank anytime.';

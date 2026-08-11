@@ -169,6 +169,12 @@ export interface V2WalletLedgerEntry {
 // brief — Reel, Stories, Long-form, etc. Each carries its own status that
 // is independent of the parent collab stage.
 
+// `invited` and `pitched` are mutually exclusive ENTRY paths, not sequential
+// steps — brand-initiated vs creator-initiated — and they converge at
+// `negotiating`. `invited` is the fallback the state machine returns when a
+// collab row exists but no application and no offer do
+// (`lib/api/collabSync.ts` → computeCollabStage). Anything that renders these
+// as a linear progression is flattening a branching graph.
 export type V2CollabStage =
   | 'invited'      // brand invited, creator hasn't responded
   | 'pitched'      // creator applied / sent a pitch
@@ -177,7 +183,21 @@ export type V2CollabStage =
   | 'submitted'    // creator submitted content for review
   | 'approved'     // brand approved, not yet posted
   | 'live'         // content live on creator channels
-  | 'paid';        // funds released to creator wallet
+  | 'paid'         // funds released to creator wallet
+  // Terminal, and deliberately NOT a pipeline column: every application and
+  // offer was declined or withdrawn, so the pair is out of the running.
+  //
+  // This was produced by the state machine long before it existed in this
+  // union — forced in via `'cancelled' as V2CollabStage` — so the type said 8
+  // stages while reality had 9. Nothing caught the divergence, and the value
+  // silently fell through five surfaces: invisible on the brand kanban while
+  // still inflating its badge, gone from the creator's collab board, and an
+  // unreachable CollabDetail that blamed "Campaign data unavailable".
+  //
+  // Stage metadata now lives in ONE place — `V2_STAGE_META` in v2Adapters,
+  // a Record keyed by this union — so adding a stage here is a compile error
+  // until every surface's data is filled in. Keep it that way.
+  | 'cancelled';
 
 export interface V2Deliverable {
   /** UI identity. Either the underlying Submission.id when the slot has

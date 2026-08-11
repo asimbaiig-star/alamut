@@ -26,7 +26,8 @@ import {
   useV2CurrentBrand,
   v2AddCampaignAsset, v2RemoveCampaignAsset,
 } from '../v2Hooks';
-import { V2_PIPELINE_STAGES } from '../v2Adapters';
+import { V2_PIPELINE_STAGES, V2_STAGE_META, isActiveCollab } from '../v2Adapters';
+import { Avatar } from '@/components/ui/Avatar';
 import type {
   V2Campaign, V2Collab, V2Creator, V2CampaignPerf, V2Deliverable,
 } from '../data';
@@ -174,13 +175,20 @@ export function CampaignDetail({
     );
   }
 
+  // Split once, here, so every count on this page comes from the same place.
+  // Pre-fix the Pipeline badge used `collabs.length`, which includes cancelled
+  // collabs — but those match no kanban column, so the badge said 12 while the
+  // columns showed 10 and nothing explained the gap.
+  const activeCollabs = collabs.filter(isActiveCollab);
+  const closedCollabs = collabs.filter((c) => !isActiveCollab(c));
+
   const awaitingReview = collabs.filter((c) =>
     c.deliverables.some((d) => d.status === 'in_review'),
   ).length;
   const daysLeft = Math.max(0, Math.ceil((+new Date(campaign.deadline) - Date.now()) / 86_400_000));
 
   const tabs: { id: TabId; label: string; count?: number }[] = [
-    { id: 'pipeline',    label: 'Pipeline',       count: collabs.length },
+    { id: 'pipeline',    label: 'Pipeline',       count: activeCollabs.length },
     { id: 'brief',       label: 'Brief' },
     { id: 'content',     label: 'Content review', count: awaitingReview },
     { id: 'analytics', label: 'Analytics' },
@@ -252,8 +260,9 @@ export function CampaignDetail({
         </div>
 
         {tab === 'pipeline' && (
+          <>
           <PipelineKanban
-            collabs={collabs}
+            collabs={activeCollabs}
             creators={creators}
             onReview={setReviewing}
             onRoute={onRoute}
@@ -264,6 +273,8 @@ export function CampaignDetail({
             onLeaveReview={(collab, creator) => setLeavingReview({ collab, creator })}
             campaignName={campaign.name}
           />
+          <NotProceedingGroup collabs={closedCollabs} creators={creators} onRoute={onRoute} />
+          </>
         )}
         {tab === 'brief' && <BriefView campaign={campaign} onEditSettings={() => setTab('settings')} />}
         {tab === 'content' && (
@@ -549,93 +560,175 @@ function CockpitHero({
       </div>
 
       <div style={{ padding: '16px 24px' }}>
-        <RosterLifecycle collabs={collabs} />
+        <RosterDistribution collabs={collabs} />
       </div>
     </div>
   );
 }
 
 // =====================================================================
-// Roster lifecycle — slim distribution bar showing how many creators
-// have made it to each lifecycle stage. Stages collapse the 8-stage
-// pipeline into 6 readable phases for the cockpit summary.
+// Roster distribution — where the roster actually is, right now
 // =====================================================================
+//
+// Replaces a cumulative funnel that invented its own six-word vocabulary
+// (briefed / invited / confirmed / producing / reviewing / live) found
+// nowhere else in the codebase. That funnel was wrong three ways:
+//
+//   * `briefed` reached all 8 stages, so its bar was permanently 100% and
+//     permanently green — it could not convey anything.
+//   * `producing` reached submitted+, EXCLUDING `confirmed` — the stage where
+//     a creator is actually producing. Off by one.
+//   * `reviewing` reached approved+, EXCLUDING `submitted` — the stage where
+//     work is actually awaiting review. Off by one.
+//
+// And structurally a linear funnel cannot model this journey at all, because
+// `invited` and `pitched` are mutually exclusive ENTRY paths that converge at
+// `negotiating` — a cumulative funnel has to flatten a branching graph.
+//
+// A distribution of current state cannot have any of those bugs: no
+// cumulative reach means no off-by-one, no step can be pinned at 100%, and
+// the labels come from V2_STAGE_META so there is no vocabulary to invent.
 
-function RosterLifecycle({ collabs }: { collabs: V2Collab[] }) {
-  const stages: { id: string; label: string; reach: V2Collab['stage'][] }[] = [
-    { id: 'briefed',   label: 'Briefed',    reach: ['pitched', 'invited', 'negotiating', 'confirmed', 'submitted', 'approved', 'live', 'paid'] },
-    { id: 'invited',   label: 'Invited',    reach: ['invited', 'negotiating', 'confirmed', 'submitted', 'approved', 'live', 'paid'] },
-    { id: 'confirmed', label: 'Confirmed',  reach: ['confirmed', 'submitted', 'approved', 'live', 'paid'] },
-    { id: 'producing', label: 'Producing',  reach: ['submitted', 'approved', 'live', 'paid'] },
-    { id: 'reviewing', label: 'Reviewing',  reach: ['approved', 'live', 'paid'] },
-    { id: 'live',      label: 'Live',       reach: ['live', 'paid'] },
-  ];
-  const total = collabs.length || 1;
+function RosterDistribution({ collabs }: { collabs: V2Collab[] }) {
+  const present = (Object.keys(V2_STAGE_META) as V2Collab['stage'][])
+    .filter((stage) => collabs.some((c) => c.stage === stage))
+    .sort((a, b) => V2_STAGE_META[a].order - V2_STAGE_META[b].order)
+    .map((stage) => ({
+      stage,
+      meta: V2_STAGE_META[stage],
+      count: collabs.filter((c) => c.stage === stage).length,
+    }));
+
+  if (collabs.length === 0) {
+    return (
+      <div>
+        <div className="v2-eyebrow" style={{ marginBottom: 8 }}>Where the roster is</div>
+        <p className="v2-muted" style={{ fontSize: 12.5, margin: 0 }}>
+          No creators on this campaign yet — invite someone or wait for pitches.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div>
       <div className="v2-row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
-        <div className="v2-eyebrow">Roster lifecycle</div>
+        <div className="v2-eyebrow">Where the roster is</div>
         <div className="v2-muted" style={{ fontSize: 11 }}>
           {collabs.length} {collabs.length === 1 ? 'creator' : 'creators'}
         </div>
       </div>
-      <div style={{ overflowX: 'auto', paddingBottom: 2, marginInline: -4, paddingInline: 4 }}>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: `repeat(${stages.length}, minmax(60px, 1fr))`,
-            gap: 6,
-            minWidth: 380,
-          }}
-        >
-          {stages.map((s) => {
-            const count = collabs.filter((c) => s.reach.includes(c.stage)).length;
-            const pct = count / total;
-            const fill =
-              pct === 1 ? 'var(--v2-moss)'
-              : pct > 0 ? 'var(--v2-accent)'
-              : 'var(--v2-bg-2)';
-            return (
-              <div key={s.id}>
-                <div
-                  style={{
-                    height: 6,
-                    background: 'var(--v2-bg-2)',
-                    borderRadius: 3,
-                    overflow: 'hidden',
-                    marginBottom: 6,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: `${pct * 100}%`,
-                      height: '100%',
-                      background: fill,
-                      transition: 'width .3s',
-                    }}
-                  />
-                </div>
-                <div
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 600,
-                    color: pct > 0 ? 'var(--v2-ink-2)' : 'var(--v2-ink-4)',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.04em',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {s.label}
-                </div>
-                <div className="v2-tabular" style={{ fontSize: 11, color: 'var(--v2-ink-3)', marginTop: 2 }}>
-                  {count}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+
+      {/* One bar, segmented by the stage each creator is actually in. */}
+      <div
+        style={{ display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', background: 'var(--v2-bg-2)' }}
+        role="img"
+        aria-label={present.map((p) => `${p.count} ${p.meta.label}`).join(', ')}
+      >
+        {present.map((p) => (
+          <div
+            key={p.stage}
+            title={`${p.count} ${p.meta.label}`}
+            style={{
+              width: `${(p.count / collabs.length) * 100}%`,
+              background: p.meta.color,
+              transition: 'width .3s',
+            }}
+          />
+        ))}
       </div>
+
+      <div className="v2-row" style={{ gap: 12, marginTop: 10, flexWrap: 'wrap' }}>
+        {present.map((p) => (
+          <div key={p.stage} className="v2-row" style={{ gap: 5, alignItems: 'center' }}>
+            <span style={{
+              width: 7, height: 7, borderRadius: 2, background: p.meta.color, flexShrink: 0,
+            }} />
+            <span style={{ fontSize: 11.5, color: 'var(--v2-ink-2)' }}>{p.meta.label}</span>
+            <span className="v2-tabular" style={{ fontSize: 11.5, color: 'var(--v2-ink-3)' }}>{p.count}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// =====================================================================
+// Not proceeding — terminal collabs, shown rather than silently dropped
+// =====================================================================
+//
+// `cancelled` is deliberately not a kanban column (it isn't a step in the
+// pipeline), but it must not vanish either: pre-fix these collabs matched no
+// column while still counting toward the Pipeline badge, so a brand who used
+// "Decline all" watched a column of creators disappear with no record and a
+// badge that no longer matched the board.
+
+function NotProceedingGroup({ collabs, creators, onRoute }: {
+  collabs: V2Collab[];
+  creators: V2Creator[];
+  onRoute: (r: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  if (collabs.length === 0) return null;
+
+  return (
+    <div className="v2-card v2-card-pad" style={{ marginTop: 16 }}>
+      <button
+        type="button"
+        className="v2-row"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        style={{
+          gap: 8, alignItems: 'center', width: '100%', background: 'none',
+          border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left',
+        }}
+      >
+        <span className="v2-kanban-dot" style={{ background: V2_STAGE_META.cancelled.color }} />
+        <span style={{ fontSize: 13, fontWeight: 550 }}>
+          Not proceeding ({collabs.length})
+        </span>
+        <span className="v2-muted" style={{ fontSize: 11.5, marginLeft: 'auto' }}>
+          {open ? 'Hide' : 'Show'}
+        </span>
+      </button>
+
+      {open && (
+        <>
+          <p className="v2-muted" style={{ fontSize: 12, lineHeight: 1.5, margin: '10px 0 12px' }}>
+            {V2_STAGE_META.cancelled.outcomeNote} They don't count toward the pipeline
+            above, and can be invited again to a different campaign.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {collabs.map((collab) => {
+              const creator = creators.find((c) => c.id === collab.creatorId);
+              if (!creator) return null;
+              return (
+                <button
+                  key={collab.id}
+                  type="button"
+                  className="v2-row"
+                  // `creator:` not `collab:` — matches the kanban card above.
+                  // The `collab:` detail surface is the CREATOR's own record
+                  // and is ownership-guarded, so routing a brand there lands
+                  // on "You don't have access to this collaboration".
+                  onClick={() => onRoute(`creator:${creator.id}`)}
+                  style={{
+                    gap: 10, alignItems: 'center', padding: 8, borderRadius: 8,
+                    border: '1px solid var(--v2-border)', background: 'transparent',
+                    cursor: 'pointer', textAlign: 'left', width: '100%',
+                  }}
+                >
+                  <Avatar src={creator.avatar} name={creator.name} size={26} />
+                  <span style={{ fontSize: 13 }}>{creator.name}</span>
+                  <span className="v2-muted" style={{ fontSize: 11.5, marginLeft: 'auto' }}>
+                    {V2_STAGE_META.cancelled.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
   );
 }

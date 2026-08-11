@@ -30,7 +30,7 @@ import {
   v2MarkThreadRead, v2SendMessage,
   v2MuteThread, v2ArchiveThread, v2ReportThread, v2SnoozeThread,
 } from '../v2Hooks';
-import { deriveCollab, V2_PIPELINE_STAGES } from '../v2Adapters';
+import { deriveCollab, V2_STAGE_META } from '../v2Adapters';
 import { useStore } from '@/lib/api/store';
 import { pushToast } from '@/lib/utils/toast';
 import { CollabSidePanel } from '@/components/inbox/CollabSidePanel';
@@ -515,7 +515,10 @@ function Thread({
   const collab = conversation.campaignId
     ? deriveCollab(conversation.campaignId, counterparty.id, db)
     : null;
-  const stageMeta = collab ? V2_PIPELINE_STAGES.find((s) => s.id === collab.stage) : null;
+  // V2_STAGE_META covers every stage by construction; the old
+  // V2_PIPELINE_STAGES.find() returned undefined for terminal stages, so a
+  // cancelled collab's thread lost its stage pill.
+  const stageMeta = collab ? V2_STAGE_META[collab.stage] : null;
 
   // Phase 11 — More menu state + viewer-aware mute/archive flags.
   const [moreOpen, setMoreOpen] = useState(false);

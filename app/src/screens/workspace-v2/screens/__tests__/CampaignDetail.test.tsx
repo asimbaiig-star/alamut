@@ -109,17 +109,14 @@ vi.mock('@/lib/api/store', () => ({
   tx: () => undefined,
 }));
 
-vi.mock('../../v2Adapters', () => ({
-  V2_PIPELINE_STAGES: [
-    { id: 'invited', label: 'Invited' },
-    { id: 'pitched', label: 'Pitched' },
-    { id: 'negotiating', label: 'Negotiating' },
-    { id: 'confirmed', label: 'Confirmed' },
-    { id: 'submitted', label: 'Submitted' },
-    { id: 'approved', label: 'Approved' },
-    { id: 'paid', label: 'Paid' },
-  ],
-}));
+// Spread the REAL module rather than hand-listing stages. The previous mock
+// enumerated its own stage array that had already drifted from the source (it
+// was missing 'live'), which is the same class of bug this suite now guards
+// against: stage knowledge must have exactly one definition.
+vi.mock('../../v2Adapters', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../v2Adapters')>();
+  return { ...actual };
+});
 
 vi.mock('../../v2CampaignActions', () => ({
   v2EndCampaign: vi.fn(),

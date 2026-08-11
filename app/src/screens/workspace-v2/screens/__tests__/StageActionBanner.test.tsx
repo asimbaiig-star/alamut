@@ -269,11 +269,24 @@ describe('StageActionBanner', () => {
   });
 
   describe('catch-all', () => {
-    it('returns null for a stage with no matching branch (defensive)', () => {
-      // 'cancelled' is a real V2CollabStage but the banner has no branch
-      // for it (caller filters cancelled collabs earlier).
+    it('explains a cancelled collab instead of rendering nothing', () => {
+      // This test previously asserted the OPPOSITE, with a comment claiming
+      // "'cancelled' is a real V2CollabStage but the banner has no branch for
+      // it (caller filters cancelled collabs earlier)". Both claims were
+      // false: cancelled was not in the union (it was forced in with a cast),
+      // and no caller filtered it — so the creator got a blank space where an
+      // explanation belonged, and this test locked that in.
       const { container } = render(<StageActionBanner {...baseProps({
-        stage: 'cancelled' as never,
+        stage: 'cancelled',
+      })} />);
+      expect(container.firstChild).not.toBeNull();
+      expect(container.textContent).toMatch(/isn't going ahead/i);
+    });
+
+    it('returns null for a genuinely unrecognised stage (defensive)', () => {
+      // A value outside the union entirely — the real defensive case.
+      const { container } = render(<StageActionBanner {...baseProps({
+        stage: 'not-a-stage' as never,
       })} />);
       expect(container.firstChild).toBeNull();
     });

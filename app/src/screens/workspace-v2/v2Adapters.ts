@@ -452,22 +452,68 @@ export function creatorWalletV2(creator: Creator, db: Database) {
 }
 
 // =====================================================================
-// Pipeline stages (single source of truth for the 8-stage Kanban board)
+// Stage metadata — THE single source of truth for every collab stage
 // =====================================================================
 //
-// Each stage carries a human label and a color token for the column
-// header dot. Order is significant — its the left-to-right kanban order.
+// Typed as `Record<V2CollabStage, …>` on purpose. That makes adding a stage
+// to the union a COMPILE ERROR here until its metadata exists, which is the
+// whole point: before this, stage knowledge was scattered across a
+// hand-written array, two hardcoded arrays in MyCollabs, and several
+// `.find()` lookups that returned undefined for anything unlisted. The
+// `cancelled` stage existed in the state machine for a long time without
+// existing in the type, and nothing failed — it just fell through five
+// surfaces differently. Do not replace this Record with a plain array.
+//
+// `order` is the left-to-right kanban position. `inPipeline: false` marks a
+// terminal stage that is never a board column.
+// `activeGroup` partitions the creator-side board (MyCollabs) so that
+// partition is derived from here too, rather than re-listed by hand.
 
-export const V2_PIPELINE_STAGES: V2PipelineStage[] = [
-  { id: 'invited',     label: 'Invited',     color: 'var(--v2-ink-3)' },
-  { id: 'pitched',     label: 'Pitched',     color: 'var(--v2-info)' },
-  { id: 'negotiating', label: 'Negotiating', color: 'var(--v2-gold)' },
-  { id: 'confirmed',   label: 'Confirmed',   color: 'var(--v2-accent)' },
-  { id: 'submitted',   label: 'Submitted',   color: '#8B5CF6' },
-  { id: 'approved',    label: 'Approved',    color: 'var(--v2-moss)' },
-  { id: 'live',        label: 'Live',        color: 'var(--v2-moss)' },
-  { id: 'paid',        label: 'Paid',        color: 'var(--v2-ink)' },
-];
+export const V2_STAGE_META: Record<V2CollabStage, {
+  label: string;
+  color: string;
+  order: number;
+  /** false = terminal; never rendered as a kanban column. */
+  inPipeline: boolean;
+  /** Creator-side grouping. 'closed' = out of the running, shown but inert. */
+  activeGroup: 'pre-acceptance' | 'post-acceptance' | 'closed';
+  /** Shown to whoever is looking at a terminal collab so the outcome is
+   *  explicit instead of the record just disappearing. */
+  outcomeNote?: string;
+}> = {
+  invited:     { label: 'Invited',     color: 'var(--v2-ink-3)', order: 1, inPipeline: true,  activeGroup: 'pre-acceptance' },
+  pitched:     { label: 'Pitched',     color: 'var(--v2-info)',  order: 2, inPipeline: true,  activeGroup: 'pre-acceptance' },
+  negotiating: { label: 'Negotiating', color: 'var(--v2-gold)',  order: 3, inPipeline: true,  activeGroup: 'pre-acceptance' },
+  confirmed:   { label: 'Confirmed',   color: 'var(--v2-accent)', order: 4, inPipeline: true, activeGroup: 'post-acceptance' },
+  submitted:   { label: 'Submitted',   color: '#8B5CF6',         order: 5, inPipeline: true,  activeGroup: 'post-acceptance' },
+  approved:    { label: 'Approved',    color: 'var(--v2-moss)',  order: 6, inPipeline: true,  activeGroup: 'post-acceptance' },
+  live:        { label: 'Live',        color: 'var(--v2-moss)',  order: 7, inPipeline: true,  activeGroup: 'post-acceptance' },
+  paid:        { label: 'Paid',        color: 'var(--v2-ink)',   order: 8, inPipeline: true,  activeGroup: 'post-acceptance' },
+  cancelled:   {
+    label: 'Not proceeding',
+    color: 'var(--v2-ink-4)',
+    order: 99,
+    inPipeline: false,
+    activeGroup: 'closed',
+    outcomeNote: 'Every offer and application here was declined or withdrawn, so this collaboration isn\'t going ahead.',
+  },
+};
+
+/** Kanban columns, DERIVED from the metadata so the board and the stage model
+ *  cannot drift apart. Order is the left-to-right column order. */
+export const V2_PIPELINE_STAGES: V2PipelineStage[] =
+  (Object.keys(V2_STAGE_META) as V2CollabStage[])
+    .filter((s) => V2_STAGE_META[s].inPipeline)
+    .sort((a, b) => V2_STAGE_META[a].order - V2_STAGE_META[b].order)
+    .map((s) => ({ id: s, label: V2_STAGE_META[s].label, color: V2_STAGE_META[s].color }));
+
+/** True when the collab is still somewhere in the pipeline. Use this for any
+ *  "how many creators" count so badges, totals and column sums agree — a
+ *  cancelled collab used to be counted as active while being invisible on the
+ *  board, so the Pipeline badge disagreed with the columns beneath it. */
+export function isActiveCollab(c: { stage: V2CollabStage }): boolean {
+  return V2_STAGE_META[c.stage].inPipeline;
+}
 
 // =====================================================================
 // Collab derivation — combine Application / Offer / Submission / payout
@@ -662,7 +708,10 @@ export function deriveCollab(campaignId: string, creatorId: string, db: Database
   if (collabRow?.stage === 'paid') {
     stage = 'paid';
   } else if (collabRow?.stage === 'cancelled') {
-    stage = 'cancelled' as V2CollabStage;
+    // No cast needed any more — 'cancelled' is a real member of
+    // V2CollabStage. The old `as V2CollabStage` here was the mechanism that
+    // let the type and the state machine disagree in the first place.
+    stage = 'cancelled';
   }
 
   // Use a double-underscore separator so the regex parser can split
@@ -701,13 +750,17 @@ export function collabsForCampaign(campaignId: string, db: Database): V2Collab[]
   db.collaborations.filter((c) => c.campaignId === campaignId).forEach((c) => ids.add(c.creatorId));
   return Array.from(ids)
     .map((id) => deriveCollab(campaignId, id, db))
-    .filter((c): c is V2Collab => c !== null)
-    // Drop cancelled rows from the kanban — they don't have a column
-    // in V2_PIPELINE_STAGES. Pre-fix they were mis-typed as 'invited'
-    // (the derivation default) and showed up as ghost invites in the
-    // first column. Cancelled history is still accessible through the
-    // CollabDetail surface if needed; just not via the kanban summary.
-    .filter((c) => (c.stage as string) !== 'cancelled');
+    .filter((c): c is V2Collab => c !== null);
+  // Cancelled rows are RETURNED, not filtered. They previously were dropped
+  // here because there was no column for them — a workaround whose comment
+  // claimed "cancelled history is still accessible through the CollabDetail
+  // surface". It wasn't: that surface looked stage metadata up with a
+  // `.find()` that returned undefined for cancelled and rendered "Campaign
+  // data unavailable". So declining a whole column made those creators
+  // untraceable everywhere.
+  //
+  // Callers now split on `isActiveCollab`: the kanban renders the active
+  // ones, and CampaignDetail's "Not proceeding" group renders the rest.
 }
 
 // `computeMatchScore` was removed in the product audit. It was one of two
@@ -729,8 +782,9 @@ export function collabsForCreator(creatorId: string, db: Database): V2Collab[] {
   db.collaborations.filter((c) => c.creatorId === creatorId).forEach((c) => campaignIds.add(c.campaignId));
   return Array.from(campaignIds)
     .map((id) => deriveCollab(id, creatorId, db))
-    .filter((c): c is V2Collab => c !== null)
-    // Hide cancelled collabs from the creator's MyCollabs tracker. See
-    // `collabsForCampaign` for the same logic + rationale.
-    .filter((c) => (c.stage as string) !== 'cancelled');
+    .filter((c): c is V2Collab => c !== null);
+  // Same as `collabsForCampaign`: cancelled collabs are returned. Hiding them
+  // meant a creator whose pitch was declined saw the record disappear from
+  // My Collaborations with no way to tell whether the brand passed or the app
+  // lost their application. MyCollabs now groups them under "Closed".
 }
