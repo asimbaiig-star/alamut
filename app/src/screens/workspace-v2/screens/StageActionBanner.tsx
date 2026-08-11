@@ -101,7 +101,10 @@ export function StageActionBanner({
     );
   } else if (stage === 'pitched') {
     title = 'Application sent — awaiting brand response';
-    body = `${campaignBrand} typically replies within 48 hours. We'll notify you in Inbox when they respond.`;
+    // "typically replies within 48 hours" was invented: there is no
+    // response-time field on Brand at all, so the figure was attributed to a
+    // named brand with nothing behind it. The notification half is real.
+    body = `We'll notify you in Inbox as soon as ${campaignBrand} responds.`;
     actions = (
       <>
         {myApplicationId && myApplicationStatus !== 'withdrawn' && (

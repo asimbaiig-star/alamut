@@ -164,6 +164,7 @@ export function creatorToV2(c: Creator): V2Creator {
     // (s19 fix — public storefront was missing categories 4+ and brands 5+).
     categories: c.categories,
     isDemo: isDemoCreator(c),
+    responseHrs: c.responseHrs,
     // P-10 — this is the creator's REVIEW RATING rescaled to 0–100, and
     // nothing more. It was previously surfaced in Discover as an "Alamut
     // score" and used as the default sort for hiring decisions, which made

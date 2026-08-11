@@ -44,10 +44,10 @@ export function BrandAnalytics({ onRoute }: Props) {
   // the leaderboard + content mix can see them without re-walking the
   // store. Aggregated below into the campaign-shaped perf object the
   // design's components consume.
-  const { aggregatedPerf, allCollabs, totalSpent, totalBudget, liveCount } = useMemo(() => {
+  const { aggregatedPerf, allCollabs, totalSpent, totalBudget, reportingCount } = useMemo(() => {
     const allCollabsAcc: V2Collab[] = [];
     let agg: V2CampaignPerf | null = null;
-    let _liveCount = 0;
+    let _reportingCount = 0;
     let _spent = 0;
     let _budget = 0;
     for (const camp of campaigns) {
@@ -60,7 +60,12 @@ export function BrandAnalytics({ onRoute }: Props) {
       allCollabsAcc.push(...collabs);
       const perf = derivePerf(camp, collabs, creators);
       if (!perf) continue;
-      _liveCount += 1;
+      // Counts campaigns that HAVE reportable performance, which is not the
+      // same as campaigns that are live: this increments only past the
+      // `!perf` guard. The crumb used to label it "active campaigns", so it
+      // disagreed with the live count in this same file (line ~257) and with
+      // My campaigns' "13 live". Renamed to say what it measures.
+      _reportingCount += 1;
       if (!agg) {
         // Clone so we don't mutate the per-campaign object.
         agg = {
@@ -106,7 +111,7 @@ export function BrandAnalytics({ onRoute }: Props) {
       allCollabs: allCollabsAcc,
       totalSpent: _spent,
       totalBudget: _budget,
-      liveCount: _liveCount,
+      reportingCount: _reportingCount,
     };
   }, [campaigns, db]);
 
@@ -189,7 +194,7 @@ export function BrandAnalytics({ onRoute }: Props) {
     <>
       <Topbar
         title="Analytics"
-        crumb={`${brand?.name ?? 'Brand'} · ${liveCount} active ${liveCount === 1 ? 'campaign' : 'campaigns'} · ${fmtUSD(totalSpent)} spent of ${fmtUSD(totalBudget)}`}
+        crumb={`${brand?.name ?? 'Brand'} · ${reportingCount} ${reportingCount === 1 ? 'campaign' : 'campaigns'} reporting · ${fmtUSD(totalSpent)} spent of ${fmtUSD(totalBudget)}`}
       />
       <div className="v2-content">
         {/* Toolbar — time range + Export/Share actions. */}

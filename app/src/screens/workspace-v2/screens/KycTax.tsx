@@ -320,9 +320,18 @@ export function KycTax({ onRoute, initialAction }: Props) {
         <section className="v2-card v2-card-pad">
           <div className="v2-row" style={{ justifyContent: 'space-between', marginBottom: 14, alignItems: 'flex-end' }}>
             <div>
-              <div className="v2-eyebrow">Auto-generated tax documents</div>
+              <div className="v2-eyebrow">Tax documents</div>
               <p className="v2-muted" style={{ margin: '4px 0 0', fontSize: 12.5 }}>
-                We file these automatically every quarter. Download for your records or to submit to your accountant.
+                {/* Sibling of the CreatorWallet fix (P-7), and a stronger claim
+                    than the one there: "We file these automatically every
+                    quarter" says Alamut submits tax filings on the creator's
+                    behalf. It does not — no form generation, no filing. Saying
+                    so would leave a creator believing their obligations were
+                    handled. Withholding IS applied per payout and the ledger
+                    export below is real, so those stay. */}
+                Withholding is deducted on each payout and itemised in your ledger.
+                Alamut doesn't issue tax forms or file on your behalf — export your
+                ledger below for your own records or your accountant.
               </p>
             </div>
             <button

@@ -330,7 +330,14 @@ export function CreatorProfile({ creatorId, onRoute }: Props) {
               Ready to work with {creator.name.split(' ')[0]}?
             </div>
             <div className="v2-muted" style={{ fontSize: 13 }}>
-              Spark drafts the brief for you and routes it through Inbox. {creator.name.split(' ')[0]} typically replies within 3 hours.
+              {/* Was a hardcoded "within 3 hours" while Creator.responseHrs
+                  holds the real figure — a fabricated stat with the truth
+                  sitting one field away. Reads the field now, and says nothing
+                  when it's absent rather than inventing a number. */}
+              Spark drafts the brief for you and routes it through Inbox.
+              {creator.responseHrs
+                ? ` ${creator.name.split(' ')[0]} usually replies within ${creator.responseHrs}h.`
+                : ''}
             </div>
           </div>
           <div className="v2-row" style={{ gap: 10 }}>

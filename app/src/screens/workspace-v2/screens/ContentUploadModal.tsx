@@ -281,7 +281,9 @@ export function ContentUploadModal({ collab, campaign, deliverableId, deliverabl
                 <br />
                 {collab.deliverables.filter((d) => d.status === 'pending').length > 1
                   ? `${collab.deliverables.filter((d) => d.status === 'pending').length - 1} more deliverable${collab.deliverables.filter((d) => d.status === 'pending').length - 1 === 1 ? '' : 's'} still pending.`
-                  : 'Most brands respond within 24 hours.'}
+                  // Was "Most brands respond within 24 hours" — an aggregate
+                  // statistic nothing measures. Say what actually happens next.
+                  : 'The brand reviews it and you\'ll be notified either way.'}
               </p>
             </div>
           )}

@@ -69,6 +69,15 @@ type TabId = 'pipeline' | 'brief' | 'content' | 'analytics' | 'settings';
 
 const VALID_TABS: TabId[] = ['pipeline', 'brief', 'content', 'analytics', 'settings'];
 
+/** A collab is awaiting review when any of its deliverables is in review.
+ *  Defined once and shared by the Pipeline/Content-review tab counters and the
+ *  "Needs you now" list, so a header can never disagree with the body it
+ *  summarises — that divergence is what made Calendar report 288 overdue while
+ *  its grid highlighted far fewer. */
+function hasDeliverableInReview(c: V2Collab): boolean {
+  return c.deliverables.some((d) => d.status === 'in_review');
+}
+
 export function CampaignDetail({
   campaignId, onRoute, initialTab, initialReviewCollabId,
   initialVerifyLiveSubmissionId,
@@ -188,9 +197,7 @@ export function CampaignDetail({
   // chase content for a collaboration that isn't going ahead. That was
   // unreachable while cancelled rows were filtered out upstream; surfacing
   // them (correctly) exposed it, so the guard belongs here now.
-  const awaitingReview = activeCollabs.filter((c) =>
-    c.deliverables.some((d) => d.status === 'in_review'),
-  ).length;
+  const awaitingReview = activeCollabs.filter(hasDeliverableInReview).length;
   const daysLeft = Math.max(0, Math.ceil((+new Date(campaign.deadline) - Date.now()) / 86_400_000));
 
   const tabs: { id: TabId; label: string; count?: number }[] = [
@@ -243,7 +250,6 @@ export function CampaignDetail({
           <NeedsYouCard
             collabs={activeCollabs}
             creators={creators}
-            awaitingReview={awaitingReview}
             onJumpToContent={() => setTab('content')}
           />
         </div>
@@ -761,20 +767,22 @@ function NotProceedingGroup({ collabs, creators, onRoute }: {
 // =====================================================================
 
 function NeedsYouCard({
-  collabs, creators, awaitingReview, onJumpToContent,
+  collabs, creators, onJumpToContent,
 }: {
   collabs: V2Collab[];
   creators: V2Creator[];
-  awaitingReview: number;
   onJumpToContent: () => void;
 }) {
-  const reviewItems = collabs.filter((c) => c.deliverables.some((d) => d.status === 'in_review'));
+  // Same predicate as the Pipeline/Content-review counters — see
+  // hasDeliverableInReview. The card used to inline its own copy of this while
+  // the parent counted separately, which is the duplicated-predicate setup
+  // that let Calendar's header disagree with its own grid. One definition now.
+  const reviewItems = collabs.filter(hasDeliverableInReview);
   const overdueItems = collabs.filter((c) =>
     c.deliverables.some((d) => d.status === 'pending' && cv2DaysUntil(d.due) < 0),
   );
   const liveItems = collabs.filter((c) => c.deliverables.some((d) => d.status === 'live'));
   const totalActions = reviewItems.length + overdueItems.length;
-  void awaitingReview; // exposed prop for parity with the header counters
 
   return (
     <div

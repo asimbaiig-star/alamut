@@ -45,6 +45,11 @@ export interface V2Creator {
   /** Review rating rescaled to 0-100, or null when the creator has no
    *  reviews yet. NOT a fit score — see matching.ts. */
   score: number | null;
+  /** Typical reply time in hours, passed through from the underlying Creator.
+   *  The projection used to drop it, so surfaces that wanted to quote a reply
+   *  time invented one ("typically replies within 3 hours") with the real value
+   *  sitting one field away in the store. */
+  responseHrs?: number;
   /** True when this is seeded demo data (nobody real owns it). Demo accounts
    *  are pre-verified for the showcase (see seed.ts), so the surfaces that
    *  show verification or trust signals must label them — otherwise a demo
