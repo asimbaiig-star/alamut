@@ -2145,8 +2145,6 @@ function AnalyticsTab({
   creators: V2Creator[];
 }) {
   const [metric, setMetric] = useState<'impressions' | 'engagement' | 'er'>('engagement');
-  const [range, setRange] = useState<'campaign' | '7d' | 'live'>('campaign');
-  void range; // visual-only filter; the demo perf series is rangeless
 
   // Roster conversion doesn't depend on content-performance data, so it shows
   // even when `perf` is empty — a campaign with no live content yet still has
@@ -2281,27 +2279,14 @@ function AnalyticsTab({
         className="v2-row"
         style={{ justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}
       >
-        <div className="v2-row" style={{ gap: 6 }}>
-          {([
-            { id: 'campaign', label: 'Campaign-to-date' },
-            { id: '7d',       label: 'Last 7d' },
-            { id: 'live',     label: 'Since live' },
-          ] as const).map((r) => (
-            <button
-              key={r.id}
-              type="button"
-              onClick={() => setRange(r.id)}
-              className="v2-btn v2-btn-sm"
-              style={{
-                background: range === r.id ? 'var(--v2-ink)' : 'transparent',
-                color: range === r.id ? 'var(--v2-paper)' : 'var(--v2-ink-2)',
-                border: `1px solid ${range === r.id ? 'var(--v2-ink)' : 'var(--v2-line)'}`,
-              }}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>
+        {/* The Campaign-to-date / Last 7d / Since live toggle used to live
+            here and did nothing — `void range` said so in the code. Removed
+            rather than wired up: the underlying series is seven weekly buckets
+            with no timestamps, so "Last 7d" could only be produced by
+            inventing range-specific numbers. A control that can't keep its
+            promise is worse than no control. Restore it when there is real
+            time-series data to slice. */}
+        <div />
         <div className="v2-row" style={{ gap: 8 }}>
           <button className="v2-btn v2-btn-sm v2-btn-outline" type="button" onClick={exportCsv}>
             {Icon.external} Export CSV

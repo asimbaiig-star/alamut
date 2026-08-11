@@ -153,7 +153,32 @@ export async function writeCollabInSupabase(
     }
   }
 
-  // Step 2 — INSERT (either no expectedVersion, or update found no row).
+  // Step 1b — a Collaboration is uniquely identified by
+  // (campaign_id, creator_id), NOT by id. The same pair can legitimately be
+  // known under two ids: the locally-materialized one and whatever Supabase
+  // already holds. Before inserting, update the pair's existing row if there
+  // is one.
+  //
+  // Without this, migration 030's unique index turns such a write into a
+  // constraint violation — handled below as StaleVersionError, so no crash,
+  // but the write is silently LOST. Note `id` is deliberately not in the
+  // update payload: rewriting the primary key would orphan anything
+  // referencing it (threads.collaboration_id).
+  {
+    const { id: _ignoredId, ...pairFields } = rowFields as Record<string, unknown>;
+    void _ignoredId;
+    const { data: pairRow, error: pairErr } = await sb
+      .from('collaborations')
+      .update(pairFields)
+      .eq('campaign_id', c.campaignId)
+      .eq('creator_id', c.creatorId)
+      .select(COLUMNS)
+      .maybeSingle();
+    if (pairErr) throw new Error(pairErr.message);
+    if (pairRow) return toCollab(pairRow as unknown as Row);
+  }
+
+  // Step 2 — INSERT (no row for this id or this pair).
   const { data, error } = await sb
     .from('collaborations')
     .insert({ ...rowFields, version: 0 })
