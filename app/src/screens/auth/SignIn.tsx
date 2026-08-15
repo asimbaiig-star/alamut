@@ -130,6 +130,14 @@ export function SignIn() {
   const DEMO_ACCOUNTS = {
     creator: { email: 'sarah@alamut.test', label: 'Sarah — creator' },
     brand: { email: 'hannah@aesop.test', label: 'Aesop — brand' },
+    // NOTE — a third demo account, `nadia@talent.test` (talent manager for
+    // Amir and Yuki), exists in the SEED but is deliberately not offered
+    // here: it has no Supabase Auth user, so the button returned
+    // `invalid_credentials`. A demo button that fails is worse than no
+    // button. Create that auth user (password demo1234) and add:
+    //   manager: { email: 'nadia@talent.test', label: 'Nadia — talent manager' },
+    // plus a matching button below, to make the "acting for" switcher
+    // reachable from the sign-in screen.
   } as const;
 
   const useDemoAccount = async (which: keyof typeof DEMO_ACCOUNTS) => {

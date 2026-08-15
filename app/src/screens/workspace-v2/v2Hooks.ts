@@ -205,13 +205,57 @@ export function useV2CurrentBrand(): Brand | null {
   return me?.brandId ? db.brands.find((b) => b.id === me.brandId) ?? null : null;
 }
 
+/** Which managed creator a manager is currently acting for. Persisted like
+ *  the persona toggle, and for the same reason: it decides whose data every
+ *  creator-side surface shows, so it must survive a reload. */
+const MANAGED_CREATOR_KEY = 'alamut.v2.actingForCreator';
+
+export function readActingForCreatorId(): string | null {
+  if (typeof window === 'undefined') return null;
+  try { return localStorage.getItem(MANAGED_CREATOR_KEY); } catch { return null; }
+}
+
+/** Switch which managed creator the manager is acting for.
+ *
+ *  Refuses ids the user doesn't actually manage — this selection decides
+ *  whose earnings, deals and payouts are displayed, so it is an authorization
+ *  boundary, not a UI preference. */
+export function v2SetActingForCreator(creatorId: string): boolean {
+  const db = useStore.getState().db;
+  const session = useStore.getState().session;
+  const me = db.users.find((u) => u.id === session?.userId);
+  if (!me?.managesCreatorIds?.includes(creatorId)) return false;
+  try { localStorage.setItem(MANAGED_CREATOR_KEY, creatorId); } catch { /* private mode */ }
+  return true;
+}
+
+/** Every creator a manager acts for. Empty for an ordinary creator account. */
+export function useV2ManagedCreators(): Creator[] {
+  const db = useDB();
+  const session = useStore((s) => s.session);
+  const viewerUserId = getViewerUserId(db, session?.userId ?? null, 'creator');
+  const me = db.users.find((u) => u.id === viewerUserId);
+  return useMemo(() => {
+    if (!me?.managesCreatorIds || me.managesCreatorIds.length === 0) return [];
+    return me.managesCreatorIds
+      .map((id) => db.creators.find((c) => c.id === id))
+      .filter((c): c is Creator => !!c);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [db.creators, me?.managesCreatorIds?.join(',')]);
+}
+
 /** Current creator record (resolved from session or demo fallback).
  *
- * Manager / agent path: when the signed-in user has no own creatorId
- * but has `managesCreatorIds[]`, return the FIRST managed creator so
- * the workspace renders something. A future "switch which creator
- * I'm acting for" picker can promote the selection out of this hook;
- * for now first-managed is the right default. */
+ * Manager / agent path: this used to return `managesCreatorIds[0]`
+ * unconditionally, so an agency with two clients could only ever see the
+ * first one — and every earnings figure, deal and payout on screen silently
+ * belonged to that creator regardless of who the manager meant to act for.
+ * A missing switcher is a gap; showing the wrong creator's money under the
+ * right creator's name is a correctness bug.
+ *
+ * The selection is persisted and validated against `managesCreatorIds` on
+ * read, so a stale or tampered value falls back to the first managed creator
+ * rather than resolving to someone they don't represent. */
 export function useV2CurrentCreator(): Creator | null {
   const db = useDB();
   const session = useStore((s) => s.session);
@@ -221,10 +265,13 @@ export function useV2CurrentCreator(): Creator | null {
   if (me.creatorId) {
     return db.creators.find((c) => c.id === me.creatorId) ?? null;
   }
-  // Manager / agent — fall back to the first managed creator.
-  if (me.managesCreatorIds && me.managesCreatorIds.length > 0) {
-    const managedId = me.managesCreatorIds[0];
-    return db.creators.find((c) => c.id === managedId) ?? null;
+  const managed = me.managesCreatorIds;
+  if (managed && managed.length > 0) {
+    const selected = readActingForCreatorId();
+    // Re-validate every read: localStorage is user-writable, and this value
+    // selects whose financial data renders.
+    const activeId = selected && managed.includes(selected) ? selected : managed[0];
+    return db.creators.find((c) => c.id === activeId) ?? null;
   }
   return null;
 }

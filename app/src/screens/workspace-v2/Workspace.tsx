@@ -11,7 +11,10 @@ import '@/styles/workspace-v2.css';
 import '@/styles/workspace-v2-campaign-mgmt.css';
 import '@/styles/workspace-v2-home.css';
 import { Icon } from './lib';
-import { useV2CurrentBrand, useV2CurrentCreator, useV2Conversations } from './v2Hooks';
+import {
+  useV2CurrentBrand, useV2CurrentCreator, useV2Conversations,
+  useV2ManagedCreators, v2SetActingForCreator,
+} from './v2Hooks';
 import { v2SweepStaleOffers } from './v2CampaignActions';
 import { useAuth } from '@/lib/auth/useAuth';
 import { useScheduledNotifications } from '@/lib/api/useScheduledNotifications';
@@ -614,6 +617,7 @@ function Sidebar({ persona, route, onRoute, isMobileOpen }: SidebarProps) {
   const routes = persona === 'brand' ? BRAND_ROUTES : CREATOR_ROUTES;
   const brand = useV2CurrentBrand();
   const creator = useV2CurrentCreator();
+  const managedCreators = useV2ManagedCreators();
   // Live unread badge on the Inbox nav row. Pre-fix the brand sidebar
   // always read "3" and the creator sidebar always read "2" because the
   // count came from a literal in BRAND_ROUTES/CREATOR_ROUTES. The Inbox
@@ -687,6 +691,41 @@ function Sidebar({ persona, route, onRoute, isMobileOpen }: SidebarProps) {
           );
         })}
       </nav>
+
+      {/* Manager / agency switcher. Without it `useV2CurrentCreator` silently
+          resolved to the FIRST managed creator, so an agency with two clients
+          saw one client's earnings, deals and payouts under whichever name
+          they thought they were viewing. Only renders when there is genuinely
+          more than one, so an ordinary creator never sees it. */}
+      {persona === 'creator' && managedCreators.length > 1 && (
+        <div style={{ padding: '10px 14px', borderTop: '1px solid var(--v2-line)' }}>
+          <label
+            className="v2-eyebrow"
+            htmlFor="v2-acting-for"
+            style={{ display: 'block', marginBottom: 6, fontSize: 10 }}
+          >
+            Acting for
+          </label>
+          <select
+            id="v2-acting-for"
+            className="v2-input"
+            style={{ width: '100%', fontSize: 12.5 }}
+            value={creator?.id ?? ''}
+            onChange={(e) => {
+              if (v2SetActingForCreator(e.target.value)) {
+                // Full reload: every creator-side hook resolves the acting
+                // creator at read time, and a stale render showing one
+                // client's money under another's name is the bug being fixed.
+                window.location.reload();
+              }
+            }}
+          >
+            {managedCreators.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div className="v2-sidebar-foot">
         {/* P65 — Avatar handles missing/broken images by falling back

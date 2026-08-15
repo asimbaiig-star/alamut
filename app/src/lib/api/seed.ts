@@ -417,6 +417,12 @@ const DEMO_USERS: User[] = [
   { id: 'u_sarah',  email: 'sarah@alamut.test',  passwordHash: 'demo1234', role: 'creator', status: 'active', createdAt: dayAgo(120), creatorId: 'c_sarah' },
   { id: 'u_amir',   email: 'amir@alamut.test',   passwordHash: 'demo1234', role: 'creator', status: 'active', createdAt: dayAgo(90),  creatorId: 'c_amir' },
   { id: 'u_yuki',   email: 'yuki@alamut.test',   passwordHash: 'demo1234', role: 'creator', status: 'active', createdAt: dayAgo(60),  creatorId: 'c_yuki' },
+  // Talent manager — represents Amir and Yuki, has no creator account of her
+  // own. Exists so the "acting for" switcher is reachable at all: without a
+  // multi-client manager in the seed, `useV2CurrentCreator`'s manager path
+  // was unexercised, which is how it silently resolved to
+  // `managesCreatorIds[0]` for so long.
+  { id: 'u_nadia',  email: 'nadia@talent.test',  passwordHash: 'demo1234', role: 'creator', status: 'active', createdAt: dayAgo(75),  managesCreatorIds: ['c_amir', 'c_yuki'] },
   { id: 'u_hannah', email: 'hannah@aesop.test',  passwordHash: 'demo1234', role: 'brand',   status: 'active', createdAt: dayAgo(180), brandId: 'b_aesop',     teamRole: 'admin' },
   { id: 'u_thom',   email: 'thom@aesop.test',    passwordHash: 'demo1234', role: 'brand',   status: 'active', createdAt: dayAgo(60),  brandId: 'b_aesop',     teamRole: 'ops',    invitedAt: dayAgo(60) },
   { id: 'u_finn',   email: 'finance@aesop.test', passwordHash: 'demo1234', role: 'brand',   status: 'active', createdAt: dayAgo(45),  brandId: 'b_aesop',     teamRole: 'finance', invitedAt: dayAgo(45) },

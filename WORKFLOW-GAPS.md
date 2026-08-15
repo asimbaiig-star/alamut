@@ -202,6 +202,50 @@ field lies about what it does.*
 
 ---
 
+## D. Representation and teams — SHIPPED (D1), and D3 was NOT a bug
+
+**D1 — the manager switcher.** `useV2CurrentCreator` returned
+`managesCreatorIds[0]` unconditionally, so an agency with two clients could
+only ever reach the first — and every earnings figure, deal and payout on
+screen belonged to that creator regardless of who the manager meant to view.
+A missing switcher is a gap you can see; showing one client's money under
+another client's name is a correctness bug you cannot.
+
+The selection is persisted like the persona toggle, and **re-validated on
+every read** against `managesCreatorIds`. That is deliberate: localStorage is
+user-writable and this value decides whose financial data renders, which makes
+it an authorization boundary rather than a UI preference. `v2SetActingForCreator`
+refuses an id the user doesn't represent.
+
+The sidebar shows the switcher only when there is more than one client, so an
+ordinary creator never sees it. A talent manager (`nadia@talent.test`,
+representing Amir and Yuki) is now in the seed — without one, the manager path
+was entirely unexercised, which is a large part of how the `[0]` bug survived.
+
+**D3 — role deadlock: NOT A BUG.** I flagged this as "worth testing" and it
+was right to be tentative. `teamRole` is only ever SET (on invite acceptance);
+there is no removal path and no role-change path anywhere in the product, so
+the last admin cannot be removed because nobody can be removed. Also worth
+recording for whenever removal ships: `ops` already holds `content.approve`,
+`content.revise` and `content.markLive`, so losing the admin would not by
+itself block content approval — only a brand left with finance/viewer users
+alone would deadlock.
+
+**D2 — deal reassignment inside a brand team: NOT BUILT.** Offers and
+approvals record an actor, but there is no owner concept, no handoff, and no
+"deals I am responsible for" view. That is a feature rather than a gap and
+wants its own design.
+
+### Known limitation, deliberately left
+
+The manager demo account is NOT on the sign-in quick-pick: `nadia@talent.test`
+has no Supabase Auth user, so the button returned `invalid_credentials`. A
+demo button that fails is worse than no button on a screen an investor may
+open. Create that auth user (password `demo1234`) and the two-line change is
+recorded in `SignIn.tsx` where it goes.
+
+### The original findings
+
 ## D. Representation and teams
 
 **D1 — A manager with multiple creators can only ever act for the first one.**
