@@ -877,14 +877,18 @@ type InternalProgress =
 // campaign still ends up with submissions even though Campaign.stage is
 // now just 'live'.
 const STAGE_DISTRIBUTION: Array<{ stage: CampaignStage; internalProgress: InternalProgress; count: number }> = [
-  { stage: 'draft',  internalProgress: 'draft',      count: 12 },
-  { stage: 'live',   internalProgress: 'live',       count: 32 },
-  { stage: 'live',   internalProgress: 'shortlist',  count: 24 },
-  { stage: 'live',   internalProgress: 'offer',      count: 16 },
-  { stage: 'live',   internalProgress: 'production', count: 22 },
-  { stage: 'live',   internalProgress: 'posted',     count: 14 },
-  { stage: 'live',   internalProgress: 'reporting',  count: 10 },
-  { stage: 'closed', internalProgress: 'closed',     count: 75 },
+  // Halved-and-then-some. 205 background campaigns (138 live) made Browse
+  // Briefs a wall a visitor scrolls past rather than reads, and buried the
+  // hand-authored demo campaigns that actually tell the story. The mix is
+  // preserved — every progress level still appears — only the volume drops.
+  { stage: 'draft',  internalProgress: 'draft',      count: 5 },
+  { stage: 'live',   internalProgress: 'live',       count: 12 },
+  { stage: 'live',   internalProgress: 'shortlist',  count: 9 },
+  { stage: 'live',   internalProgress: 'offer',      count: 7 },
+  { stage: 'live',   internalProgress: 'production', count: 9 },
+  { stage: 'live',   internalProgress: 'posted',     count: 6 },
+  { stage: 'live',   internalProgress: 'reporting',  count: 5 },
+  { stage: 'closed', internalProgress: 'closed',     count: 22 },
 ];
 
 // Pitch + message templates for richer text.
@@ -1076,7 +1080,11 @@ function genCampaign(
 
   // ============ APPLICATIONS — much richer (10-25 per campaign) ============
   if (progress !== 'draft') {
-    const numApps = progress === 'closed' ? range(8, 18) : range(10, 25);
+    // Was `range(8,18)` / `range(10,25)`, which produced 2,084 `pitched`
+    // collaborations — 58% of every collab in the seed — and buried the
+    // stages that actually demonstrate the product. A brand kanban should
+    // read as a pipeline, not as an inbox of 200 applicants.
+    const numApps = progress === 'closed' ? range(3, 6) : range(3, 8);
     // Push preferred applicants (e.g. demo creators) to the front so they're frequently shortlisted/accepted.
     const preferred = (preferredApplicantIds || [])
       .map((id) => allCreators.find((c) => c.id === id))
@@ -1090,8 +1098,12 @@ function genCampaign(
       // First numTargetCreators are shortlisted; rest split between rejected/submitted/withdrawn
       const status: Application['status'] =
         stageIdx >= 2 && i < numTargetCreators + range(1, 3) ? 'shortlisted' :
-        stageIdx >= 3 && chance(0.55) ? 'rejected' :
-        stageIdx >= 4 && chance(0.2) ? 'withdrawn' :
+        // 0.55/0.2 left 1,068 `cancelled` collaborations — 30% of the
+        // whole board, and every one of them a dead end a visitor can
+        // click into and learn nothing from. Enough remain to show the
+        // state exists.
+        stageIdx >= 3 && chance(0.25) ? 'rejected' :
+        stageIdx >= 4 && chance(0.08) ? 'withdrawn' :
         'submitted';
       const placeStr = cr.country.length > 8 ? cr.city : cr.country;
       apps.push({
@@ -1416,7 +1428,7 @@ const AESOP_PLAN: { stage: CampaignStage; progress: InternalProgress; count: num
   { stage: 'live',   progress: 'production', count: 2 },
   { stage: 'live',   progress: 'posted',     count: 1 },
   { stage: 'live',   progress: 'reporting',  count: 2 },
-  { stage: 'closed', progress: 'closed',     count: 12 },
+  { stage: 'closed', progress: 'closed',     count: 5 },
 ];
 AESOP_PLAN.forEach(({ stage, progress, count }) => {
   for (let i = 0; i < count; i++) {
@@ -1434,7 +1446,7 @@ const LECREUSET_PLAN: { stage: CampaignStage; progress: InternalProgress; count:
   { stage: 'live',   progress: 'production', count: 2 },
   { stage: 'live',   progress: 'posted',     count: 1 },
   { stage: 'live',   progress: 'reporting',  count: 1 },
-  { stage: 'closed', progress: 'closed',     count: 7 },
+  { stage: 'closed', progress: 'closed',     count: 4 },
 ];
 LECREUSET_PLAN.forEach(({ stage, progress, count }) => {
   for (let i = 0; i < count; i++) {
@@ -1817,6 +1829,42 @@ const specialistPicks = generatedCreators
   .sort((a, b) => b.creator.rating - a.creator.rating)
   .slice(0, 8);
 [...flagshipPicks, ...specialistPicks].forEach(({ creator }) => { creator.editorsPick = true; });
+
+// ============ ADVANCES (income advance against pending escrow) ============
+//
+// There were ZERO seeded advances, so a whole built feature — request an
+// advance against pending escrow, 3% fee, auto-repaid out of the next
+// approval — was invisible to anyone exploring the demo. The wallet showed
+// the "Request advance" button and nothing had ever used it.
+//
+// Two rows: one ACTIVE against Sarah's pending balance (so her wallet shows
+// the outstanding balance and the repayment mechanic), and one already
+// REPAID (so the ledger shows what a completed cycle looks like).
+const seededAdvances: import('./types').Advance[] = [
+  {
+    id: 'adv_seed_sarah',
+    creatorId: 'c_sarah',
+    requestedAt: dayAgo(11),
+    amount: 1200,
+    feePct: 0.03,
+    feeAmount: 36,
+    // 80% of pending is the cap the request modal enforces; this sits under it.
+    collateralPending: 3400,
+    status: 'active',
+    repaidAmount: 0,
+  },
+  {
+    id: 'adv_seed_amir',
+    creatorId: 'c_amir',
+    requestedAt: dayAgo(64),
+    amount: 800,
+    feePct: 0.03,
+    feeAmount: 24,
+    collateralPending: 2100,
+    status: 'repaid',
+    repaidAmount: 800,
+  },
+];
 
 // ============ DISPUTES (a couple seeded for admin demo) ============
 const seededDisputes: Dispute[] = [];
@@ -2489,7 +2537,7 @@ export const SEED: Database = {
   reviews: [...seededReviews, ...generatedCampaignReviews],
   disputes: seededDisputes,
   referrals: seededReferrals,
-  advances: [],
+  advances: seededAdvances,
   testimonials: seededTestimonials,
   campaignPerformance: buildSamplePerformance(),
   // P1c §1.1 — Collaborations are materialized by migrator 3 from the
