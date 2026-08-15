@@ -1597,7 +1597,10 @@ if (showcaseCast.confirmed) {
 if (showcaseCast.inReview) {
   showcaseApply(showcaseCast.inReview, 1600, 'shortlisted', 20);
   showcaseOffer(showcaseCast.inReview, 1600, 'accepted', 18);
-  showcaseSubmission(showcaseCast.inReview, 'in_review', 2);
+  // Aged past `reviewOverdueDays` on purpose: the overdue-review warning is
+  // the entire intervention for unreviewed work (escrow deliberately never
+  // auto-releases), so the showcase has to actually show it firing.
+  showcaseSubmission(showcaseCast.inReview, 'in_review', 9);
 }
 
 // submitted (revision) — same stage, but the CREATOR's move. Worth showing

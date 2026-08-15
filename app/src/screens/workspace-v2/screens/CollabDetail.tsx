@@ -410,6 +410,13 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
                 myApplicationStatus={myApplication?.status}
                 latestSubmissionStatus={latestSubmission?.status}
                 livePermalink={livePermalink}
+                // Timing context. Without these the staleness labels are
+                // inert — the whole intervention for stale offers and
+                // unreviewed work is saying how long it has been.
+                myProposedRate={myApplication?.proposedRate}
+                offerSentAt={pendingOffer?.sentAt}
+                applicationSubmittedAt={myApplication?.submittedAt}
+                submissionSubmittedAt={latestSubmission?.submittedAt}
                 onAccept={() => {
                   if (!pendingOffer) return;
                   try {

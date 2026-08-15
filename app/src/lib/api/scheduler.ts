@@ -31,6 +31,7 @@
 // partition on `min(triggerAt)` to bound the scan.
 
 import { tx, useStore } from './store';
+import { applicationLapse, STALENESS } from './staleness';
 import type {
   Database, ScheduledNotification, ScheduledNotificationType,
   NotificationPrefs,
@@ -369,7 +370,58 @@ export function processScheduledNotifications(db: Database, now: number = Date.n
  * / hydration-time pass / opportunistically from any read hook.
  */
 export function runScheduledNotifications(now: number = Date.now()): number {
-  return tx((db) => processScheduledNotifications(db, now));
+  return tx((db) => {
+    // Time-based STATE changes run alongside the notification sweep, on the
+    // same heartbeat. Deliberately one function and one call site: a second
+    // scheduler is how two clocks end up disagreeing.
+    lapseSilentApplications(db, now);
+    return processScheduledNotifications(db, now);
+  });
+}
+
+/**
+ * Auto-withdraw pitches a brand never answered.
+ *
+ * The ONLY automatic state change in the product. It is safe to automate
+ * precisely because it moves no money: an unanswered pitch costs nobody
+ * anything, while leaving it open costs the creator hope and leaves them
+ * unable to tell a dead lead from a slow one.
+ *
+ * Everything else time-related — stale offers, unreviewed work, ignored
+ * cancellation requests — only ever LABELS. Those touch escrow, and escrow
+ * does not move without a human. See `lib/api/staleness.ts` for the stance.
+ *
+ * Idempotent: an application already withdrawn no longer matches.
+ */
+export function lapseSilentApplications(db: Database, now: number = Date.now()): number {
+  let lapsed = 0;
+  for (let i = 0; i < db.applications.length; i++) {
+    const app = db.applications[i];
+    const { shouldLapse } = applicationLapse(app, now);
+    if (!shouldLapse) continue;
+
+    db.applications[i] = { ...app, status: 'withdrawn', decidedAt: nowIsoFromMs(now) };
+    lapsed++;
+
+    // Tell the creator, and say WHY — a pitch that silently vanishes is
+    // worse than one that stays open.
+    const creator = db.creators.find((c) => c.id === app.creatorId);
+    const creatorUser = creator
+      ? db.users.find((u) => u.creatorId === creator.id)
+      : undefined;
+    const camp = db.campaigns.find((c) => c.id === app.campaignId);
+    if (creatorUser && camp) {
+      db.notifications.push({
+        id: `n_lapse_${app.id}`,
+        userId: creatorUser.id,
+        text: `Your pitch for ${camp.title} closed after ${STALENESS.applicationLapseDays} days with no reply — the slot is free again`,
+        href: '/creator/campaigns',
+        at: nowIsoFromMs(now),
+        read: false,
+      });
+    }
+  }
+  return lapsed;
 }
 
 /** Read-only convenience for tests / debug. */

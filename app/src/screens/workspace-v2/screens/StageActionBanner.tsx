@@ -20,6 +20,7 @@
 import type React from 'react';
 import { fmtUSD, Icon } from '../lib';
 import { netOf } from '@/lib/api/money';
+import { offerStaleness, applicationLapse, reviewOverdue } from '@/lib/api/staleness';
 import type { V2CollabStage } from '../data';
 
 export interface StageActionBannerProps {
@@ -52,6 +53,12 @@ export interface StageActionBannerProps {
   onAddLiveLink?: () => void;
   /** The rate the creator asked for in their pitch, when they pitched. */
   myProposedRate?: number;
+  /** When the pending offer was sent — drives the staleness label. */
+  offerSentAt?: string;
+  /** When this pitch was submitted — drives "waiting N days" + the lapse warning. */
+  applicationSubmittedAt?: string;
+  /** When the creator's submission went in — drives the overdue-review note. */
+  submissionSubmittedAt?: string;
 }
 
 export function StageActionBanner({
@@ -60,17 +67,26 @@ export function StageActionBanner({
   activeOfferRate, latestRevisionNote, inviteMessage,
   onAccept, onCounter, onUpload, onWithdraw, onMessageBrand,
   onLeaveReview, onAddLiveLink, myProposedRate,
+  offerSentAt, applicationSubmittedAt, submissionSubmittedAt,
 }: StageActionBannerProps) {
   // Each stage gets its own banner content. The container uses the same
   // soft-accent gradient so the visual rhythm stays consistent.
   let title = '';
   let body = '';
   let actions: React.ReactNode = null;
+  // Secondary time-based line, appended under `body` when set.
+  let extraNote: string | null = null;
   let tone: 'accent' | 'moss' | 'ink' = 'accent';
 
   // A2 — the creator's own ask, so an offer is never presented as a neutral
   // number. Pitch $2,000, receive $1,200, and the UI used to show only
   // $1,200; neither side saw that a gap existed.
+  // Time-based context. Offers never expire (product call: no deal is lost to
+  // a clock) so this LABELS a stale offer rather than blocking it.
+  const staleNote = pendingOffer && offerSentAt
+    ? offerStaleness(offerSentAt).note
+    : null;
+
   const askLine = myProposedRate && pendingOffer && myProposedRate !== pendingOffer.rate
     ? ` You asked ${fmtUSD(myProposedRate)}${pendingOffer.rate < myProposedRate
         ? ` — this is ${fmtUSD(myProposedRate - pendingOffer.rate)} below it.`
@@ -116,7 +132,18 @@ export function StageActionBanner({
       </button>
     );
   } else if (stage === 'pitched') {
-    title = 'Application sent — awaiting brand response';
+    {
+      const lapse = applicationSubmittedAt
+        ? applicationLapse({ status: 'submitted', submittedAt: applicationSubmittedAt })
+        : null;
+      title = lapse && lapse.days > 0
+        ? `Application sent — waiting ${lapse.days} ${lapse.days === 1 ? 'day' : 'days'} on ${campaignBrand}`
+        : 'Application sent — awaiting brand response';
+      if (lapse?.warn) {
+        // Silence used to be indistinguishable from a slow reply, forever.
+        extraNote = `No reply yet. This pitch closes in ${lapse.daysLeft} ${lapse.daysLeft === 1 ? 'day' : 'days'} so the slot frees up — you can withdraw sooner if you'd rather.`;
+      }
+    }
     // "typically replies within 48 hours" was invented: there is no
     // response-time field on Brand at all, so the figure was attributed to a
     // named brand with nothing behind it. The notification half is real.
@@ -135,7 +162,7 @@ export function StageActionBanner({
     );
   } else if (stage === 'negotiating' && pendingOffer) {
     title = `${campaignBrand} sent an offer`;
-    body = `${fmtUSD(pendingOffer.rate)} for ${campaignPlacement}. ${pendingOffer.message ? `"${pendingOffer.message}"` : ''} Your net after fees: ${fmtUSD(netOf(pendingOffer.rate))}.${askLine}`;
+    body = `${fmtUSD(pendingOffer.rate)} for ${campaignPlacement}. ${pendingOffer.message ? `"${pendingOffer.message}"` : ''} Your net after fees: ${fmtUSD(netOf(pendingOffer.rate))}.${askLine}${staleNote ? ` ${staleNote}` : ''}`;
     actions = (
       <>
         <button className="v2-btn v2-btn-outline v2-btn-sm" type="button" onClick={onCounter}>
@@ -172,6 +199,10 @@ export function StageActionBanner({
       </button>
     );
   } else if (stage === 'submitted') {
+    if (submissionSubmittedAt) {
+      const rev = reviewOverdue(submissionSubmittedAt);
+      if (rev.creatorNote) extraNote = rev.creatorNote;
+    }
     if (latestRevisionNote) {
       title = `${campaignBrand} requested changes`;
       body = `"${latestRevisionNote}" — address the feedback and resubmit the revised slot.`;
@@ -278,6 +309,14 @@ export function StageActionBanner({
           {body && (
             <p className="v2-muted" style={{ margin: 0, fontSize: 13, lineHeight: 1.5 }}>
               {body}
+            </p>
+          )}
+          {/* Time-based context — a waiting count, a lapse warning, or the
+              note that a payout is sitting in escrow because the brand
+              hasn't reviewed. Set by the stage branches above. */}
+          {extraNote && (
+            <p style={{ margin: '6px 0 0', fontSize: 12.5, lineHeight: 1.5, fontWeight: 500 }}>
+              {extraNote}
             </p>
           )}
         </div>

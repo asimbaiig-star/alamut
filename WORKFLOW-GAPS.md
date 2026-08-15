@@ -62,6 +62,42 @@ something they already pitched for, with no acknowledgement of their pitch.
 
 ---
 
+## B. Nothing expires, so nothing resolves — SHIPPED
+
+`lib/api/staleness.ts` owns every age threshold in one table, so the banner,
+the kanban card, the scheduler and the tests cannot disagree about what
+"stale" means — the same failure mode that produced five copies of the fee
+rate before `money.ts` existed.
+
+**The stance, Asim's calls, deliberately conservative for a beta with
+simulated payments:**
+
+- **B3 — unreviewed work does NOT auto-approve.** Escrow never moves without
+  a human. Both sides are told instead: the brand sees "Waiting 9 days on your
+  review" on the card, the creator sees that their payout is held and that it
+  isn't their fault. Rejected: auto-release after 14 days — it resolves the
+  deadlock but pays a creator because a brand was slow, which is a stance to
+  take when payments are real, not before. A test asserts the module cannot
+  reference `walletBalance`, `escrowHeld` or `pendingBalance` at all.
+- **B1 — offers do NOT hard-expire.** A stale offer is labelled ("Sent 10 days
+  ago — check it still stands") and stays acceptable. No deal is lost to a
+  clock. A test asserts no expiry mechanism exists, so adding one later has to
+  be a deliberate decision rather than a drive-by.
+- **B2 — a silent pitch lapses after 21 days.** The ONLY automatic state
+  change in the product, and it is safe to automate precisely because it moves
+  no money. The creator is warned 3 days out and told why when it fires. Only
+  `submitted` pitches lapse: `shortlisted` means the brand engaged, and
+  cancelling a live conversation would be worse than the silence.
+- **B5 — an ignored cancellation request is chased, not resolved.** Cancelling
+  returns escrow, so a human agrees to it.
+- **B4 — a missed deadline** surfaces as an age on the card rather than
+  triggering anything.
+
+The sweep runs on the existing 60s heartbeat inside `runScheduledNotifications`
+— one clock, not two.
+
+### The original findings
+
 ## B. Nothing expires, so nothing resolves
 
 Every state in this product is entered by someone doing something. There is no

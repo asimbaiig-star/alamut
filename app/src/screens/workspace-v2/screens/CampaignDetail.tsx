@@ -36,6 +36,7 @@ import { LeaveReviewModal } from './LeaveReviewModal';
 import { SendOfferModal, MarkLiveModal, CounterOfferModal, InviteCreatorsModal } from './WorkflowModals';
 import { TeamAccessAside } from './TeamAccess';
 import { nextAction } from '../nextAction';
+import { reviewOverdue, ageInDays } from '@/lib/api/staleness';
 import {
   v2EndCampaign, v2PauseCampaign, v2RejectApplication, v2ResumeCampaign,
   v2WithdrawOffer, v2AcceptCounter, v2DeclineOffer, v2UpdateCampaign,
@@ -1172,6 +1173,9 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
 
   // Per-stage inline action button
   let stageAction: React.ReactNode = null;
+  // Set when delivered work has been sitting unreviewed; rendered under the
+  // stage action so the brand sees they are the one holding it up.
+  let reviewLag: string | null = null;
   // Set AFTER the branch chain below when nothing matched — see the note at
   // the fallback. Declared here so the chain can stay a plain if/else.
   const fallbackLine = (text: string) => (
@@ -1341,11 +1345,17 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
       //  - offer pending → brand sent an offer, creator hasn't replied
       //  - offer countered (brand was last) → brand counter-backed,
       //    creator's turn again
+      // How long they have been waiting. Offers never expire — that was an
+      // explicit call, so no deal dies on a clock — which makes saying the
+      // age the only thing standing between the brand and a six-month-old
+      // offer they have forgotten committing budget to.
+      const waitDays = offer ? ageInDays(offer.sentAt) : 0;
+      const waited = waitDays > 0 ? ` · ${waitDays}d` : '';
       const awaitingCopy = !offer
         ? 'Invitation sent · awaiting creator'
         : offer.status === 'countered'
-          ? 'Awaiting reply to your counter'
-          : 'Awaiting reply';
+          ? `Awaiting reply to your counter${waited}`
+          : `Awaiting reply${waited}`;
       stageAction = (
         <div className="v2-row" style={{ gap: 6, marginTop: 8, alignItems: 'center' }}>
           <span className="v2-muted" style={{ fontSize: 11, flex: 1 }}>
@@ -1388,6 +1398,15 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
       );
     }
   } else if (collab.stage === 'submitted' && hasReview) {
+    // The brand is the blocker here, and nothing used to say for how long.
+    // Escrow deliberately does NOT auto-release (see lib/api/staleness.ts) —
+    // naming the delay is the entire intervention, so it has to be visible.
+    const oldestInReview = kanbanDb.submissions
+      .filter((sub) => sub.campaignId === collab.campaignId
+        && sub.creatorId === collab.creatorId
+        && sub.status === 'in_review')
+      .sort((a, b) => +new Date(a.submittedAt) - +new Date(b.submittedAt))[0];
+    reviewLag = oldestInReview ? reviewOverdue(oldestInReview.submittedAt).brandNote : null;
     stageAction = (
       <button
         type="button"
@@ -1527,6 +1546,11 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
       )}
       {hasReview && <div className="v2-kanban-review-pill">Review pending</div>}
       {stageAction}
+      {reviewLag && (
+        <div style={{ marginTop: 6, fontSize: 10.5, lineHeight: 1.45, color: 'var(--v2-accent)', fontWeight: 600 }}>
+          {reviewLag}
+        </div>
+      )}
     </article>
   );
 }
