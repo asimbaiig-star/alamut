@@ -121,18 +121,21 @@ export interface Availability {
   status: 'open' | 'limited' | 'booked';
   untilDate?: string;  // ISO date — when availability resumes
   note?: string;       // optional explanation visible to brands
-  /** Vacation mode (s18). When true, the storefront shows a clear
-   *  "out of office" banner and incoming briefs are gated client-side
-   *  on apply / send-offer flows. Distinct from `booked` because
-   *  vacation implies "not even monitoring" rather than "fully scheduled". */
+  /** Vacation mode. ENFORCED: `v2SendOffer` and `v2InviteCreator` refuse
+   *  while it is on, and the offer modal disables its send button with the
+   *  reason. Distinct from `booked` because vacation implies "not even
+   *  monitoring" rather than "fully scheduled" — and `booked` only warns. */
   vacationMode?: boolean;
-  /** Minimum acceptable rate in USD. When set, BriefDetail and
-   *  SendOfferModal warn (but don't block) any number below it; the
-   *  public storefront also surfaces the floor as "From $X". */
+  /** Minimum acceptable rate in USD. ADVISORY BY DESIGN, not by omission: a
+   *  floor is a negotiating position, and blocking below it would kill
+   *  legitimate opening offers that get countered up. Surfaces a warning to
+   *  the brand and as "From $X" on the public storefront. */
   minRate?: number;
-  /** Categories the creator never wants briefs in. BriefDetail surfaces
-   *  a soft warning when the brief category matches; auto-decline is
-   *  advisory in the demo (a real impl would auto-archive applications). */
+  /** Categories the creator never wants briefs in. ENFORCED — the mutation
+   *  throws and the send button is disabled. It previously did nothing at
+   *  all despite the name, so a creator who excluded Gambling still received
+   *  gambling offers. See lib/api/availability.ts for why this blocks while
+   *  `minRate` warns. */
   autoDeclineCategories?: string[];
 }
 

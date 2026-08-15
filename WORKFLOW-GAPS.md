@@ -141,6 +141,42 @@ responds, the deal is frozen indefinitely with escrow held.
 
 ---
 
+## C. Availability is declared but never enforced — SHIPPED
+
+`lib/api/availability.ts` returns one verdict that both the mutation guard and
+the UI read, so a disabled button and a thrown error cannot disagree about
+whether a send is allowed or why.
+
+**Two of the three now enforce; one advises, deliberately:**
+
+- **C1 `autoDeclineCategories` BLOCKS.** `v2SendOffer` and `v2InviteCreator`
+  both throw, and the offer modal disables its send button with the reason. A
+  standing "never send me this" is an instruction, not a preference to weigh.
+  Matching is case-insensitive — 'gambling' vs 'Gambling' must not be the
+  difference between protected and not.
+- **C2 `vacationMode` BLOCKS**, offering the return date so the brand can come
+  back. The old modal copy said "You can still send; expect a delayed reply",
+  which is now false and was replaced.
+- **C3 `minRate` still WARNS** — and the type comment now says *advisory by
+  design* rather than implying enforcement. A floor is a negotiating position;
+  blocking below it would kill legitimate opening offers that get countered
+  up, and the creator can always decline.
+- `status: 'booked'` warns for the same reason: booked now is not uninterested
+  next month.
+
+Enforcement lives at the MUTATION, not in a screen, so it holds for every
+caller rather than for whichever surface remembered to check.
+
+**A real bug surfaced while testing this:** `new Date('2026-09-01')` parses as
+UTC midnight, so `toLocaleDateString` rendered a creator's return date as
+"Aug 31" anywhere west of UTC — an off-by-one on "when am I back". Dates are
+now built from their parts.
+
+**C4 (capacity limits) remains unbuilt** and is still a feature rather than a
+gap: nothing prevents a creator holding twenty simultaneous confirmed deals.
+
+### The original findings
+
 ## C. Availability is declared but never enforced
 
 `Creator.availability` carries `vacationMode`, `minRate`, and

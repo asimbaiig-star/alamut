@@ -19,6 +19,7 @@
 //     escrow is refunded to the brand, the collab moves to 'cancelled'.
 
 import { tx } from '@/lib/api/store';
+import { availabilityBlock } from '@/lib/api/availability';
 import type { Collaboration, Database } from '@/lib/api/types';
 import { ensureCollabState } from '@/lib/api/collabSync';
 // Fee/withholding rates come from one module — see lib/api/money.ts.
@@ -52,6 +53,12 @@ export function v2InviteCreator(
     const camp = db.campaigns.find((c) => c.id === campaignId);
     const creator = db.creators.find((c) => c.id === creatorId);
     if (!camp || !creator) return null;
+
+    // Same standing instructions as v2SendOffer. A cold invite carries no
+    // rate, so only the category and vacation blocks can apply — but those
+    // are exactly the two that are instructions rather than judgement calls.
+    const inviteBlocked = availabilityBlock(creator, { category: camp.category });
+    if (inviteBlocked) throw new Error(inviteBlocked);
 
     // IDEMPOTENCY GUARD — pre-fix a double-click on Invite pushed a
     // fresh notification + a duplicate `brand-invite` history entry on

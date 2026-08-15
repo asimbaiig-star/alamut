@@ -10,6 +10,7 @@
 import { useMemo, useState } from 'react';
 import { fmtUSD, Icon } from '../lib';
 import { netOf } from '@/lib/api/money';
+import { availabilityVerdict } from '@/lib/api/availability';
 import { parseNumberInput } from '@/lib/utils/format';
 import {
   v2CounterOffer, v2CounterCounter, v2DeclineOffer, v2MarkContentLive,
@@ -46,7 +47,12 @@ export function SendOfferModal({ campaignId, creator, defaultRate, onClose }: Se
   const [message, setMessage] = useState<string>(
     `Hi ${creator.name.split(' ')[0]} — we'd love to work with you. Offering $${defaultRate.toLocaleString()} for the brief — let me know if you'd like to discuss.`,
   );
-  // Creator-side guardrails (s18) — show warnings, never block.
+  // Creator-side guardrails. This used to be three ad-hoc booleans that only
+  // ever warned — including for `vacationMode`, which the creator set to mean
+  // "don't send me work". The verdict is now the same function the mutation
+  // enforces, so the button state and the thrown error cannot disagree about
+  // whether a send is allowed or why.
+  const verdict = availabilityVerdict(creator, { rate });
   const onVacation = !!creator.availability?.vacationMode;
   const minRate = creator.availability?.minRate;
   const isBelowFloor = minRate !== undefined && rate > 0 && rate < minRate;
@@ -113,7 +119,19 @@ export function SendOfferModal({ campaignId, creator, defaultRate, onClose }: Se
               color: 'var(--v2-ink-2)',
               lineHeight: 1.45,
             }}>
-              <strong style={{ color: 'var(--v2-gold)' }}>✈ {creator.name.split(' ')[0]} is on vacation</strong> — they're not actively monitoring offers right now. You can still send; expect a delayed reply.
+              <strong style={{ color: 'var(--v2-gold)' }}>✈ {creator.name.split(' ')[0]} is away</strong> — they've turned off incoming briefs, so this can't be sent yet. The date they're back is on their profile.
+            </div>
+          )}
+          {/* Any other standing instruction that blocks — today that means an
+              auto-declined category. Same verdict the mutation enforces. */}
+          {verdict.block && !onVacation && (
+            <div style={{
+              marginBottom: 14, padding: '8px 10px',
+              background: 'rgba(184, 144, 47, 0.08)', borderRadius: 6,
+              border: '1px solid var(--v2-gold)', fontSize: 12,
+              color: 'var(--v2-ink-2)', lineHeight: 1.45,
+            }}>
+              {verdict.block}
             </div>
           )}
           {/* Phase 50 — Templates row */}
@@ -274,8 +292,8 @@ export function SendOfferModal({ campaignId, creator, defaultRate, onClose }: Se
               className="v2-btn v2-btn-primary"
               type="button"
               style={{ flex: 2 }}
-              disabled={rate <= 0 || !message.trim() || !canSend}
-              title={!canSend ? 'Admin or ops only' : undefined}
+              disabled={rate <= 0 || !message.trim() || !canSend || !!verdict.block}
+              title={!canSend ? 'Admin or ops only' : (verdict.block ?? undefined)}
               onClick={() => {
                 try {
                   v2SendOffer(campaignId, creator.id, rate, message);

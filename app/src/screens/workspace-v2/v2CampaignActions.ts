@@ -22,6 +22,7 @@
 //   - Creator.pendingBalance · grows on accept, shrinks on release
 
 import { tx, useStore } from '@/lib/api/store';
+import { availabilityBlock } from '@/lib/api/availability';
 import type {
   Application, Brand, Campaign, Database, Offer, OfferRound, Submission, Transaction, User,
 } from '@/lib/api/types';
@@ -587,6 +588,15 @@ export function v2SendOffer(
     if (camp.stage !== 'live') {
       throw new Error(`This campaign is ${camp.stage} — resume it before sending new offers.`);
     }
+
+    // The creator's standing instructions. `autoDeclineCategories` and
+    // `vacationMode` named behaviours nothing implemented — a creator who
+    // excluded Gambling still received gambling offers. Enforced here, at
+    // the mutation, so it holds for every caller rather than for whichever
+    // screen remembered to check. `minRate` stays advisory by design; see
+    // lib/api/availability.ts.
+    const availabilityBlocked = availabilityBlock(creator, { category: camp.category, rate });
+    if (availabilityBlocked) throw new Error(availabilityBlocked);
 
     // IDEMPOTENCY / DUPE-OFFER GUARD — return the existing live offer
     // so the UI can treat it as a no-op success rather than an error.
