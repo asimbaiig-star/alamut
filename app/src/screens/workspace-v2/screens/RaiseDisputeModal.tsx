@@ -13,6 +13,7 @@
 
 import { useState } from 'react';
 import type { DisputeCategory } from '@/lib/api/types';
+import { useModalEscape } from '@/lib/utils/useModalEscape';
 
 const DISPUTE_CATEGORIES: { value: DisputeCategory; label: string }[] = [
   { value: 'non-delivery',     label: 'Brand stopped responding' },
@@ -33,6 +34,9 @@ export interface RaiseDisputeModalProps {
 export function RaiseDisputeModal({
   brandName, campaignName, onClose, onSubmit,
 }: RaiseDisputeModalProps) {
+  // Escape closes. Filing a dispute is a stressful, money-adjacent action
+  // and this was the one bespoke modal in the tree without it.
+  useModalEscape(onClose);
   const [category, setCategory] = useState<DisputeCategory>('non-delivery');
   const [description, setDescription] = useState('');
   const canSubmit = description.trim().length >= 20;

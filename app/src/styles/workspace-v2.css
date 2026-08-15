@@ -257,7 +257,12 @@ body:has([data-surface="v2"]) {
   border-bottom: 1px solid var(--v2-line);
   display: flex;
   align-items: center;
+  /* The actions row wraps below 720px and takes `width: 100%` to sit on
+     its own line — but the bar containing it did not wrap, so the "new
+     line" had nowhere to go and the row was squeezed instead. */
+  flex-wrap: wrap;
   gap: 12px;
+  row-gap: 6px;
   padding: 10px 28px;
   min-height: 56px;
 }
@@ -1050,6 +1055,12 @@ body:has([data-surface="v2"]) {
 @media (max-width: 1080px) {
   [data-surface="v2"] .v2-inbox { grid-template-columns: 280px 1fr; }
   [data-surface="v2"] .v2-inbox-side { display: none; }
+  /* Detail mode (`deal:<convId>`) expands the side panel — which the
+     rule above hides at this width, so the "Detail view" button was a
+     no-op on any laptop under 1080px. In detail mode the panel takes
+     the thread's column; the thread is one click away in the list. */
+  [data-surface="v2"] .v2-inbox.is-detailed .v2-inbox-thread { display: none; }
+  [data-surface="v2"] .v2-inbox.is-detailed .v2-inbox-side { display: flex; }
 }
 @media (max-width: 760px) {
   /* Mobile inbox — pre-fix the conversation list was `display: none`,
@@ -1966,7 +1977,14 @@ body:has([data-surface="v2"]) {
 }
 @media (max-width: 1100px) {
   [data-surface="v2"] .v2-spark-grid { grid-template-columns: 1fr; }
-  [data-surface="v2"] .v2-spark-canvas { display: none; }
+  /* Was `display: none`. The shortlist panel is not decoration — it holds
+     the saved-creator list, the cost/reach/ER totals, and the ONLY control
+     that removes a creator from the shortlist. Below 1100px all of it
+     disappeared with no alternative, so a brand on a 13" laptop could add
+     creators from chat and never see or undo it. Stack it under the chat
+     instead; it stops being sticky because there's nothing beside it. */
+  [data-surface="v2"] .v2-spark-canvas { margin-top: 20px; }
+  [data-surface="v2"] .v2-spark-chat { min-height: 60vh; }
 }
 
 /* Chat column */
@@ -2332,6 +2350,12 @@ body:has([data-surface="v2"]) {
   align-self: flex-start;
   display: flex;
   flex-direction: column;
+}
+/* Must come AFTER the rule above, not inside the earlier 1100px block —
+   equal specificity, so source order decides and the sticky base was
+   winning. Stacked under the chat there is nothing to stick beside. */
+@media (max-width: 1100px) {
+  [data-surface="v2"] .v2-spark-canvas { position: static; }
 }
 
 [data-surface="v2"] .v2-spark-canvas-row {

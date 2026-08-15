@@ -8,6 +8,7 @@ import { Icon } from '../lib';
 import type { V2Campaign, V2Collab } from '../data';
 import { v2SubmitContent } from '../v2CampaignActions';
 import { pushToast } from '@/lib/utils/toast';
+import { useModalEscape } from '@/lib/utils/useModalEscape';
 
 interface Props {
   collab: V2Collab;
@@ -75,6 +76,11 @@ function fmtFileSize(bytes: number): string {
 }
 
 export function ContentUploadModal({ collab, campaign, deliverableId, deliverableLabel, isResubmit, onClose }: Props) {
+  // Escape closes. Every other modal in this tree calls this hook —
+  // including this one's brand-side counterpart (ContentReviewModal) —
+  // and this was the exception, so a keyboard user submitting work had no
+  // way out but tabbing to Cancel.
+  useModalEscape(onClose);
   const [step, setStep] = useState<0 | 1>(0);
   const [caption, setCaption] = useState('');
   // Pre-fix this stored only `{name, size}` (a derived label). The actual
@@ -234,7 +240,12 @@ export function ContentUploadModal({ collab, campaign, deliverableId, deliverabl
                 placeholder="Eid is finally here ✨ Wearing the new Sapphire lawn... #SapphireEid26 #ad"
               />
               <div className="v2-muted" style={{ fontSize: 11, marginTop: 6 }}>
-                {caption.length} chars · Spark recommends 60–120 words for Reels
+                {/* Was "Spark recommends 60–120 words for Reels". Reasonable
+                    advice, but Spark didn't generate it — it's a constant.
+                    Attributing static copy to the AI feature is the same
+                    pattern as the "Spark recommends shifting your mix"
+                    callout that was removed from the analytics surfaces. */}
+                {caption.length} chars · 60–120 words works well for Reels
               </div>
 
               <div className="v2-spark-preflight">
@@ -246,7 +257,14 @@ export function ContentUploadModal({ collab, campaign, deliverableId, deliverabl
                   Spark pre-flight checks
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5 }}>
-                  <CheckRow ok label="Ratio detected: 9:16 (Reel-ready)" />
+                  {/* A "Ratio detected: 9:16 (Reel-ready) ✓" row sat here
+                      with `ok` hardcoded true — unconditionally green
+                      whatever the creator uploaded. Worse than a cosmetic
+                      fabrication: it's an actionable technical claim a
+                      creator would trust right before submitting, so a
+                      square or landscape file passed "pre-flight" and came
+                      back as a revision request. Nothing inspects file
+                      dimensions, so the check is gone. */}
                   <CheckRow ok={hasHashtag} warn={!hasHashtag} label="Campaign hashtag" />
                   <CheckRow ok={hasAdDisclosure} warn={!hasAdDisclosure} label="#ad disclosure (FTC + Pakistan PCA)" />
                 </div>

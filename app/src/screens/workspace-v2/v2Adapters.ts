@@ -31,6 +31,7 @@ import type {
   V2Creator, V2Campaign, V2Conversation, V2Channel, V2Audience,
   V2WalletLedgerEntry, V2Collab, V2CollabStage, V2Deliverable, V2PipelineStage,
 } from './data';
+import { PLATFORM_FEE, WHT } from '@/lib/api/money';
 
 // =====================================================================
 // Cover image fallback
@@ -116,31 +117,71 @@ function defaultRate(c: Creator): number {
   return c.tier === 'Flagship' ? 4500 : c.tier === 'Specialist' ? 1200 : 350;
 }
 
-function aggregateAudience(platforms: Platform[]): V2Audience {
+/**
+ * Aggregate audience demographics, or `null` when there are none.
+ *
+ * This used to return `{ female: 60, male: 40, age2534: 40, age1824: 25,
+ * topCity: 'Lahore' }` — commented "reasonable defaults when no demo data".
+ * `Platform.audience` is only ever populated on seeded demo platforms;
+ * nothing in `v2CreatorActions` writes it, so a real creator can never fill
+ * it in. That made the placeholder permanent, not transitional: every real
+ * signup's public storefront showed the same invented demographics, drawn as
+ * labelled progress bars under a tip reading "Aggregated from your connected
+ * channels".
+ *
+ * Returning null pushes the decision to the surfaces, which now say the data
+ * needs connected channels instead of inventing a stand-in.
+ */
+export function aggregateAudienceForTest(
+  audiences: NonNullable<Platform['audience']>[],
+): V2Audience | null {
+  return aggregateAudience(audiences.map((audience) => ({ audience }) as Platform));
+}
+
+function aggregateAudience(platforms: Platform[]): V2Audience | null {
   const withAudience = platforms.filter((p) => p.audience);
-  if (withAudience.length === 0) {
-    // Reasonable defaults when no demo data
-    return { female: 60, male: 40, age2534: 40, age1824: 25, topCity: 'Lahore' };
-  }
-  const avg = (key: (a: NonNullable<Platform['audience']>) => number) =>
-    Math.round(withAudience.reduce((s, p) => s + key(p.audience!), 0) / withAudience.length);
-  // genderSplit values are 0..1, so we multiply
-  const female = Math.round(avg((a) => a.genderSplit.female) * 100);
-  const male   = Math.round(avg((a) => a.genderSplit.male)   * 100);
-  const age2534 = Math.round(avg((a) => a.ageBuckets['25-34']) * 100);
-  const age1824 = Math.round(avg((a) => a.ageBuckets['18-24']) * 100);
-  // top country pick
+  if (withAudience.length === 0) return null;
+  // Mean WITHOUT rounding. `avg` used to round to an integer before the
+  // caller multiplied by 100 — and every one of these fields is a 0..1
+  // fraction, so 0.78 became 1 and then 100%, while 0.18 became 0 and then
+  // 0%. Every seeded creator's storefront showed a 100% / 0% gender split
+  // and a 0%-or-100% age band. Round once, at the end.
+  const mean = (key: (a: NonNullable<Platform['audience']>) => number) =>
+    withAudience.reduce((s, p) => s + key(p.audience!), 0) / withAudience.length;
+  const pct = (key: (a: NonNullable<Platform['audience']>) => number) =>
+    Math.round(mean(key) * 100);
+
   const top = withAudience[0].audience!.topCountries[0];
   return {
-    female,
-    male,
-    age2534,
-    age1824,
-    topCity: top?.country ?? 'Lahore',
+    female:  pct((a) => a.genderSplit.female),
+    male:    pct((a) => a.genderSplit.male),
+    age2534: pct((a) => a.ageBuckets['25-34']),
+    age1824: pct((a) => a.ageBuckets['18-24']),
+    // `ageBuckets['35-44']` was read by nobody: this projection stopped at
+    // 25-34, so `V2Audience.age3544` was permanently undefined even though
+    // the underlying bucket is populated. Two consumers depended on it —
+    // Discover's "Gen X · 35–44" filter, which could therefore never match
+    // a single creator, and BrandAnalytics, which drew a 0% bar for 35–44
+    // and swept the entire real 35–44 share into its 45+ residual.
+    age3544: pct((a) => a.ageBuckets['35-44']),
+    // Named `topCity` but populated from the top COUNTRY. Renaming the field
+    // touches every consumer, so surfaces label it "region"; noted here so
+    // the mismatch isn't mistaken for a data error.
+    topCity: top?.country ?? '',
   };
 }
 
-export function creatorToV2(c: Creator): V2Creator {
+export function creatorToV2(c: Creator, db?: Pick<Database, 'reviews'>): V2Creator {
+  // Average of this creator's visible reviews, or null when there are none.
+  // Pass `db` wherever a score is displayed; without it the projection can't
+  // know the rating and reports null rather than falling back to the stale
+  // stored field.
+  const visibleReviews = (db?.reviews ?? []).filter(
+    (r) => r.reviewType === 'creator' && r.targetId === c.id && !r.hidden,
+  );
+  const liveRating = visibleReviews.length > 0
+    ? visibleReviews.reduce((s, r) => s + r.rating, 0) / visibleReviews.length
+    : null;
   const channels = c.platforms.map(platformToV2Channel);
   const rate = defaultRate(c);
   const ratesAll = (c.rateCards ?? []).map((r) => parseRateBand(r.rate)).filter(Boolean) as { min: number; max: number }[];
@@ -173,9 +214,16 @@ export function creatorToV2(c: Creator): V2Creator {
     //
     // Now: no reviews ⇒ null, so callers must say "no reviews yet" instead
     // of inventing a number. Actual fit lives in ./matching.ts.
-    score: typeof c.rating === 'number' && c.rating > 0
-      ? Math.round(c.rating * 20)
-      : null,
+    // Computed LIVE from `db.reviews`, not read from the stored
+    // `Creator.rating` field.
+    //
+    // That field is assigned in exactly one place — the dead legacy
+    // `leaveReview` in client.ts, which has no callers. The live path
+    // (`v2LeaveReview`) writes a Review row and never touches it. So the
+    // badge was frozen at its seeded value forever, while `trustForCreator`
+    // computed the average live from the same reviews: one creator, two
+    // different ratings, on two screens of the same product.
+    score: liveRating !== null ? Math.round(liveRating * 20) : null,
     priceTier: priceTier(rate),
     priceMin: allMins.length > 0 ? Math.min(...allMins) : Math.round(rate * 0.5),
     priceMax: allMaxs.length > 0 ? Math.max(...allMaxs) : Math.round(rate * 1.8),
@@ -376,11 +424,19 @@ export function transactionToV2(tx: Transaction, db: Database): V2WalletLedgerEn
 
 export function brandWalletV2(brand: Brand, db: Database) {
   const mineAll = db.transactions.filter((t) => t.userId === brand.userId);
-  const ledger = mineAll
+  const sorted = mineAll
     .slice()
     .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
-    .slice(0, 10)
     .map((t) => transactionToV2(t, db));
+  // `ledger` is the DISPLAY slice. `ledgerAll` is every row.
+  //
+  // Both "Download statement" and "Download tax report" used to export from
+  // the 10-row display slice — and reported `${ledger.length} rows` in the
+  // success toast, so an account with more history handed its accountant a
+  // statement that silently stopped after ten transactions. Anything that
+  // exports, totals, or reconciles must read `ledgerAll`.
+  const ledgerAll = sorted;
+  const ledger = sorted.slice(0, 10);
   // In-flight = pending escrow holds in the last 30 days
   const inFlight = db.transactions
     .filter((t) => t.userId === brand.userId && t.kind === 'escrow_hold' && t.status === 'pending')
@@ -409,8 +465,21 @@ export function brandWalletV2(brand: Brand, db: Database) {
     inFlight,
     currency: 'USD' as const,
     ledger,
+    ledgerAll,
     thisMonth,
   };
+}
+
+/** Invert `splitGross` for a stored net figure.
+ *
+ *  Only for the wallet's lifetime fallback, where all we have is an
+ *  accumulated net. Not exact for a single deal (fee and tax are rounded
+ *  independently, so several gross values can map to one net) but correct
+ *  in aggregate, which is what a lifetime total is. Anything needing
+ *  per-deal precision must read the ledger rows instead. */
+function grossFromNet(net: number): number {
+  if (net <= 0) return 0;
+  return Math.round(net / (1 - PLATFORM_FEE - WHT));
 }
 
 export function creatorWalletV2(creator: Creator, db: Database) {
@@ -420,16 +489,15 @@ export function creatorWalletV2(creator: Creator, db: Database) {
     .slice()
     .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
     .slice(0, 10)
-    .map((t) => {
-      const entry = transactionToV2(t, db);
-      // Add gross/fee breakdown for payouts
-      if (t.kind === 'escrow_release' || t.kind === 'payout') {
-        const gross = Math.abs(t.amount) > 0 ? Math.round(Math.abs(t.amount) / 0.85) : 0;
-        const fee = -(gross - Math.abs(t.amount));
-        return { ...entry, gross, fee };
-      }
-      return entry;
-    });
+    // No gross/fee reconstruction. This used to compute
+    // `gross = round(|amount| / 0.85)` for every payout-kind row, which was
+    // wrong twice over: it caught WITHDRAWALS too (also `kind: 'payout'`,
+    // negative), inventing a $88 "fee" on a $500 withdrawal in the same
+    // screen whose modal says "No fee on withdrawals"; and even for real
+    // payouts it guessed, because fee and tax are rounded independently at
+    // release time. The actual fee and withholding are already their own
+    // ledger rows — read those instead of inferring them.
+    .map((t) => transactionToV2(t, db));
   // Lifetime earnings: compute from the actual ledger (sum of cleared
   // payouts) rather than reading `creator.lifetimeEarnings`. Pre-fix
   // the stored field was a seeded random number divorced from the
@@ -442,7 +510,14 @@ export function creatorWalletV2(creator: Creator, db: Database) {
   const ledgerLifetime = mineAll
     .filter((t) => (t.kind === 'payout' || t.kind === 'escrow_release') && t.status === 'cleared' && t.amount > 0)
     .reduce((s, t) => s + t.amount, 0);
-  const lifetime = ledgerLifetime > 0 ? ledgerLifetime : creator.lifetimeEarnings;
+  // Both paths must denote the SAME quantity. The ledger sums gross payout
+  // rows; `creator.lifetimeEarnings` accumulates net, so the fallback used
+  // to return a figure 15% smaller under an identical "Lifetime earned"
+  // label — and under a tooltip that calls it gross. Gross it up so the
+  // label is true whichever branch runs.
+  const lifetime = ledgerLifetime > 0
+    ? ledgerLifetime
+    : grossFromNet(creator.lifetimeEarnings);
   return {
     available: creator.walletBalance,
     pending: creator.pendingBalance,
@@ -628,6 +703,8 @@ function deliverableFromSubmission(
    *  to review, not on its actual deadline — the whole Calendar
    *  surface ("overdue", "next 7 days") was lying as a result. */
   campaignDeadline: string,
+  /** Same date, unformatted — see V2Deliverable.dueAt. */
+  campaignDeadlineIso: string,
 ): V2Deliverable {
   // The latest brand feedback note (for revision display)
   const lastFeedback = s.feedback?.[s.feedback.length - 1]?.text;
@@ -642,6 +719,7 @@ function deliverableFromSubmission(
     label,
     status,
     due: campaignDeadline,
+    dueAt: campaignDeadlineIso,
     submittedAt: fmtDateShort(s.submittedAt),
     thumb: s.files[0]?.url,
     // Strip the `[slot:N]` prefix from notes when displaying — the prefix
@@ -760,7 +838,8 @@ export function deriveCollab(campaignId: string, creatorId: string, db: Database
     const label = deliverableLabel(slot.deliverable, db);
     if (slot.latestSubmission) {
       deliverables.push(deliverableFromSubmission(
-        slot.latestSubmission, slot.status, label, slot.deliverable.id, fmtDateShort(camp.deadline),
+        slot.latestSubmission, slot.status, label, slot.deliverable.id,
+        fmtDateShort(camp.deadline), camp.deadline,
       ));
     } else if (accepted || (stage !== 'invited' && (stage as string) !== 'cancelled')) {
       // Synthetic pending row so accepted/engaged collabs show every
@@ -772,6 +851,7 @@ export function deriveCollab(campaignId: string, creatorId: string, db: Database
         label,
         status: 'pending',
         due: fmtDateShort(camp.deadline),
+        dueAt: camp.deadline,
       });
     }
   }

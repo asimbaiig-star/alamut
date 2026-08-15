@@ -22,7 +22,7 @@ import { PresenceBanner } from '@/components/ui/PresenceBanner';
 import { usePresence } from '@/lib/utils/usePresence';
 import { useAuth } from '@/lib/auth/useAuth';
 import { useStore } from '@/lib/api/store';
-import { api } from '@/lib/api/client';
+import { v2ResolveDispute } from '@/screens/workspace-v2/v2DisputeActions';
 import { fmtMoneyFull, fmtRelative } from '@/lib/utils/format';
 import { pushToast } from '@/lib/utils/toast';
 import { DISPUTE_CATEGORY_LABEL, disputeStatusLabel, disputeStatusTone } from '@/lib/utils/labels';
@@ -155,8 +155,16 @@ export function DisputeResolveModal({ open, onClose, dispute, campaign, onResolv
 
     setBusy(true);
     try {
-      await api.disputes.resolve(dispute.id, {
+      // Canonical resolver. This was `api.disputes.resolve` (client.ts),
+      // which paid the creator the FULL gross with no platform fee and no
+      // withholding, never decremented `pendingBalance` (leaving phantom
+      // pending money forever), and never withdrew the accepted offer — so
+      // `computeCollabStage` could not reach 'cancelled' and the collab sat
+      // on both parties' boards as a live deal after the case had closed.
+      // The correct implementation existed the whole time and had no callers.
+      v2ResolveDispute(dispute.id, {
         status: resolutionType,
+        resolvedByUserId: user?.id ?? '',
         note: note.trim(),
         releaseAmount: releaseAmount || undefined,
         refundAmount: refundAmount || undefined,

@@ -9,10 +9,11 @@
 // signals at the top (response time, fit-score, recent campaign
 // outcomes) and primary CTAs in the topbar.
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { fmtUSD, fmtFollowers, Icon, PLATFORM_META, ScoreBadge, Topbar } from '../lib';
-import { useV2AllCampaigns, useV2Creators, useV2BrandShortlist, v2ToggleSavedCreator } from '../v2Hooks';
+import { useV2AllCampaigns, useV2Creators, useV2BrandShortlist, useV2CurrentCreator, v2ToggleSavedCreator } from '../v2Hooks';
 import { useStore } from '@/lib/api/store';
+import { SendBriefModal } from './WorkflowModals';
 
 interface Props {
   creatorId: string;
@@ -22,25 +23,75 @@ interface Props {
 export function CreatorProfile({ creatorId, onRoute }: Props) {
   const allCreators = useV2Creators();
   const allCampaigns = useV2AllCampaigns();
+  const [briefOpen, setBriefOpen] = useState(false);
   const savedIds = useV2BrandShortlist();
-  const creator = allCreators.find((c) => c.id === creatorId) ?? allCreators[0];
+  // This screen is the BRAND-side drilldown: every action on it ("Send
+  // brief", "Open inbox", "Draft with Spark", "Back to Discover") targets a
+  // BRAND_ONLY route, so a creator who lands here — via a deep link, an old
+  // notification, or the storefront-preview chain — is one click from being
+  // silently switched into the brand persona. Nothing creator-side opens
+  // `creator:`, so refusing to render it for a creator viewer costs no real
+  // flow and closes all six routes at once.
+  const viewerIsCreator = !!useV2CurrentCreator();
+  if (viewerIsCreator) {
+    return (
+      <>
+        <Topbar title="Creator profile" crumb="Brand view" />
+        <div className="v2-content" style={{ paddingTop: 32, maxWidth: 520 }}>
+          <p className="v2-muted" style={{ marginBottom: 16 }}>
+            This is the brand-side view of a creator profile. Your own public
+            page is under My storefront.
+          </p>
+          <button className="v2-btn v2-btn-outline" type="button" onClick={() => onRoute('storefront')}>
+            Go to my storefront
+          </button>
+        </div>
+      </>
+    );
+  }
+
+  // No `?? allCreators[0]` fallback. `creatorId` comes straight off the URL
+  // (`?tab=creator:<id>`), so a stale bookmark or a deleted creator used to
+  // silently render the FIRST creator in the store — a stranger's name, bio,
+  // channels and rates — and wire "Save to shortlist" and "Send brief" to
+  // them. It also made the not-found branch below unreachable, so the page
+  // looked like it handled the case.
+  const creator = allCreators.find((c) => c.id === creatorId);
   if (!creator) {
     return (
       <>
         <Topbar title="Creator" crumb="Not found" />
-        <div className="v2-content"><p className="v2-muted">Creator not found.</p></div>
+        <div className="v2-content" style={{ paddingTop: 32, maxWidth: 520 }}>
+          <p className="v2-muted" style={{ marginBottom: 16 }}>
+            This creator profile doesn’t exist or is no longer available.
+          </p>
+          <button className="v2-btn v2-btn-outline" type="button" onClick={() => onRoute('discover')}>
+            Back to Discover
+          </button>
+        </div>
       </>
     );
   }
   const totalFollowers = creator.channels.reduce((s, ch) => s + ch.followers, 0);
-  const avgEngagement = (
-    creator.channels.reduce((s, ch) => s + ch.engagement, 0) / creator.channels.length
-  ).toFixed(1);
+  // Guard the divide: a creator with no connected channels rendered "NaN%".
+  const avgEngagement = creator.channels.length > 0
+    ? (creator.channels.reduce((s, ch) => s + ch.engagement, 0) / creator.channels.length).toFixed(1)
+    : null;
 
   // Response time — average gap between the brand's last message and
   // this creator's reply, across every thread they share. Falls back
   // to the raw Creator.responseHrs from the seed when no replies exist.
   const db = useStore((s) => s.db);
+  // The V2 projection can't answer "did they set a price?" — its numeric
+  // fields are always populated, tier defaults included. The raw rate card
+  // can.
+  const hasPublishedRates = useMemo(() => {
+    const raw = db.creators.find((c) => c.id === creatorId);
+    const rc = raw?.rateCard;
+    if (!rc) return false;
+    return [rc.reel, rc.story, rc.post, rc.longform]
+      .some((r) => (r ?? '').trim().length > 0);
+  }, [db.creators, creatorId]);
   const responseTimeCopy = useMemo(() => {
     const rawCreator = db.creators.find((c) => c.id === creator.id);
     const userId = rawCreator?.userId;
@@ -170,7 +221,11 @@ export function CreatorProfile({ creatorId, onRoute }: Props) {
             }}
           >
             <KpiInline label="Total reach" value={fmtFollowers(totalFollowers)} sub="across all channels" />
-            <KpiInline label="Avg engagement" value={`${avgEngagement}%`} sub="last 30 days" />
+            <KpiInline
+              label="Avg engagement"
+              value={avgEngagement !== null ? `${avgEngagement}%` : '—'}
+              sub={avgEngagement !== null ? 'across connected channels' : 'no channels connected'}
+            />
             <KpiInline label="Response time" value={responseTimeCopy} sub="message threads" />
             <KpiInline label="Going rate" value={fmtUSD(creator.rate)} sub="per Reel + Stories" />
             <KpiInline label="Past brands" value={String(creator.pastBrands.length + pastCollabs.length)} sub={creator.pastBrands.slice(0, 2).join(', ')} />
@@ -210,20 +265,30 @@ export function CreatorProfile({ creatorId, onRoute }: Props) {
 
           <section className="v2-card v2-card-pad" style={{ flex: '1 1 280px' }}>
             <div className="v2-eyebrow" style={{ marginBottom: 14 }}>Audience snapshot</div>
-            <div className="v2-storefront-audience">
-              <AudienceBar label="Female" value={`${creator.audience.female}%`} bar={creator.audience.female} />
-              <AudienceBar label="Male" value={`${creator.audience.male}%`} bar={creator.audience.male} />
-              <AudienceBar label="25–34 age band" value={`${creator.audience.age2534}%`} bar={creator.audience.age2534} />
-              {creator.audience.age1824 != null && (
-                <AudienceBar label="18–24 age band" value={`${creator.audience.age1824}%`} bar={creator.audience.age1824} />
-              )}
-              <div className="v2-storefront-audience-stat">
-                <div className="v2-row" style={{ justifyContent: 'space-between' }}>
-                  <span className="v2-muted" style={{ fontSize: 12.5 }}>Top city</span>
-                  <span style={{ fontWeight: 600, fontSize: 13 }}>{creator.audience.topCity}</span>
+            {creator.audience ? (
+              <div className="v2-storefront-audience">
+                <AudienceBar label="Female" value={`${creator.audience.female}%`} bar={creator.audience.female} />
+                <AudienceBar label="Male" value={`${creator.audience.male}%`} bar={creator.audience.male} />
+                <AudienceBar label="25–34 age band" value={`${creator.audience.age2534}%`} bar={creator.audience.age2534} />
+                {creator.audience.age1824 != null && (
+                  <AudienceBar label="18–24 age band" value={`${creator.audience.age1824}%`} bar={creator.audience.age1824} />
+                )}
+                <div className="v2-storefront-audience-stat">
+                  <div className="v2-row" style={{ justifyContent: 'space-between' }}>
+                    <span className="v2-muted" style={{ fontSize: 12.5 }}>Top city</span>
+                    <span style={{ fontWeight: 600, fontSize: 13 }}>{creator.audience.topCity}</span>
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              // A brand evaluating a creator must not be shown a default
+              // breakdown belonging to nobody — this is the screen where
+              // they decide whether the audience fits.
+              <p className="v2-muted" style={{ fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                This creator’s channels don’t report audience demographics.
+                Ask them directly before assuming a fit.
+              </p>
+            )}
           </section>
         </div>
 
@@ -236,16 +301,29 @@ export function CreatorProfile({ creatorId, onRoute }: Props) {
                 Send a brief or message to negotiate. Rates are USD.
               </p>
             </div>
-            <button className="v2-btn v2-btn-sm v2-btn-outline" type="button" onClick={() => onRoute('inbox')}>
+            {/* Opened the generic inbox — no thread, no creator, nothing
+                sent. Now picks a live campaign and fires the invite. */}
+            <button className="v2-btn v2-btn-sm v2-btn-outline" type="button" onClick={() => setBriefOpen(true)}>
               {Icon.send} Send brief
             </button>
           </div>
-          <div className="v2-storefront-packages">
-            <PackageCard title="Instagram Reel" sub="60–90s vertical · 1 round of revisions" price={creator.priceMin} turnaround="3–5 days" />
-            <PackageCard title="Story bundle (×3)" sub="3 stories with link sticker" price={Math.round(creator.priceMin * 0.8)} turnaround="2 days" />
-            <PackageCard title="Reel + Stories combo" sub="1 Reel + 3 Stories · most booked" price={creator.rate} turnaround="5 days" highlight />
-            <PackageCard title="Long-form review" sub="3-min YouTube short · scripted" price={creator.priceMax} turnaround="7–10 days" />
-          </div>
+          {/* A creator who has published no rates has `priceMin` /
+              `rate` / `priceMax` filled from a flat tier default, so
+              these four cards quoted a brand prices the creator never
+              set — and the brand had no way to tell the difference. */}
+          {hasPublishedRates ? (
+            <div className="v2-storefront-packages">
+              <PackageCard title="Instagram Reel" sub="60–90s vertical · 1 round of revisions" price={creator.priceMin} turnaround="3–5 days" />
+              <PackageCard title="Story bundle (×3)" sub="3 stories with link sticker" price={Math.round(creator.priceMin * 0.8)} turnaround="2 days" />
+              <PackageCard title="Reel + Stories combo" sub="1 Reel + 3 Stories · most booked" price={creator.rate} turnaround="5 days" highlight />
+              <PackageCard title="Long-form review" sub="3-min YouTube short · scripted" price={creator.priceMax} turnaround="7–10 days" />
+            </div>
+          ) : (
+            <p className="v2-muted" style={{ fontSize: 13, margin: 0, lineHeight: 1.5 }}>
+              {creator.name.split(' ')[0]} hasn't published rates yet — send a brief
+              with your budget and they'll quote against it.
+            </p>
+          )}
         </section>
 
         {/* Active + past collabs */}
@@ -350,6 +428,9 @@ export function CreatorProfile({ creatorId, onRoute }: Props) {
           </div>
         </section>
       </div>
+      {briefOpen && (
+        <SendBriefModal creator={creator} onRoute={onRoute} onClose={() => setBriefOpen(false)} />
+      )}
     </>
   );
 }

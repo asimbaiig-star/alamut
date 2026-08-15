@@ -16,8 +16,10 @@ import {
 } from '../v2Hooks';
 import { useStore } from '@/lib/api/store';
 import { collabsForCampaign } from '../v2Adapters';
+import { matchCreatorToBrand } from '../matching';
 import type { V2Campaign, V2Creator, V2Collab } from '../data';
 import { useRecentActivity } from '../useRecentActivity';
+import { SendBriefModal } from './WorkflowModals';
 
 interface Props {
   onRoute: (r: string) => void;
@@ -195,6 +197,14 @@ export function BrandHome({ onRoute }: Props) {
       .sort((a, b) => b.score - a.score);
     return scored[0]?.c;
   }, [brand?.savedCreators, campaigns, creators]);
+
+  // Real reasons for the featured creator, from the canonical matcher.
+  // The card's "Why this match" was one hardcoded sentence for everyone.
+  const featuredReasons = useMemo(() => {
+    if (!featuredCreator || !brand) return [];
+    const raw = db.creators.find((c) => c.id === featuredCreator.id) ?? null;
+    return matchCreatorToBrand(raw, brand.id, db).reasons;
+  }, [featuredCreator, brand, db]);
 
   // Find 3 outcome creators — split by "top performer", "breakout", "engagement leader".
   // Also compute per-card deltas (vs pool average) so the OutcomeCard
@@ -380,7 +390,7 @@ export function BrandHome({ onRoute }: Props) {
 
         {/* Discovery + Calendar */}
         <div className="v2-home-row" style={{ marginBottom: 32 }}>
-          {featuredCreator && <CreatorOfTheWeek creator={featuredCreator} onRoute={onRoute} />}
+          {featuredCreator && <CreatorOfTheWeek creator={featuredCreator} reasons={featuredReasons} onRoute={onRoute} />}
           <CulturalCalendar onRoute={onRoute} />
         </div>
 
@@ -939,7 +949,13 @@ function OutcomeCard({ label, creator, sub, change, badge, onClick }: {
 // Creator of the week (gradient header + creator + why-this-match)
 // =====================================================================
 
-function CreatorOfTheWeek({ creator, onRoute }: { creator: V2Creator; onRoute: (r: string) => void }) {
+function CreatorOfTheWeek({ creator, reasons, onRoute }: {
+  creator: V2Creator;
+  /** Real per-creator reasons from matching.ts. Empty = say nothing. */
+  reasons: string[];
+  onRoute: (r: string) => void;
+}) {
+  const [briefTo, setBriefTo] = useState<V2Creator | null>(null);
   const top = creator.channels.reduce(
     (a, b) => (a.followers > b.followers ? a : b),
     creator.channels[0],
@@ -1009,12 +1025,20 @@ function CreatorOfTheWeek({ creator, onRoute }: { creator: V2Creator; onRoute: (
           </div>
           <ScoreBadge score={creator.score} />
         </div>
-        <div className="v2-home-creator-why">
-          <div className="v2-eyebrow" style={{ marginBottom: 4, color: 'var(--v2-accent)' }}>
-            Why this match
+        {/* Real reasons or none. This was one static sentence — "Audience
+            overlap + fast replies + a track record with similar brands.
+            Likely to hit your next brief on the first take." — rendered
+            identically for every creator, under a heading claiming to
+            explain THIS match. `matchCreatorToBrand` computes actual
+            per-creator reasons and was never called here. */}
+        {reasons.length > 0 && (
+          <div className="v2-home-creator-why">
+            <div className="v2-eyebrow" style={{ marginBottom: 4, color: 'var(--v2-accent)' }}>
+              Why this match
+            </div>
+            {reasons.join(' · ')}
           </div>
-          Audience overlap + fast replies + a track record with similar brands. Likely to hit your next brief on the first take.
-        </div>
+        )}
         <div className="v2-row" style={{ gap: 8, marginTop: 14 }}>
           <button
             className="v2-btn v2-btn-primary v2-btn-sm"
@@ -1026,13 +1050,17 @@ function CreatorOfTheWeek({ creator, onRoute }: { creator: V2Creator; onRoute: (
             className="v2-btn v2-btn-outline v2-btn-sm"
             type="button"
             style={{ flex: 1, justifyContent: 'center' }}
-            // Pre-fix this routed to the plain inbox (no thread, no
-            // creator context). Now opens the creator's profile where
-            // the brand has the Invite / Send-offer affordances live.
-            onClick={() => onRoute(`creator:${creator.id}`)}
+            // Both buttons ran the SAME line — `onRoute(`creator:${creator.id}`)`
+            // — so "Send brief" was a second "View profile" wearing a
+            // different label. It now opens the campaign picker and
+            // actually sends the invite.
+            onClick={() => setBriefTo(creator)}
           >Send brief</button>
         </div>
       </div>
+      {briefTo && (
+        <SendBriefModal creator={briefTo} onRoute={onRoute} onClose={() => setBriefTo(null)} />
+      )}
     </div>
   );
 }

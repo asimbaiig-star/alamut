@@ -20,6 +20,11 @@ interface Props {
    *  for later" tile), the saved-only filter starts active so the
    *  creator lands directly inside their bookmark list. */
   initialFilter?: 'saved';
+  /** Pre-applied status pill, from `creator-campaigns?status=Live`.
+   *  BriefDetail sends creators here when the brief they opened isn't
+   *  accepting applications, so landing on "All" would drop them back
+   *  among the briefs they can't apply to. */
+  initialStatus?: Status;
 }
 
 type Status = 'all' | 'Live' | 'Planned';
@@ -39,7 +44,7 @@ const SORT_OPTIONS: { id: SortKey; label: string }[] = [
   { id: 'fit',      label: 'Best fit for me' },
 ];
 
-export function BrowseBriefs({ onRoute, initialFilter }: Props) {
+export function BrowseBriefs({ onRoute, initialFilter, initialStatus }: Props) {
   const me = useV2CurrentCreator();
   const allCampaigns = useV2AllCampaigns();
   const db = useStore((s) => s.db);
@@ -50,7 +55,7 @@ export function BrowseBriefs({ onRoute, initialFilter }: Props) {
   const [query, setQuery] = useState('');
   // P1b §1.2: 'Active' was dropped (it conflated per-collab progress with
   // campaign-level state). 'Live' is the only "currently accepting" filter.
-  const [status, setStatus] = useState<Status>('all');
+  const [status, setStatus] = useState<Status>(initialStatus ?? 'all');
   const [fitOnly, setFitOnly] = useState(false);
   // Saved-only filter — toggled via the chip in the filter strip, or
   // pre-set by the `?filter=saved` deep-link from CreatorHome.
@@ -1027,6 +1032,24 @@ function CampaignTile({ campaign, onOpen }: {
               {campaign.brandIsDemo && (
                 <span className="v2-pill v2-pill-draft" title="Sample content — this brand is part of the Alamut demo and won't respond to applications.">
                   Demo
+                </span>
+              )}
+              {/* Whether this brief is actually open.
+                  `v2ApplyToCampaign` returns null for any campaign that
+                  isn't 'live', and 12 seeded campaigns are drafts — all
+                  browsable, all clickable, with nothing on the card or the
+                  detail page distinguishing them. A creator could write a
+                  full pitch for a brief that could never accept one. The
+                  apply button now refuses (Phase 2); this stops them
+                  starting. */}
+              {campaign.status !== 'Live' && (
+                <span
+                  className="v2-pill v2-pill-draft"
+                  title={campaign.status === 'Paused'
+                    ? 'This campaign is paused — the brand isn’t taking applications right now.'
+                    : 'Not open yet — the brand hasn’t published this brief.'}
+                >
+                  {campaign.status === 'Paused' ? 'Paused' : 'Not open yet'}
                 </span>
               )}
             </div>

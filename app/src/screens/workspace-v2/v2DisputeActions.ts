@@ -43,8 +43,8 @@ import { markContractFulfilled } from '@/lib/api/contracts';
 // Phase 8 lite — Supabase mirror for dispute mutations.
 import { isSupabaseConfigured } from '@/lib/supabase';
 
-const PLATFORM_FEE = 0.10;
-const WHT = 0.05;
+// Fee/withholding rates come from one module — see lib/api/money.ts.
+import { PLATFORM_FEE, WHT, netOf, splitGross } from '@/lib/api/money';
 
 /** Fire-and-forget mirror for a new Dispute INSERT. Silenced on FK
  *  (collab/campaign tied to generated rows) + RLS. */
@@ -382,7 +382,7 @@ export function v2ResolveDispute(disputeId: string, input: {
         // after a full refund the creator's wallet showed pending money
         // that would never arrive, forever.
         if (creator) {
-          const refundNet = Math.round(input.refundAmount * (1 - PLATFORM_FEE - WHT));
+          const refundNet = netOf(input.refundAmount);
           db.creators = db.creators.map((c) =>
             c.id === creator.id
               ? { ...c, pendingBalance: Math.max(0, c.pendingBalance - refundNet) }
@@ -394,9 +394,7 @@ export function v2ResolveDispute(disputeId: string, input: {
         // Mirror v2ApproveContent's release path: net to creator after
         // platform fee + WHT. `releaseAmount` is gross (admin's input).
         const releaseGross = input.releaseAmount;
-        const fee = Math.round(releaseGross * PLATFORM_FEE);
-        const tax = Math.round(releaseGross * WHT);
-        const net = releaseGross - fee - tax;
+        const { fee, tax, net } = splitGross(releaseGross);
 
         // WORKFLOW AUDIT — admin resolved the dispute in the creator's
         // favor, so the relevant submission is implicitly approved.
@@ -444,7 +442,10 @@ export function v2ResolveDispute(disputeId: string, input: {
           at: ts,
           userId: creator.userId,
           kind: 'payout',
-          amount: net,
+          // Gross, matching v2ApproveContent — the fee and withholding
+          // rows below are the deductions, so these rows sum to the
+          // wallet movement.
+          amount: releaseGross,
           status: 'cleared',
           campaignId: camp.id,
           counterpartyUserId: brand.userId,

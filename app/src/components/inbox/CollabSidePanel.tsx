@@ -20,6 +20,7 @@
 import { fmtUSD } from '@/screens/workspace-v2/lib';
 import { Icon } from '@/screens/workspace-v2/lib';
 import type { V2Campaign, V2Creator, V2Collab } from '@/screens/workspace-v2/data';
+import { netOf, splitGross, PLATFORM_FEE_LABEL, WHT_LABEL } from '@/lib/api/money';
 
 export interface CollabSidePanelProps {
   campaign: V2Campaign;
@@ -177,32 +178,42 @@ export function CollabSidePanel({
         ))}
       </div>
 
-      {/* === Money breakdown (both modes). Source of truth for what
-              the creator actually pockets — fee + tax + net. === */}
-      <div className="v2-inbox-side-section">
-        <div className="v2-inbox-side-section-title">This deal</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <Row label="Rate"               value={fmtUSD(counterparty.rate)} />
-          <Row label="Platform fee (10%)" value={fmtUSD(Math.round(counterparty.rate * 0.10))} muted />
-          <Row label="Tax (5%)"           value={fmtUSD(Math.round(counterparty.rate * 0.05))} muted />
-          <div
-            className="v2-row"
-            style={{
-              justifyContent: 'space-between',
-              paddingTop: 8,
-              borderTop: '1px solid var(--v2-line)',
-            }}
-          >
-            <span style={{ fontWeight: 600, fontSize: 13 }}>Net to creator</span>
-            <span
-              className="v2-tabular v2-accent-text"
-              style={{ fontWeight: 700, fontSize: 14 }}
+      {/* === Money breakdown (both modes). What the creator actually
+              pockets on THIS deal — fee + tax + net.
+
+              Pre-fix this read `counterparty.rate`, the creator's generic
+              advertised rate, rather than `collab.price`, the negotiated
+              figure for this deal (already a prop, never used). For a
+              CREATOR viewer `counterparty` is a synthesized brand object
+              with `rate: 0`, so the one persona this section exists for
+              saw $0 / $0 / $0 / $0 — while the real price sat in the
+              context band on the same screen. === */}
+      {collab && collab.price > 0 && (
+        <div className="v2-inbox-side-section">
+          <div className="v2-inbox-side-section-title">This deal</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <Row label="Rate"                              value={fmtUSD(collab.price)} />
+            <Row label={`Platform fee (${PLATFORM_FEE_LABEL})`} value={fmtUSD(splitGross(collab.price).fee)} muted />
+            <Row label={`Tax (${WHT_LABEL})`}                   value={fmtUSD(splitGross(collab.price).tax)} muted />
+            <div
+              className="v2-row"
+              style={{
+                justifyContent: 'space-between',
+                paddingTop: 8,
+                borderTop: '1px solid var(--v2-line)',
+              }}
             >
-              {fmtUSD(Math.round(counterparty.rate * 0.85))}
-            </span>
+              <span style={{ fontWeight: 600, fontSize: 13 }}>Net to creator</span>
+              <span
+                className="v2-tabular v2-accent-text"
+                style={{ fontWeight: 700, fontSize: 14 }}
+              >
+                {fmtUSD(netOf(collab.price))}
+              </span>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* === Stage hint (detailed mode only) — tells the user, in one
               sentence, what the deal is doing right now. Reads from

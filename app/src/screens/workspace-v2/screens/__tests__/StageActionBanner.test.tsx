@@ -159,9 +159,20 @@ describe('StageActionBanner', () => {
       expect(screen.getByRole('button', { name: /Accept \(/i })).toBeInTheDocument();
     });
 
-    it('returns null when negotiating stage has no pendingOffer', () => {
-      const { container } = render(<StageActionBanner {...baseProps({ stage: 'negotiating' })} />);
-      expect(container.firstChild).toBeNull();
+    it('acknowledges a sent counter when there is no pending offer', () => {
+      // REWRITTEN. This asserted `container.firstChild` was null — pinning a
+      // real dead end as correct behaviour.
+      //
+      // `computeCollabStage` reports 'negotiating' whenever an offer is
+      // pending OR countered, regardless of who moved last, but
+      // `pendingOffer` only resolves when the ball is in the CREATOR's
+      // court. So the moment a creator countered, no branch matched and the
+      // whole "What's next" card disappeared — no confirmation the counter
+      // had even been sent. A creator's only signal was absence.
+      const h = buildHandlers();
+      render(<StageActionBanner {...baseProps({ stage: 'negotiating' })} {...h} />);
+      expect(screen.getByText(/counter sent/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /message brand/i })).toBeInTheDocument();
     });
   });
 

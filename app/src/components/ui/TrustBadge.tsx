@@ -42,8 +42,6 @@ export function TrustBadge({ snapshot, size = 'sm', showMetrics = false }: Trust
           <span>{snapshot.completedCampaigns} done</span>
           {snapshot.avgRating > 0 && <span>· {snapshot.avgRating}★</span>}
           {snapshot.responseHrs > 0 && <span>· {snapshot.responseHrs}h reply</span>}
-          {snapshot.onTimeRatePct > 0 && <span>· {snapshot.onTimeRatePct}% on-time</span>}
-          {snapshot.payoutReliabilityPct > 0 && <span>· {snapshot.payoutReliabilityPct}% paid on time</span>}
         </div>
       )}
     </div>
@@ -79,12 +77,18 @@ export function TrustMetricsCard({ snapshot, role }: { snapshot: TrustSnapshot; 
     { label: 'Completed', value: snapshot.completedCampaigns.toString(), meta: 'campaigns' },
     { label: 'Avg rating', value: snapshot.avgRating > 0 ? snapshot.avgRating.toFixed(1) : '—', meta: `${snapshot.reviewCount} review${snapshot.reviewCount === 1 ? '' : 's'}` },
   ];
+  // "On-time delivery" and "Payout reliability" used to be listed here.
+  // Neither was measured: both were arithmetic on the review-rating average
+  // (`85 + avg * 3`, `88 + avg * 2`) that defaulted to 95% for an account
+  // with no completed campaigns at all. Every remaining item reads a value
+  // that is genuinely counted.
   if (role === 'creator') {
-    items.push({ label: 'Reply time', value: `${snapshot.responseHrs}`, meta: 'hours' });
-    items.push({ label: 'On-time delivery', value: `${snapshot.onTimeRatePct}`, meta: '% rate' });
-    items.push({ label: 'Avg revisions', value: snapshot.avgRevisionRounds.toFixed(1), meta: 'rounds' });
-  } else {
-    items.push({ label: 'Payout reliability', value: `${snapshot.payoutReliabilityPct}`, meta: '% on time' });
+    if (snapshot.responseHrs > 0) {
+      items.push({ label: 'Reply time', value: `${snapshot.responseHrs}`, meta: 'hours' });
+    }
+    if (snapshot.completedCampaigns > 0) {
+      items.push({ label: 'Avg revisions', value: snapshot.avgRevisionRounds.toFixed(1), meta: 'rounds' });
+    }
   }
 
   return (

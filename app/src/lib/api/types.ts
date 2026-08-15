@@ -287,6 +287,13 @@ export interface Creator {
    *  Captured via the TaxFormModal in KycTax; consumed by the KYC step
    *  state machine + year-end 1099 generation (latter TODO). */
   taxForm?: TaxFormRecord;
+  /** When the creator accepted the Creator Agreement, and which version.
+   *  Before this existed, the KYC checklist marked the agreement step
+   *  "Signed via first accepted offer" — inferring a signature from an
+   *  unrelated event, for a document that did not exist. A signature is
+   *  now a fact we record or it hasn't happened. */
+  agreementAcceptedAt?: string;
+  agreementVersion?: string;
   /** Migration 021 optimistic lock — see Dispute.version for the rationale.
    *  Creator-profile edits and wallet/pending balance updates flow through this lock. */
   version?: number;
@@ -653,7 +660,33 @@ export interface Campaign {
   spent: number;          // total released
   escrowHeld: number;     // sitting in escrow
   region: string;
+  /** Primary category. Kept as a single value for every existing consumer;
+   *  `categories` below carries the brand's full multi-select. */
   category: string;
+  /**
+   * Targeting the brand entered in the wizard.
+   *
+   * These four were collected across three wizard steps, echoed back on the
+   * "Review & launch" screen as the brand's final confirmation, and then
+   * dropped on the floor — `Campaign` had nowhere to put them, so
+   * `v2LaunchCampaign` read `categories[0]` and ignored the rest entirely.
+   * The step's own copy told the brand Spark would use them to filter
+   * creators by audience overlap.
+   *
+   * Optional so existing rows and migrations are unaffected. Persisting them
+   * is the honest floor: the brand's input is kept and shown, rather than
+   * confirmed and discarded. Auto-filtering on them is a separate piece of
+   * work — until it lands, the wizard says they're recorded on the brief.
+   */
+  objective?: string;
+  audienceGender?: string;
+  audienceAge?: string[];
+  categories?: string[];
+  /** The wizard's structured placement rows, kept so a saved draft reopens
+   *  exactly as it was authored. `deliverablesText` is the flattened display
+   *  string and `db.deliverables` the materialized rows; neither round-trips
+   *  back into the editor cleanly. */
+  placements?: { platform: string; format: string; count: number }[];
   stage: CampaignStage;
   /** P1d §1.5/§1.6 — free-form display string ("1 Reel + 3 Stories on Instagram").
    *  Pre-P1d this was named `deliverables`. Migrator 4 renames it and parses
@@ -1034,6 +1067,44 @@ export interface Message {
   attachments?: MessageAttachment[];
 }
 
+/**
+ * Reported performance for one campaign.
+ *
+ * Replaces `derivePerf`, which invented these numbers at render time from
+ * follower counts (`impressions = reach × 1.4`, a hardcoded engagement rate,
+ * a fixed weekly decay curve, `EMV = impressions/1000 × $50`) and presented
+ * them to every user as measurements, complete with week-over-week deltas.
+ * Nothing in the product measures any of it — there are no platform APIs.
+ *
+ * Now performance is DATA, not a formula. A campaign either has a row here
+ * or it doesn't, and a surface either has numbers to show or says it's
+ * waiting on connected channels. No code path can conjure a figure.
+ *
+ * Seeded demo campaigns carry authored rows with `sample: true` so the
+ * product still demonstrates what it looks like fully populated — that story
+ * matters, and hand-authored numbers tell it better than an arithmetic
+ * accident. Surfaces label those rows as sample data.
+ */
+export interface CampaignPerformance {
+  campaignId: string;
+  /** True = authored demo data, not measured. Surfaces MUST label it. */
+  sample: boolean;
+  impressions: number;
+  reach: number;
+  engagement: number;
+  saves: number;
+  shares: number;
+  profileVisits: number;
+  /** Engagement per week since launch, oldest first. */
+  weeklySeries: number[];
+  /** Per-creator contribution, for the performance leaderboard. Pre-fix
+   *  those rows were derived from the ASCII character codes of the
+   *  creator's id, which ranked real named people by how their primary key
+   *  happened to spell. */
+  byCreator: { creatorId: string; impressions: number; engagement: number }[];
+  updatedAt: string;
+}
+
 export type TxKind = 'topup' | 'escrow_hold' | 'escrow_release' | 'payout' | 'refund' | 'fee' | 'ad_spend' | 'referral_bonus';
 export type TxStatus = 'cleared' | 'pending' | 'failed';
 
@@ -1208,6 +1279,10 @@ export interface Database {
   referrals: Referral[];
   advances: Advance[];
   testimonials: Testimonial[];
+  /** Reported campaign performance. See `CampaignPerformance`. Empty for
+   *  every real campaign until platform APIs exist — that emptiness is the
+   *  honest state and the surfaces render it as such. */
+  campaignPerformance: CampaignPerformance[];
   /** P1c §1.1 — Collaboration is the first-class brand-creator-campaign
    *  relationship. Pre-P1c this was derived on every read via
    *  `deriveCollab(campaignId, creatorId, db)` which made stage the

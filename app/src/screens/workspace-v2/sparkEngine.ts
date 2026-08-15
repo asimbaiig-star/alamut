@@ -18,6 +18,8 @@
 // real workflow primitives, not just suggestions.
 
 import { type V2Creator, type V2Campaign } from './data';
+import type { Database } from '@/lib/api/types';
+import { matchCreatorToBrand } from './matching';
 
 // =====================================================================
 // Pool injection — the engine doesn't import store data directly so it
@@ -26,11 +28,54 @@ import { type V2Creator, type V2Campaign } from './data';
 // from the store; engine handlers read via `pool()`.
 // =====================================================================
 
-let _pool: { creators: V2Creator[]; campaigns: V2Campaign[] } = { creators: [], campaigns: [] };
-export function setSparkPool(p: { creators: V2Creator[]; campaigns: V2Campaign[] }) {
+let _pool: {
+  creators: V2Creator[];
+  campaigns: V2Campaign[];
+  /** Raw store, injected (not imported) so the engine stays testable.
+   *  Needed because the canonical matcher scores raw `Creator`/`Campaign`
+   *  records, not the V2 projections. */
+  db?: Database;
+  /** Acting brand — the matcher scores creators against THIS brand. */
+  brandId?: string;
+} = { creators: [], campaigns: [] };
+export function setSparkPool(p: {
+  creators: V2Creator[]; campaigns: V2Campaign[]; db?: Database; brandId?: string;
+}) {
   _pool = p;
 }
 function pool() { return _pool; }
+
+/**
+ * Rank candidates by real fit, best first.
+ *
+ * The engine used to `sort((a, b) => (b.score ?? -1) - (a.score ?? -1))` —
+ * `V2Creator.score` is the review rating rescaled, explicitly NOT a fit
+ * score — and then tell the brand "I ranked by fit-score" and "Sorted by
+ * fit-score (highest first)". Every plan and every find asserted a method
+ * it didn't use. `matching.ts` existed the whole time; this file never
+ * imported it.
+ *
+ * Creators the matcher can't score (too little signal) sort last rather
+ * than being dropped: they may still be right, we just can't claim it.
+ */
+function rankByFit(creators: V2Creator[]): V2Creator[] {
+  const { db, brandId } = pool();
+  // No store or no acting brand — leave the order alone rather than
+  // inventing one. Callers describe the ordering honestly either way.
+  if (!db || !brandId) return creators;
+  return creators
+    .map((c) => {
+      const raw = db.creators.find((x) => x.id === c.id) ?? null;
+      return { c, score: matchCreatorToBrand(raw, brandId, db).score };
+    })
+    .sort((a, b) => (b.score ?? -1) - (a.score ?? -1))
+    .map((x) => x.c);
+}
+
+/** True when ranking actually used fit, so copy can say so accurately. */
+function fitRankingAvailable(): boolean {
+  return !!pool().db && !!pool().brandId;
+}
 
 // =====================================================================
 // Public types
@@ -187,7 +232,7 @@ function filterCreators(text: string, context: SparkContext): { creators: V2Crea
     );
   }
 
-  candidates.sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+  candidates = rankByFit(candidates);
   return { creators: candidates.slice(0, 5), criteria };
 }
 
@@ -217,7 +262,7 @@ function handlePlan(text: string, context: SparkContext): { reply: SparkMessage;
     const ctxLabel = criteria.length ? criteria.join(' + ') : 'top picks';
     const headline = `Here's a starting shortlist of ${creators.length} creators for ${ctxLabel}.`;
     const rationale =
-      `I ranked by fit-score, then verified you have at least one ${cat?.toLowerCase() ?? 'category'} match in each. ` +
+      `${fitRankingAvailable() ? 'I ranked by fit against your brand' : 'I filtered these'}, then verified you have at least one ${cat?.toLowerCase() ?? 'category'} match in each. ` +
       (budget
         ? `For your ${budget >= 1000 ? `$${(budget / 1000).toFixed(1)}K` : `$${budget}`} budget you can afford the full set with room for boost spend.`
         : `I'd suggest a $${creators.reduce((s, c) => s + c.rate, 0).toLocaleString()} budget to book all five.`);
@@ -249,6 +294,12 @@ function handleFind(text: string, context: SparkContext): { reply: SparkMessage;
     ...context,
     category: extractCategory(text) ?? context.category,
     region: extractCity(text) ?? context.region,
+    // `handleFind` never called `extractBudget`, unlike handlePlan and
+    // handleProject. BrandHome's own suggested prompt is "Find me 5
+    // LinkedIn creators in HR for $10K" — the $10K was parsed by nothing,
+    // filtered nothing, and didn't carry into later turns, so a following
+    // "project reach" fell back to the $5,000 default.
+    budget: extractBudget(text) ?? context.budget,
   };
 
   if (creators.length === 0) {
@@ -273,7 +324,7 @@ function handleFind(text: string, context: SparkContext): { reply: SparkMessage;
       from: 'spark',
       blocks: [
         { kind: 'text', body: `${creators.length} creator${creators.length > 1 ? 's' : ''} matching ${criteria.length ? criteria.join(' + ') : 'your search'}.` },
-        { kind: 'creator-cards', creatorIds: creators.map((c) => c.id), rationale: 'Sorted by fit-score (highest first).' },
+        { kind: 'creator-cards', creatorIds: creators.map((c) => c.id), rationale: fitRankingAvailable() ? 'Ranked by fit against your brand.' : 'Filtered to your criteria.' },
       ],
       ts: Date.now(),
       suggestions: ['Compare top 2', 'Save all', 'Show me their packages', 'Different category'],
@@ -296,7 +347,7 @@ function handleCompare(text: string, context: SparkContext): { reply: SparkMessa
   else if (context.shortlist.length >= 2) {
     chosen = context.shortlist.slice(0, 3).map((id) => pool().creators.find((c) => c.id === id)!).filter(Boolean);
   } else {
-    chosen = pool().creators.slice().sort((a, b) => (b.score ?? -1) - (a.score ?? -1)).slice(0, 2);
+    chosen = rankByFit(pool().creators.slice()).slice(0, 2);
   }
 
   return {
@@ -359,22 +410,43 @@ function handleSend(text: string, context: SparkContext): { reply: SparkMessage;
     ?? (context.shortlist[0] ? pool().creators.find((c) => c.id === context.shortlist[0]) : null)
     ?? pool().creators[0];
 
+  // Empty creator pool — the literal state of a fresh production database.
+  // This used to fall through to `pool().creators[0]` and dereference it
+  // with `creator!`, throwing inside an async setTimeout with no `.catch`,
+  // so `setThinking(false)` never ran: the composer stayed disabled and the
+  // "thinking…" indicator spun forever with no error. Answer honestly instead.
+  if (!creator) {
+    return {
+      reply: {
+        id: msgId(),
+        from: 'spark',
+        ts: Date.now(),
+        blocks: [{
+          kind: 'text',
+          body: "There aren't any creators on the platform yet, so I can't draft outreach. Once creators join I can find a fit and write the brief.",
+        }],
+        suggestions: [],
+      },
+      newContext: context,
+    };
+  }
+
   const campaignName = context.campaignName
     ?? (context.category ? `${context.category} push — ${context.brand}` : `${context.brand} campaign`);
-  const copy = generateBriefCopy(creator!, campaignName, context);
+  const copy = generateBriefCopy(creator, campaignName, context);
 
   return {
     reply: {
       id: msgId(),
       from: 'spark',
       blocks: [
-        { kind: 'text', body: `Drafted a brief for ${creator!.name}. Review and I'll send it through Inbox once you approve.` },
+        { kind: 'text', body: `Drafted a brief for ${creator.name}. Review and I'll send it through Inbox once you approve.` },
         {
           kind: 'brief-draft',
           campaignName,
           brand: context.brand,
-          creatorId: creator!.id,
-          rate: creator!.rate,
+          creatorId: creator.id,
+          rate: creator.rate,
           copy,
         },
       ],
@@ -386,10 +458,16 @@ function handleSend(text: string, context: SparkContext): { reply: SparkMessage;
 }
 
 function handleSave(_text: string, context: SparkContext): { reply: SparkMessage; newContext: SparkContext } {
-  // Save the most recent creator-cards block — but engine doesn't track history.
-  // Instead, save top-3 from the current filter context.
+  // Saves the current filter context's results — the same set
+  // `filterCreators` returns for a "find" (capped at 5 there).
+  //
+  // This hardcoded `.slice(0, 3)` regardless of how many creators the
+  // previous turn actually showed, then replied "Added 3 creators" with no
+  // mention of the ones it dropped. Typing "save them all" after a
+  // five-creator response silently kept three. The UI's own "Save all"
+  // buttons pass the real id list, so only the typed path was wrong.
   const { creators } = filterCreators('', context);
-  const toSave = creators.slice(0, 3).map((c) => c.id);
+  const toSave = creators.map((c) => c.id);
   const newShortlist = Array.from(new Set([...context.shortlist, ...toSave]));
 
   if (toSave.length === 0) {
@@ -541,7 +619,14 @@ export async function tryRemoteText(
     return { from: m.from, text };
   });
   try {
+    // Abort after 12s. Without a timeout a hung upstream kept the caller
+    // awaiting forever — and Spark.tsx unconditionally awaits this once its
+    // scripted delay fires, so `thinking` stayed true and the composer
+    // stayed disabled for as long as the network hung.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12_000);
     const res = await fetch(url, {
+      signal: controller.signal,
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -555,6 +640,7 @@ export async function tryRemoteText(
         },
       }),
     });
+    clearTimeout(timeoutId);
     if (!res.ok) return null; // 503 = not configured, 502 = upstream
     const data = await res.json();
     const block = (data?.reply?.blocks ?? []).find((b: { kind?: string; body?: string }) => b.kind === 'text');

@@ -10,8 +10,8 @@
 //   admin:   admin@alamut.test
 
 import type {
-  Application, AudienceDemographics, Brand, Campaign, CampaignStage,
-  CampaignTracking, ContentRights, Creator, Database, Dispute,
+  Application, AudienceDemographics, Brand, Campaign, CampaignPerformance,
+  CampaignStage, CampaignTracking, ContentRights, Creator, Database, Dispute,
   Offer, Platform, Referral, RetainerConfig, Submission, Thread,
   Transaction, User,
 } from './types';
@@ -2365,6 +2365,115 @@ function preVerifyDemoBrands(brands: Brand[]): Brand[] {
   return brands.map((b) => (isDemoBrand(b) ? { ...b, verified: true } : b));
 }
 
+// =====================================================================
+// Sample campaign performance
+// =====================================================================
+//
+// The product has no platform integrations, so nothing measures reach,
+// impressions or engagement. Previously `derivePerf` invented them at render
+// time from follower counts and showed the result to everyone as fact.
+//
+// The demo still needs to show what a populated campaign looks like — that's
+// the whole point of the seeded world — so the numbers live HERE, as authored
+// data flagged `sample: true`, and the surfaces label them. A real brand's
+// campaign has no row and shows an honest empty state instead.
+//
+// Authoring rather than deriving also makes the demo better: the shape is
+// deliberate (a slow first week, a spike as the roster publishes, a long
+// tail) instead of whatever `followers × 1.4` happened to produce, and it
+// stays put when seed data changes.
+
+/** Engagement per week, oldest first — a realistic publish-and-decay curve. */
+function weeklyCurve(total: number, weeks: number): number[] {
+  const shape = [0.06, 0.19, 0.21, 0.16, 0.13, 0.10, 0.08, 0.07];
+  const w = shape.slice(0, weeks);
+  const norm = w.reduce((s, n) => s + n, 0);
+  return w.map((n) => Math.round((total * n) / norm));
+}
+
+/**
+ * Build one authored performance row.
+ *
+ * `impressions` is the anchor and everything else is expressed against it,
+ * so the ratios a reader computes (ER, CPM, CPE) land in believable ranges
+ * rather than being asserted separately and disagreeing with each other.
+ */
+function samplePerf(params: {
+  campaignId: string;
+  impressions: number;
+  /** Engagement rate as a percentage, e.g. 4.8. */
+  erPct: number;
+  /** Fraction of impressions that were unique accounts. */
+  reachRatio: number;
+  weeks: number;
+  creatorIds: string[];
+  /** Relative contribution per creator; normalized. Same length as ids. */
+  weights: number[];
+}): CampaignPerformance {
+  const engagement = Math.round(params.impressions * (params.erPct / 100));
+  const reach = Math.round(params.impressions * params.reachRatio);
+  const wSum = params.weights.reduce((s, n) => s + n, 0) || 1;
+  return {
+    campaignId: params.campaignId,
+    sample: true,
+    impressions: params.impressions,
+    reach,
+    engagement,
+    saves: Math.round(engagement * 0.14),
+    shares: Math.round(engagement * 0.06),
+    profileVisits: Math.round(reach * 0.041),
+    weeklySeries: weeklyCurve(engagement, params.weeks),
+    byCreator: params.creatorIds.map((creatorId, i) => {
+      const share = params.weights[i] / wSum;
+      return {
+        creatorId,
+        impressions: Math.round(params.impressions * share),
+        engagement: Math.round(engagement * share),
+      };
+    }),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Performance rows for seeded campaigns that have live or paid creators.
+ *
+ * Derived from the seeded collaborations so the leaderboard names creators
+ * who are genuinely on the campaign — the per-creator split is authored
+ * (weights below), but WHO appears is real. The previous leaderboard ranked
+ * creators by the ASCII codes of their database ids.
+ */
+function buildSamplePerformance(): CampaignPerformance[] {
+  const rows: CampaignPerformance[] = [];
+  // Deliberate variety so the demo shows a range, not one flat story:
+  // a strong performer, a solid mid, and an efficient small campaign.
+  const profiles = [
+    { impressions: 1_840_000, erPct: 5.2, reachRatio: 0.62, weeks: 7 },
+    { impressions: 920_000,   erPct: 4.1, reachRatio: 0.66, weeks: 6 },
+    { impressions: 410_000,   erPct: 6.8, reachRatio: 0.71, weeks: 5 },
+    { impressions: 2_600_000, erPct: 3.4, reachRatio: 0.58, weeks: 8 },
+    { impressions: 615_000,   erPct: 4.9, reachRatio: 0.64, weeks: 6 },
+  ];
+
+  const eligible = allCampaigns.filter((c) => c.stage === 'live' || c.stage === 'closed');
+  eligible.forEach((camp, i) => {
+    // Creators with an accepted offer on this campaign — the roster that
+    // would actually have published.
+    const creatorIds = Array.from(new Set(
+      allOffers
+        .filter((o) => o.campaignId === camp.id && o.status === 'accepted')
+        .map((o) => o.creatorId),
+    ));
+    if (creatorIds.length === 0) return;
+    const p = profiles[i % profiles.length];
+    // Descending weights: someone always outperforms, which is the
+    // interesting thing a brand looks for.
+    const weights = creatorIds.map((_, k) => 100 - k * 17);
+    rows.push(samplePerf({ campaignId: camp.id, ...p, creatorIds, weights }));
+  });
+  return rows;
+}
+
 export const SEED: Database = {
   users: allUsers,
   creators: preVerifyDemoCreators([...allCreators, ...pendingApplications.map((p) => p.creator)]),
@@ -2382,6 +2491,7 @@ export const SEED: Database = {
   referrals: seededReferrals,
   advances: [],
   testimonials: seededTestimonials,
+  campaignPerformance: buildSamplePerformance(),
   // P1c §1.1 — Collaborations are materialized by migrator 3 from the
   // seeded apps/offers/submissions on first hydrate. Seeding the empty
   // array here means migrator 3's idempotent guard works correctly:

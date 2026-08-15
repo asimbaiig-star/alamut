@@ -9,6 +9,7 @@
 // "Editing" topnav banner. Snapshot test pins the equivalence.
 
 import { useStore } from '@/lib/api/store';
+import { useV2CurrentCreator } from '../v2Hooks';
 import { pushToast } from '@/lib/utils/toast';
 import { useFeaturedReviews } from '@/components/storefront/useFeaturedReviews';
 import {
@@ -26,19 +27,44 @@ interface Props {
 
 export function PublicStorefront({ handle, onRoute }: Props) {
   const db = useStore((s) => s.db);
+  const me = useV2CurrentCreator();
   const target = handle?.toLowerCase().replace(/^@/, '');
-  const creator =
-    (target && db.creators.find((c) => c.handle.toLowerCase().replace('@', '') === target))
-    || db.creators[0];
+  // No `|| db.creators[0]` fallback. An unresolvable handle — a stale link
+  // after someone renamed themselves, a typo, a deleted account — used to
+  // render the FIRST creator in the store: a stranger's real name, photo,
+  // rates and work, under whatever handle was asked for. The public route
+  // (`PublicCreator`) already got this right; this preview did not.
+  const creator = target
+    ? db.creators.find((c) => c.handle.toLowerCase().replace('@', '') === target)
+    : undefined;
   // Hook before any conditional return — safe on null per its contract.
   const { reviews, total } = useFeaturedReviews(creator ?? null, db);
   void reviews; // total is what we render on the KPI strip; reviews list is consumed inside StorefrontReviews
 
   if (!creator) {
     return (
-      <div className="v2-content"><p className="v2-muted">Creator not found.</p></div>
+      <div className="v2-content" style={{ paddingTop: 48, maxWidth: 520 }}>
+        <h2 style={{ margin: '0 0 8px', fontSize: 20 }}>No creator at @{target ?? ''}</h2>
+        <p className="v2-muted" style={{ margin: '0 0 16px', fontSize: 14 }}>
+          This storefront doesn’t exist, or the handle changed. Handles can be
+          edited, which breaks older links.
+        </p>
+        <button className="v2-btn v2-btn-outline" type="button" onClick={() => onRoute('storefront')}>
+          Back to my storefront
+        </button>
+      </div>
     );
   }
+
+  // Is the viewer looking at their OWN page?
+  //
+  // This surface is dual-purpose: a creator previewing their public page,
+  // and a brand viewing a creator. It never distinguished them, so it
+  // always offered the brand CTA — which opens `CreatorProfile`, the
+  // brand-side drilldown, whose every action routes to a BRAND_ONLY route.
+  // A creator hitting "preview my storefront" and then the biggest button
+  // on the page was silently converted into a brand user.
+  const isOwnPage = !!me && me.id === creator.id;
 
   const firstName = creator.name.split(' ')[0];
   const publicUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/c/${creator.handle.replace('@', '')}`;
@@ -49,13 +75,23 @@ export function PublicStorefront({ handle, onRoute }: Props) {
   // so a brand previewing a storefront landed nowhere actionable.
   const heroActions = (
     <>
-      <button
-        className="v2-btn v2-btn-primary"
-        type="button"
-        onClick={() => onRoute(`creator:${creator.id}`)}
-      >
-        {Icon.send} Brief on Alamut
-      </button>
+      {isOwnPage ? (
+        <button
+          className="v2-btn v2-btn-primary"
+          type="button"
+          onClick={() => onRoute('storefront')}
+        >
+          Back to editor
+        </button>
+      ) : (
+        <button
+          className="v2-btn v2-btn-primary"
+          type="button"
+          onClick={() => onRoute(`creator:${creator.id}`)}
+        >
+          {Icon.send} Brief on Alamut
+        </button>
+      )}
       <button
         className="v2-btn v2-btn-outline"
         type="button"

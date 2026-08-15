@@ -9,7 +9,7 @@ import { GlobalHotkeys } from './GlobalHotkeys';
 import { Icon } from '@/components/ui/Icon';
 import { useStore } from '@/lib/api/store';
 import { useAuth } from '@/lib/auth/useAuth';
-import { runScheduledNotifications } from '@/lib/api/scheduler';
+import { useScheduledNotifications } from '@/lib/api/useScheduledNotifications';
 
 export function WorkspaceShell() {
   // If the persisted store hasn't rehydrated yet (fresh tab, very brief), show skeleton.
@@ -43,21 +43,9 @@ export function WorkspaceShell() {
     return () => window.removeEventListener('alamut:nav-close', onClose);
   }, []);
 
-  // P4 §3.1 — scheduled-notification heartbeat. Runs once on mount
-  // (catch up anything that should have fired while the tab was closed)
-  // then every 60s while the workspace is open. Each tick walks the
-  // queue, materializes any due Notification rows, and flips their
-  // `emitted` flag so the next tick is a no-op for already-fired rows.
-  // Cheap: queue size is bounded by N_collabs × N_deliverables × ~5
-  // triggers each; sub-millisecond per scan in practice.
-  useEffect(() => {
-    if (!hasHydrated) return;
-    runScheduledNotifications();
-    const intervalId = window.setInterval(() => {
-      runScheduledNotifications();
-    }, 60_000);
-    return () => window.clearInterval(intervalId);
-  }, [hasHydrated]);
+  // P4 §3.1 — scheduled-notification heartbeat. Shared with the v2
+  // workspace shell, which is where brands and creators actually live.
+  useScheduledNotifications();
 
   // Cursor-aware halo — one delegated pointermove listener writes --mx/--my
   // CSS vars to whichever tile-bearing element the cursor is over. CSS

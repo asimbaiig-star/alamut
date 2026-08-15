@@ -3,8 +3,8 @@
 
 import type {
   Advance, Application, Availability, Brand, Campaign, CampaignStage, Creator, Database,
-  Dispute, DisputeCategory, DisputeStatus, Message, NotificationPrefs, Offer, Platform, Review,
-  Submission, SubmissionStatus, TeamRole, Thread, Transaction, User,
+  Dispute, DisputeCategory, Message, NotificationPrefs, Offer, Platform, Review,
+  Submission, Thread, Transaction, User,
 } from './types';
 import { tx, useStore } from './store';
 import { isCreatorAccepted, getAcceptedCreators } from './relations';
@@ -957,47 +957,6 @@ async function acceptCounter(offerId: string) {
   });
 }
 
-async function respondToOffer(offerId: string, decision: 'accept' | 'decline') {
-  await sleep(LATENCY);
-  return tx<Offer>((d) => {
-    const off = d.offers.find((o) => o.id === offerId);
-    if (!off) throw new ApiError('not_found', 'Offer not found.');
-    if (off.status !== 'pending') throw new ApiError('already_decided', 'This offer was already responded to.');
-    off.status = decision === 'accept' ? 'accepted' : 'declined';
-    off.respondedAt = nowISO();
-    const cmp = d.campaigns.find((c) => c.id === off.campaignId);
-    if (!cmp) return off;
-    if (decision === 'accept') {
-      // P1a: acceptedCreators is no longer stored — derived from offer status.
-      // P1b §1.2: campaign stage no longer auto-advances on offer-accept.
-      // Hold escrow for the offer rate
-      const brand = d.brands.find((b) => b.id === cmp.brandId);
-      if (brand && brand.walletBalance >= off.rate) {
-        brand.walletBalance -= off.rate;
-        brand.escrowHeld += off.rate;
-        cmp.escrowHeld += off.rate;
-        d.transactions.push({
-          id: id('tx'), at: nowISO(), userId: brand.userId,
-          kind: 'escrow_hold', amount: -off.rate, status: 'cleared',
-          campaignId: cmp.id, counterpartyUserId: d.creators.find((c) => c.id === off.creatorId)?.userId,
-          note: `Escrow · ${cmp.title}`,
-        });
-        const creator = d.creators.find((c) => c.id === off.creatorId);
-        if (creator) creator.pendingBalance += off.rate;
-      }
-    }
-
-    // P1c §1.1 — accept → 'confirmed'; decline with no other live signals
-    // → 'cancelled'. Creator is the actor (they responded).
-    const creatorForSync = d.creators.find((c) => c.id === off.creatorId);
-    ensureCollabState(cmp.id, off.creatorId, d, creatorForSync?.userId ?? '', `offer-${decision}d`);
-
-    return off;
-  });
-}
-
-// ============ SUBMISSIONS ============
-
 async function submitDraft(input: { campaignId: string; round: number; files: { name: string; url: string }[]; notes: string }) {
   await sleep(LATENCY);
   const me = currentUser();
@@ -1023,76 +982,6 @@ async function submitDraft(input: { campaignId: string; round: number; files: { 
     return sub;
   });
 }
-
-async function decideSubmission(subId: string, decision: SubmissionStatus, feedbackText?: string) {
-  await sleep(LATENCY);
-  return tx<Submission>((d) => {
-    const sub = d.submissions.find((s) => s.id === subId);
-    if (!sub) throw new ApiError('not_found', 'Submission not found.');
-    sub.status = decision;
-    if (feedbackText) {
-      sub.feedback = [...sub.feedback, { from: useStore.getState().session?.userId || 'system', text: feedbackText, at: nowISO() }];
-    }
-    const cmp = d.campaigns.find((c) => c.id === sub.campaignId);
-    if (cmp && decision === 'approved') {
-      // Move to posted, release the second milestone.
-      // Phase 20: walk offers in reverse so we use the LATEST accepted
-      // offer's rate (post counter+re-offer cycles), not a stale early one.
-      // Otherwise the on-approve payout could release an OLD rate.
-      const offerForCreator = [...d.offers].reverse().find((o) => o.campaignId === cmp.id && o.creatorId === sub.creatorId && o.status === 'accepted');
-      if (offerForCreator) {
-        const releaseAmt = Math.round(offerForCreator.rate); // release full remaining for this creator
-        const brand = d.brands.find((b) => b.id === cmp.brandId);
-        if (brand) {
-          brand.escrowHeld = Math.max(0, brand.escrowHeld - releaseAmt);
-          cmp.escrowHeld = Math.max(0, cmp.escrowHeld - releaseAmt);
-          cmp.spent += releaseAmt;
-          d.transactions.push({
-            id: id('tx'), at: nowISO(), userId: brand.userId,
-            kind: 'escrow_release', amount: -releaseAmt, status: 'cleared',
-            campaignId: cmp.id, counterpartyUserId: d.creators.find((c) => c.id === sub.creatorId)?.userId,
-            note: `Payout · ${cmp.title}`,
-          });
-          const creator = d.creators.find((c) => c.id === sub.creatorId);
-          if (creator) {
-            creator.pendingBalance = Math.max(0, creator.pendingBalance - releaseAmt);
-            creator.walletBalance += releaseAmt;
-            creator.lifetimeEarnings += releaseAmt;
-            // If creator has an active income advance, auto-repay from this payout.
-            const netToWallet = applyAdvanceRepayment(d, creator.id, releaseAmt);
-            d.transactions.push({
-              id: id('tx'), at: nowISO(), userId: creator.userId,
-              kind: 'payout', amount: releaseAmt, status: 'cleared',
-              campaignId: cmp.id, counterpartyUserId: brand.userId,
-              note: netToWallet < releaseAmt ? `Payout · ${cmp.title} (advance auto-repaid $${(releaseAmt - netToWallet).toLocaleString()})` : `Payout · ${cmp.title}`,
-            });
-            pushNotification(d, creator.userId, 'payouts',
-              netToWallet < releaseAmt
-                ? `Payout cleared: $${netToWallet.toLocaleString()} (after advance repayment) · ${cmp.title}`
-                : `Payout cleared: $${releaseAmt.toLocaleString()} · ${cmp.title}`,
-              '/creator/earnings');
-          }
-        }
-      }
-      // P1b §1.2: campaign stage no longer auto-advances on
-      // submission-approval. The collab-level stage (P1c Collaboration)
-      // tracks per-pair progress; campaign stage stays 'live' until
-      // brand explicitly closes/pauses.
-      if (!cmp.postedAt) cmp.postedAt = nowISO();
-    }
-
-    // P1c §1.1 — approval drives 'approved' (or 'paid' if escrow released
-    // above). Revisions keep stage 'submitted'. Brand is actor.
-    if (cmp) {
-      const brandForSync = d.brands.find((b) => b.id === cmp.brandId);
-      ensureCollabState(cmp.id, sub.creatorId, d, brandForSync?.userId ?? '', `submission-${decision}`);
-    }
-
-    return sub;
-  });
-}
-
-// ============ MESSAGING ============
 
 async function sendMessage(input: { threadId?: string; toUserId?: string; campaignId?: string; subject?: string; text: string; attachments?: { name: string; url: string }[] }) {
   await sleep(LATENCY);
@@ -1363,45 +1252,6 @@ async function updatePortfolio(work: string[]) {
 
 // ============ TEAM ============
 
-async function inviteTeamMember(input: { email: string; teamRole: TeamRole }) {
-  await sleep(LATENCY);
-  const me = currentUser();
-  if (!me?.brandId) throw new ApiError('unauthorized', 'Brand only.');
-  const email = input.email.trim().toLowerCase();
-  if (!email.includes('@')) throw new ApiError('invalid_email', 'Enter a real email.');
-  return tx<User>((d) => {
-    if (d.users.some((u) => u.email === email)) {
-      throw new ApiError('email_taken', 'A user with that email already exists.');
-    }
-    const newUser: User = {
-      id: id('u'), email,
-      passwordHash: 'demo1234',
-      role: 'brand', status: 'active',
-      createdAt: nowISO(),
-      brandId: me.brandId,
-      teamRole: input.teamRole,
-      invitedAt: nowISO(),
-    };
-    d.users.push(newUser);
-    pushNotification(d, newUser.id, 'team', `You've been invited to a team. Sign in with this email and password "demo1234".`, '/brand/today');
-    return newUser;
-  });
-}
-
-async function removeTeamMember(userId: string) {
-  await sleep(LATENCY);
-  const me = currentUser();
-  if (!me?.brandId) throw new ApiError('unauthorized', 'Brand only.');
-  if (userId === me.id) throw new ApiError('self', 'You cannot remove yourself.');
-  return tx<void>((d) => {
-    const u = d.users.find((x) => x.id === userId);
-    if (!u || u.brandId !== me.brandId) throw new ApiError('not_found', 'Team member not found.');
-    d.users = d.users.filter((x) => x.id !== userId);
-  });
-}
-
-// ============ REFERRALS (creator network) ============
-
 async function createReferral(input: { toCreatorId: string; recommendedBrandId?: string; noteToReferred: string }) {
   await sleep(LATENCY);
   const me = currentUser();
@@ -1541,28 +1391,6 @@ async function requestAdvance(amount: number) {
 }
 
 // Hook — call on every payout to auto-repay any active advance.
-function applyAdvanceRepayment(d: Database, creatorId: string, payoutAmount: number) {
-  const active = d.advances.find((a) => a.creatorId === creatorId && a.status === 'active');
-  if (!active) return payoutAmount;
-  const c = d.creators.find((x) => x.id === creatorId);
-  if (!c) return payoutAmount;
-
-  const owedTotal = active.amount;
-  const remaining = owedTotal - active.repaidAmount;
-  const takeFromPayout = Math.min(remaining, payoutAmount);
-  active.repaidAmount += takeFromPayout;
-  // Net what reaches the wallet
-  const net = payoutAmount - takeFromPayout;
-  c.walletBalance -= takeFromPayout; // rollback the bit that went to wallet via the upstream payout call
-
-  if (active.repaidAmount >= owedTotal) {
-    active.status = 'repaid';
-    active.repaidAt = nowISO();
-    pushNotification(d, c.userId, 'payouts', `Advance repaid · $${owedTotal.toLocaleString()} cleared`, '/creator/earnings');
-  }
-  return net;
-}
-
 // ============ MANAGER SEATS ============
 async function inviteManager(input: { email: string }) {
   await sleep(LATENCY);
@@ -1670,98 +1498,6 @@ async function openDispute(input: { campaignId: string; category: DisputeCategor
   });
 }
 
-async function resolveDispute(disputeId: string, input: {
-  status: Extract<DisputeStatus, 'resolved-refund' | 'resolved-release' | 'resolved-partial'>;
-  note: string;
-  releaseAmount?: number;  // brand→creator
-  refundAmount?: number;   // brand→wallet
-}) {
-  await sleep(LATENCY);
-  const me = currentUser();
-  if (me?.role !== 'admin') throw new ApiError('forbidden', 'Admin only.');
-  return tx<Dispute>((d) => {
-    const disp = d.disputes.find((x) => x.id === disputeId);
-    if (!disp) throw new ApiError('not_found', 'Dispute not found.');
-    if (disp.status !== 'open' && disp.status !== 'in-review') throw new ApiError('already_resolved', 'Already resolved.');
-    const cmp = d.campaigns.find((c) => c.id === disp.campaignId);
-    if (!cmp) throw new ApiError('not_found', 'Campaign not found.');
-    const brand = d.brands.find((b) => b.id === cmp.brandId);
-    const collab = d.collaborations.find((c) => c.id === disp.collaborationId);
-
-    const now = Date.now();
-    disp.status = input.status;
-    disp.resolution = {
-      by: me.id,
-      at: now,
-      note: input.note,
-      releaseAmount: input.releaseAmount,
-      refundAmount: input.refundAmount,
-    };
-    disp.updatedAt = now;
-
-    // Move money based on resolution
-    if (brand && (input.releaseAmount || input.refundAmount)) {
-      // Pull from campaign escrow first, then brand escrow account
-      const totalMoved = (input.releaseAmount || 0) + (input.refundAmount || 0);
-      const fromCampaign = Math.min(cmp.escrowHeld, totalMoved);
-      cmp.escrowHeld -= fromCampaign;
-      brand.escrowHeld = Math.max(0, brand.escrowHeld - fromCampaign);
-
-      if (input.refundAmount && input.refundAmount > 0) {
-        brand.walletBalance += input.refundAmount;
-        d.transactions.push({
-          id: id('tx'), at: nowISO(), userId: brand.userId,
-          kind: 'refund', amount: input.refundAmount, status: 'cleared',
-          campaignId: cmp.id, note: `Dispute refund · ${cmp.title}`,
-        });
-      }
-      if (input.releaseAmount && input.releaseAmount > 0) {
-        // The creator counterparty is the collab's creator.
-        const creator = collab ? d.creators.find((c) => c.id === collab.creatorId) : null;
-        if (creator) {
-          creator.walletBalance += input.releaseAmount;
-          creator.lifetimeEarnings += input.releaseAmount;
-          creator.pendingBalance = Math.max(0, creator.pendingBalance - input.releaseAmount);
-          cmp.spent += input.releaseAmount;
-          d.transactions.push({
-            id: id('tx'), at: nowISO(), userId: brand.userId,
-            kind: 'escrow_release', amount: -input.releaseAmount, status: 'cleared',
-            campaignId: cmp.id, counterpartyUserId: creator.userId,
-            note: `Dispute release · ${cmp.title}`,
-          });
-          d.transactions.push({
-            id: id('tx'), at: nowISO(), userId: creator.userId,
-            kind: 'payout', amount: input.releaseAmount, status: 'cleared',
-            campaignId: cmp.id, counterpartyUserId: brand.userId,
-            note: `Dispute payout · ${cmp.title}`,
-          });
-        }
-      }
-    }
-
-    // P2 §1.4 — resolution unfreezes escrow on the collab.
-    if (collab) collab.escrowFrozen = false;
-
-    // Notify both parties — raised-by side + the counter party (derived
-    // from the collab's brand-creator pair).
-    pushNotification(d, disp.raisedByUserId, 'team', `Dispute resolved on ${cmp.title}`,
-      d.users.find((u) => u.id === disp.raisedByUserId)?.creatorId ? '/creator/campaigns' : '/brand/campaigns');
-    if (collab) {
-      const creatorUser = d.users.find((u) => u.creatorId === collab.creatorId);
-      const brandUser = brand ? d.users.find((u) => u.id === brand.userId) : null;
-      const counter = disp.raisedByRole === 'brand' ? creatorUser : brandUser;
-      if (counter && counter.id !== disp.raisedByUserId) {
-        pushNotification(d, counter.id, 'team', `Dispute resolved on ${cmp.title}`,
-          counter.creatorId ? '/creator/campaigns' : '/brand/campaigns');
-      }
-    }
-
-    return disp;
-  });
-}
-
-// ============ ADMIN ============
-
 async function decideCreatorApplication(userId: string, decision: 'approve' | 'reject', reason?: string) {
   await sleep(LATENCY);
   const me = currentUser();
@@ -1846,16 +1582,28 @@ export const api = {
   },
   campaigns: { create: createCampaign, update: updateCampaign, transition: transitionCampaign },
   applications: { apply: applyToCampaign, decide: decideApplication },
-  offers: { send: sendOffer, respond: respondToOffer, counter: counterOffer, acceptCounter },
-  submissions: { submit: submitDraft, decide: decideSubmission },
+  // `respond` (accept/decline) and `decide` (approve/revise) are GONE.
+  // They were parallel implementations of v2AcceptOffer / v2DeclineOffer /
+  // v2ApproveContent that skipped the capability check, the dispute freeze,
+  // the campaign-stage gate and the already-approved guard, and released
+  // gross with no fee or withholding. Money mutations live in
+  // screens/workspace-v2/v2CampaignActions.ts — do not re-add them here.
+  offers: { send: sendOffer, counter: counterOffer, acceptCounter },
+  submissions: { submit: submitDraft },
   messages: { send: sendMessage, markRead: markThreadRead },
   wallet: { topUp, withdraw, withdrawBrand },
   notifications: { markAllRead: markAllNotificationsRead },
   reviews: { leave: leaveReview, respond: respondToReview },
-  brand: { toggleSavedCreator, inviteTeamMember, removeTeamMember },
+  // Team management is the token-based flow in v2Hooks (v2SendTeamInvite /
+  // v2AcceptTeamInvite / v2RevokeTeamInvite). The two functions that used to
+  // sit here had zero callers.
+  brand: { toggleSavedCreator },
   platforms: { connect: connectPlatform },
   settings: { setNotificationPrefs, setAvailability, updatePortfolio },
-  disputes: { open: openDispute, resolve: resolveDispute },
+  // `resolve` is GONE — see v2ResolveDispute in v2DisputeActions.ts, which
+  // deducts fee + withholding, reverses the creator's pending hold, and
+  // withdraws the accepted offer so the collab can actually terminalize.
+  disputes: { open: openDispute },
   ads: { startBoost: startAdBoost },
   referrals: { create: createReferral },
   advances: { request: requestAdvance },

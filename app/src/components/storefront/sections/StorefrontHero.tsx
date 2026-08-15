@@ -13,6 +13,7 @@ import type { Creator, Database } from '@/lib/api/types';
 import { TrustBadge } from '@/components/ui/TrustBadge';
 import { trustForCreator } from '@/lib/utils/trust';
 import { Icon } from '@/screens/workspace-v2/lib';
+import { Avatar } from '@/components/ui/Avatar';
 
 interface Props {
   creator: Creator;
@@ -42,10 +43,14 @@ export function StorefrontHero({ creator, db, actions }: Props) {
       />
 
       {/* Portrait — overlaps the cover bottom-left. */}
-      <div
+      {/* Same fix as the storefront editor — this one renders on the
+          PUBLIC page, so an empty portrait was a blank hole on what a
+          brand sees when evaluating a new creator. */}
+      <Avatar
+        src={creator.portrait}
+        name={creator.name}
+        size={104}
         className="v2-storefront-portrait"
-        style={{ backgroundImage: `url(${creator.portrait})` }}
-        aria-label={creator.name}
       />
 
       {/* Identity block — name, handle, tagline, bio, pills, CTAs. */}

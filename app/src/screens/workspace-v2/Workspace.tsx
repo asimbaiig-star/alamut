@@ -14,6 +14,7 @@ import { Icon } from './lib';
 import { useV2CurrentBrand, useV2CurrentCreator, useV2Conversations } from './v2Hooks';
 import { v2SweepStaleOffers } from './v2CampaignActions';
 import { useAuth } from '@/lib/auth/useAuth';
+import { useScheduledNotifications } from '@/lib/api/useScheduledNotifications';
 import { api } from '@/lib/api/client';
 import { Avatar } from '@/components/ui/Avatar';
 // F6 — chunk split. All 24 screens used to be static imports, so the
@@ -98,37 +99,60 @@ const ROUTE_KEY = 'alamut.v2.route';
  * Hannah's brand workspace via the demo fallback in `getViewerUserId`.
  * Returns `true` for routes that fit either persona; `false` blocks the
  * Workspace from booting into a mismatched dashboard. */
-export function routeFitsPersona(route: string, persona: Persona): boolean {
-  // Drilldown prefixes — shared across personas. The route handler
-  // (RouteOutlet) renders the appropriate component for the current
-  // persona; auto-flipping persona on a drilldown click would cause
-  // a creator to be silently switched to the demo brand owner.
-  if (
-    route.startsWith('creator:') ||
-    route.startsWith('campaign:') ||
-    route.startsWith('deal:') ||
-    route.startsWith('collab:') ||
-    route.startsWith('brief:')
-  ) {
-    return true;
-  }
-  // Public storefront preview is cross-persona.
-  if (route.startsWith('public:')) return true;
-  // Creator-only top-level routes.
-  const CREATOR_ONLY = new Set([
-    'creator-home', 'storefront', 'creator-collabs', 'creator-campaigns',
-    'creator-inbox', 'creator-calendar', 'analytics', 'creator-wallet', 'kyc',
-    'onboarding-creator',
-  ]);
-  if (CREATOR_ONLY.has(route)) return persona === 'creator';
-  // Brand-only top-level routes.
-  const BRAND_ONLY = new Set([
-    'home', 'spark', 'discover', 'campaigns', 'inbox', 'calendar', 'wallet',
-    'campaign-new', 'onboarding-brand', 'brand-profile', 'brand-analytics',
-  ]);
-  if (BRAND_ONLY.has(route)) return persona === 'brand';
+/** Which persona a route belongs to. `shared` = either side may open it. */
+export type RoutePersona = Persona | 'shared';
+
+/** Creator-only top-level routes. */
+export const CREATOR_ONLY_ROUTES: ReadonlySet<string> = new Set([
+  'creator-home', 'storefront', 'creator-collabs', 'creator-campaigns',
+  'creator-inbox', 'creator-calendar', 'analytics', 'creator-wallet', 'kyc',
+  'onboarding-creator',
+]);
+
+/** Brand-only top-level routes. */
+export const BRAND_ONLY_ROUTES: ReadonlySet<string> = new Set([
+  'home', 'spark', 'discover', 'campaigns', 'inbox', 'calendar', 'wallet',
+  'campaign-new', 'onboarding-brand', 'brand-profile', 'brand-analytics',
+]);
+
+/** Drilldown prefixes both personas may open. RouteOutlet renders the
+ *  right component for the CURRENT persona, so these must never flip it —
+ *  a creator opening a deal from her inbox must stay a creator. */
+const SHARED_PREFIXES = ['creator:', 'campaign:', 'deal:', 'collab:', 'brief:', 'public:'];
+
+/**
+ * Strip a query string from a route.
+ *
+ * `RouteOutlet` parses routes with `startsWith` (`kyc?action=next-step`,
+ * `wallet?action=topup`, `spark?prompt=…`), but the persona logic compared
+ * with `===` against bare names — so any route carrying a query silently
+ * matched nothing and skipped its persona handling entirely.
+ */
+export function routeBase(route: string): string {
+  const q = route.indexOf('?');
+  return q === -1 ? route : route.slice(0, q);
+}
+
+/**
+ * The single classification both the guard and the navigator read.
+ *
+ * These lists used to exist twice — once as local Sets inside
+ * `routeFitsPersona`, once as a different set of membership tests inside
+ * `go()` — so a route could be blocked by one and flipped by the other.
+ */
+export function personaForRoute(route: string): RoutePersona {
+  const base = routeBase(route);
+  if (SHARED_PREFIXES.some((p) => base.startsWith(p))) return 'shared';
+  if (CREATOR_ONLY_ROUTES.has(base)) return 'creator';
+  if (BRAND_ONLY_ROUTES.has(base)) return 'brand';
   // Unknown routes — let through; RouteOutlet falls back to BrandHome.
-  return true;
+  return 'shared';
+}
+
+/** Blocks the Workspace from booting into a mismatched dashboard. */
+export function routeFitsPersona(route: string, persona: Persona): boolean {
+  const owner = personaForRoute(route);
+  return owner === 'shared' || owner === persona;
 }
 
 export function WorkspaceV2() {
@@ -182,6 +206,13 @@ export function WorkspaceV2() {
   // doesn't land on `creator-home` after sign-in. Subsequent in-app
   // route changes set persona via `go()` and are honored — this only
   // fires on identity change, tracked by a ref.
+  // Scheduled-notification heartbeat. This shell is where brands and
+  // creators actually live; the queue was only ever drained by
+  // WorkspaceShell, which is admin-gated, so deadline reminders, overdue
+  // follow-ups, stale-escrow nudges, review-window warnings and KYC-expiry
+  // prompts were enqueued and never emitted for either persona.
+  useScheduledNotifications();
+
   const lastSeenUserIdRef = useRef<string | null | undefined>(undefined);
   useEffect(() => {
     const currentUserId = user?.id ?? null;
@@ -273,23 +304,13 @@ export function WorkspaceV2() {
     // demo brand workspace via `getViewerUserId`'s fallback. The route
     // handler (RouteOutlet) passes `persona` through to surfaces that
     // care (Inbox renders persona-aware bubbles + counterparty resolution).
-    if (
-      next.startsWith('creator-') ||
-      next === 'storefront' ||
-      next === 'kyc' ||
-      next === 'analytics' ||
-      next === 'onboarding-creator'
-    ) {
-      setPersonaState('creator');
-    } else if (
-      BRAND_ROUTES.some((r) => r.id === next) ||
-      next === 'discover' ||
-      next === 'campaigns' ||
-      next === 'campaign-new' ||
-      next === 'onboarding-brand'
-    ) {
-      setPersonaState('brand');
-    }
+    //
+    // Derived from `personaForRoute` rather than a second hand-written list.
+    // The old duplicate missed query-string routes entirely (`===` against
+    // `kyc?action=…`), and could disagree with `routeFitsPersona` about who
+    // owns a route.
+    const owner = personaForRoute(next);
+    if (owner !== 'shared') setPersonaState(owner);
     window.scrollTo(0, 0);
   }
 
@@ -493,9 +514,14 @@ function RouteOutlet({ route, onRoute, persona }: { route: string; onRoute: (r: 
     const queryStr = route.includes('?') ? route.split('?')[1] : '';
     const params = new URLSearchParams(queryStr);
     const invitedStr = params.get('invited') ?? '';
+    // `campaign-new?draft=<campaignId>` reopens a saved draft. Without this
+    // the "Save as draft" button had nowhere to send the brand back to.
+    const draftId = params.get('draft') ?? undefined;
     return (
       <NewCampaignWizard
+        key={draftId ?? 'new'}
         onRoute={onRoute}
+        initialDraftId={draftId}
         initialName={params.get('name') ?? undefined}
         initialDeadline={params.get('deadline') ?? undefined}
         initialCategory={params.get('category') ?? undefined}
@@ -538,6 +564,7 @@ function RouteOutlet({ route, onRoute, persona }: { route: string; onRoute: (r: 
       <BrowseBriefs
         onRoute={onRoute}
         initialFilter={(params.get('filter') as never) ?? undefined}
+        initialStatus={(params.get('status') as never) ?? undefined}
       />
     );
   }

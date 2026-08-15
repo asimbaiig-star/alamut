@@ -64,7 +64,8 @@ export function BrandWallet({ onRoute, initialAction }: Props) {
               onClick={() => {
                 downloadCSV(
                   `alamut-wallet-statement-${new Date().toISOString().slice(0, 10)}`,
-                  W.ledger.map((l) => ({
+                  // `ledgerAll`, not the 10-row display slice.
+                  W.ledgerAll.map((l) => ({
                     date: l.date,
                     description: l.desc,
                     status: l.status,
@@ -72,7 +73,7 @@ export function BrandWallet({ onRoute, initialAction }: Props) {
                     type: l.type ?? '',
                   })),
                 );
-                pushToast(`Wallet statement exported · ${W.ledger.length} rows`);
+                pushToast(`Wallet statement exported · ${W.ledgerAll.length} rows`);
               }}
             >
               Download statement
@@ -154,6 +155,9 @@ export function BrandWallet({ onRoute, initialAction }: Props) {
                 </select>
               </div>
             </div>
+            {/* Same as the creator ledger: no wrapper meant the whole
+                page scrolled sideways on a narrow viewport. */}
+            <div style={{ overflowX: 'auto' }}>
             <table className="v2-table">
               <thead>
                 <tr>
@@ -201,8 +205,23 @@ export function BrandWallet({ onRoute, initialAction }: Props) {
                     </tr>
                   );
                 })}
+                {filteredLedger.length === 0 && (
+                  <tr>
+                    <td colSpan={4} style={{ padding: '28px 16px', textAlign: 'center' }}>
+                      <div style={{ fontSize: 13.5, marginBottom: 4 }}>
+                        {W.ledger.length === 0 ? 'No wallet activity yet' : 'Nothing matches this filter'}
+                      </div>
+                      <div className="v2-muted" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
+                        {W.ledger.length === 0
+                          ? 'Top-ups, escrow reserves, and creator payouts all appear here.'
+                          : 'Pick a different type to see the rest of the ledger.'}
+                      </div>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
+            </div>
           </div>
 
           {/* Sidebar */}
@@ -243,9 +262,12 @@ export function BrandWallet({ onRoute, initialAction }: Props) {
                 type="button"
                 style={{ width: '100%', justifyContent: 'center' }}
                 onClick={() => {
-                  // Tax report = the ledger filtered to fee + withholding rows
-                  // grouped by month. Useful for end-of-quarter / EOY reconciliation.
-                  const taxRows = W.ledger
+                  // Tax report = every fee + withholding row in the account's
+                  // FULL history. This read the 10-row display slice, so the
+                  // report covered whatever happened to be recent — and the
+                  // "no entries in current ledger window" message quietly
+                  // admitted it while still being labelled a tax report.
+                  const taxRows = W.ledgerAll
                     .filter((l) => l.type === 'fee' || l.type === 'tax')
                     .map((l) => ({
                       date: l.date,
@@ -254,7 +276,7 @@ export function BrandWallet({ onRoute, initialAction }: Props) {
                       amount: l.amount,
                     }));
                   if (taxRows.length === 0) {
-                    pushToast('No tax-flagged entries in current ledger window');
+                    pushToast('No fee or withholding entries on this account yet');
                     return;
                   }
                   downloadCSV(
@@ -364,7 +386,10 @@ function TopupModal({ onClose }: { onClose: () => void }) {
           color: 'var(--v2-ink)',
         }}>Top up wallet</h2>
 
-        <label className="v2-eyebrow" style={{ display: 'block', marginBottom: 6 }}>
+        {/* Every money input in v2 rendered its label as a plain sibling
+            <label> with no `htmlFor`, so a screen reader announced the
+            field as an unnamed spin button. */}
+        <label className="v2-eyebrow" htmlFor="v2-topup-amount" style={{ display: 'block', marginBottom: 6 }}>
           Amount
         </label>
         <div style={{ position: 'relative', marginBottom: 16 }}>
@@ -376,6 +401,7 @@ function TopupModal({ onClose }: { onClose: () => void }) {
             color: 'var(--v2-ink-3)',
           }}>$</span>
           <input
+            id="v2-topup-amount"
             type="number"
             value={amount}
             onChange={(e) => setAmount(parseNumberInput(e.target.value, { min: 0 }))}

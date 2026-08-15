@@ -47,6 +47,12 @@ type Row = {
   version: number;
   created_at: string;
   updated_at: string;
+  // Migration 032. KYC facts a creator establishes once. Owner-gated —
+  // deliberately absent from PUBLIC_COLUMNS below, and from the
+  // `creators_public` view, because a tax form is PII.
+  agreement_accepted_at: string | null;
+  agreement_version: string | null;
+  tax_form: Creator['taxForm'] | null;
 };
 
 // Full column set — owner-only reads (their own row + all PII columns).
@@ -59,7 +65,10 @@ const COLUMNS =
   'reach, engagement, rating, tier, response_hrs, rate_card, rate_cards, ' +
   'payout, wallet_balance, pending_balance, lifetime_earnings, verified, ' +
   'kyc_verified_at, editors_pick, press_mentions, availability, ' +
-  'featured_review_ids, saved_briefs, version, created_at, updated_at';
+  'featured_review_ids, saved_briefs, version, created_at, updated_at, ' +
+  // Migration 032 — must exist in Postgres before this line ships, since
+  // PostgREST errors on a SELECT naming an unknown column.
+  'agreement_accepted_at, agreement_version, tax_form';
 
 // Public column set — no PII (no payout, no wallet/pending/lifetime,
 // no owner_email). Storefronts + Discover pull this via the
@@ -108,6 +117,9 @@ function toCreator(row: Row): Creator {
     featuredReviewIds: row.featured_review_ids ?? undefined,
     savedBriefs: row.saved_briefs ?? undefined,
     version: row.version,
+    agreementAcceptedAt: row.agreement_accepted_at ?? undefined,
+    agreementVersion: row.agreement_version ?? undefined,
+    taxForm: row.tax_form ?? undefined,
   };
 }
 
@@ -132,6 +144,9 @@ type UpdatablePatch = Partial<{
   availability: Availability | null;
   featuredReviewIds: string[];
   savedBriefs: string[];
+  agreementAcceptedAt: string;
+  agreementVersion: string;
+  taxForm: Creator['taxForm'];
 }>;
 
 function toUpdateRowPatch(patch: UpdatablePatch): Record<string, unknown> {
@@ -155,6 +170,9 @@ function toUpdateRowPatch(patch: UpdatablePatch): Record<string, unknown> {
   if (patch.availability !== undefined)      out.availability = patch.availability;
   if (patch.featuredReviewIds !== undefined) out.featured_review_ids = patch.featuredReviewIds;
   if (patch.savedBriefs !== undefined)       out.saved_briefs = patch.savedBriefs;
+  if (patch.agreementAcceptedAt !== undefined) out.agreement_accepted_at = patch.agreementAcceptedAt;
+  if (patch.agreementVersion !== undefined)    out.agreement_version = patch.agreementVersion;
+  if (patch.taxForm !== undefined)             out.tax_form = patch.taxForm;
   return out;
 }
 
@@ -202,6 +220,11 @@ export async function insertCreatorInSupabase(
     availability: null,
     featured_review_ids: [],
     saved_briefs: [],
+    // A new signup has accepted nothing and filed nothing. Explicit nulls
+    // rather than omission so the row shape matches COLUMNS exactly.
+    agreement_accepted_at: null,
+    agreement_version: null,
+    tax_form: null,
   };
   const { data, error } = await sb
     .from('creators')

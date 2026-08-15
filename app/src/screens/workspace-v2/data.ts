@@ -60,7 +60,11 @@ export interface V2Creator {
   priceMax: number;
   verified: boolean;
   channels: V2Channel[];
-  audience: V2Audience;
+  /** Aggregated audience demographics, or `null` when no connected channel
+   *  reports them — which is every real creator today, since nothing writes
+   *  `Platform.audience` outside the seed. Surfaces must handle null rather
+   *  than substituting a plausible-looking default. */
+  audience: V2Audience | null;
   rate: number;
   /** Full past-brands list (no slice). Consumers truncate as needed. */
   pastBrands: string[];
@@ -158,8 +162,10 @@ export interface V2WalletLedgerEntry {
   amount: number;
   type?: 'topup' | 'release' | 'fee' | 'tax' | 'reserve';
   status: string;
-  gross?: number;
-  fee?: number;
+  // `gross` / `fee` used to live here, populated by dividing a payout by
+  // 0.85 to guess what it had been before deductions. Platform fee and
+  // withholding are written as their own Transaction rows at release time,
+  // so the ledger already carries them — there is nothing to reconstruct.
 }
 
 // =====================================================================
@@ -216,7 +222,23 @@ export interface V2Deliverable {
   deliverableId: string;
   label: string;        // "Instagram Reel · 60s"
   status: 'pending' | 'in_review' | 'approved' | 'live' | 'revision';
-  due: string;          // human date "May 18"
+  /** Human display string, e.g. "May 18". LOSSY — no year. Never parse it. */
+  due: string;
+  /**
+   * The real deadline as an ISO date.
+   *
+   * `due` is produced by `fmtDateShort`, which drops the year. Calendar then
+   * had to guess it back: prepend the current year, and if the result landed
+   * more than 30 days in the past, assume it meant NEXT year. So a
+   * deliverable genuinely 31+ days overdue was silently reinterpreted as due
+   * ~11 months in the future — it vanished from the overdue count, the
+   * 7-day list and the grid, and reappeared in 2027. The most neglected work
+   * was the work that disappeared.
+   *
+   * Optional so older persisted rows don't break; consumers fall back to
+   * parsing `due` when it's absent.
+   */
+  dueAt?: string;
   submittedAt?: string;
   approvedAt?: string;
   liveAt?: string;

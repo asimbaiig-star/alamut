@@ -20,8 +20,7 @@ import type {
   Database, Contract, ContractDeliverableSnapshot, Offer,
 } from './types';
 
-const PLATFORM_FEE_RATE = 0.10;
-const WHT_RATE = 0.05;
+import { splitAcrossSlots } from './money';
 
 function newContractId(collabId: string): string {
   // Random short suffix so net-new contracts don't collide with the
@@ -51,9 +50,6 @@ export function createContractForAcceptedOffer(
   if (!camp) return null;
 
   const rate = acceptedOffer.rate;
-  const platformFee = Math.round(rate * PLATFORM_FEE_RATE);
-  const withholdingTax = Math.round(rate * WHT_RATE);
-  const netToCreator = rate - platformFee - withholdingTax;
 
   const deliverableSnapshots: ContractDeliverableSnapshot[] = db.deliverables
     .filter((d) => d.campaignId === collab.campaignId)
@@ -67,6 +63,18 @@ export function createContractForAcceptedOffer(
       dueOffsetDays: d.dueOffsetDays,
       specs: d.specs,
     }));
+
+  // Money is released PER DELIVERABLE SLOT, with rounding applied to each
+  // slot independently — so a single-pass split of the whole rate can
+  // disagree with the sum actually paid. Pre-fix this stored net was off by
+  // up to a dollar (e.g. $999 over 4 slots: stored $849, paid $850), and
+  // the contract is the row a finance export would treat as ground truth.
+  // Sum the same per-slot function the release path uses.
+  const {
+    fee: platformFee,
+    tax: withholdingTax,
+    net: netToCreator,
+  } = splitAcrossSlots(rate, deliverableSnapshots.length);
 
   const id = newContractId(collabId);
   const contract: Contract = {

@@ -9,6 +9,7 @@
 
 import { useMemo, useState } from 'react';
 import { fmtUSD, Icon } from '../lib';
+import { netOf } from '@/lib/api/money';
 import { parseNumberInput } from '@/lib/utils/format';
 import {
   v2CounterOffer, v2CounterCounter, v2DeclineOffer, v2MarkContentLive,
@@ -16,7 +17,7 @@ import {
 } from '../v2CampaignActions';
 import { v2InviteCreator } from '../v2CollabActions';
 import {
-  useV2Creators, useV2OfferTemplates,
+  useV2Creators, useV2CurrentBrand, useV2OfferTemplates,
   v2SaveOfferTemplate, v2DeleteOfferTemplate,
 } from '../v2Hooks';
 import { useStore } from '@/lib/api/store';
@@ -206,10 +207,11 @@ export function SendOfferModal({ campaignId, creator, defaultRate, onClose }: Se
             )}
           </div>
           <div style={{ marginBottom: 18 }}>
-            <label className="v2-eyebrow" style={{ display: 'block', marginBottom: 6 }}>Rate (USD)</label>
+            <label className="v2-eyebrow" htmlFor="v2-offer-rate" style={{ display: 'block', marginBottom: 6 }}>Rate (USD)</label>
             <div className="v2-onboarding-rate">
               <span className="v2-onboarding-rate-prefix">$</span>
               <input
+                id="v2-offer-rate"
                 type="number"
                 value={rate}
                 onChange={(e) => setRate(parseNumberInput(e.target.value, { min: 0 }))}
@@ -260,7 +262,7 @@ export function SendOfferModal({ campaignId, creator, defaultRate, onClose }: Se
           </div>
           <div className="v2-muted" style={{ fontSize: 11.5 }}>
             Funds reserve to escrow only when {creator.name.split(' ')[0]} accepts. Their net is{' '}
-            <strong>{fmtUSD(Math.round(rate * 0.85))}</strong> after platform fee + WHT.
+            <strong>{fmtUSD(netOf(rate))}</strong> after platform fee + WHT.
           </div>
         </div>
         <footer className="v2-upload-modal-foot">
@@ -361,10 +363,11 @@ export function CounterOfferModal(
         </header>
         <div className="v2-upload-modal-body">
           <div style={{ marginBottom: 18 }}>
-            <label className="v2-eyebrow" style={{ display: 'block', marginBottom: 6 }}>Your counter (USD)</label>
+            <label className="v2-eyebrow" htmlFor="v2-counter-rate" style={{ display: 'block', marginBottom: 6 }}>Your counter (USD)</label>
             <div className="v2-onboarding-rate">
               <span className="v2-onboarding-rate-prefix">$</span>
               <input
+                id="v2-counter-rate"
                 type="number"
                 value={rate}
                 onChange={(e) => setRate(parseNumberInput(e.target.value, { min: 0 }))}
@@ -395,7 +398,7 @@ export function CounterOfferModal(
             })()}
             {side === 'creator' && (
               <div className="v2-muted" style={{ fontSize: 11.5, marginTop: 4 }}>
-                Net to you after fees: <strong>{fmtUSD(Math.round(rate * 0.85))}</strong>
+                Net to you after fees: <strong>{fmtUSD(netOf(rate))}</strong>
               </div>
             )}
             {side === 'brand' && (
@@ -985,6 +988,209 @@ export function CreatorMarkLiveModal({
             </button>
           </div>
         </footer>
+      </div>
+    </div>
+  );
+}
+
+// =====================================================================
+// SendBriefModal — invite ONE creator, pick WHICH campaign
+// =====================================================================
+//
+// The inverse of InviteCreatorsModal (one campaign, many creators).
+// Entry points are the creator-centric surfaces — BrandHome's "For you"
+// cards, Discover, CreatorProfile — where the brand has a creator in
+// mind and no campaign context.
+//
+// It exists because "Send brief" was, on BrandHome, a byte-identical
+// copy of the "View profile" handler next to it: two buttons, two
+// labels, one behaviour. CreatorProfile's version was only marginally
+// better — it opened the generic inbox with no thread and no creator.
+// Neither sent anything.
+//
+// Only `live` campaigns are offered. A draft isn't visible to creators,
+// so an invite into one produces a collab pointing at a brief the
+// creator can't open; `Paused`/`Completed` shouldn't take new people at
+// all. When the brand has no live campaign the modal says so and hands
+// them the wizard with this creator pre-invited.
+
+interface SendBriefProps {
+  creator: V2Creator;
+  onRoute: (r: string) => void;
+  onClose: () => void;
+}
+
+export function SendBriefModal({ creator, onRoute, onClose }: SendBriefProps) {
+  useModalEscape(onClose);
+  const db = useStore((s) => s.db);
+  const session = useStore((s) => s.session);
+  const brand = useV2CurrentBrand();
+  const canInvite = useCapability('application.invite');
+  const [campaignId, setCampaignId] = useState('');
+  const [message, setMessage] = useState('');
+  const [edited, setEdited] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  const { live, draftCount } = useMemo(() => {
+    const mine = brand ? db.campaigns.filter((c) => c.brandId === brand.id) : [];
+    return {
+      live: mine
+        .filter((c) => c.stage === 'live')
+        .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '')),
+      draftCount: mine.filter((c) => c.stage === 'draft').length,
+    };
+  }, [db.campaigns, brand]);
+
+  // Why this creator can't be invited to a given campaign, keyed by
+  // campaign id. Same precedence as InviteCreatorsModal: an existing
+  // collab beats an offer, which beats an application.
+  const reasons = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const a of db.applications) {
+      if (a.creatorId === creator.id) out[a.campaignId] = 'Already applied';
+    }
+    for (const o of db.offers) {
+      if (o.creatorId !== creator.id) continue;
+      out[o.campaignId] =
+        o.status === 'accepted' ? 'Offer accepted'
+        : o.status === 'declined' ? 'Declined your offer'
+        : 'Offer already sent';
+    }
+    for (const c of db.collaborations) {
+      if (c.creatorId === creator.id) out[c.campaignId] = 'Already on this campaign';
+    }
+    return out;
+  }, [db.applications, db.offers, db.collaborations, creator.id]);
+
+  const selected = live.find((c) => c.id === campaignId);
+  const defaultMessage = selected
+    ? `We'd love to have you on "${selected.title}". Take a look and let us know if it's a fit.`
+    : '';
+  const body = edited ? message : defaultMessage;
+  const blocked = campaignId ? reasons[campaignId] : undefined;
+
+  const onSend = () => {
+    if (!session?.userId || !campaignId || blocked) return;
+    setSending(true);
+    try {
+      v2InviteCreator(campaignId, creator.id, body, session.userId);
+      pushToast(`Brief sent to ${creator.name.split(' ')[0]}`, 'good');
+      onClose();
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : 'Could not send the brief', 'bad');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="v2-modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
+      <div
+        className="v2-card v2-upload-modal"
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: 560, maxHeight: '88vh', display: 'flex', flexDirection: 'column' }}
+      >
+        <header className="v2-upload-modal-head">
+          <div>
+            <h2 style={{
+              fontFamily: 'var(--v2-font-display)',
+              fontSize: 22, fontWeight: 500, margin: 0, letterSpacing: '-0.02em',
+            }}>Send a brief</h2>
+            <div className="v2-muted" style={{ fontSize: 13, marginTop: 4 }}>
+              Invite <strong>{creator.name}</strong> to one of your live campaigns.
+              They'll get a notification and can accept or pass.
+            </div>
+          </div>
+          <button type="button" className="v2-icon-btn" onClick={onClose} aria-label="Close">×</button>
+        </header>
+
+        <div style={{ flex: '1 1 auto', overflowY: 'auto', padding: '16px 20px' }}>
+          {live.length === 0 ? (
+            <div style={{ padding: '18px 0' }}>
+              <p style={{ fontSize: 13.5, margin: '0 0 6px' }}>
+                You don't have a live campaign to invite {creator.name.split(' ')[0]} to.
+              </p>
+              <p className="v2-muted" style={{ fontSize: 12.5, margin: '0 0 14px' }}>
+                {draftCount > 0
+                  ? `${draftCount} draft${draftCount === 1 ? '' : 's'} saved — launch one, or start a new brief with ${creator.name.split(' ')[0]} already invited.`
+                  : `Create one and they'll be invited as soon as it launches.`}
+              </p>
+              <button
+                className="v2-btn v2-btn-primary"
+                type="button"
+                onClick={() => { onClose(); onRoute(`campaign-new?invited=${creator.id}`); }}
+              >
+                {Icon.plus} New campaign
+              </button>
+            </div>
+          ) : (
+            <>
+              <label
+                className="v2-eyebrow"
+                htmlFor="v2-send-brief-campaign"
+                style={{ display: 'block', marginBottom: 6 }}
+              >
+                Campaign
+              </label>
+              <select
+                id="v2-send-brief-campaign"
+                className="v2-input"
+                value={campaignId}
+                onChange={(e) => setCampaignId(e.target.value)}
+                style={{ width: '100%', marginBottom: 14 }}
+              >
+                <option value="">Choose a campaign…</option>
+                {live.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.title}{reasons[c.id] ? ` — ${reasons[c.id]}` : ''}
+                  </option>
+                ))}
+              </select>
+
+              <label
+                className="v2-eyebrow"
+                htmlFor="v2-send-brief-message"
+                style={{ display: 'block', marginBottom: 6 }}
+              >
+                Message
+              </label>
+              <textarea
+                id="v2-send-brief-message"
+                className="v2-input"
+                rows={4}
+                value={body}
+                disabled={!campaignId}
+                onChange={(e) => { setEdited(true); setMessage(e.target.value); }}
+                placeholder="Pick a campaign first — the message fills in from its title."
+                style={{ width: '100%', resize: 'vertical' }}
+              />
+
+              {blocked && (
+                <p className="v2-muted" style={{ fontSize: 12.5, marginTop: 10 }}>
+                  {creator.name.split(' ')[0]} is already in flight on this campaign — {blocked.toLowerCase()}.
+                  Pick another, or open the campaign to carry on there.
+                </p>
+              )}
+            </>
+          )}
+        </div>
+
+        {live.length > 0 && (
+          <footer className="v2-upload-modal-foot">
+            <div className="v2-row" style={{ gap: 8, justifyContent: 'flex-end', width: '100%' }}>
+              <button className="v2-btn v2-btn-outline" type="button" onClick={onClose}>Cancel</button>
+              <button
+                className="v2-btn v2-btn-primary"
+                type="button"
+                disabled={!canInvite || !campaignId || !!blocked || sending || !body.trim()}
+                title={!canInvite ? 'Admin/ops only' : undefined}
+                onClick={onSend}
+              >
+                {Icon.send} Send brief
+              </button>
+            </div>
+          </footer>
+        )}
       </div>
     </div>
   );

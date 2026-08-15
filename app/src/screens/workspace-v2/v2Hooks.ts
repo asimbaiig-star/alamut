@@ -23,7 +23,7 @@ import {
   brandWalletV2, creatorWalletV2,
   collabsForCampaign, collabsForCreator, deriveCollab,
 } from './v2Adapters';
-import type { V2Creator, V2Campaign, V2Conversation, V2Collab } from './data';
+import type { V2Creator, V2Campaign, V2Conversation, V2Collab, V2WalletLedgerEntry } from './data';
 // Phase 10 — Supabase mirror for thread + message mutations.
 import { isSupabaseConfigured } from '@/lib/supabase';
 
@@ -87,7 +87,12 @@ const DEMO_CREATOR_USER_ID = 'u_sarah';     // sarah@alamut.test
  *  3. Only when there is NO session at all do we use the demo fallback
  *     so unauthenticated preview / development still renders.
  */
-function getViewerUserId(db: Database, sessionUserId: string | null, persona: 'brand' | 'creator'): string {
+/**
+ * Resolve the acting user for a persona. THE resolver — exported because
+ * being module-private is why Inbox hand-rolled a copy that ignored the
+ * session and picked the first matching user in the array.
+ */
+export function getViewerUserId(db: Database, sessionUserId: string | null, persona: 'brand' | 'creator'): string {
   if (sessionUserId) {
     const me = db.users.find((u) => u.id === sessionUserId);
     if (me) {
@@ -129,7 +134,9 @@ function readPersona(): 'brand' | 'creator' {
 /** All creators, mapped to v2 shape. Memoized on db identity. */
 export function useV2Creators(): V2Creator[] {
   const db = useDB();
-  return useMemo(() => db.creators.map(creatorToV2), [db.creators]);
+  // Pass `db` so `score` is the live review average. Without it every
+  // creator card would report "no reviews yet" regardless.
+  return useMemo(() => db.creators.map((c) => creatorToV2(c, db)), [db]);
 }
 
 /** All campaigns visible to the current persona, mapped to v2 shape. */
@@ -230,7 +237,9 @@ export function useV2BrandWallet() {
     if (!brand) {
       return {
         available: 0, reserved: 0, inFlight: 0,
-        currency: 'USD' as const, ledger: [],
+        currency: 'USD' as const,
+        ledger: [] as V2WalletLedgerEntry[],
+        ledgerAll: [] as V2WalletLedgerEntry[],
         thisMonth: { topups: 0, released: 0, fees: 0, adSpend: 0 },
       };
     }
@@ -712,6 +721,50 @@ export type WithdrawalRejection =
  *  "Add a bank account first") rather than showing it and then
  *  failing silently. Mirrors the gate logic inside `v2RequestWithdrawal`
  *  so the two paths can't drift. */
+/** Wallet money that is credited but still inside an open dispute
+ *  window, and therefore not withdrawable yet.
+ *
+ *  Both `v2CanWithdraw` and `v2RequestWithdrawal` computed this inline,
+ *  identically, from the campaign's positive payout row — which is the
+ *  GROSS the deal was worth, not the amount that reached the wallet. With
+ *  a 10% fee and 5% withholding that held back 15% more than was ever
+ *  credited. Summing every cleared row the creator has on that campaign
+ *  (payout, fee, withholding, advance repayment) gives exactly the wallet
+ *  movement, and withdrawals carry no campaignId so they can't leak in.
+ */
+function heldInDisputeWindows(creatorId: string, userId: string, db: Database): number {
+  const nowMs = Date.now();
+  // Campaign ids, DEDUPED. The sum below is a campaign-level total, so
+  // adding it per submission multiplied the hold by the number of
+  // deliverables: a $1,000 campaign netting $850 across two approved
+  // deliverables held back $1,700 against an $850 balance, and the creator
+  // was told "in-dispute-window" on money that was entirely theirs.
+  // Multi-deliverable campaigns release proportionally per approval, so
+  // that is the ordinary path, not an edge case.
+  const campaignsInWindow = new Set<string>();
+  for (const s of db.submissions) {
+    if (s.creatorId !== creatorId) continue;
+    if (s.status !== 'approved') continue;
+    if (typeof s.disputeWindowClosesAt !== 'number') continue;
+    if (s.disputeWindowClosesAt <= nowMs) continue;
+    campaignsInWindow.add(s.campaignId);
+  }
+
+  let held = 0;
+  for (const campaignId of campaignsInWindow) {
+    const credited = db.transactions
+      .filter((t) =>
+        t.userId === userId &&
+        t.campaignId === campaignId &&
+        t.status === 'cleared' &&
+        (t.kind === 'payout' || t.kind === 'fee'),
+      )
+      .reduce((n, t) => n + t.amount, 0);
+    held += Math.max(0, credited);
+  }
+  return held;
+}
+
 export function v2CanWithdraw(amount: number): { ok: true } | { ok: false; reason: WithdrawalRejection } {
   if (!Number.isFinite(amount) || amount <= 0) return { ok: false, reason: 'invalid-amount' };
   const db = useStore.getState().db;
@@ -734,21 +787,7 @@ export function v2CanWithdraw(amount: number): { ok: true } | { ok: false; reaso
       db.collaborations.some((c) => c.id === d.collaborationId && c.creatorId === creator.id),
   );
   if (hasOpenDispute) return { ok: false, reason: 'open-dispute' };
-  const nowMs = Date.now();
-  const inWindowHold = db.submissions
-    .filter((s) =>
-      s.creatorId === creator.id &&
-      s.status === 'approved' &&
-      typeof s.disputeWindowClosesAt === 'number' &&
-      s.disputeWindowClosesAt > nowMs,
-    )
-    .reduce((sum, s) => {
-      const matching = db.transactions.find(
-        (t) => t.kind === 'payout' && t.userId === me.id &&
-          t.campaignId === s.campaignId && t.amount > 0,
-      );
-      return sum + (matching?.amount ?? 0);
-    }, 0);
+  const inWindowHold = heldInDisputeWindows(creator.id, me.id, db);
   const withdrawable = Math.max(0, creator.walletBalance - inWindowHold);
   if (amount > withdrawable) return { ok: false, reason: 'in-dispute-window' };
   return { ok: true };
@@ -813,7 +852,6 @@ export function v2RequestWithdrawal(amount: number): boolean {
     //   2. No payouts that cleared within the last 7 days where the
     //      brand could still raise a dispute (submission.disputeWindowClosesAt > now).
     //      Held funds = sum of those payout amounts.
-    const nowMs = Date.now();
     // P67 — mirror v2CanWithdraw: 'in-review' blocks too.
     const hasOpenDispute = db.disputes.some(
       (d) => (d.status === 'open' || d.status === 'in-review') && d.collaborationId &&
@@ -821,24 +859,10 @@ export function v2RequestWithdrawal(amount: number): boolean {
     );
     if (hasOpenDispute) return;
 
-    // Sum payouts in the still-open dispute window. These dollars
-    // are real but contingently reclaimable, so they can't leave.
-    const inWindowHold = db.submissions
-      .filter((s) =>
-        s.creatorId === creator.id &&
-        s.status === 'approved' &&
-        typeof s.disputeWindowClosesAt === 'number' &&
-        s.disputeWindowClosesAt > nowMs,
-      )
-      .reduce((sum, s) => {
-        // Match the payout transaction by submissionId / campaignId.
-        // payouts are positive amounts on the creator's user id.
-        const matching = db.transactions.find(
-          (t) => t.kind === 'payout' && t.userId === me.id &&
-            t.campaignId === s.campaignId && t.amount > 0,
-        );
-        return sum + (matching?.amount ?? 0);
-      }, 0);
+    // Credited but still inside an open dispute window: real money,
+    // contingently reclaimable, so it can't leave. Same helper the
+    // pre-flight `v2CanWithdraw` uses — the two must agree.
+    const inWindowHold = heldInDisputeWindows(creator.id, me.id, db);
     const withdrawable = Math.max(0, creator.walletBalance - inWindowHold);
     if (amount > withdrawable) return;
 
@@ -900,12 +924,20 @@ export async function v2AddCampaignAsset(
           const { updateCampaignInSupabase } = await import('@/lib/data/campaignsRepo');
           const camp = useStore.getState().db.campaigns.find((c) => c.id === campaignId);
           if (!camp) return;
-          await updateCampaignInSupabase(campaignId, { assets: camp.assets ?? [] });
+          // Version-checked, like every other campaign write. Without it
+          // the repo drops the `.eq('version', …)` predicate and two
+          // teammates adding assets concurrently overwrite each other's
+          // list wholesale — `assets` is replaced, not merged.
+          await updateCampaignInSupabase(campaignId, { assets: camp.assets ?? [] }, camp.version);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           if (/row-level security|no rows|0 rows|not found/i.test(msg)) return;
           // eslint-disable-next-line no-console
           console.warn('[asset add mirror] failed:', msg);
+          // Tell the user. A bare console.warn meant a stale-version
+          // conflict or an RLS rejection looked identical to success.
+          const { pushToast } = await import('@/lib/utils/toast');
+          pushToast('Brief assets saved locally but not synced — reload to check.', 'bad');
         }
       })();
     }
@@ -944,7 +976,11 @@ export async function v2RemoveCampaignAsset(
         const { updateCampaignInSupabase, removeCampaignAssetFile } = await import('@/lib/data/campaignsRepo');
         const camp = useStore.getState().db.campaigns.find((c) => c.id === campaignId);
         if (camp) {
-          await updateCampaignInSupabase(campaignId, { assets: camp.assets ?? [] });
+          // Version-checked, like every other campaign write. Without it
+          // the repo drops the `.eq('version', …)` predicate and two
+          // teammates adding assets concurrently overwrite each other's
+          // list wholesale — `assets` is replaced, not merged.
+          await updateCampaignInSupabase(campaignId, { assets: camp.assets ?? [] }, camp.version);
         }
         if (removedAsset) {
           await removeCampaignAssetFile(campaignId, removedAsset.id, removedAsset.name);

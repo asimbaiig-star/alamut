@@ -3,7 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import type { Database, Session } from './types';
 import { isDemoCreator } from '@/lib/utils/demoData';
 import { SEED } from './seed';
-import { runPendingMigrations, CURRENT_MIGRATION_VERSION } from './migrations';
+import { runPendingMigrations, normalizeLedgerToGross, CURRENT_MIGRATION_VERSION } from './migrations';
 import { dedupeCollabRows } from './collabSync';
 
 interface StoreState {
@@ -180,6 +180,7 @@ if (useStore.getState().db.migrationVersion !== CURRENT_MIGRATION_VERSION) {
       referrals: [...s.db.referrals],
       advances: [...s.db.advances],
       testimonials: [...s.db.testimonials],
+      campaignPerformance: [...(s.db.campaignPerformance ?? [])],
       collaborations: [...(s.db.collaborations ?? [])],
       deliverables: [...(s.db.deliverables ?? [])],
       contracts: [...(s.db.contracts ?? [])],
@@ -223,6 +224,7 @@ export function tx<T>(mutator: (db: Database) => T): T {
       referrals: [...prev.referrals],
       advances: [...prev.advances],
       testimonials: [...prev.testimonials],
+      campaignPerformance: [...(prev.campaignPerformance ?? [])],
       collaborations: [...(prev.collaborations ?? [])], // P1c — defensive against pre-migration stores
       deliverables: [...(prev.deliverables ?? [])],     // P1d — same defensive guard
       contracts: [...(prev.contracts ?? [])],           // P2 — same defensive guard
@@ -246,8 +248,14 @@ export function tx<T>(mutator: (db: Database) => T): T {
       try {
         const { isSupabaseConfigured } = await import('@/lib/supabase');
         if (!isSupabaseConfigured()) return;
+        // Same FK as collaborations: `transactions.campaign_id` references
+        // `campaigns`, so a row on a local-only campaign is a guaranteed
+        // 23503. Filter rather than let Postgres refuse it.
+        const { mayMirrorForCampaign } = await import('@/lib/data/remoteRegistry');
+        const mirrorable = newTxs.filter((t) => mayMirrorForCampaign(t.campaignId));
+        if (mirrorable.length === 0) return;
         const { insertTransactionsBatchInSupabase } = await import('@/lib/data/transactionsRepo');
-        await insertTransactionsBatchInSupabase(newTxs);
+        await insertTransactionsBatchInSupabase(mirrorable);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (/row-level security|new row violates|foreign key|duplicate key|no rows|0 rows|not found/i.test(msg)) return;
@@ -326,6 +334,30 @@ if (typeof window !== 'undefined') {
         sparkDraftsMod.fetchAllSparkDraftsFromSupabase(),
         notificationsMod.fetchAllNotificationsFromSupabase(),
       ]);
+      // Record which campaigns Postgres actually has. Several mirrored
+      // tables carry an FK to `campaigns`, and the generated seed
+      // campaigns (`cmp_g*`) exist only in the browser — writes attached
+      // to them are rejected with 23503 and were being fired anyway.
+      // See lib/data/remoteRegistry.ts.
+      //
+      // GUARDED ON A NON-EMPTY RESULT, and that guard is the whole ball
+      // game. `fetchAllCampaignsFromSupabase` swallows every error — network
+      // blip, RLS change, timeout — and returns `[]` with a console.warn, so
+      // an empty array here is indistinguishable from a failed fetch. Arming
+      // the registry with it would mark "Postgres has zero campaigns" as
+      // fact, and every payout, fee, and collaboration write for the rest of
+      // the session would be filtered out BEFORE the try/catch — silently,
+      // with nothing logged. A brand approves content, the creator's wallet
+      // updates on screen, and the money never leaves the browser.
+      //
+      // Skipping the registry on an empty result costs only the old
+      // behaviour: doomed writes get attempted and fail loudly. Noise is
+      // recoverable. Lost money rows are not.
+      if (campaigns.length > 0) {
+        const { recordRemoteCampaigns } = await import('@/lib/data/remoteRegistry');
+        recordRemoteCampaigns(campaigns.map((c) => c.id));
+      }
+
       // Phase 10 — mount the realtime chat subscription once initial
       // hydration is complete. The subscription itself is idempotent
       // so calling it twice is safe.
@@ -422,6 +454,16 @@ if (typeof window !== 'undefined') {
               brandInquiriesDelta: r.brandInquiriesDelta ?? row.brandInquiriesDelta,
               recentBrandViewerNames: r.recentBrandViewerNames ?? row.recentBrandViewerNames,
               recentBrandViewerCount: r.recentBrandViewerCount ?? row.recentBrandViewerCount,
+              // KYC completion facts the `creators` table has no columns
+              // for yet. The spread above starts from the REMOTE row, so
+              // anything Postgres doesn't carry is dropped on every hydrate
+              // — a creator accepted the agreement, reloaded, and was asked
+              // to accept it again. Same for a submitted W-9/W-8BEN.
+              // Migration 032 adds the columns; until it is applied (and the
+              // repo widened to select them) these keep the local truth.
+              agreementAcceptedAt: r.agreementAcceptedAt ?? row.agreementAcceptedAt,
+              agreementVersion: r.agreementVersion ?? row.agreementVersion,
+              taxForm: r.taxForm ?? row.taxForm,
             };
           });
           const localIds = new Set(local.map((row) => row.id));
@@ -450,7 +492,17 @@ if (typeof window !== 'undefined') {
             submissions: overlay(s.db.submissions, submissions),
             deliverables: overlay(s.db.deliverables ?? [], deliverables),
             contracts: overlay(s.db.contracts ?? [], contracts),
-            transactions: overlay(s.db.transactions, transactions),
+            // Normalized AFTER the overlay, not before: rows mirrored to
+            // Supabase under the old net-payout convention come back net,
+            // and the local migrator can't reach them. The rewrite is
+            // idempotent, so a row that is already gross is untouched.
+            // Postgres still needs the companion SQL migration to be
+            // correct at rest — see supabase/migrations.
+            transactions: (() => {
+              const merged = overlay(s.db.transactions, transactions).map((t) => ({ ...t }));
+              normalizeLedgerToGross({ transactions: merged });
+              return merged;
+            })(),
             reviews: overlay(s.db.reviews, reviews),
             disputes: overlay(s.db.disputes, disputes),
             outreach: overlay(s.db.outreach ?? [], outreach),
@@ -511,6 +563,10 @@ if (typeof window !== 'undefined') {
                       brandInquiriesDelta: ownCreator.brandInquiriesDelta ?? c.brandInquiriesDelta,
                       recentBrandViewerNames: ownCreator.recentBrandViewerNames ?? c.recentBrandViewerNames,
                       recentBrandViewerCount: ownCreator.recentBrandViewerCount ?? c.recentBrandViewerCount,
+                      // Same guard as the bulk overlay — see the note there.
+                      agreementAcceptedAt: ownCreator.agreementAcceptedAt ?? c.agreementAcceptedAt,
+                      agreementVersion: ownCreator.agreementVersion ?? c.agreementVersion,
+                      taxForm: ownCreator.taxForm ?? c.taxForm,
                     };
                   })
                 : s.db.creators,

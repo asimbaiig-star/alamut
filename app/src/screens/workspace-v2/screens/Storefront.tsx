@@ -28,6 +28,7 @@ import {
   ALL_PLATFORMS, ALL_CATEGORIES, COMMON_PRESS_OUTLETS,
 } from '../v2CreatorActions';
 import { useStore } from '@/lib/api/store';
+import { Avatar } from '@/components/ui/Avatar';
 import { pushToast } from '@/lib/utils/toast';
 import { SwapFeaturedReviewModal } from './SwapFeaturedReviewModal';
 import type { Creator, Platform, Availability, Review } from '@/lib/api/types';
@@ -52,6 +53,7 @@ export function Storefront({ onRoute }: Props) {
   const creator = useV2CurrentCreator();
   const allCreators = useV2Creators();
   const allCampaigns = useV2AllCampaigns();
+  const db = useStore((s) => s.db);
   const [editing, setEditing] = useState<EditableBlock>(null);
 
   if (!creator) {
@@ -62,7 +64,7 @@ export function Storefront({ onRoute }: Props) {
       </>
     );
   }
-  const me = creatorToV2(creator);
+  const me = creatorToV2(creator, db);
   // Past collabs — campaigns where this creator is in acceptedCreators and stage=closed
   const pastCollabs = allCampaigns.filter(
     (c) => c.creators.includes(me.id) && c.status === 'Completed',
@@ -175,12 +177,25 @@ export function Storefront({ onRoute }: Props) {
           label="Audience snapshot"
           tip="Aggregated from your connected channels. Update a channel's verified status to refresh — direct editing isn't supported (the data is meant to mirror your platform analytics, not be hand-tuned)."
         >
-          <div className="v2-storefront-audience">
-            <AudienceStat label="Female" value={`${me.audience.female}%`} bar={me.audience.female} />
-            <AudienceStat label="Male" value={`${me.audience.male}%`} bar={me.audience.male} />
-            <AudienceStat label="25–34 age band" value={`${me.audience.age2534}%`} bar={me.audience.age2534} />
-            <AudienceStat label="Top city" value={me.audience.topCity} />
-          </div>
+          {/* The tip above says this comes from connected channels, so when
+              none report demographics the section has to say so. It used to
+              render a fixed 60/40 · Lahore breakdown instead — permanently,
+              for every real creator, since nothing outside the seed ever
+              writes `Platform.audience`. */}
+          {me.audience ? (
+            <div className="v2-storefront-audience">
+              <AudienceStat label="Female" value={`${me.audience.female}%`} bar={me.audience.female} />
+              <AudienceStat label="Male" value={`${me.audience.male}%`} bar={me.audience.male} />
+              <AudienceStat label="25–34 age band" value={`${me.audience.age2534}%`} bar={me.audience.age2534} />
+              <AudienceStat label="Top city" value={me.audience.topCity} />
+            </div>
+          ) : (
+            <p className="v2-muted" style={{ fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+              None of your channels report audience demographics yet. Brands
+              see this section only once that data is available — until then
+              your reach, engagement and past work do the work.
+            </p>
+          )}
         </Block>
       </div>
     </>
@@ -272,10 +287,18 @@ function IdentityBlock({ creator, v2, editing, onEdit, onClose }: {
         style={{ backgroundImage: `url(${cover})` }}
       />
       <div className="v2-storefront-identity">
-        <div
-          className="v2-avatar v2-avatar-xl v2-storefront-avatar"
-          style={{ backgroundImage: `url(${portrait})` }}
-          aria-label={creator.name}
+        {/* `Avatar`, not a raw background-image. New creators are seeded
+            with `portrait: ''`, so `url()` resolved to nothing and the CSS
+            has no background-color fallback — the avatar rendered as an
+            invisible hole. `Avatar` exists precisely for this (its own
+            comment records fixing ~25 such sites) and falls back to
+            initials; it also sets role="img" so the accessible name is
+            actually announced. */}
+        <Avatar
+          src={portrait}
+          name={creator.name}
+          size={96}
+          className="v2-storefront-avatar"
         />
         <div style={{ flex: 1, minWidth: 0 }}>
           {!editing ? (
@@ -668,13 +691,37 @@ function PackagesBlock({ creator, v2, editing, onEdit, onClose }: {
     }
   }, [editing, creator]);
 
+  // Nothing in the rate card = nothing the creator has actually priced.
+  // Pre-fix the four cards below rendered anyway, filled from `v2.priceMin`
+  // / `v2.rate` / `v2.priceMax` — which, with no rate card to parse, fall
+  // back to a flat tier default ($350 for a Rising creator). So a creator
+  // who had never entered a price saw four packages quoting prices they'd
+  // never set, and so did every brand looking at them.
+  const hasRateCard = [
+    creator.rateCard.reel, creator.rateCard.story,
+    creator.rateCard.post, creator.rateCard.longform,
+  ].some((r) => (r ?? '').trim().length > 0);
+
   return (
     <Block
       label="Packages & rates"
       tip="What you sell, at what price. Brand teams see this when they send offers."
       action={!editing ? <EditButton onClick={onEdit} /> : null}
     >
-      {!editing ? (
+      {!editing && !hasRateCard ? (
+        <div style={{ padding: '18px 0' }}>
+          <p style={{ fontSize: 13.5, margin: '0 0 6px' }}>
+            You haven't published any rates yet.
+          </p>
+          <p className="v2-muted" style={{ fontSize: 12.5, margin: '0 0 14px', lineHeight: 1.5 }}>
+            Brands use these to decide whether to send you an offer — a range is
+            enough, and you can still negotiate per deal.
+          </p>
+          <button className="v2-btn v2-btn-primary v2-btn-sm" type="button" onClick={onEdit}>
+            {Icon.plus} Set your rates
+          </button>
+        </div>
+      ) : !editing ? (
         <div className="v2-storefront-packages">
           <PackageCard
             title="Instagram Reel"
@@ -709,17 +756,17 @@ function PackagesBlock({ creator, v2, editing, onEdit, onClose }: {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <FormField label="Instagram Reel · price range">
-            <input className="v2-input" value={reel} onChange={(e) => setReel(e.target.value)} placeholder="$300–500" />
+          <FormField label="Instagram Reel · price range" htmlFor="v2-rate-reel">
+            <input id="v2-rate-reel" className="v2-input" value={reel} onChange={(e) => setReel(e.target.value)} placeholder="$300–500" />
           </FormField>
-          <FormField label="Story bundle · price range">
-            <input className="v2-input" value={story} onChange={(e) => setStory(e.target.value)} placeholder="$150–250" />
+          <FormField label="Story bundle · price range" htmlFor="v2-rate-story">
+            <input id="v2-rate-story" className="v2-input" value={story} onChange={(e) => setStory(e.target.value)} placeholder="$150–250" />
           </FormField>
-          <FormField label="Static post · price range">
-            <input className="v2-input" value={post} onChange={(e) => setPost(e.target.value)} placeholder="$200–400" />
+          <FormField label="Static post · price range" htmlFor="v2-rate-post">
+            <input id="v2-rate-post" className="v2-input" value={post} onChange={(e) => setPost(e.target.value)} placeholder="$200–400" />
           </FormField>
-          <FormField label="Long-form video · price range">
-            <input className="v2-input" value={longform} onChange={(e) => setLongform(e.target.value)} placeholder="$800–1,500" />
+          <FormField label="Long-form video · price range" htmlFor="v2-rate-longform">
+            <input id="v2-rate-longform" className="v2-input" value={longform} onChange={(e) => setLongform(e.target.value)} placeholder="$800–1,500" />
           </FormField>
           <div className="v2-muted" style={{ fontSize: 12 }}>
             Brand teams see these on your storefront. Free-form ranges work — e.g. "$300–500".
@@ -1055,10 +1102,11 @@ function AvailabilityBlock({ creator, editing, onEdit, onClose }: {
           </FormField>
 
           {/* Minimum-rate floor */}
-          <FormField label="Minimum acceptable rate (USD, optional)">
+          <FormField label="Minimum acceptable rate (USD, optional)" htmlFor="v2-min-rate">
             <div className="v2-onboarding-rate">
               <span className="v2-onboarding-rate-prefix">$</span>
               <input
+                id="v2-min-rate"
                 type="number"
                 min={0}
                 step={50}
@@ -1666,14 +1714,17 @@ function ReviewsBlock({ creator, editing, onEdit, onClose }: {
 // Shared form-field wrapper
 // =====================================================================
 
-function FormField({ label, children, style }: {
+function FormField({ label, htmlFor, children, style }: {
   label: string;
+  /** id of the control this labels. Without it the <label> is a sibling with
+   *  no association and the field is announced unnamed. */
+  htmlFor?: string;
   children: React.ReactNode;
   style?: React.CSSProperties;
 }) {
   return (
     <div style={style}>
-      <label className="v2-eyebrow" style={{ display: 'block', marginBottom: 6 }}>{label}</label>
+      <label className="v2-eyebrow" htmlFor={htmlFor} style={{ display: 'block', marginBottom: 6 }}>{label}</label>
       {children}
     </div>
   );

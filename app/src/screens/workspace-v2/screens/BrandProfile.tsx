@@ -17,6 +17,7 @@ import { Icon, Topbar } from '../lib';
 import { useV2CurrentBrand } from '../v2Hooks';
 import { v2UpdateBrand } from '../v2CampaignActions';
 import { useCapability } from '@/lib/permissions';
+import { TeamAccessAside } from './TeamAccess';
 import { pushToast } from '@/lib/utils/toast';
 // Phase 2 — Supabase Storage uploads when configured. Falls back to
 // inline base64 for the local-only dev setup.
@@ -564,6 +565,15 @@ export function BrandProfile({ onRoute }: Props) {
                   the support inbox
                 </button>.
               </div>
+            </div>
+
+            {/* Team access is brand-scoped but lived only inside a
+                campaign's Settings tab, so a brand with no campaigns
+                could not add a teammate at all — and the natural place
+                to look for it, the brand profile, didn't have it. Same
+                component, no second copy. */}
+            <div style={{ marginTop: 16, display: 'flex' }}>
+              <TeamAccessAside brandId={brand.id} />
             </div>
           </aside>
         </div>

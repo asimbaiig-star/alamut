@@ -211,11 +211,18 @@ export function Campaigns({ onRoute }: Props) {
                 </span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {items.map((c) => (
-                  isCompact
-                    ? <CompactRow key={c.id} campaign={c} onClick={() => onRoute(`campaign:${c.id}`)} />
-                    : <ExpandedRow key={c.id} campaign={c} creators={creators} onClick={() => onRoute(`campaign:${c.id}`)} />
-                ))}
+                {items.map((c) => {
+                  // A draft ('Planned') has no pipeline, no content and no
+                  // analytics — CampaignDetail would render an empty shell.
+                  // Reopen it in the wizard instead, which is what makes
+                  // "Save as draft · pick it up from Campaigns" true.
+                  const open = c.status === 'Planned'
+                    ? () => onRoute(`campaign-new?draft=${c.id}`)
+                    : () => onRoute(`campaign:${c.id}`);
+                  return isCompact
+                    ? <CompactRow key={c.id} campaign={c} onClick={open} />
+                    : <ExpandedRow key={c.id} campaign={c} creators={creators} onClick={open} />;
+                })}
               </div>
             </section>
           );

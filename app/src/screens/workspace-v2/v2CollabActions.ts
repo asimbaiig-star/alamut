@@ -21,6 +21,8 @@
 import { tx } from '@/lib/api/store';
 import type { Collaboration, Database } from '@/lib/api/types';
 import { ensureCollabState } from '@/lib/api/collabSync';
+// Fee/withholding rates come from one module — see lib/api/money.ts.
+import { netOf } from '@/lib/api/money';
 // P5 §4.1 — capability gate. See `lib/permissions.ts` for the matrix.
 import { requireCapability, getActorUserId } from '@/lib/permissions';
 
@@ -185,9 +187,7 @@ function cancelCollabInternal(
     // refundable amount so the creator's pending drops match what the
     // brand recovered.
     if (creator) {
-      const PLATFORM_FEE = 0.10;
-      const WHT = 0.05;
-      const netHeld = Math.round(fromCampaign * (1 - PLATFORM_FEE - WHT));
+      const netHeld = netOf(fromCampaign);
       db.creators = db.creators.map((c) =>
         c.id === creator.id
           ? { ...c, pendingBalance: Math.max(0, c.pendingBalance - netHeld) }
@@ -317,6 +317,14 @@ export function v2RequestCollabCancel(
     if (!CANCELLABLE_STAGES.has(collab.stage)) {
       throw new Error(`Can't cancel a collab in "${collab.stage}" — it's already past the cancellable window.`);
     }
+    // A mutual cancel refunds escrow immediately, which would route around
+    // an open dispute entirely — the admin decision is what's meant to
+    // settle the money, and the dispute row would be left orphaned against
+    // a cancelled collab. `v2EndCampaign` already filters on this; the
+    // consent path never did.
+    if (collab.escrowFrozen) {
+      throw new Error('Escrow is frozen while a dispute is open on this collab. Resolve or withdraw the dispute first.');
+    }
     if (collab.cancellationRequest) {
       throw new Error('A cancel request is already pending on this collab. Wait for the other side to respond.');
     }
@@ -370,6 +378,11 @@ export function v2AgreeCollabCancel(
     }
     if (collab.cancellationRequest.by === byUserId) {
       throw new Error("You opened this cancel request — you can't agree to it yourself. Wait for the other side.");
+    }
+    // Same guard as the request side: a dispute can be raised after the
+    // request was opened, so agreeing must re-check rather than trust it.
+    if (collab.escrowFrozen) {
+      throw new Error('Escrow is frozen while a dispute is open on this collab. Resolve or withdraw the dispute first.');
     }
 
     const reason = `mutual-cancel: ${collab.cancellationRequest.reason}`;

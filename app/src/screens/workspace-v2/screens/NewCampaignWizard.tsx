@@ -7,8 +7,10 @@
 import { useMemo, useState } from 'react';
 import { fmtUSD, Icon, Topbar } from '../lib';
 import { useV2BrandWallet, useV2Creators, useV2CurrentBrand } from '../v2Hooks';
-import { v2LaunchCampaign } from '../v2CampaignActions';
+import { v2LaunchCampaign, v2SaveCampaignDraft } from '../v2CampaignActions';
+import type { LaunchCampaignInput } from '../v2CampaignActions';
 import { pushToast } from '@/lib/utils/toast';
+import { useStore } from '@/lib/api/store';
 import { parseNumberInput } from '@/lib/utils/format';
 
 interface Props {
@@ -24,6 +26,9 @@ interface Props {
   initialInvitedCreators?: string[];
   initialBudget?: number;
   initialPerCreator?: number;
+  /** Resume a saved draft: `campaign-new?draft=<campaignId>`. Repeat saves
+   *  then update that campaign in place instead of creating another. */
+  initialDraftId?: string;
 }
 
 interface Placement {
@@ -104,10 +109,21 @@ function formatLabel(platform: string, format: string): string {
  *  Example: "1 Instagram Reel + 3 Instagram Stories + 1 LinkedIn Article".
  *  The parser in lib/api/deliverables.ts pluralizes count-aware. */
 function serializePlacements(placements: Placement[]): string {
-  if (placements.length === 0) return '1 Instagram Post';
+  // No `'1 Instagram Post'` fallback. An empty list used to be silently
+  // replaced with a deliverable the brand never asked for, materialized
+  // into a real Deliverable row that creators could submit against.
+  // Launch is now gated on having at least one placement (see `canLaunch`),
+  // so this can only be reached with a non-empty list.
   return placements
     .map((p) => `${p.count} ${platformLabel(p.platform)} ${formatLabel(p.platform, p.format)}`)
     .join(' + ');
+}
+
+/** 30 days out, as `YYYY-MM-DD` for the date input. */
+function defaultDeadline(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 30);
+  return d.toISOString().slice(0, 10);
 }
 
 /** Compact summary for the preview/review rows. */
@@ -128,13 +144,34 @@ const STEPS = [
 
 export function NewCampaignWizard({
   onRoute, initialName, initialDeadline, initialCategory, initialBriefSeed,
-  initialInvitedCreators, initialBudget, initialPerCreator,
+  initialInvitedCreators, initialBudget, initialPerCreator, initialDraftId,
 }: Props) {
   const brand = useV2CurrentBrand();
   const wallet = useV2BrandWallet();
   const allCreators = useV2Creators();
   const [step, setStep] = useState(0);
-  const [draft, setDraft] = useState<Draft>({
+  // Reopening a saved draft: seed every field from the stored campaign so
+  // the brand returns to exactly what they authored, not a blank wizard
+  // with a familiar title.
+  const savedDraft = useStore((s) =>
+    initialDraftId ? s.db.campaigns.find((c) => c.id === initialDraftId && c.stage === 'draft') : undefined,
+  );
+  const [draft, setDraft] = useState<Draft>(savedDraft ? {
+    name: savedDraft.title,
+    objective: (savedDraft.objective as Draft['objective']) ?? 'awareness',
+    brief: savedDraft.brief,
+    placements: savedDraft.placements?.length
+      ? savedDraft.placements
+      : [{ platform: 'instagram', format: 'reel', count: 1 }],
+    audienceCity: savedDraft.region ? savedDraft.region.split(',').map((s) => s.trim()).filter(Boolean) : [],
+    audienceGender: (savedDraft.audienceGender as Draft['audienceGender']) ?? 'any',
+    audienceAge: savedDraft.audienceAge ?? [],
+    categories: savedDraft.categories?.length ? savedDraft.categories : [savedDraft.category],
+    budget: savedDraft.budget,
+    perCreator: initialPerCreator ?? 350,
+    deadline: savedDraft.deadline,
+    invitedCreators: [],
+  } : {
     name: initialName ?? '',
     objective: 'awareness',
     brief: initialBriefSeed ?? '',
@@ -150,11 +187,42 @@ export function NewCampaignWizard({
       : (brand?.preferredCategories?.slice(0, 2) ?? ['Fashion', 'Lifestyle']),
     budget: initialBudget ?? 15000,
     perCreator: initialPerCreator ?? 350,
-    deadline: initialDeadline ?? '2026-06-30',
+    // Was hardcoded '2026-06-30', which quietly went stale — a fresh wizard
+    // opened with a deadline already in the past. Default to 30 days out.
+    deadline: initialDeadline ?? defaultDeadline(),
     invitedCreators: initialInvitedCreators ?? [],
   });
 
   const update = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
+
+  // Id of the persisted draft, once saved. Repeat saves update it in place
+  // rather than scattering copies through the campaign list.
+  const [draftId, setDraftId] = useState<string | undefined>(initialDraftId);
+  // Guards double-submit: `tx()` is a synchronous state setter with no
+  // idempotency key, so a double-click minted two campaigns plus duplicate
+  // offers and "invited you" notifications to every invited creator before
+  // the first navigation unmounted the wizard.
+  const [submitting, setSubmitting] = useState(false);
+
+  const asInput = (): LaunchCampaignInput => ({
+    ...draft,
+    placement: serializePlacements(draft.placements),
+    placements: draft.placements,
+  });
+
+  // Launch validation. Only name + brief were checked before, so a campaign
+  // could go live with no placements (fabricating one), a $0 or absurd
+  // budget, or a deadline already in the past.
+  const deadlineMs = draft.deadline ? +new Date(`${draft.deadline}T23:59:59`) : NaN;
+  const launchBlockers: string[] = [];
+  if (!draft.name.trim()) launchBlockers.push('Add a campaign name');
+  if (!draft.brief.trim()) launchBlockers.push('Write a brief');
+  if (draft.placements.length === 0) launchBlockers.push('Add at least one placement');
+  if (!(draft.budget > 0)) launchBlockers.push('Set a budget above $0');
+  if (!(draft.perCreator > 0)) launchBlockers.push('Set a per-creator rate above $0');
+  if (!Number.isFinite(deadlineMs)) launchBlockers.push('Pick a deadline');
+  else if (deadlineMs < Date.now()) launchBlockers.push('Deadline is in the past');
+  const canLaunch = launchBlockers.length === 0;
 
   return (
     <>
@@ -172,13 +240,34 @@ export function NewCampaignWizard({
         }
         actions={
           <>
-            <button className="v2-btn v2-btn-ghost" type="button" onClick={() => onRoute('campaigns')}>Cancel</button>
+            <button
+              className="v2-btn v2-btn-ghost"
+              type="button"
+              onClick={() => {
+                // Confirm before discarding authored work. Cancel used to
+                // navigate away silently, and with "Save as draft" writing
+                // nothing there was no way to keep a partial brief at all.
+                const hasContent = draft.name.trim() !== '' || draft.brief.trim() !== '';
+                if (hasContent && !window.confirm('Discard this campaign? Your brief won’t be saved.')) return;
+                onRoute('campaigns');
+              }}
+            >Cancel</button>
             <button
               className="v2-btn v2-btn-outline"
               type="button"
               onClick={() => {
-                pushToast('Draft saved · pick it up from Campaigns', 'good');
-                onRoute('campaigns');
+                // Actually writes now. This was a toast reading "Draft saved
+                // · pick it up from Campaigns" plus a navigation, with no
+                // persistence anywhere — the brief was gone, and the message
+                // named a place to find it.
+                try {
+                  const saved = v2SaveCampaignDraft(asInput(), draftId);
+                  setDraftId(saved.id);
+                  pushToast(`Draft saved · "${saved.title}" is in Campaigns`, 'good');
+                  onRoute('campaigns');
+                } catch (err) {
+                  pushToast(err instanceof Error ? err.message : 'Could not save draft', 'bad');
+                }
               }}
             >Save as draft</button>
           </>
@@ -214,6 +303,22 @@ export function NewCampaignWizard({
             {step === 4 && <StepReview draft={draft} creators={allCreators} />}
 
             <hr style={{ border: 0, borderTop: '1px solid var(--v2-line)', margin: '32px 0 20px' }} />
+            {/* Say WHY launch is unavailable. A disabled button with no
+                reason is its own dead end — the brand can't tell whether
+                they've missed a field or the app is broken. */}
+            {step === STEPS.length - 1 && launchBlockers.length > 0 && (
+              <div
+                className="v2-card v2-card-pad"
+                style={{ marginBottom: 16, borderColor: 'var(--v2-gold)' }}
+              >
+                <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>
+                  Before you can launch
+                </div>
+                <ul className="v2-muted" style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, lineHeight: 1.7 }}>
+                  {launchBlockers.map((b) => <li key={b}>{b}</li>)}
+                </ul>
+              </div>
+            )}
             <div className="v2-row" style={{ justifyContent: 'space-between' }}>
               <button
                 className="v2-btn v2-btn-ghost"
@@ -237,23 +342,21 @@ export function NewCampaignWizard({
                   className="v2-btn v2-btn-primary"
                   type="button"
                   onClick={() => {
+                    if (submitting) return;
+                    setSubmitting(true);
                     try {
-                      const camp = v2LaunchCampaign({
-                        ...draft,
-                        // Serialize the structured placement list to the
-                        // free-form string the launch action + downstream
-                        // deliverable materializer parse.
-                        placement: serializePlacements(draft.placements),
-                      });
+                      const camp = v2LaunchCampaign(asInput());
                       pushToast(`Launched "${camp.title}" — live and accepting applications`, 'good');
                       onRoute(`campaign:${camp.id}`);
                     } catch (err) {
                       pushToast(err instanceof Error ? err.message : 'Launch failed — check your draft', 'bad');
+                      setSubmitting(false);
                     }
                   }}
-                  disabled={!draft.name.trim() || !draft.brief.trim()}
+                  disabled={!canLaunch || submitting}
+                  title={canLaunch ? undefined : launchBlockers.join(' · ')}
                 >
-                  {Icon.spark}<span>Launch campaign</span>
+                  {Icon.spark}<span>{submitting ? 'Launching…' : 'Launch campaign'}</span>
                 </button>
               )}
             </div>
@@ -295,6 +398,10 @@ function StepBrief({ draft, update }: { draft: Draft; update: (p: Partial<Draft>
             <button
               key={id}
               type="button"
+              // Selection was communicated by colour alone — `is-on` flips
+              // the fill and nothing else. Nothing in the accessibility
+              // tree distinguished the chosen option from the other two.
+              aria-pressed={draft.objective === id}
               className={`v2-objective-card ${draft.objective === id ? 'is-on' : ''}`}
               onClick={() => update({ objective: id as Draft['objective'] })}
             >
@@ -457,6 +564,7 @@ function StepAudience({ draft, update }: { draft: Draft; update: (p: Partial<Dra
             <button
               key={g}
               type="button"
+              aria-pressed={draft.audienceGender === g}
               className={`v2-segmented-btn ${draft.audienceGender === g ? 'is-on' : ''}`}
               onClick={() => update({ audienceGender: g })}
             >
@@ -485,12 +593,18 @@ function StepBudget({ draft, update }: { draft: Draft; update: (p: Partial<Draft
   return (
     <>
       <H2>Budget & timeline</H2>
-      <Sub>Funds reserve from your wallet on launch — released on delivery.</Sub>
+      {/* Launch reserves nothing: `v2LaunchCampaign` sets escrowHeld: 0 and
+          never touches the wallet. Escrow is held per creator, when an offer
+          is accepted (`v2AcceptOffer`). Saying otherwise let a brand launch
+          several campaigns believing the budget was committed while the full
+          balance stayed spendable. */}
+      <Sub>Budget is a plan, not a hold — escrow is reserved per creator when they accept.</Sub>
 
-      <Field label="Total budget (USD)">
+      <Field label="Total budget (USD)" htmlFor="v2-campaign-budget">
         <div className="v2-onboarding-rate">
           <span className="v2-onboarding-rate-prefix">$</span>
           <input
+            id="v2-campaign-budget"
             type="number"
             value={draft.budget}
             onChange={(e) => update({ budget: parseNumberInput(e.target.value, { min: 0 }) })}
@@ -508,10 +622,11 @@ function StepBudget({ draft, update }: { draft: Draft; update: (p: Partial<Draft
         </div>
       </Field>
 
-      <Field label="Target price per creator">
+      <Field label="Target price per creator" htmlFor="v2-campaign-per-creator">
         <div className="v2-onboarding-rate">
           <span className="v2-onboarding-rate-prefix">$</span>
           <input
+            id="v2-campaign-per-creator"
             type="number"
             value={draft.perCreator}
             onChange={(e) => update({ perCreator: parseNumberInput(e.target.value, { min: 0 }) })}
@@ -589,6 +704,7 @@ function StepInvite({ draft, update, creators, onRoute }: {
             <button
               key={c.id}
               type="button"
+              aria-pressed={invited}
               className={`v2-invite-row ${invited ? 'is-on' : ''}`}
               onClick={() => toggle(c.id)}
             >
@@ -642,7 +758,7 @@ function StepReview({ draft, creators }: {
   return (
     <>
       <H2>Review & launch</H2>
-      <Sub>Funds reserve to escrow on launch. You can pause anytime.</Sub>
+      <Sub>Nothing leaves your wallet at launch — escrow is held as each creator accepts. You can pause anytime.</Sub>
 
       <ReviewSection title="Brief">
         <KvRow k="Name" v={draft.name || '—'} />
@@ -727,7 +843,16 @@ function WizardSidebar({ draft, brandName, walletAvailable }: {
       <KvRow k="Deadline" v={draft.deadline} />
       <hr style={{ border: 0, borderTop: '1px solid var(--v2-line)', margin: '12px 0' }} />
       <KvRow k="Invited" v={`${draft.invitedCreators.length} creators`} />
-      <KvRow k="Wallet after launch" v={fmtUSD(Math.max(0, walletAvailable - draft.budget))} />
+      {/* Was "Wallet after launch", computing `available - budget` — a
+          figure for an event that never happens. Launch moves no money, so
+          the honest number is simply what's in the wallet now. */}
+      <KvRow k="Wallet available" v={fmtUSD(walletAvailable)} />
+      {draft.budget > walletAvailable && (
+        <div className="v2-muted" style={{ fontSize: 11, marginTop: 6, lineHeight: 1.4 }}>
+          Budget exceeds your balance. You can still launch — escrow is only
+          held as creators accept — but top up before confirming offers.
+        </div>
+      )}
     </aside>
   );
 }
@@ -750,10 +875,16 @@ function H2({ children }: { children: React.ReactNode }) {
 function Sub({ children }: { children: React.ReactNode }) {
   return <p className="v2-muted" style={{ margin: '0 0 24px' }}>{children}</p>;
 }
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, htmlFor, children }: {
+  label: string;
+  /** id of the control this labels. Without it the <label> is a sibling
+   *  with no association, and the field is announced unnamed. */
+  htmlFor?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div style={{ marginBottom: 18 }}>
-      <label className="v2-eyebrow" style={{ display: 'block', marginBottom: 6 }}>{label}</label>
+      <label className="v2-eyebrow" htmlFor={htmlFor} style={{ display: 'block', marginBottom: 6 }}>{label}</label>
       {children}
     </div>
   );
@@ -789,6 +920,7 @@ function ChipMulti({ options, selected, onChange }: {
           <button
             key={o}
             type="button"
+            aria-pressed={on}
             className="v2-pill"
             style={{
               cursor: 'pointer',

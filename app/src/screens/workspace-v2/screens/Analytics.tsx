@@ -14,6 +14,7 @@ import {
   useV2Creators, useV2CurrentCreator, useV2MyCollabs, useV2AllCampaigns,
 } from '../v2Hooks';
 import { creatorToV2 } from '../v2Adapters';
+import { netOf } from '@/lib/api/money';
 import { useStore } from '@/lib/api/store';
 
 interface Props {
@@ -43,7 +44,7 @@ export function Analytics({ onRoute }: Props) {
   const allCampaigns = useV2AllCampaigns();
   const db = useStore((s) => s.db);
 
-  const me = creator ? creatorToV2(creator) : allCreators[0];
+  const me = creator ? creatorToV2(creator, db) : allCreators[0];
   if (!me || !creator) {
     return (
       <>
@@ -126,6 +127,15 @@ export function Analytics({ onRoute }: Props) {
     }));
   }, [myCollabs, allCampaigns, db.campaigns]);
 
+  // The count the donut's centre reports — the same collabs its segments
+  // are built from, so the middle and the ring can't disagree.
+  const brandDealCount = useMemo(
+    () => myCollabs.filter((c) =>
+      ['paid', 'live', 'approved', 'submitted', 'confirmed'].includes(c.stage),
+    ).length,
+    [myCollabs],
+  );
+
   // ─── Top performing posts: derive from approved/live submissions
   const topPosts = useMemo(() => {
     const live = db.submissions
@@ -133,7 +143,7 @@ export function Analytics({ onRoute }: Props) {
       .map((s) => {
         const camp = db.campaigns.find((c) => c.id === s.campaignId);
         const offer = db.offers.find((o) => o.campaignId === s.campaignId && o.creatorId === creator.id && o.status === 'accepted');
-        const earned = offer ? Math.round(offer.rate * 0.85) : 0;
+        const earned = offer ? netOf(offer.rate) : 0;
         // Synthetic reach + engagement based on creator's main channel
         const main = me.channels[0];
         const reach = Math.round((main?.followers ?? 50_000) * (0.4 + (s.round * 0.1)));
@@ -236,7 +246,7 @@ export function Analytics({ onRoute }: Props) {
           <KpiTile
             label="Avg engagement"
             value={`${avgER}%`}
-            sub="industry avg 2.4%"
+            sub="across connected channels"
           />
           <KpiTile
             label="Deal close rate"
@@ -276,7 +286,7 @@ export function Analytics({ onRoute }: Props) {
 
           <section className="v2-card v2-card-pad" style={{ flex: '1 1 280px' }}>
             <div className="v2-eyebrow" style={{ marginBottom: 14 }}>Brand mix</div>
-            <Donut segments={brandMix} />
+            <Donut segments={brandMix} centerCount={brandDealCount} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 16 }}>
               {brandMix.map((c) => (
                 <div key={c.name} className="v2-row" style={{ justifyContent: 'space-between', fontSize: 12.5 }}>
@@ -301,17 +311,31 @@ export function Analytics({ onRoute }: Props) {
         <div className="v2-row" style={{ gap: 20, alignItems: 'flex-start', marginBottom: 24, flexWrap: 'wrap' }}>
           <section className="v2-card v2-card-pad" style={{ flex: '1 1 320px' }}>
             <div className="v2-eyebrow" style={{ marginBottom: 14 }}>Audience demographics</div>
-            <div className="v2-storefront-audience">
-              <AudienceBar label="Female" value={`${me.audience.female}%`} bar={me.audience.female} />
-              <AudienceBar label="Male" value={`${me.audience.male}%`} bar={me.audience.male} />
-              <AudienceBar label="25–34 age band" value={`${me.audience.age2534}%`} bar={me.audience.age2534} />
-              {me.audience.age1824 != null && (
-                <AudienceBar label="18–24 age band" value={`${me.audience.age1824}%`} bar={me.audience.age1824} />
-              )}
-            </div>
-            <div style={{ marginTop: 14, padding: '10px 12px', background: 'var(--v2-bg-1)', borderRadius: 10, fontSize: 12.5, color: 'var(--v2-ink-2)' }}>
-              <strong>Top region:</strong> {me.audience.topCity}, Pakistan · 38% of all impressions
-            </div>
+            {me.audience ? (
+              <>
+                <div className="v2-storefront-audience">
+                  <AudienceBar label="Female" value={`${me.audience.female}%`} bar={me.audience.female} />
+                  <AudienceBar label="Male" value={`${me.audience.male}%`} bar={me.audience.male} />
+                  <AudienceBar label="25–34 age band" value={`${me.audience.age2534}%`} bar={me.audience.age2534} />
+                  {me.audience.age1824 != null && (
+                    <AudienceBar label="18–24 age band" value={`${me.audience.age1824}%`} bar={me.audience.age1824} />
+                  )}
+                </div>
+                <div style={{ marginTop: 14, padding: '10px 12px', background: 'var(--v2-bg-1)', borderRadius: 10, fontSize: 12.5, color: 'var(--v2-ink-2)' }}>
+                  {/* `topCity` is populated from `topCountries[0].country` —
+                      a country, not a city. The label used to read "Top
+                      region: {topCity}, Pakistan · 38% of all impressions",
+                      appending a country to a country and an invented share
+                      to both. */}
+                  <strong>Top audience region:</strong> {me.audience.topCity}
+                </div>
+              </>
+            ) : (
+              <p className="v2-muted" style={{ fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                Your channels don’t report audience demographics yet. Connect
+                a platform account with analytics access and this fills in.
+              </p>
+            )}
           </section>
 
           <section className="v2-card v2-card-pad" style={{ flex: '2 1 480px' }}>
@@ -336,7 +360,6 @@ export function Analytics({ onRoute }: Props) {
                     </div>
                     <ChannelStat label="Followers" value={fmtFollowers(ch.followers)} />
                     <ChannelStat label="Engagement" value={`${ch.engagement}%`} />
-                    <ChannelStat label="Δ vs prior" value={ch.platform === 'instagram' ? '+4.1%' : '+9.6%'} positive />
                   </div>
                 );
               })}
@@ -453,7 +476,11 @@ function BarChart({ values }: { values: number[] }) {
   );
 }
 
-function Donut({ segments }: { segments: { name: string; value: number; color: string }[] }) {
+function Donut({ segments, centerCount }: {
+  segments: { name: string; value: number; color: string }[];
+  /** Real number of brand deals behind the chart. */
+  centerCount: number;
+}) {
   const total = segments.reduce((s, x) => s + x.value, 0);
   const radius = 60;
   const stroke = 18;
@@ -506,9 +533,14 @@ function Donut({ segments }: { segments: { name: string; value: number; color: s
           letterSpacing: '-0.02em',
           color: 'var(--v2-ink)',
         }}>
-          14
+          {/* Was the literal `14`, in the middle of a chart whose segments
+              were correctly computed from real collaborations. The one
+              number a reader takes away was the one that was typed in. */}
+          {centerCount}
         </div>
-        <div className="v2-muted" style={{ fontSize: 11 }}>brand deals</div>
+        <div className="v2-muted" style={{ fontSize: 11 }}>
+          {centerCount === 1 ? 'brand deal' : 'brand deals'}
+        </div>
       </div>
     </div>
   );

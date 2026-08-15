@@ -167,7 +167,7 @@ function makePreMigrationDb(): Database {
     ],
     referrals: [],
     advances: [],
-    testimonials: [],
+    testimonials: [], campaignPerformance: [],
     // Pre-P1c: collaborations table didn't exist on the type. Cast
     // through unknown to omit it from the v0-shaped object.
     ...(({} as unknown) as { collaborations: never }),
@@ -180,7 +180,7 @@ function makePreMigrationDb(): Database {
   };
 }
 
-describe('runPendingMigrations — full chain v0 → v9', () => {
+describe('runPendingMigrations — full chain v0 → v10', () => {
   it('walks every migrator from undefined to CURRENT_MIGRATION_VERSION', () => {
     const db = makePreMigrationDb();
     expect(db.migrationVersion).toBeUndefined();
@@ -188,7 +188,7 @@ describe('runPendingMigrations — full chain v0 → v9', () => {
     runPendingMigrations(db);
 
     expect(db.migrationVersion).toBe(CURRENT_MIGRATION_VERSION);
-    expect(db.migrationVersion).toBe(9);
+    expect(db.migrationVersion).toBe(10);
   });
 
   it('migrator 1 (P1a) — drops Campaign.acceptedCreators / shortlist', () => {
@@ -407,6 +407,6 @@ describe('runPendingMigrations — full chain v0 → v9', () => {
     // assert on the field migrator 9 changes for every creator instead.
     expect(db.creators[0].profileCompletion).toBeUndefined();
 
-    expect(db.migrationVersion).toBe(9);
+    expect(db.migrationVersion).toBe(10);
   });
 });

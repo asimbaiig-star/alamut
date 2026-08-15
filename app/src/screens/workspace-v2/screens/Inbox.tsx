@@ -32,6 +32,7 @@ import {
 } from '../v2Hooks';
 import { deriveCollab, V2_STAGE_META } from '../v2Adapters';
 import { useStore } from '@/lib/api/store';
+import { getViewerUserId } from '../v2Hooks';
 import { pushToast } from '@/lib/utils/toast';
 import { CollabSidePanel } from '@/components/inbox/CollabSidePanel';
 import { Avatar } from '@/components/ui/Avatar';
@@ -147,7 +148,7 @@ export function Inbox({ onRoute, persona, forceThreadId, forcePanelMode }: Props
         priceMax: 0,
         verified: brand.verified,
         channels: [],
-        audience: { female: 0, male: 0, age2534: 0, topCity: brand.hq },
+        audience: null,   // a brand has no audience demographics
         rate: 0,
         pastBrands: [],
       } as V2Creator;
@@ -160,9 +161,19 @@ export function Inbox({ onRoute, persona, forceThreadId, forcePanelMode }: Props
   );
   // Resolve the collab once — both the thread context band and the
   // side panel read the same value, so they cannot disagree on stage.
+  //
+  // Keyed on `active.creatorId`, NOT `counterparty.id`. For a creator
+  // viewer the counterparty is the BRAND, and `deriveCollab` filters
+  // applications/offers/submissions/collaborations by `creatorId` — no row
+  // is ever keyed by a brand id, so it returned null on every creator
+  // thread. The stage pill, the next-step hint, the price and the "Open
+  // collab" button were all silently absent from every creator's inbox,
+  // and the comment above was technically true only because both readers
+  // got nothing. `V2Conversation.creatorId` is viewer-independent by
+  // construction (see threadToV2).
   const collab = useMemo(
-    () => (active?.campaignId && counterparty ? deriveCollab(active.campaignId, counterparty.id, db) : null),
-    [active, counterparty, db],
+    () => (active?.campaignId && active.creatorId ? deriveCollab(active.campaignId, active.creatorId, db) : null),
+    [active, db],
   );
   const panelMode: 'compact' | 'detailed' = forcePanelMode ?? 'compact';
 
@@ -263,7 +274,12 @@ export function Inbox({ onRoute, persona, forceThreadId, forcePanelMode }: Props
           onClick={() => setMobileListOpen(false)}
         />
       )}
-      <div className="v2-inbox">
+      {/* `is-detailed` exists purely for the narrow-viewport rule: the
+          right-hand panel this mode expands is `display: none` below
+          1080px, so "Detail view" navigated and nothing on screen
+          changed. Under 1080 the class hands the panel the thread's
+          column instead of hiding it. */}
+      <div className={`v2-inbox${panelMode === 'detailed' ? ' is-detailed' : ''}`}>
         <ConversationList
           conversations={filteredConversations}
           activeId={activeId}
@@ -512,8 +528,10 @@ function Thread({
 
   // Resolve the collab for this conversation so we can show stage context
   const db = useStore((s) => s.db);
-  const collab = conversation.campaignId
-    ? deriveCollab(conversation.campaignId, counterparty.id, db)
+  // Same fix as the parent: key on the conversation's creatorId, not the
+  // counterparty (who is the BRAND for a creator viewer).
+  const collab = conversation.campaignId && conversation.creatorId
+    ? deriveCollab(conversation.campaignId, conversation.creatorId, db)
     : null;
   // V2_STAGE_META covers every stage by construction; the old
   // V2_PIPELINE_STAGES.find() returned undefined for terminal stages, so a
@@ -534,14 +552,18 @@ function Thread({
   }, [moreOpen]);
   // Read viewer's flags off the raw thread (V2Conversation doesn't carry these).
   const rawThread = db.threads.find((t) => t.id === conversation.id);
-  const viewerUserId = (() => {
-    // Same resolution path the outer Inbox uses; duplicated to keep
-    // this component self-contained.
-    const me = db.users.find((u) =>
-      persona === 'brand' ? u.brandId : u.creatorId,
-    );
-    return me?.id ?? '';
-  })();
+  // The canonical resolver — the same one the mutations
+  // (v2MuteThread / v2ArchiveThread / v2SnoozeThread) use, so the toggle
+  // labels can't disagree with what's actually stored.
+  //
+  // This was a local copy whose comment claimed it was "the same resolution
+  // path". It wasn't: it ignored `session.userId` entirely and returned the
+  // FIRST user with a matching role. It happens to work only because Hannah
+  // and Sarah are first in the seed array — any other brand teammate (Thom,
+  // Finn, Marcus) or creator (Amir, Yuki) read mute/archive/snooze state
+  // off a stranger's record.
+  const sessionUserId = useStore((st) => st.session?.userId) ?? null;
+  const viewerUserId = getViewerUserId(db, sessionUserId, persona);
   const isMuted = (rawThread?.mutedFor ?? []).includes(viewerUserId);
   const isArchived = (rawThread?.archivedFor ?? []).includes(viewerUserId);
   const snoozeUntil = rawThread?.snoozedFor?.[viewerUserId] ?? 0;

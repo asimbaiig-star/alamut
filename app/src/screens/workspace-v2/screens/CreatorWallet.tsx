@@ -88,7 +88,10 @@ export function CreatorWallet({ onRoute }: Props) {
               <div className="v2-wallet-hero-stat-value v2-tabular">{fmtUSD(W.pending)}</div>
             </div>
             <div>
-              <div className="v2-wallet-hero-stat-label">Lifetime earned</div>
+              <div
+                className="v2-wallet-hero-stat-label"
+                title="Gross across every cleared payout, before the platform fee and withholding itemised in your ledger."
+              >Lifetime earned</div>
               <div className="v2-wallet-hero-stat-value v2-tabular">{fmtUSD(W.lifetime)}</div>
             </div>
             <span className="v2-spacer" />
@@ -110,17 +113,22 @@ export function CreatorWallet({ onRoute }: Props) {
             <div className="v2-card-pad" style={{ borderBottom: '1px solid var(--v2-line)' }}>
               <h3 className="v2-section-title" style={{ fontSize: 22, margin: 0 }}>Recent payouts</h3>
               <p className="v2-muted" style={{ margin: '6px 0 0', fontSize: 13 }}>
-                Net amount lands in your wallet after platform fee + tax. Withholding handled per-deal.
+                Each deal posts at its agreed rate, with the platform fee and
+                withholding as their own rows underneath. The rows sum to your
+                balance.
               </p>
             </div>
+            {/* The table has fixed-ish column content (date, description,
+                amount, status) and no wrapper — below ~700px it pushed the
+                card, and the page, into a horizontal scroll. Scrolling the
+                table inside its own box keeps the rest of the layout put. */}
+            <div style={{ overflowX: 'auto' }}>
             <table className="v2-table">
               <thead>
                 <tr>
                   <th>Date</th>
                   <th>Description</th>
-                  <th style={{ textAlign: 'right' }}>Gross</th>
-                  <th style={{ textAlign: 'right' }}>Fee</th>
-                  <th style={{ textAlign: 'right' }}>Net</th>
+                  <th style={{ textAlign: 'right' }}>Amount</th>
                   <th>Status</th>
                 </tr>
               </thead>
@@ -131,12 +139,6 @@ export function CreatorWallet({ onRoute }: Props) {
                     <tr key={i}>
                       <td className="v2-muted" style={{ fontSize: 12.5 }}>{l.date}</td>
                       <td style={{ fontSize: 13.5 }}>{l.desc}</td>
-                      <td className="v2-tabular v2-muted" style={{ textAlign: 'right', fontSize: 12.5 }}>
-                        {l.gross != null ? fmtUSD(l.gross) : '—'}
-                      </td>
-                      <td className="v2-tabular v2-muted" style={{ textAlign: 'right', fontSize: 12.5 }}>
-                        {l.fee != null ? fmtUSD(l.fee) : '—'}
-                      </td>
                       <td
                         className="v2-tabular"
                         style={{
@@ -158,8 +160,20 @@ export function CreatorWallet({ onRoute }: Props) {
                     </tr>
                   );
                 })}
+                {W.ledger.length === 0 && (
+                  <tr>
+                    <td colSpan={4} style={{ padding: '28px 16px', textAlign: 'center' }}>
+                      <div style={{ fontSize: 13.5, marginBottom: 4 }}>No payouts yet</div>
+                      <div className="v2-muted" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
+                        Once a brand approves your content, the net amount lands
+                        here and in your available balance.
+                      </div>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
+            </div>
           </div>
 
           {/* Sidebar */}
@@ -220,7 +234,11 @@ export function CreatorWallet({ onRoute }: Props) {
               )}
               <hr style={{ height: 1, background: 'var(--v2-line)', margin: '12px 0', border: 'none' }} />
               <p className="v2-muted" style={{ fontSize: 12, lineHeight: 1.5, margin: 0 }}>
-                Add wire, ACH, JazzCash, or Easypaisa as a backup payout rail in your KYC settings.
+                {/* Named four rails; the bank-account form offers ACH,
+                    Wire, SEPA and Local bank. JazzCash and Easypaisa are
+                    not selectable anywhere, so a creator following this
+                    instruction couldn't do what it told them to. */}
+                Add a bank account in KYC settings to receive payouts.
               </p>
             </div>
 
@@ -361,10 +379,11 @@ function AdvanceModal({ pendingBalance, maxAdvance, onClose, onConfirm }: {
             <span className="v2-tabular">{fmtUSDfull(maxAdvance)}</span>
           </div>
         </div>
-        <label className="v2-eyebrow" style={{ display: 'block', marginBottom: 6 }}>Amount (USD)</label>
+        <label className="v2-eyebrow" htmlFor="v2-advance-amount" style={{ display: 'block', marginBottom: 6 }}>Amount (USD)</label>
         <div className="v2-onboarding-rate" style={{ marginBottom: 12 }}>
           <span className="v2-onboarding-rate-prefix">$</span>
           <input
+            id="v2-advance-amount"
             type="number"
             value={amount}
             min={100}
@@ -434,7 +453,7 @@ function WithdrawModal({ available, payoutLabel, onClose, onConfirm }: {
           Funds typically arrive in 1–2 business days. No fee on withdrawals.
         </p>
 
-        <label className="v2-eyebrow" style={{ display: 'block', marginBottom: 6 }}>
+        <label className="v2-eyebrow" htmlFor="v2-withdraw-amount" style={{ display: 'block', marginBottom: 6 }}>
           Amount
         </label>
         <div style={{ position: 'relative', marginBottom: 12 }}>
@@ -443,6 +462,7 @@ function WithdrawModal({ available, payoutLabel, onClose, onConfirm }: {
             color: 'var(--v2-ink-3)',
           }}>$</span>
           <input
+            id="v2-withdraw-amount"
             type="number"
             value={amount}
             onChange={(e) => setAmount(parseNumberInput(e.target.value, { min: 0, max: available }))}

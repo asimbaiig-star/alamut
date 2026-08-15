@@ -33,9 +33,23 @@ interface Props {
   initialAction?: 'upload' | 'mark-live';
 }
 
-const TIMELINE_ORDER: V2CollabStage[] = [
-  'pitched', 'negotiating', 'confirmed', 'submitted', 'approved', 'paid',
-];
+/**
+ * Timeline steps, derived from `V2_STAGE_META`.
+ *
+ * This was a hand-written array of 6 of the 9 stages, maintained
+ * independently of the Record that v2Adapters explicitly warns must not be
+ * duplicated ("do not replace this Record with a plain array"). Two
+ * consequences: `live` needed a special-case remap onto `approved`, and
+ * `invited` was simply absent — `indexOf('invited')` returned -1, so
+ * `currentIdx` was -1 and NO step rendered as done or active. A creator
+ * opening a cold invite, the most common first touch, saw a timeline with
+ * nothing highlighted at all.
+ *
+ * Deriving it means a new stage appears here automatically.
+ */
+const TIMELINE_STAGES: V2CollabStage[] = (Object.keys(V2_STAGE_META) as V2CollabStage[])
+  .filter((s) => V2_STAGE_META[s].inPipeline)
+  .sort((a, b) => V2_STAGE_META[a].order - V2_STAGE_META[b].order);
 
 export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
   const collab = useV2CollabById(collabId);
@@ -113,12 +127,29 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
       }
     : null;
 
+  // Content can only be submitted once an offer is accepted — the stages at
+  // or past `confirmed`. `v2SubmitContent` enforces this and throws
+  // otherwise; the UI reflects the same rule.
+  //
+  // Declared HERE, above the effect that reads it, and not below with the
+  // other derived values: this component early-returns twice (no collab, no
+  // campaign) before that point, and the effect below is registered before
+  // those returns. A `const` read from an effect closure in a render that
+  // bailed out early would hit the temporal dead zone — reachable in exactly
+  // the case the guard is for, a stale `?action=upload` link on a collab that
+  // no longer resolves. `collab` is nullable here, hence the `!!collab`.
+  const canSubmitContent =
+    !!collab && ['confirmed', 'submitted', 'approved', 'live'].includes(collab.stage);
+
   // §needs-you-direct-jump — when the route arrived with `?action=upload`
   // (CreatorHome's Today list jumping into here), pop the upload modal
   // on mount. Only fires once per `initialAction` value to avoid re-
   // popping when the same collab is reopened later.
   useEffect(() => {
-    if (initialAction === 'upload' && nextSlot && !uploadSlot) {
+    // `canSubmitContent` gates the deep link too. A stale notification or a
+    // shared `collab:<id>?action=upload` URL opened the modal on a collab
+    // that couldn't accept a submission, with no button pressed at all.
+    if (initialAction === 'upload' && canSubmitContent && nextSlot && !uploadSlot) {
       setUploadSlot(nextSlot);
       return;
     }
@@ -276,9 +307,25 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
             >
               {Icon.inbox} Message brand
             </button>
+            {/* Enabled at every stage pre-fix, including `invited` and
+                `pitched` — where `v2SubmitContent` throws, because
+                nothing has been agreed yet. Clicking it from a brand
+                invite you hadn't accepted produced an upload modal that
+                could only fail. It also stayed enabled once every slot
+                was filled, with `nextSlot` undefined, so the click did
+                nothing at all. Both cases are now stated on the button
+                instead of discovered by pressing it. */}
             <button
               className="v2-btn v2-btn-primary"
               type="button"
+              disabled={!canSubmitContent || !nextSlot}
+              title={
+                !canSubmitContent
+                  ? 'Available once the offer is accepted'
+                  : !nextSlot
+                    ? 'Every deliverable has been submitted'
+                    : undefined
+              }
               onClick={() => nextSlot && setUploadSlot(nextSlot)}
             >
               {Icon.plus} Submit content
@@ -457,10 +504,19 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
                 );
               })()}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {/* `canSubmit` matters here, not just on the topbar button.
+                    The adapter synthesizes a pending slot for any collab past
+                    `invited` — including `pitched` and `negotiating` — so
+                    every unaccepted deal rendered a row with a live "Upload"
+                    button on it. `v2SubmitContent` refuses without an accepted
+                    offer, so the only possible outcome was an error toast.
+                    The rows stay (seeing what you'd owe while negotiating is
+                    useful); the button is what was lying. */}
                 {collab.deliverables.map((d) => (
                   <DeliverableRow
                     key={d.id}
                     deliverable={d}
+                    canSubmit={canSubmitContent}
                     onUpload={() => setUploadSlot({
                       deliverableId: d.deliverableId,
                       label: d.label,
@@ -514,30 +570,13 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
                   <div className="v2-muted" style={{ fontSize: 11 }}>Marketing team</div>
                 </div>
               </div>
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: 8,
-                  marginBottom: 12,
-                  padding: '10px 0',
-                  borderTop: '1px solid var(--v2-line)',
-                  borderBottom: '1px solid var(--v2-line)',
-                }}
-              >
-                <div>
-                  <div className="v2-muted" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    Replies in
-                  </div>
-                  <div className="v2-tabular" style={{ fontSize: 13, fontWeight: 600 }}>~28h</div>
-                </div>
-                <div>
-                  <div className="v2-muted" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    Approval rate
-                  </div>
-                  <div className="v2-tabular" style={{ fontSize: 13, fontWeight: 600 }}>92%</div>
-                </div>
-              </div>
+              {/* "Replies in ~28h" and "Approval rate 92%" used to sit here
+                  as literal JSX — identical for every brand, on every collab,
+                  forever. `Brand` has no response-time or approval-rate field
+                  at all, so there was nothing behind them and nothing to
+                  compute them from. Removed rather than relabelled: a creator
+                  deciding whether to accept an offer was reading invented
+                  reliability signals about the counterparty. */}
               <button
                 className="v2-btn v2-btn-sm v2-btn-outline"
                 type="button"
@@ -658,10 +697,13 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
 // =====================================================================
 
 function CollabTimeline({ stage }: { stage: V2CollabStage }) {
-  const currentIdx = TIMELINE_ORDER.indexOf(stage === 'live' ? 'approved' : stage);
+  // Position by the stage's own `order`, so every stage — including
+  // `invited` and `live`, which the old array omitted and remapped
+  // respectively — lands somewhere real.
+  const currentIdx = TIMELINE_STAGES.indexOf(stage);
   return (
     <div className="v2-collab-timeline">
-      {TIMELINE_ORDER.map((s, i) => {
+      {TIMELINE_STAGES.map((s, i) => {
         const done = i < currentIdx;
         const active = i === currentIdx;
         return (
@@ -669,7 +711,7 @@ function CollabTimeline({ stage }: { stage: V2CollabStage }) {
             {i > 0 && <div className="v2-collab-timeline-line" />}
             <div className="v2-collab-timeline-dot">{done ? Icon.check : i + 1}</div>
             <div className="v2-collab-timeline-label">
-              {s.charAt(0).toUpperCase() + s.slice(1)}
+              {V2_STAGE_META[s].label}
             </div>
           </div>
         );
@@ -682,8 +724,10 @@ function CollabTimeline({ stage }: { stage: V2CollabStage }) {
 // Deliverable row
 // =====================================================================
 
-function DeliverableRow({ deliverable, onUpload }: {
+function DeliverableRow({ deliverable, canSubmit, onUpload }: {
   deliverable: V2Deliverable;
+  /** False until an offer is accepted — see the note at the call site. */
+  canSubmit: boolean;
   onUpload: () => void;
 }) {
   const statusColors: Record<V2Deliverable['status'], string> = {
@@ -766,7 +810,13 @@ function DeliverableRow({ deliverable, onUpload }: {
         </span>
         <div style={{ marginTop: 8 }}>
           {deliverable.status === 'pending' && (
-            <button className="v2-btn v2-btn-sm v2-btn-primary" type="button" onClick={onUpload}>Upload</button>
+            canSubmit ? (
+              <button className="v2-btn v2-btn-sm v2-btn-primary" type="button" onClick={onUpload}>Upload</button>
+            ) : (
+              <span className="v2-muted" style={{ fontSize: 11.5 }}>
+                After acceptance
+              </span>
+            )
           )}
           {deliverable.status === 'in_review' && deliverable.thumb && (
             <button
@@ -775,7 +825,7 @@ function DeliverableRow({ deliverable, onUpload }: {
               onClick={() => window.open(deliverable.thumb, '_blank', 'noopener,noreferrer')}
             >View submission</button>
           )}
-          {deliverable.status === 'revision' && (
+          {deliverable.status === 'revision' && canSubmit && (
             <button className="v2-btn v2-btn-sm v2-btn-primary" type="button" onClick={onUpload}>Resubmit</button>
           )}
           {(deliverable.status === 'approved' || deliverable.status === 'live') && deliverable.permalink && (

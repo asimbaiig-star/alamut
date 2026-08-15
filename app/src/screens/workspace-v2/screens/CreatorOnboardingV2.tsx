@@ -374,14 +374,14 @@ export function CreatorOnboardingV2({ onRoute }: Props) {
                     </button>
                   </div>
                 )}
-                <Field label="Instagram Reel" sub="60–90s vertical · 1 round of revisions">
-                  <RateInput value={s.reelRate} onChange={(v) => update({ reelRate: v })} />
+                <Field label="Instagram Reel" sub="60–90s vertical · 1 round of revisions" htmlFor="v2-onb-reel-rate">
+                  <RateInput id="v2-onb-reel-rate" value={s.reelRate} onChange={(v) => update({ reelRate: v })} />
                 </Field>
-                <Field label="Story bundle (×3)" sub="Most-booked starter package">
-                  <RateInput value={s.storyRate} onChange={(v) => update({ storyRate: v })} />
+                <Field label="Story bundle (×3)" sub="Most-booked starter package" htmlFor="v2-onb-story-rate">
+                  <RateInput id="v2-onb-story-rate" value={s.storyRate} onChange={(v) => update({ storyRate: v })} />
                 </Field>
-                <Field label="Reel + Stories combo" sub="Premium package · highest LTV">
-                  <RateInput value={s.comboRate} onChange={(v) => update({ comboRate: v })} />
+                <Field label="Reel + Stories combo" sub="Premium package · highest LTV" htmlFor="v2-onb-combo-rate">
+                  <RateInput id="v2-onb-combo-rate" value={s.comboRate} onChange={(v) => update({ comboRate: v })} />
                 </Field>
 
                 <div style={{
@@ -585,21 +585,29 @@ function Card({ title, sub, children }: { title: string; sub?: string; children:
   );
 }
 
-function Field({ label, sub, children }: { label: string; sub?: string; children: React.ReactNode }) {
+function Field({ label, sub, htmlFor, children }: {
+  label: string;
+  sub?: string;
+  /** id of the control this labels — otherwise the label is a sibling with
+   *  no association and the field is announced unnamed. */
+  htmlFor?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="v2-onboarding-field">
-      <label className="v2-onboarding-field-label">{label}</label>
+      <label className="v2-onboarding-field-label" htmlFor={htmlFor}>{label}</label>
       {sub && <div className="v2-muted v2-onboarding-field-sub">{sub}</div>}
       {children}
     </div>
   );
 }
 
-function RateInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function RateInput({ id, value, onChange }: { id: string; value: string; onChange: (v: string) => void }) {
   return (
     <div className="v2-onboarding-rate">
       <span className="v2-onboarding-rate-prefix">$</span>
       <input
+        id={id}
         type="number"
         value={value}
         onChange={(e) => onChange(e.target.value)}

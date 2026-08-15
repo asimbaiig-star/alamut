@@ -246,11 +246,23 @@
   .batch-bar-actions .btn { flex: 1; }
 }
 
-/* Notifications dropdown on mobile — Phase 20 cleanup:
-   The previous selector `.side button[aria-label="Notifications"] + div`
-   was dead because the popup is portaled to document.body, breaking the
-   sibling relationship. The actual popup is now styled via `.notif-popup`
-   responsive rules in components.css. This rule is intentionally removed. */
+/* Notifications dropdown on mobile.
+   The old selector `.side button[aria-label="Notifications"] + div` was dead
+   — the popup is portaled to document.body, so there is no sibling to match.
+   The comment that replaced it claimed the popup was "now styled via
+   `.notif-popup` responsive rules in components.css": there is no such file,
+   and the only `.notif-popup` rule (screens.css) hardcodes `width: 360px`
+   with no media query. So the overflow it said was handled was still live —
+   the JS clamps `left` to a minimum of 8px, and at 360px wide the popup then
+   runs off the right edge of any viewport under 376px (iPhone SE/mini). */
+@media (max-width: 420px) {
+  .notif-popup {
+    width: auto;
+    left: 8px !important;
+    right: 8px;
+    max-width: none;
+  }
+}
 
 /* Hide right-side details that get noisy on mobile */
 @media (max-width: 700px) {

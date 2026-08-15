@@ -7,6 +7,7 @@
 
 import { useState } from 'react';
 import { fmtUSD, Icon } from '../lib';
+import { netOf } from '@/lib/api/money';
 import { useModalEscape } from '@/lib/utils/useModalEscape';
 import type { V2Collab, V2Creator } from '../data';
 import { v2ApproveContent, v2RequestRevision } from '../v2CampaignActions';
@@ -318,7 +319,7 @@ export function ContentReviewModal({ collab, creators, onClose }: Props) {
               <div className="v2-row" style={{ justifyContent: 'space-between' }}>
                 <span className="v2-muted">Net after fees & WHT</span>
                 <span className="v2-tabular" style={{ color: 'var(--v2-moss)' }}>
-                  {fmtUSD(Math.round(collab.price * 0.85))}
+                  {fmtUSD(netOf(collab.price))}
                 </span>
               </div>
             </div>

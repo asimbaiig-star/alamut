@@ -342,10 +342,11 @@ export function BrandOnboardingV2({ onRoute }: Props) {
                 </div>
 
                 <div className="v2-onboarding-field">
-                  <label className="v2-onboarding-field-label">Typical monthly budget</label>
+                  <label className="v2-onboarding-field-label" htmlFor="v2-onb-monthly-budget">Typical monthly budget</label>
                   <div className="v2-onboarding-rate">
                     <span className="v2-onboarding-rate-prefix">$</span>
                     <input
+                      id="v2-onb-monthly-budget"
                       type="number"
                       value={s.monthlyBudget}
                       onChange={(e) => update({ monthlyBudget: e.target.value })}

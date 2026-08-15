@@ -28,6 +28,7 @@ import {
 import {
   useV2AllCampaigns, useV2BrandShortlist, useV2Creators, useV2CurrentBrand,
   v2SyncSparkShortlist, v2SaveSparkDraft, v2DeleteSparkDraft,
+  v2EnsureThreadFor, v2SendMessage,
 } from '../v2Hooks';
 import { pushToast } from '@/lib/utils/toast';
 import { useStore } from '@/lib/api/store';
@@ -50,12 +51,15 @@ export function Spark({ onRoute, initialPrompt }: Props) {
   const allCampaigns = useV2AllCampaigns();
   const brand = useV2CurrentBrand();
   const brandShortlist = useV2BrandShortlist();
+  const db = useStore((s) => s.db);
 
   // Push the live pool into the engine before any handler reads it.
   // Important: this also runs on every store change so when a real
   // brand mutation happens (e.g. someone saved a creator), Spark sees
   // the fresh data on its next response.
-  setSparkPool({ creators: allCreators, campaigns: allCampaigns });
+  // `db` goes in too so the engine can rank by real fit (matching.ts)
+  // rather than by review rating while claiming otherwise.
+  setSparkPool({ creators: allCreators, campaigns: allCampaigns, db, brandId: brand?.id });
 
   const [history, setHistory] = useState<SparkMessage[]>(() => loadHistory());
   const [context, setContext] = useState<SparkContext>(() => loadContext(brand?.name));
@@ -790,7 +794,7 @@ function ComparisonBlock({ block, onSave, onRoute }: {
     { label: 'Categories', values: creators.map((c) => c.categories.slice(0, 2).join(' · ')) },
     { label: 'Followers', values: creators.map((c) => fmtFollowers(c.channels.reduce((s, ch) => s + ch.followers, 0))) },
     { label: 'Avg engagement', values: creators.map((c) => `${(c.channels.reduce((s, ch) => s + ch.engagement, 0) / c.channels.length).toFixed(1)}%`) },
-    { label: 'Top audience', values: creators.map((c) => `${c.audience.female}%F · ${c.audience.male}%M · ${c.audience.topCity}`) },
+    { label: 'Top audience', values: creators.map((c) => (c.audience ? `${c.audience.female}%F · ${c.audience.male}%M · ${c.audience.topCity}` : 'Not shared')) },
     { label: 'Going rate', values: creators.map((c) => fmtUSD(c.rate)) },
     { label: 'Past brands', values: creators.map((c) => c.pastBrands.slice(0, 2).join(' · ')) },
   ];
@@ -908,11 +912,52 @@ function BriefDraftBlock({ block, onRoute }: {
   onRoute: (r: string) => void;
 }) {
   const creator = getCreator(block.creatorId);
+  const db = useStore((st) => st.db);
   // Inline editing: keep the draft text in component state so the user
-  // can tweak the AI-generated copy before sending. Wired to a real
-  // textarea instead of the prior 'coming soon' toast.
+  // can tweak the AI-generated copy before sending.
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(block.copy);
+  const [sent, setSent] = useState(false);
+
+  /**
+   * Actually send the brief.
+   *
+   * This button was `onClick={() => onRoute('inbox')}` — pure navigation to
+   * the generic inbox list. No message, no thread, no mutation of any kind,
+   * while the assistant's own reply promised "I'll send it through Inbox
+   * once you approve". Spark's single most-advertised action did nothing,
+   * and nothing told the brand.
+   *
+   * Threads are campaign-scoped (`v2EnsureThreadFor` needs a real campaign),
+   * and a Spark draft can precede the campaign existing. So: send when we
+   * can resolve one, and when we can't, say so and offer the wizard
+   * pre-seeded — rather than pretending.
+   */
+  function sendBrief() {
+    if (!creator) return;
+    const camp = db.campaigns.find(
+      (c) => c.title.toLowerCase() === block.campaignName.toLowerCase(),
+    );
+    if (!camp) {
+      pushToast('Create the campaign first — briefs send from a live campaign', 'bad');
+      onRoute(`campaign-new?name=${encodeURIComponent(block.campaignName)}&invited=${creator.id}`);
+      return;
+    }
+    const threadId = v2EnsureThreadFor(camp.id, creator.id);
+    if (!threadId) {
+      pushToast("Couldn't open a conversation with this creator — try from the campaign", 'bad');
+      return;
+    }
+    try {
+      v2SendMessage(threadId, draft);
+      setSent(true);
+      pushToast(`Brief sent to ${creator.name}`, 'good');
+      onRoute(`deal:${threadId}`);
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : 'Could not send the brief', 'bad');
+    }
+  }
+
   if (!creator) return null;
   return (
     <div className="v2-spark-block v2-spark-block-brief">
@@ -972,8 +1017,12 @@ function BriefDraftBlock({ block, onRoute }: {
               type="button"
               className="v2-btn v2-btn-sm v2-btn-primary"
               onClick={() => {
+                // The edited text is what `sendBrief` sends — `draft` is the
+                // single source for both. Pre-fix this toasted "ready to
+                // send" over state that no send path ever read, so edits
+                // were lost twice over: on reload, and on send.
                 setEditing(false);
-                pushToast('Draft updated · ready to send');
+                pushToast('Draft updated');
               }}
             >
               Save edits
@@ -991,9 +1040,10 @@ function BriefDraftBlock({ block, onRoute }: {
             <button
               type="button"
               className="v2-btn v2-btn-sm v2-btn-primary"
-              onClick={() => onRoute('inbox')}
+              onClick={sendBrief}
+              disabled={sent || !draft.trim()}
             >
-              {Icon.send} Send through Inbox
+              {Icon.send} {sent ? 'Sent' : 'Send through Inbox'}
             </button>
           </>
         )}

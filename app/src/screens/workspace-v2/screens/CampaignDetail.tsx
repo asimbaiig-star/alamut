@@ -29,11 +29,12 @@ import {
 import { V2_PIPELINE_STAGES, V2_STAGE_META, V2_BOARD_PHASES, isActiveCollab, furthestPipelineStage } from '../v2Adapters';
 import { Avatar } from '@/components/ui/Avatar';
 import type {
-  V2Campaign, V2Collab, V2Creator, V2CampaignPerf, V2Deliverable,
+  V2Campaign, V2Collab, V2Creator, V2Deliverable,
 } from '../data';
 import { ContentReviewModal } from './ContentReviewModal';
 import { LeaveReviewModal } from './LeaveReviewModal';
 import { SendOfferModal, MarkLiveModal, CounterOfferModal, InviteCreatorsModal } from './WorkflowModals';
+import { TeamAccessAside } from './TeamAccess';
 import {
   v2EndCampaign, v2PauseCampaign, v2RejectApplication, v2ResumeCampaign,
   v2WithdrawOffer, v2AcceptCounter, v2DeclineOffer, v2UpdateCampaign,
@@ -43,6 +44,7 @@ import {
 import { v2RequestCollabCancel } from '../v2CollabActions';
 import { v2LeaveReview } from '../v2CampaignActions';
 import { useStore } from '@/lib/api/store';
+import { readPerformance, type PerfView } from '../performance';
 import { pushToast } from '@/lib/utils/toast';
 import { downloadCSV } from '@/lib/utils/csv';
 // P7 — UI gating for campaign-lifecycle buttons.
@@ -76,6 +78,26 @@ const VALID_TABS: TabId[] = ['pipeline', 'brief', 'content', 'analytics', 'setti
  *  its grid highlighted far fewer. */
 function hasDeliverableInReview(c: V2Collab): boolean {
   return c.deliverables.some((d) => d.status === 'in_review');
+}
+
+/**
+ * How many DELIVERABLES across these collabs are awaiting review.
+ *
+ * `hasDeliverableInReview` answers a different question — does this collab
+ * have any — and the Content-review tab's grid is deliverable-level
+ * (`flatMap` over `c.deliverables`). Counting collabs while rendering
+ * deliverables meant a collab with two items in review showed a badge of 1
+ * above two cards.
+ *
+ * That's the same header-vs-body divergence the comment above cites, one
+ * level up: I unified the predicate and missed that the two sides count
+ * different UNITS. Anything labelling that grid counts deliverables.
+ */
+function countDeliverablesInReview(collabs: V2Collab[]): number {
+  return collabs.reduce(
+    (n, c) => n + c.deliverables.filter((d) => d.status === 'in_review').length,
+    0,
+  );
 }
 
 export function CampaignDetail({
@@ -197,7 +219,7 @@ export function CampaignDetail({
   // chase content for a collaboration that isn't going ahead. That was
   // unreachable while cancelled rows were filtered out upstream; surfacing
   // them (correctly) exposed it, so the guard belongs here now.
-  const awaitingReview = activeCollabs.filter(hasDeliverableInReview).length;
+  const awaitingReview = countDeliverablesInReview(activeCollabs);
   const daysLeft = Math.max(0, Math.ceil((+new Date(campaign.deadline) - Date.now()) / 86_400_000));
 
   const tabs: { id: TabId; label: string; count?: number }[] = [
@@ -302,7 +324,7 @@ export function CampaignDetail({
         )}
         {tab === 'analytics' && (
           <AnalyticsTab
-            perf={derivePerf(campaign, collabs, creators)}
+            perf={readPerformance(campaign.id, campaign.spent, db)}
             campaign={campaign}
             collabs={collabs}
             creators={creators}
@@ -1325,7 +1347,13 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
       </button>
     );
   } else if (collab.stage === 'approved') {
-    const latest = getLatestSubmissionFor(collab.campaignId, collab.creatorId);
+    // Target the deliverable that's actually approved and not yet live,
+    // rather than "whichever submission has the highest round number" —
+    // round restarts per deliverable, so that could be a different slot.
+    const awaitingLive = collab.deliverables.find((d) => d.status === 'approved');
+    const latest = getLatestSubmissionFor(
+      collab.campaignId, collab.creatorId, awaitingLive?.deliverableId,
+    );
     if (latest) {
       stageAction = (
         <button
@@ -1951,78 +1979,15 @@ function ContentReviewTab({ collabs, creators, onReview, onRoute }: {
  *  Per-platform API metrics would replace this. Until then the KPI
  *  tiles + leaderboards downstream are correct in shape and tied to
  *  the brand's actual roster, not to spend × an arbitrary multiplier. */
-export function derivePerf(
-  campaign: V2Campaign,
-  collabs: V2Collab[],
-  creators?: V2Creator[],
-): V2CampaignPerf | null {
-  const liveCollabs = collabs.filter((c) => c.stage === 'live' || c.stage === 'paid');
-  if (liveCollabs.length === 0) return null;
-
-  // Match live collabs to their V2Creator records. If creators not
-  // provided, fall back to the legacy spent×ratio path so existing
-  // call sites that don't pass creators still get something.
-  const creatorById = new Map<string, V2Creator>();
-  for (const c of creators ?? []) creatorById.set(c.id, c);
-
-  const liveCreators = liveCollabs
-    .map((co) => creatorById.get(co.creatorId))
-    .filter((c): c is V2Creator => !!c);
-
-  if (liveCreators.length === 0) {
-    // Legacy fallback — callers that don't have creator data still see
-    // something sensible (Spent × 18 reach ratio, then standard mixin).
-    const reach = campaign.spent > 0 ? campaign.spent * 18 : 0;
-    const engagement = Math.round(reach * 0.115);
-    return {
-      impressions: Math.round(reach * 1.3),
-      reach,
-      engagement,
-      er: 11.5,
-      cpm: reach > 0 ? Math.round((campaign.spent / reach) * 1000) : 0,
-      cpe: engagement > 0 ? Math.round(campaign.spent / engagement) : 0,
-      saves: Math.round(engagement * 0.15),
-      shares: Math.round(engagement * 0.07),
-      profileVisits: Math.round(reach * 0.05),
-      weeklySeries: [12, 18, 14, 22, 28, 31, 38].map((n) => Math.round(n * (liveCollabs.length / 3))),
-    };
-  }
-
-  // Real-creator-based projection.
-  const reach = liveCreators.reduce(
-    (s, c) => s + c.channels.reduce((a, ch) => a + ch.followers, 0),
-    0,
-  );
-  const erSum = liveCreators.reduce((s, c) => {
-    const er = c.channels.length === 0 ? 0
-      : c.channels.reduce((a, ch) => a + ch.engagement, 0) / c.channels.length;
-    return s + er;
-  }, 0);
-  const er = Number((erSum / liveCreators.length).toFixed(1));
-  const engagement = Math.round(reach * (er / 100));
-  const impressions = Math.round(reach * 1.4);
-  const cpm = impressions > 0 ? Math.round((campaign.spent / impressions) * 1000) : 0;
-  const cpe = engagement > 0 ? Math.round(campaign.spent / engagement) : 0;
-
-  // 7-week series — peak in week 2 (publish + initial discovery), decay
-  // toward week 7. Multiply each weight by total engagement and split
-  // proportionally. Always sums to ~engagement.
-  const weights = [0.08, 0.18, 0.16, 0.14, 0.12, 0.10, 0.08]; // sum ~0.86
-  const weeklySeries = weights.map((w) => Math.round(engagement * w));
-
-  return {
-    impressions,
-    reach,
-    engagement,
-    er,
-    cpm,
-    cpe,
-    saves: Math.round(engagement * 0.15),
-    shares: Math.round(engagement * 0.07),
-    profileVisits: Math.round(reach * 0.05),
-    weeklySeries,
-  };
-}
+// `derivePerf` lived here. It manufactured reach from follower sums,
+// impressions as `reach × 1.4`, engagement from profile-level ER, saves and
+// shares as fixed fractions, and a hardcoded 7-week decay curve — then the
+// surfaces rendered all of it as IMPRESSIONS / CPM / EMV / ROAS with
+// week-over-week deltas. Nothing in the product measures any of it.
+//
+// Performance is now stored data (`db.campaignPerformance`), read through
+// `readPerformance` in ../performance.ts. No row means no numbers, and the
+// surface says what it's waiting for.
 
 // =====================================================================
 // Conversion funnel — of everyone sourced, how far did they get?
@@ -2147,12 +2112,12 @@ function ConversionFunnel({ campaignId, collabs }: {
 function AnalyticsTab({
   perf, campaign, collabs, creators,
 }: {
-  perf: V2CampaignPerf | null;
+  perf: PerfView | null;
   campaign: V2Campaign;
   collabs: V2Collab[];
   creators: V2Creator[];
 }) {
-  const [metric, setMetric] = useState<'impressions' | 'engagement' | 'er'>('engagement');
+  const [metric, setMetric] = useState<'impressions' | 'engagement'>('engagement');
   const [range, setRange] = useState<'campaign' | '7d' | '30d'>('campaign');
 
   // Roster conversion doesn't depend on content-performance data, so it shows
@@ -2172,22 +2137,36 @@ function AnalyticsTab({
           fontWeight: 500,
           marginBottom: 6,
         }}>
-          Analytics unlock once content goes live
+          No performance reported yet
         </div>
-        <div className="v2-muted" style={{ fontSize: 13 }}>
-          You'll see impressions, engagement, audience, and ROI here as posts publish.
+        <div className="v2-muted" style={{ fontSize: 13, lineHeight: 1.6 }}>
+          {/* Was "Analytics unlock once content goes live — you'll see
+              impressions, engagement, audience, and ROI here as posts
+              publish." Content going live isn't what unlocks this: reach and
+              engagement come from platform accounts, which nothing connects
+              to yet. And "ROI" promised the EMV/ROAS tiles that have been
+              removed for being invented. */}
+          Reach and engagement come from creators’ connected platform
+          accounts. Spend and deliverable progress are on the Pipeline tab
+          meanwhile — those are measured.
         </div>
       </div>
       </>
     );
   }
 
-  // Earned Media Value: industry-benchmark CPM × impressions.
-  const benchCPM = 50; // USD — paid social benchmark
-  const emv = Math.round((perf.impressions / 1000) * benchCPM);
-  const roas = (emv / Math.max(1, campaign.spent)).toFixed(2);
-  const cpmDeltaPositive = perf.cpm < benchCPM;
-  const cpmDeltaPct = Math.round(Math.abs(benchCPM - perf.cpm) / benchCPM * 100);
+  // EMV and ROAS are GONE.
+  //
+  // They were `impressions/1000 × $50` and `EMV ÷ spend`, where the $50 was
+  // a hardcoded "paid social benchmark" chosen here and nowhere else, and
+  // `impressions` was itself invented. So "3.42× ROAS" — the number a brand
+  // uses to decide whether to renew — was four fabrications deep, with only
+  // the spend at the end being real. The same $50 also drove the CPM tile's
+  // "−38% vs paid social" delta.
+  //
+  // There is no honest version of these without either real platform data or
+  // a benchmark the product can actually source, so the tiles are removed
+  // rather than relabelled.
 
   // P67 — wk/wk delta computed from the actual series (last two weeks).
   // Pre-fix the Impressions tile showed a literal "+18% wk/wk" while
@@ -2207,9 +2186,15 @@ function AnalyticsTab({
     : range === '30d'
     ? perf.weeklySeries.slice(-4)
     : perf.weeklySeries;
+  // `null` when there aren't two weeks to compare, so the tile shows no
+  // delta at all. Returning 0 rendered "▲ +0% wk/wk" — an assertion that
+  // the metric held flat — on the 7d range, which slices to a single week
+  // and therefore has nothing to compare against by construction.
   const lastWk = series[series.length - 1] ?? 0;
   const prevWk = series[series.length - 2] ?? 0;
-  const wkDelta = prevWk > 0 ? Math.round(((lastWk - prevWk) / prevWk) * 100) : 0;
+  const wkDelta = series.length >= 2 && prevWk > 0
+    ? Math.round(((lastWk - prevWk) / prevWk) * 100)
+    : null;
 
   // P67 — Export CSV was a dead button (no onClick). Exports the
   // per-creator roster with stage + agreed rate + deliverable progress,
@@ -2242,10 +2227,13 @@ function AnalyticsTab({
     const summary = [
       `${campaign.name} — campaign report`,
       `Spend: $${campaign.spent.toLocaleString()} of $${campaign.budget.toLocaleString()}`,
-      `Projected impressions: ${perf!.impressions.toLocaleString()}`,
-      `Projected engagement: ${perf!.engagement.toLocaleString()} (${perf!.er}% ER)`,
-      `CPM $${perf!.cpm} · EMV $${emv.toLocaleString()} · ${roas}× ROAS`,
+      `Impressions: ${perf!.impressions.toLocaleString()}`,
+      `Engagement: ${perf!.engagement.toLocaleString()} (${perf!.er}% ER)`,
+      perf!.cpm !== null ? `CPM: $${perf!.cpm}` : 'CPM: —',
       `Creators: ${collabs.length}`,
+      // A shared report must carry the caveat the screen shows. Without it
+      // the numbers get pasted into a deck stripped of context.
+      ...(perf!.sample ? ['', 'Note: sample data — not measured from connected channels.'] : []),
     ].join('\n');
     void navigator.clipboard.writeText(summary).then(
       () => pushToast('Report summary copied to clipboard', 'good'),
@@ -2267,16 +2255,22 @@ function AnalyticsTab({
     return live.length > 0 ? live : pick(['confirmed', 'submitted', 'approved', 'live', 'paid']);
   })();
   const audAgg = (() => {
-    if (audienceCreators.length === 0) return null;
-    const n = audienceCreators.length;
-    const avg = (f: (a: V2Creator['audience']) => number) =>
-      Math.round(audienceCreators.reduce((s, c) => s + f(c.audience), 0) / n);
+    // Only creators whose channels actually report demographics. Averaging
+    // in a placeholder for the rest would let one profiled creator's numbers
+    // stand in for a whole roster.
+    const withAudience = audienceCreators.filter(
+      (c): c is V2Creator & { audience: NonNullable<V2Creator['audience']> } => c.audience !== null,
+    );
+    if (withAudience.length === 0) return null;
+    const n = withAudience.length;
+    const avg = (f: (a: NonNullable<V2Creator['audience']>) => number) =>
+      Math.round(withAudience.reduce((s, c) => s + f(c.audience), 0) / n);
     const age1824 = avg((a) => a.age1824 ?? 0);
     const age2534 = avg((a) => a.age2534);
     const age35up = Math.max(0, 100 - age1824 - age2534);
     const female = avg((a) => a.female);
     const marketCounts = new Map<string, number>();
-    for (const c of audienceCreators) {
+    for (const c of withAudience) {
       const m = c.audience.topCity || c.country || 'Other';
       marketCounts.set(m, (marketCounts.get(m) ?? 0) + 1);
     }
@@ -2335,11 +2329,13 @@ function AnalyticsTab({
         </div>
       </div>
 
-      {/* KPI tiles — 4-up with sparklines + deltas. */}
+      {perf.sample && <SampleDataBanner />}
+
+      {/* KPI tiles. */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(4, 1fr)',
+          gridTemplateColumns: 'repeat(3, 1fr)',
           gap: 12,
           marginBottom: 20,
         }}
@@ -2347,31 +2343,29 @@ function AnalyticsTab({
         <KpiTile
           label="Impressions"
           value={fmtFollowers(perf.impressions)}
-          delta={`${wkDelta >= 0 ? '+' : ''}${wkDelta}% wk/wk`}
-          deltaPositive={wkDelta >= 0}
+          delta={wkDelta !== null ? `${wkDelta >= 0 ? '+' : ''}${wkDelta}% wk/wk` : ''}
+          deltaPositive={(wkDelta ?? 0) >= 0}
           spark={series}
         />
+        {/* The "+Xpt vs 4.2% category" delta is gone: 4.2 was a constant
+            written here, sourced from nothing, presented as an industry
+            benchmark the brand was beating. */}
         <KpiTile
           label="Engagement rate"
           value={`${perf.er}%`}
-          delta={`+${(perf.er - 4.2).toFixed(1)}pt vs 4.2% category`}
-          deltaPositive
+          delta="engagement ÷ impressions"
           accent
         />
         {/* P67 — CPM is dollars-per-1k-impressions (single-digit to
             low-double-digit USD). Pre-fix this divided by 1000 and
             suffixed "k", rendering "$0.0k" for every realistic value. */}
+        {/* CPM is real: campaign spend (from the ledger) ÷ reported
+            impressions. It shows only when both exist — a "$0 CPM" reads as
+            spectacular efficiency, which is the opposite of "unknown". */}
         <KpiTile
           label="CPM"
-          value={`$${perf.cpm.toLocaleString()}`}
-          delta={`${cpmDeltaPositive ? '−' : '+'}${cpmDeltaPct}% vs paid social`}
-          deltaPositive={cpmDeltaPositive}
-        />
-        <KpiTile
-          label="EMV"
-          value={`$${(emv / 1_000).toFixed(1)}k`}
-          delta={`${roas}× ROAS`}
-          deltaPositive
+          value={perf.cpm !== null ? `$${perf.cpm.toLocaleString()}` : '—'}
+          delta={perf.cpm !== null ? 'spend ÷ impressions' : 'needs spend + impressions'}
         />
       </div>
 
@@ -2396,7 +2390,6 @@ function AnalyticsTab({
               {([
                 { id: 'impressions', label: 'Impressions' },
                 { id: 'engagement',  label: 'Engagements' },
-                { id: 'er',          label: 'ER %' },
               ] as const).map((m) => (
                 <button
                   key={m.id}
@@ -2474,8 +2467,7 @@ function AnalyticsTab({
         <TopPerformersTable
           collabs={collabs}
           creators={creators}
-          totalEngagement={perf.engagement}
-          totalImpressions={perf.impressions}
+          byCreator={perf.byCreator}
         />
       </div>
 
@@ -2534,36 +2526,25 @@ function AnalyticsTab({
               icon="▶"
               label="Reels"
               count={collabs.reduce((s, x) => s + x.deliverables.filter((d) => /reel/i.test(d.label)).length, 0)}
-              avgEr="12.8%"
             />
             <ContentTypeTile
               icon="◯"
               label="Stories"
               count={collabs.reduce((s, x) => s + x.deliverables.filter((d) => /stor/i.test(d.label)).length, 0)}
-              avgEr="6.2%"
             />
             <ContentTypeTile
               icon="▦"
               label="Posts"
               count={collabs.reduce((s, x) => s + x.deliverables.filter((d) => /post/i.test(d.label)).length, 0)}
-              avgEr="9.1%"
             />
           </div>
-          <div className="v2-eyebrow" style={{ marginBottom: 8 }}>Best-performing format</div>
-          <div
-            style={{
-              padding: 12,
-              background: 'var(--v2-bg)',
-              borderRadius: 'var(--v2-r-md)',
-              borderLeft: '3px solid var(--v2-moss)',
-            }}
-          >
-            <div style={{ fontSize: 13.5, fontWeight: 600 }}>Reels with daily-life framing</div>
-            <div className="v2-muted" style={{ fontSize: 12, marginTop: 2, lineHeight: 1.5 }}>
-              2.8× higher save rate than studio-styled posts. Spark recommends shifting
-              next campaign's mix toward Reels.
-            </div>
-          </div>
+          {/* A "Best-performing format" callout used to sit here: static
+              JSX reading "Reels with daily-life framing — 2.8x higher save
+              rate than studio-styled posts. Spark recommends shifting next
+              campaign's mix toward Reels." Identical on every campaign and
+              every brand, attributed by name to the AI feature as though it
+              were a generated, data-backed recommendation. Nothing measures
+              save rate by format. Removed rather than reworded. */}
         </div>
       </div>
     </div>
@@ -2577,7 +2558,10 @@ export function KpiTile({
   label: string;
   value: string;
   delta: string;
-  deltaPositive: boolean;
+  /** Direction of the delta. OMIT for a descriptive caption ("spend ÷
+   *  impressions") — those aren't movements and rendering them with a green
+   *  ▲ is how a formula label starts reading as growth. */
+  deltaPositive?: boolean;
   spark?: number[];
   accent?: boolean;
 }) {
@@ -2598,10 +2582,11 @@ export function KpiTile({
         <div className="v2-row" style={{ gap: 6, marginTop: 6 }}>
           <span style={{
             fontSize: 11,
-            fontWeight: 600,
-            color: deltaPositive ? 'var(--v2-moss)' : 'var(--v2-gold)',
+            fontWeight: deltaPositive === undefined ? 500 : 600,
+            color: deltaPositive === undefined ? 'var(--v2-ink-3)'
+              : deltaPositive ? 'var(--v2-moss)' : 'var(--v2-gold)',
           }}>
-            {deltaPositive ? '▲' : '▼'} {delta}
+            {deltaPositive === undefined ? '' : deltaPositive ? '▲ ' : '▼ '}{delta}
           </span>
         </div>
       )}
@@ -2632,14 +2617,30 @@ export function BigPerfChart({
   points, metric, perf,
 }: {
   points: number[];
-  metric: 'impressions' | 'engagement' | 'er';
-  perf: V2CampaignPerf;
+  metric: 'impressions' | 'engagement';
+  perf: PerfView;
 }) {
+  // A single point can't be drawn as a line: the x-position maths divides by
+  // `length - 1`, so one point gives 0/0 and every coordinate becomes NaN —
+  // the chart silently rendered as bare gridlines. `Sparkline` (below) has
+  // always had this guard; I wired the range toggle to `slice(-1)` for "7d"
+  // without carrying it here.
+  if (points.length < 2) {
+    return (
+      <div className="v2-muted" style={{ padding: '28px 12px', textAlign: 'center', fontSize: 12.5 }}>
+        Not enough weeks in this range to chart a trend.
+      </div>
+    );
+  }
+
   const scaled = metric === 'impressions'
     ? points.map((v) => v * (perf.impressions / Math.max(1, points.reduce((a, b) => a + b, 0))))
-    : metric === 'er'
-      ? points.map((v) => 6 + v * 0.2)
-      : points;
+    // ER mode was `6 + v * 0.2` — an arbitrary linear transform of the
+    // engagement series with no relationship to `perf.er`, so the "ER %"
+    // view showed the same curve restretched rather than a second signal.
+    // Engagement per week ÷ total impressions per week isn't available
+    // (impressions aren't reported weekly), so the mode is dropped upstream.
+    : points;
 
   const max = Math.max(...scaled, 1);
   const w = 600;
@@ -2654,12 +2655,15 @@ export function BigPerfChart({
 
   const yLabels = [0, 0.25, 0.5, 0.75, 1].map((p) => ({
     y: h - pad - p * (h - pad * 2),
-    label:
-      metric === 'er' ? `${(p * max).toFixed(1)}%`
-      : metric === 'impressions' ? fmtFollowers(Math.round(p * max))
+    label: metric === 'impressions'
+      ? fmtFollowers(Math.round(p * max))
       : Math.round(p * max).toLocaleString(),
   }));
-  const xLabels = ['W1', 'W2', 'W3', 'W4', 'W5', 'W6', 'W7'];
+  // Derived from the series, not a fixed 7. A hardcoded W1–W7 array laid
+  // seven evenly-spaced ticks under whatever number of points the range
+  // actually produced — so the 30d view drew 4 real points beneath 7 labels,
+  // with no way to tell which week any point belonged to.
+  const xLabels = scaled.map((_, i) => `W${i + 1}`);
 
   return (
     <svg viewBox={`0 0 ${w} ${h}`} style={{ width: '100%', height: 220 }} aria-hidden="true">
@@ -2749,26 +2753,36 @@ export function BreakdownBar({
 }
 
 // ── Top performers leaderboard with medal-rank icons
+//
+// Reads the per-creator rows stored on the campaign's performance record.
+//
+// It used to invent them: `seedNum = (id.charCodeAt(0) + id.charCodeAt(1)) / 200`
+// — every column, and the sort order that assigns the medals, derived from
+// the first two ASCII characters of the creator's database id. Real named
+// people were ranked against each other by how their primary key happened to
+// spell, on the table a brand reads to decide who to re-hire.
 export function TopPerformersTable({
-  collabs, creators, totalEngagement, totalImpressions,
+  collabs, creators, byCreator,
 }: {
   collabs: V2Collab[];
   creators: V2Creator[];
-  totalEngagement: number;
-  totalImpressions: number;
+  byCreator: { creatorId: string; impressions: number; engagement: number }[];
 }) {
-  const rows = collabs
-    .filter((x) => ['live', 'paid', 'approved'].includes(x.stage))
-    .map((x) => {
-      const cr = creators.find((c) => c.id === x.creatorId);
+  const priceByCreator = new Map(collabs.map((c) => [c.creatorId, c.price]));
+  const rows = byCreator
+    .map((row) => {
+      const cr = creators.find((c) => c.id === row.creatorId);
       if (!cr) return null;
-      const seedNum = (cr.id.charCodeAt(0) + (cr.id.charCodeAt(1) || 0)) / 200;
-      const share = 0.1 + seedNum;
-      const imp = Math.round(totalImpressions * share / Math.max(1, collabs.length) * 1.5);
-      const eng = Math.round(totalEngagement * share / Math.max(1, collabs.length) * 1.5);
-      const er = (eng / Math.max(1, imp) * 100).toFixed(1);
-      const cpe = Math.round(x.price / Math.max(1, eng));
-      return { x, cr, imp, eng, er, cpe };
+      const price = priceByCreator.get(row.creatorId) ?? 0;
+      return {
+        cr,
+        imp: row.impressions,
+        eng: row.engagement,
+        er: (row.engagement / Math.max(1, row.impressions) * 100).toFixed(1),
+        // Real money over a reported count. Null when either is missing,
+        // rather than a $0 that reads as free.
+        cpe: row.engagement > 0 && price > 0 ? Math.round(price / row.engagement) : null,
+      };
     })
     .filter((r): r is NonNullable<typeof r> => Boolean(r))
     .sort((a, b) => b.eng - a.eng);
@@ -2776,7 +2790,7 @@ export function TopPerformersTable({
   if (rows.length === 0) {
     return (
       <div className="v2-muted" style={{ textAlign: 'center', padding: 20, fontSize: 13 }}>
-        No live posts yet.
+        No per-creator performance reported yet.
       </div>
     );
   }
@@ -2796,7 +2810,7 @@ export function TopPerformersTable({
       </thead>
       <tbody>
         {rows.map((r, i) => (
-          <tr key={r.x.id}>
+          <tr key={r.cr.id}>
             <td>
               <div
                 style={{
@@ -2845,8 +2859,10 @@ export function TopPerformersTable({
                 {r.er}%
               </span>
             </td>
-            <td className="v2-tabular" style={{ textAlign: 'right' }}>${r.cpe}</td>
-            <td className="v2-tabular" style={{ textAlign: 'right' }}>{fmtUSD(r.x.price)}</td>
+            <td className="v2-tabular" style={{ textAlign: 'right' }}>{r.cpe !== null ? `$${r.cpe}` : '—'}</td>
+            <td className="v2-tabular" style={{ textAlign: 'right' }}>
+              {fmtUSD(priceByCreator.get(r.cr.id) ?? 0)}
+            </td>
           </tr>
         ))}
       </tbody>
@@ -2854,14 +2870,49 @@ export function TopPerformersTable({
   );
 }
 
+/**
+ * Marks performance figures that are authored demo data, not measurements.
+ *
+ * The seeded world exists to show what a populated campaign looks like, and
+ * that story is worth telling — but it has to be told honestly. Any surface
+ * rendering a row with `sample: true` shows this.
+ */
+export function SampleDataBanner() {
+  return (
+    <div
+      className="v2-card v2-card-pad"
+      style={{
+        marginBottom: 16,
+        borderLeft: '3px solid var(--v2-gold)',
+        display: 'flex',
+        gap: 10,
+        alignItems: 'flex-start',
+      }}
+    >
+      <span aria-hidden="true" style={{ fontSize: 14, lineHeight: 1.3 }}>◑</span>
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>Sample data</div>
+        <div className="v2-muted" style={{ fontSize: 12, lineHeight: 1.5 }}>
+          These figures illustrate a fully-running campaign. They aren’t measured —
+          reach and engagement need connected platform accounts.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Content type tile — single Reels/Stories/Posts cell
+// `avgEr` is gone. It was passed as the literal "12.8%" / "6.2%" / "9.1%"
+// from both call sites — the same three constants on every campaign and
+// every brand, labelled "avg ER" beside a real deliverable count. Nothing
+// measures engagement per content type, so the tile now shows the count it
+// genuinely knows.
 export function ContentTypeTile({
-  icon, label, count, avgEr,
+  icon, label, count,
 }: {
   icon: string;
   label: string;
   count: number;
-  avgEr: string;
 }) {
   return (
     <div
@@ -2877,7 +2928,9 @@ export function ContentTypeTile({
         <span className="v2-tabular" style={{ fontSize: 18, fontWeight: 600 }}>{count}</span>
       </div>
       <div style={{ fontSize: 12, fontWeight: 550, color: 'var(--v2-ink-2)' }}>{label}</div>
-      <div className="v2-muted" style={{ fontSize: 11, marginTop: 2 }}>{avgEr} avg ER</div>
+      <div className="v2-muted" style={{ fontSize: 11, marginTop: 2 }}>
+        {count === 1 ? 'deliverable' : 'deliverables'}
+      </div>
     </div>
   );
 }
@@ -3066,233 +3119,6 @@ function TeamAccessAsideForCampaign({ campaignId }: { campaignId: string }) {
  *  brand-team members plus pending invites; brand owner can send new
  *  invites + revoke pending ones. Invites are link-based — after
  *  sending, the brand sees a copy-able URL modal. */
-function TeamAccessAside({ brandId }: { brandId: string }) {
-  const db = useStore((s) => s.db);
-  const session = useStore((s) => s.session);
-  const [showInviteModal, setShowInviteModal] = useState(false);
-  const [latestInviteUrl, setLatestInviteUrl] = useState<string | null>(null);
-
-  const me = session ? db.users.find((u) => u.id === session.userId) : null;
-  const isOwner = !!me && me.brandId === brandId && (!me.teamRole || me.teamRole === 'admin');
-
-  // Current team — every user with this brandId, sorted: owner first.
-  const team = db.users
-    .filter((u) => u.brandId === brandId)
-    .sort((a, b) => (a.teamRole ? 1 : 0) - (b.teamRole ? 1 : 0));
-  const pendingInvites = (db.teamInvites ?? []).filter(
-    (i) => i.brandId === brandId && !i.acceptedAt && !i.revokedAt,
-  );
-
-  return (
-    <aside className="v2-card v2-card-pad" style={{ flex: '1 1 280px' }}>
-      <div className="v2-eyebrow" style={{ marginBottom: 10 }}>Team access</div>
-      {team.map((u) => (
-        <div
-          key={u.id}
-          className="v2-row"
-          style={{ padding: '8px 0', borderBottom: '1px solid var(--v2-line)', gap: 10 }}
-        >
-          <div className="v2-avatar v2-avatar-sm" style={{ background: 'var(--v2-accent-soft)' }} aria-hidden="true" />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 550, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {u.id === me?.id ? 'You' : u.email}
-            </div>
-            <div className="v2-muted" style={{ fontSize: 11 }}>
-              {u.teamRole ?? 'Owner'}
-            </div>
-          </div>
-        </div>
-      ))}
-      {pendingInvites.length > 0 && (
-        <>
-          <div className="v2-eyebrow" style={{ marginTop: 14, marginBottom: 8 }}>Pending invites</div>
-          {pendingInvites.map((inv) => (
-            <PendingInviteRow key={inv.id} invite={inv} isOwner={isOwner} />
-          ))}
-        </>
-      )}
-      {isOwner && (
-        <button
-          className="v2-btn v2-btn-sm v2-btn-outline"
-          type="button"
-          style={{ width: '100%', marginTop: 14 }}
-          onClick={() => setShowInviteModal(true)}
-        >
-          {Icon.plus} Invite teammate
-        </button>
-      )}
-      {showInviteModal && (
-        <InviteTeammateModal
-          brandId={brandId}
-          onClose={() => setShowInviteModal(false)}
-          onSent={(url) => { setLatestInviteUrl(url); setShowInviteModal(false); }}
-        />
-      )}
-      {latestInviteUrl && (
-        <InviteLinkModal
-          url={latestInviteUrl}
-          onClose={() => setLatestInviteUrl(null)}
-        />
-      )}
-    </aside>
-  );
-}
-
-function PendingInviteRow({ invite, isOwner }: {
-  invite: import('@/lib/api/types').TeamInvite;
-  isOwner: boolean;
-}) {
-  return (
-    <div
-      className="v2-row"
-      style={{ padding: '8px 0', borderBottom: '1px solid var(--v2-line)', gap: 10 }}
-    >
-      <div className="v2-avatar v2-avatar-sm" style={{ background: 'var(--v2-bg-1)' }} aria-hidden="true" />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 550, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {invite.invitedEmail}
-        </div>
-        <div className="v2-muted" style={{ fontSize: 11 }}>
-          {invite.role} · pending
-        </div>
-      </div>
-      {isOwner && (
-        <>
-          <button
-            type="button"
-            className="v2-icon-btn"
-            title="Copy invite link"
-            onClick={() => {
-              const url = `${window.location.origin}/accept-invite?token=${invite.token}`;
-              void navigator.clipboard.writeText(url).then(
-                () => pushToast('Invite link copied'),
-                () => pushToast('Copy failed — select the URL manually'),
-              );
-            }}
-          >📋</button>
-          <button
-            type="button"
-            className="v2-icon-btn"
-            title="Revoke invite"
-            onClick={async () => {
-              if (!confirm(`Revoke invite to ${invite.invitedEmail}?`)) return;
-              const { v2RevokeTeamInvite } = await import('../v2Hooks');
-              v2RevokeTeamInvite(invite.id);
-              pushToast('Invite revoked');
-            }}
-          >×</button>
-        </>
-      )}
-    </div>
-  );
-}
-
-function InviteTeammateModal({ brandId, onClose, onSent }: {
-  brandId: string;
-  onClose: () => void;
-  onSent: (acceptUrl: string) => void;
-}) {
-  const [email, setEmail] = useState('');
-  const [role, setRole] = useState<import('@/lib/api/types').TeamRole>('ops');
-  const valid = email.trim().length > 4 && email.includes('@');
-
-  async function submit() {
-    const { v2SendTeamInvite } = await import('../v2Hooks');
-    const invite = v2SendTeamInvite({ brandId, email, role });
-    if (!invite) {
-      pushToast('Could not send invite');
-      return;
-    }
-    const url = `${window.location.origin}/accept-invite?token=${invite.token}`;
-    onSent(url);
-  }
-
-  return (
-    <div className="v2-modal-overlay" role="dialog" aria-modal="true" onClick={onClose}>
-      <div className="v2-card v2-card-pad-lg v2-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
-        <h2 style={{
-          fontFamily: 'var(--v2-font-display)', fontSize: 22, fontWeight: 500,
-          margin: '0 0 6px', letterSpacing: '-0.02em',
-        }}>Invite teammate</h2>
-        <p className="v2-muted" style={{ margin: '0 0 16px', fontSize: 13 }}>
-          They'll get an invite link they can open to join your brand workspace.
-        </p>
-        <label className="v2-eyebrow" style={{ display: 'block', marginBottom: 6 }}>Email</label>
-        <input
-          className="v2-input"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="teammate@brand.com"
-          style={{ width: '100%', marginBottom: 12, fontFamily: 'inherit' }}
-        />
-        <label className="v2-eyebrow" style={{ display: 'block', marginBottom: 6 }}>Role</label>
-        <select
-          className="v2-input"
-          value={role}
-          onChange={(e) => setRole(e.target.value as import('@/lib/api/types').TeamRole)}
-          style={{ width: '100%', marginBottom: 16, fontFamily: 'inherit' }}
-        >
-          <option value="admin">Admin — full access</option>
-          <option value="ops">Ops — campaign mgmt, no payouts</option>
-          <option value="finance">Finance — payments + wallet</option>
-          <option value="viewer">Viewer — read only</option>
-        </select>
-        <div className="v2-row" style={{ justifyContent: 'flex-end', gap: 8 }}>
-          <button className="v2-btn v2-btn-ghost" type="button" onClick={onClose}>Cancel</button>
-          <button
-            className="v2-btn v2-btn-primary"
-            type="button"
-            disabled={!valid}
-            onClick={() => { void submit(); }}
-          >
-            Send invite
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function InviteLinkModal({ url, onClose }: { url: string; onClose: () => void }) {
-  return (
-    <div className="v2-modal-overlay" role="dialog" aria-modal="true" onClick={onClose}>
-      <div className="v2-card v2-card-pad-lg v2-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
-        <h2 style={{
-          fontFamily: 'var(--v2-font-display)', fontSize: 22, fontWeight: 500,
-          margin: '0 0 6px', letterSpacing: '-0.02em',
-        }}>Invite sent · share the link</h2>
-        <p className="v2-muted" style={{ margin: '0 0 14px', fontSize: 13 }}>
-          Send this link to your teammate. They'll be prompted to sign in (or sign up)
-          with the invited email, then attached to your team.
-        </p>
-        <div style={{
-          padding: '10px 12px',
-          background: 'var(--v2-bg-1)',
-          border: '1px solid var(--v2-line)',
-          borderRadius: 8,
-          fontFamily: 'monospace',
-          fontSize: 12,
-          wordBreak: 'break-all',
-          marginBottom: 14,
-        }}>{url}</div>
-        <div className="v2-row" style={{ justifyContent: 'flex-end', gap: 8 }}>
-          <button
-            className="v2-btn v2-btn-outline"
-            type="button"
-            onClick={() => {
-              void navigator.clipboard.writeText(url).then(
-                () => pushToast('Invite link copied'),
-                () => pushToast('Copy failed — select the URL manually'),
-              );
-            }}
-          >Copy link</button>
-          <button className="v2-btn v2-btn-primary" type="button" onClick={onClose}>Done</button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /**
  * P7 — capability-gated lifecycle controls in the page header. Pause /

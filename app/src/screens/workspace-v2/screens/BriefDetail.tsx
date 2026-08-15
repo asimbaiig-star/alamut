@@ -17,8 +17,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { fmtUSD, Icon, Topbar } from '../lib';
 import { useV2CampaignById, useV2CurrentCreator } from '../v2Hooks';
 import { creatorToV2 } from '../v2Adapters';
+import { matchCreatorToCampaign } from '../matching';
+import { getAcceptedCreators } from '@/lib/api/relations';
 import { v2ApplyToCampaign } from '../v2CampaignActions';
 import { useStore } from '@/lib/api/store';
+import { pushToast } from '@/lib/utils/toast';
 import { parseNumberInput } from '@/lib/utils/format';
 import type { V2Campaign } from '../data';
 
@@ -30,8 +33,8 @@ interface Props {
 export function BriefDetail({ campaignId, onRoute }: Props) {
   const campaign = useV2CampaignById(campaignId);
   const me = useV2CurrentCreator();
-  const meV2 = me ? creatorToV2(me) : null;
   const db = useStore((s) => s.db);
+  const meV2 = me ? creatorToV2(me, db) : null;
   const [pitch, setPitch] = useState('');
   const [price, setPrice] = useState<number>(() => meV2?.rate ?? 350);
   const [applied, setApplied] = useState(false);
@@ -94,62 +97,32 @@ export function BriefDetail({ campaignId, onRoute }: Props) {
   //   geo       = exact city in placement (100) / partial (70) / neither (40)
   //   history   = past collabs with this brand on platform (any record = 95)
   //   overall   = mean of the five facets
-  const facets = useMemo(() => {
-    if (!campaign || !me) {
-      return { audience: 0, niche: 0, er: 0, geo: 0, history: 0, overall: 0 };
-    }
-    // Audience: use the V2 projection (V2Creator has the typed
-    // age/gender breakdown; raw Creator stores it elsewhere). Scale
-    // age2534 share to [40, 98] as the proxy for "young-adult fit"
-    // most brand briefs target.
-    const audienceCore = meV2?.audience?.age2534 ?? 0;
-    const audience = Math.max(40, Math.min(98, 40 + audienceCore));
-
-    // Niche: 100 when campaign category is in creator's categories;
-    // 80 when at least one shared word matches; 50 otherwise. Empty
-    // categories on either side → 50.
-    const campaignCat = (campaign.category ?? '').toLowerCase();
-    const niche = !campaignCat || myCats.length === 0 ? 50
-      : myCats.some((c) => c.toLowerCase() === campaignCat) ? 100
-      : myCats.some((c) => campaignCat.split(/\s+/).some((w) => w && c.toLowerCase().includes(w))) ? 80
-      : 50;
-
-    // ER: linear from 4% (mediocre, ~33) to 12% (excellent, ~100).
-    const myER = me.platforms?.[0]?.engagement ?? 0;
-    const er = Math.max(20, Math.min(100, Math.round(((myER - 2) / 10) * 100)));
-
-    // Geo: exact city match in placement copy → 100, region keyword match
-    // → 70, neither → 40.
-    const placement = (campaign.placement ?? '').toLowerCase();
-    const city = (me.city ?? '').toLowerCase();
-    const country = (me.country ?? '').toLowerCase();
-    const geo = !placement || !city ? 40
-      : placement.includes(city) ? 100
-      : country && placement.includes(country) ? 70
-      : 40;
-
-    // History: check the local store for past offers between this brand
-    // + creator on any campaign (accepted, declined, or even pending).
-    // The `>=1 prior record` signal is the trust artefact.
-    const rawCreator = db.creators.find((c) => c.id === me.id);
-    const brand = db.brands.find((b) => b.name === campaign.brand);
-    const hasPriorHistory = rawCreator && brand
-      ? db.offers.some((o) =>
-          o.creatorId === rawCreator.id &&
-          db.campaigns.find((c) => c.id === o.campaignId)?.brandId === brand.id,
-        )
-      : false;
-    const history = hasPriorHistory ? 95 : 50;
-
-    return {
-      audience,
-      niche,
-      er,
-      geo,
-      history,
-      overall: Math.round((audience + niche + er + geo + history) / 5),
-    };
-  }, [campaign, me, myCats, db]);
+  // Fit comes from `matching.ts` — the one scorer.
+  //
+  // This screen used to carry its own, and it was the worst of the three
+  // copies. Every facet had a floor (audience ≥ 40, niche ≥ 50, ER ≥ 20,
+  // geo ≥ 40, history ≥ 50), so `overall` could never drop below 40: a
+  // brand-new creator with no categories, no platforms and no rate card
+  // read "40% · Stretch match" in a moss-green hero with five confident
+  // progress bars — while the SAME creator saw an honest "fit unknown" for
+  // the SAME brief one screen earlier on BrowseBriefs.
+  //
+  // It also still contained the bug `matching.ts` documents as fixed: the
+  // geo facet compared the creator's city against `campaign.placement` —
+  // the deliverables string, e.g. "1 IG post + 1 Reel" — instead of
+  // `campaign.region`, so geo essentially never matched.
+  const rawCampaign = useMemo(
+    () => db.campaigns.find((c) => c.id === campaignId) ?? null,
+    [db.campaigns, campaignId],
+  );
+  const match = useMemo(() => {
+    // Per-creator budget feeds the matcher's rate-fit facet. Same split the
+    // payout column shows, so the two can't disagree.
+    const perCreator = rawCampaign
+      ? Math.round(rawCampaign.budget / Math.max(4, getAcceptedCreators(rawCampaign.id, db).length || 4))
+      : 0;
+    return matchCreatorToCampaign(me, rawCampaign, db, perCreator);
+  }, [me, rawCampaign, db]);
 
   if (!campaign) {
     return (
@@ -160,7 +133,7 @@ export function BriefDetail({ campaignId, onRoute }: Props) {
     );
   }
 
-  const matchScore = facets.overall;
+  const matchScore = match.score;
   const suggested = Math.round(campaign.budget / Math.max(4, campaign.creators.length || 4));
 
   const avail = me?.availability;
@@ -182,14 +155,21 @@ export function BriefDetail({ campaignId, onRoute }: Props) {
   const applicants = db.applications.filter(
     (a) => a.campaignId === campaign.id && (a.status === 'submitted' || a.status === 'shortlisted'),
   ).length;
-  // Brief views aren't tracked — synthesize a plausible "currently
-  // viewing" number that's bigger than applicants (more lookers than
-  // pitches) but not absurd. Stable across renders via campaign id hash.
-  const viewSeed = (campaign.id.charCodeAt(0) + campaign.id.charCodeAt(campaign.id.length - 1)) % 17;
-  const viewing = applicants + 4 + viewSeed;
-  // Spots open — campaign caps roster at ~6 creators; what's left.
-  const spotsOpen = Math.max(1, 6 - applicants);
-  const rank = matchScore >= 90 ? 2 : matchScore >= 75 ? 4 : 9;
+  // `viewing`, `spotsOpen` and `rank` are gone.
+  //
+  //   viewing   = applicants + 4 + (charCodeAt(0) + charCodeAt(last)) % 17
+  //               — brief views aren't tracked at all, and the "signal" was
+  //               the campaign id's ASCII codes. Same trick as the Top
+  //               Performers leaderboard, on a scarcity cue.
+  //   spotsOpen = 6 - applicants, where 6 was invented here; BrowseBriefs
+  //               computed a DIFFERENT cap, so one campaign showed
+  //               "3 of 8 filled" on the card and "2 of 6" on this page.
+  //   rank      = a 3-bucket lookup on the match score, printed as
+  //               "Your rank #N by match" beside the real applicant count,
+  //               with equal visual confidence.
+  //
+  // All three were urgency cues manufactured to push a pitch. `applicants`
+  // and `daysToClose` below are real, and they're enough.
   const daysToClose = (() => {
     if (!campaign.deadline) return 7;
     const ms = new Date(campaign.deadline).getTime() - Date.now();
@@ -202,10 +182,15 @@ export function BriefDetail({ campaignId, onRoute }: Props) {
         title={campaign.name}
         crumb={
           <span>
+            {/* `brief:` is a cross-persona route (a brand can reach this
+                page from CampaignDetail's non-owner fallback, or by deep
+                link), but 'creator-campaigns' is CREATOR_ONLY — so this
+                crumb silently flipped a brand viewer into the creator
+                persona. Send each side back to its own list. */}
             <button
               type="button"
               className="v2-link-btn"
-              onClick={() => onRoute('creator-campaigns')}
+              onClick={() => onRoute(me ? 'creator-campaigns' : 'campaigns')}
             >Campaigns</button>
             {' · '}{campaign.brand}
           </span>
@@ -250,7 +235,8 @@ export function BriefDetail({ campaignId, onRoute }: Props) {
         <MatchHero
           campaign={campaign}
           score={matchScore}
-          facets={facets}
+          reasons={match.reasons}
+          insufficient={match.insufficient}
           payout={suggested}
           headline={
             me
@@ -272,23 +258,24 @@ export function BriefDetail({ campaignId, onRoute }: Props) {
             borderBottom: '1px solid var(--v2-line)',
           }}
         >
-          <span><strong className="v2-tabular">{viewing}</strong> viewing</span>
-          <span style={{ color: 'var(--v2-ink-3)' }}>·</span>
           <span>
-            <strong className="v2-tabular">{applicants}</strong> applied
-            <span style={{ color: 'var(--v2-ink-3)' }}> / {spotsOpen} {spotsOpen === 1 ? 'spot' : 'spots'} open</span>
+            <strong className="v2-tabular">{applicants}</strong>{' '}
+            {applicants === 1 ? 'creator has' : 'creators have'} applied
           </span>
           <span style={{ color: 'var(--v2-ink-3)' }}>·</span>
           <span style={{ color: 'var(--v2-accent)', fontWeight: 600 }}>
             {daysToClose === 0 ? 'Closes today' : `Closes in ${daysToClose}d`}
           </span>
-          <span style={{ color: 'var(--v2-ink-3)' }}>·</span>
-          <span>
-            Your rank <strong style={{ color: 'var(--v2-accent)' }} className="v2-tabular">#{rank}</strong> by match
-          </span>
           <span className="v2-spacer" />
+          {/* Urgency only makes sense on a brief you can actually apply to.
+              On a draft it sat directly above "Not open yet", telling the
+              creator to hurry into a door the page had just closed. */}
           <span className="v2-muted" style={{ fontSize: 12 }}>
-            {campaign.brand} typically shortlists within 28h — early applications usually win.
+            {campaign.status === 'Live'
+              ? 'Applying early puts you in front of the brand before the roster fills.'
+              : campaign.status === 'Paused'
+                ? 'Paused by the brand — saved briefs stay in your list if it reopens.'
+                : 'Not accepting applications yet.'}
           </span>
         </div>
 
@@ -396,8 +383,37 @@ export function BriefDetail({ campaignId, onRoute }: Props) {
               </div>
             </section>
 
-            {/* ─── Apply form (unchanged) ────────────────────────── */}
-            {!applied ? (
+            {/* ─── Apply form ─────────────────────────────────────── */}
+            {!applied && campaign.status !== 'Live' ? (
+              // `v2ApplyToCampaign` refuses anything that isn't live, and
+              // BrowseBriefs lists Planned and Paused briefs (12 seeded
+              // campaigns are drafts). The refusal used to arrive as a
+              // toast AFTER the creator had written a pitch and named a
+              // price. Say it before they spend the effort.
+              <section className="v2-card v2-card-pad-lg">
+                <h3 style={{
+                  fontFamily: 'var(--v2-font-display)',
+                  fontSize: 22,
+                  fontWeight: 500,
+                  margin: '0 0 10px',
+                  letterSpacing: '-0.02em',
+                }}>
+                  {campaign.status === 'Paused' ? 'Applications paused' : 'Not open yet'}
+                </h3>
+                <p className="v2-muted" style={{ fontSize: 13.5, margin: '0 0 16px', lineHeight: 1.55 }}>
+                  {campaign.status === 'Paused'
+                    ? `${campaign.brand} has paused this brief. Save it and you'll have it to hand if they reopen.`
+                    : `${campaign.brand} hasn't opened this brief for applications yet. Save it now and check back — nothing is lost by waiting.`}
+                </p>
+                <button
+                  className="v2-btn v2-btn-outline"
+                  type="button"
+                  onClick={() => onRoute('creator-campaigns?status=Live')}
+                >
+                  Browse open briefs
+                </button>
+              </section>
+            ) : !applied ? (
               <section className="v2-card v2-card-pad-lg">
                 <h3 style={{
                   fontFamily: 'var(--v2-font-display)',
@@ -421,12 +437,13 @@ export function BriefDetail({ campaignId, onRoute }: Props) {
                   />
                 </div>
                 <div style={{ marginBottom: 18 }}>
-                  <label className="v2-eyebrow" style={{ display: 'block', marginBottom: 6 }}>
+                  <label className="v2-eyebrow" htmlFor="v2-pitch-price" style={{ display: 'block', marginBottom: 6 }}>
                     Your price (USD)
                   </label>
                   <div className="v2-onboarding-rate">
                     <span className="v2-onboarding-rate-prefix">$</span>
                     <input
+                      id="v2-pitch-price"
                       type="number"
                       value={price}
                       onChange={(e) => setPrice(parseNumberInput(e.target.value, { min: 0 }))}
@@ -458,7 +475,21 @@ export function BriefDetail({ campaignId, onRoute }: Props) {
                   type="button"
                   style={{ width: '100%' }}
                   onClick={() => {
-                    if (me) v2ApplyToCampaign(campaignId, me.id, pitch, price);
+                    // Only flip to the success state if an application was
+                    // actually created. Pre-fix `setApplied(true)` ran
+                    // unconditionally: with no creator identity the write was
+                    // skipped and the creator still got "Application sent —
+                    // {brand} typically replies within 48 hours", for a
+                    // record that did not exist.
+                    if (!me) {
+                      pushToast('Sign in as a creator to apply to this brief', 'bad');
+                      return;
+                    }
+                    const application = v2ApplyToCampaign(campaignId, me.id, pitch, price);
+                    if (!application) {
+                      pushToast('This brief isn’t accepting applications right now', 'bad');
+                      return;
+                    }
                     setApplied(true);
                   }}
                   disabled={!pitch.trim() || price <= 0}
@@ -486,7 +517,7 @@ export function BriefDetail({ campaignId, onRoute }: Props) {
                   Application sent
                 </h3>
                 <p style={{ margin: '0 0 16px', color: 'var(--v2-ink-2)' }}>
-                  {campaign.brand} typically replies within 48 hours. We'll notify you in Inbox.
+                  We'll notify you in Inbox as soon as {campaign.brand} responds.
                 </p>
                 <button
                   className="v2-btn v2-btn-primary"
@@ -518,7 +549,10 @@ export function BriefDetail({ campaignId, onRoute }: Props) {
               <KvRow k="Deadline" v={new Date(campaign.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} />
               <KvRow k="Placement" v={campaign.placement} />
               <KvRow k="Total budget" v={fmtUSD(campaign.budget)} />
-              <KvRow k="Spots open" v={`${spotsOpen} of 6`} />
+              {/* "Spots open — N of 6" removed: `Campaign` has no roster-size
+                  field, so the 6 was invented here and BrowseBriefs invented
+                  a different one. */}
+              <KvRow k="Applicants" v={String(applicants)} />
             </div>
 
             <div className="v2-card v2-card-pad">
@@ -529,13 +563,24 @@ export function BriefDetail({ campaignId, onRoute }: Props) {
                 </div>
                 <div>
                   <div style={{ fontWeight: 600, fontSize: 14 }}>{campaign.brand}</div>
-                  <div className="v2-muted" style={{ fontSize: 11 }}>Verified brand</div>
+                  {/* "Verified brand" was hardcoded for every campaign,
+                      including seeded demo brands — on the page where a
+                      creator commits to a pitch. Read the real flag. */}
+                  <div className="v2-muted" style={{ fontSize: 11 }}>
+                    {campaign.brandIsDemo
+                      ? 'Sample brief · no real brand behind it'
+                      : campaign.brandVerified ? 'Verified brand' : 'Not yet verified'}
+                  </div>
                 </div>
               </div>
-              <KvRow k="Avg payout time" v="< 48 hours" />
-              <KvRow k="Approval rate" v="92%" />
-              <KvRow k="Repeat hire rate" v="68%" />
-              <KvRow k="Disputes" v="0 this quarter" />
+              {/* Four reputation stats used to sit here — "Avg payout time
+                  < 48 hours", "Approval rate 92%", "Repeat hire rate 68%",
+                  "Disputes 0 this quarter" — all literal strings, identical
+                  for every brand. `Brand` carries none of those fields.
+                  `db.disputes` and `db.transactions` do exist, so real
+                  versions are buildable later; inventing them meanwhile put
+                  fake reliability signals in front of a creator at the exact
+                  moment they decide whether to pitch. */}
             </div>
           </aside>
         </div>
@@ -549,18 +594,27 @@ export function BriefDetail({ campaignId, onRoute }: Props) {
 // 5 facet bars, and a payout column.
 // ════════════════════════════════════════════════════════════════
 function MatchHero({
-  campaign, score, facets, payout, headline,
+  campaign, score, reasons, insufficient, payout, headline,
 }: {
   campaign: V2Campaign;
-  score: number;
-  facets: { audience: number; niche: number; er: number; geo: number; history: number; overall: number };
+  /** null = not enough signal to score honestly. */
+  score: number | null;
+  reasons: string[];
+  insufficient?: string;
   payout: number;
   headline: string;
 }) {
   void campaign; // headline carries the campaign reference; no other use
-  const tier = score >= 90 ? 'Excellent' : score >= 75 ? 'Strong' : score >= 60 ? 'Decent' : 'Stretch';
-  const tierColor = score >= 90 ? 'var(--v2-moss)' : score >= 75 ? 'var(--v2-moss)' : score >= 60 ? 'var(--v2-gold)' : 'var(--v2-ink-3)';
-  const dash = `${(score / 100) * 226} 226`;
+  // `score` can be null now, and the hero says so instead of drawing a
+  // floored number. The five facet bars are gone with the private scorer
+  // that produced them — `matching.ts` reports which facets qualified as
+  // plain reasons, so a creator sees WHY rather than five bars whose
+  // minimums guaranteed a flattering total.
+  const tier = score === null ? 'Fit unknown'
+    : score >= 90 ? 'Excellent' : score >= 75 ? 'Strong' : score >= 60 ? 'Decent' : 'Stretch';
+  const tierColor = score === null ? 'var(--v2-ink-3)'
+    : score >= 75 ? 'var(--v2-moss)' : score >= 60 ? 'var(--v2-gold)' : 'var(--v2-ink-3)';
+  const dash = `${((score ?? 0) / 100) * 226} 226`;
 
   return (
     <div
@@ -639,13 +693,15 @@ function MatchHero({
             {headline}
           </h2>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14 }}>
-            <MatchFacet label="Audience"      score={facets.audience} />
-            <MatchFacet label="Niche"         score={facets.niche} />
-            <MatchFacet label="ER vs niche"   score={facets.er} />
-            <MatchFacet label="Geo"           score={facets.geo} />
-            <MatchFacet label="Brand history" score={facets.history} />
-          </div>
+          {score === null ? (
+            <div style={{ fontSize: 12.5, opacity: 0.85, lineHeight: 1.5 }}>
+              {insufficient ?? 'Add channels and categories to your storefront to see how well this brief fits.'}
+            </div>
+          ) : reasons.length > 0 ? (
+            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, opacity: 0.9, lineHeight: 1.7 }}>
+              {reasons.map((r) => <li key={r}>{r}</li>)}
+            </ul>
+          ) : null}
         </div>
 
         {/* Payout column — flush right, tighter than v1. */}
@@ -689,36 +745,6 @@ function MatchHero({
   );
 }
 
-function MatchFacet({ label, score }: { label: string; score: number }) {
-  const color = score >= 90 ? 'var(--v2-moss-soft)' : score >= 75 ? 'var(--v2-accent-2)' : 'var(--v2-gold)';
-  return (
-    <div>
-      <div className="v2-row" style={{ justifyContent: 'space-between', marginBottom: 3 }}>
-        <span style={{
-          fontSize: 10.5,
-          opacity: 0.7,
-          textTransform: 'uppercase',
-          letterSpacing: '0.05em',
-        }}>{label}</span>
-        <span className="v2-tabular" style={{ fontSize: 11.5, fontWeight: 700, color: 'white' }}>
-          {score}
-        </span>
-      </div>
-      <div style={{
-        height: 3,
-        borderRadius: 2,
-        background: 'rgba(255,255,255,0.12)',
-        overflow: 'hidden',
-      }}>
-        <div style={{ width: `${score}%`, height: '100%', background: color }} />
-      </div>
-    </div>
-  );
-}
-
-// ════════════════════════════════════════════════════════════════
-// Brief Do / Don't blocks
-// ════════════════════════════════════════════════════════════════
 function BriefBlock({
   kind, title, items,
 }: {

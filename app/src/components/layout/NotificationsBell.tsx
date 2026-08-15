@@ -11,6 +11,8 @@ import { useNavigate } from 'react-router-dom';
 import { useStore } from '@/lib/api/store';
 import { useAuth } from '@/lib/auth/useAuth';
 import { api, select } from '@/lib/api/client';
+import { v2AcceptOffer, v2DeclineOffer, v2ApproveContent } from '@/screens/workspace-v2/v2CampaignActions';
+import { useCapability } from '@/lib/permissions';
 import { Icon } from '@/components/ui/Icon';
 import { fmtRelative } from '@/lib/utils/format';
 import { pushToast } from '@/lib/utils/toast';
@@ -86,13 +88,18 @@ export function NotificationsBell() {
   const unreadCount = allNotifs.filter((n) => !n.read).length;
   const notifs = filter === 'unread' ? allNotifs.filter((n) => !n.read) : allNotifs;
 
-  // Group + cap (display first 30 in any case)
+  // Group + cap. The filter chips show totals for the WHOLE list, so past
+  // the cap the header disagreed with the body underneath it and the excess
+  // was unreachable — no "+N more", no way to page. Track what's hidden so
+  // the popup can say so.
+  const DISPLAY_CAP = 30;
+  const hiddenCount = Math.max(0, notifs.length - DISPLAY_CAP);
   const grouped = useMemo(() => {
     const refMs = Date.now();
     const buckets: Record<'today' | 'yesterday' | 'week' | 'older', Notification[]> = {
       today: [], yesterday: [], week: [], older: [],
     };
-    for (const n of notifs.slice(0, 30)) {
+    for (const n of notifs.slice(0, DISPLAY_CAP)) {
       buckets[groupKeyOf(n.at, refMs)].push(n);
     }
     return buckets;
@@ -379,6 +386,15 @@ export function NotificationsBell() {
                   </div>
                 );
               })}
+              {hiddenCount > 0 && (
+                // Say what's not shown. The chips above count the full list,
+                // so without this the numbers simply didn't match the rows.
+                <div className="notif-group">
+                  <div className="notif-empty" style={{ padding: '10px 14px', fontSize: 12 }}>
+                    {hiddenCount} older {hiddenCount === 1 ? 'notification' : 'notifications'} not shown
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>,
@@ -400,19 +416,37 @@ function NotifRow({ n, kind, onClick, onAck, onClose }: NotifRowProps) {
   const db = useStore((s) => s.db);
   const offer = n.meta?.offerId ? db.offers.find((o) => o.id === n.meta!.offerId) : null;
   const sub   = n.meta?.submissionId ? db.submissions.find((s) => s.id === n.meta!.submissionId) : null;
-  const showOfferActions = !!offer && offer.status === 'pending';
-  const showApproveAction = !!sub && sub.status === 'in_review';
+  // These quick actions move real money, so they run the SAME canonical
+  // actions the full surfaces use — `v2AcceptOffer` / `v2DeclineOffer` /
+  // `v2ApproveContent`.
+  //
+  // They used to call `api.offers.respond` / `api.submissions.decide` in
+  // client.ts, which between them: skipped the capability check entirely,
+  // skipped the dispute freeze and campaign-stage gates, had no
+  // already-approved guard (so a double-click released twice), released
+  // the FULL gross with no platform fee or withholding, and accepted
+  // offers the brand couldn't fund without telling anyone. The bell is
+  // mounted on every screen by `Topbar`, so that was reachable everywhere.
+  //
+  // Capability gating matters as much as the rewiring: `showApproveAction`
+  // was persona-blind, so a creator could see "Approve" on a notification
+  // about their OWN submission and — down the old path, which had no
+  // permission check — release their own payment.
+  const canRespondToOffer = useCapability('offer.counter');
+  const canApproveContent = useCapability('content.approve');
+  const showOfferActions = !!offer && offer.status === 'pending' && canRespondToOffer;
+  const showApproveAction = !!sub && sub.status === 'in_review' && canApproveContent;
 
   const ackAndClose = () => {
     onAck();
     onClose();
   };
 
-  const acceptOffer = async (e: React.MouseEvent) => {
+  const acceptOffer = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!offer) return;
     try {
-      await api.offers.respond(offer.id, 'accept');
+      v2AcceptOffer(offer.id);
       fireConfetti();
       pushToast('Offer accepted · escrow held', 'good');
       ackAndClose();
@@ -420,54 +454,72 @@ function NotifRow({ n, kind, onClick, onAck, onClose }: NotifRowProps) {
       pushToast(err instanceof Error ? err.message : 'Action failed', 'bad');
     }
   };
-  const declineOffer = async (e: React.MouseEvent) => {
+  const declineOffer = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!offer) return;
     try {
-      await api.offers.respond(offer.id, 'decline');
+      v2DeclineOffer(offer.id);
       pushToast('Offer declined', 'default');
       ackAndClose();
     } catch (err) {
       pushToast(err instanceof Error ? err.message : 'Action failed', 'bad');
     }
   };
-  const approveDraft = async (e: React.MouseEvent) => {
+  const approveDraft = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!sub) return;
     try {
-      await api.submissions.decide(sub.id, 'approved');
-      pushToast('Approved · escrow released', 'good');
+      v2ApproveContent(sub.id);
+      // Deliberately not "escrow released": on a multi-deliverable collab
+      // this releases one slot's share, and on an already-paid slot it
+      // moves nothing at all.
+      pushToast('Content approved', 'good');
       ackAndClose();
     } catch (err) {
       pushToast(err instanceof Error ? err.message : 'Action failed', 'bad');
     }
   };
 
+  const hasActions = showOfferActions || showApproveAction;
+
+  // The row used to be ONE <button role="menuitem"> with the quick-action
+  // buttons nested inside it. HTML forbids interactive content inside a
+  // button, and the ARIA menu pattern forbids nested widgets — and because
+  // React builds the DOM imperatively the browser doesn't silently repair
+  // it, so keyboard and screen-reader behaviour was undefined for exactly
+  // the controls that move money.
+  //
+  // Now: a plain container holds a full-width "open" button plus sibling
+  // action buttons. Same layout, valid structure, and each control is
+  // separately reachable by keyboard.
   return (
-    <button
-      onClick={onClick}
-      className={['notif-row', n.read ? 'is-read' : 'is-unread', `kind-${kind}`].join(' ')}
-      role="menuitem"
-    >
-      <span className="notif-row-dot" aria-hidden="true">{KIND_LABEL[kind][0]}</span>
-      <div className="notif-row-body">
-        <div className="notif-row-kind mono-meta">{KIND_LABEL[kind]}</div>
-        <div className="notif-row-text">{n.text}</div>
-        <div className="notif-row-time mono-meta">{fmtRelative(n.at)}</div>
-        {(showOfferActions || showApproveAction) && (
-          <div className="notif-row-actions">
-            {showOfferActions && (
-              <>
-                <button type="button" onClick={declineOffer} className="notif-quick-action" data-variant="ghost">Decline</button>
-                <button type="button" onClick={acceptOffer} className="notif-quick-action" data-variant="solid">Accept</button>
-              </>
-            )}
-            {showApproveAction && (
-              <button type="button" onClick={approveDraft} className="notif-quick-action" data-variant="solid">Approve</button>
-            )}
-          </div>
-        )}
-      </div>
-    </button>
+    <div className={['notif-row', n.read ? 'is-read' : 'is-unread', `kind-${kind}`].join(' ')}>
+      <button
+        type="button"
+        onClick={onClick}
+        className="notif-row-open"
+        role="menuitem"
+      >
+        <span className="notif-row-dot" aria-hidden="true">{KIND_LABEL[kind][0]}</span>
+        <span className="notif-row-body">
+          <span className="notif-row-kind mono-meta">{KIND_LABEL[kind]}</span>
+          <span className="notif-row-text">{n.text}</span>
+          <span className="notif-row-time mono-meta">{fmtRelative(n.at)}</span>
+        </span>
+      </button>
+      {hasActions && (
+        <div className="notif-row-actions" role="group" aria-label="Quick actions">
+          {showOfferActions && (
+            <>
+              <button type="button" onClick={declineOffer} className="notif-quick-action" data-variant="ghost">Decline</button>
+              <button type="button" onClick={acceptOffer} className="notif-quick-action" data-variant="solid">Accept</button>
+            </>
+          )}
+          {showApproveAction && (
+            <button type="button" onClick={approveDraft} className="notif-quick-action" data-variant="solid">Approve</button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

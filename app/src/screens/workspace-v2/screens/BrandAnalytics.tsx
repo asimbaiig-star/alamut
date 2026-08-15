@@ -15,12 +15,13 @@ import { fmtFollowers, fmtUSD, Icon, Topbar } from '../lib';
 import { useV2Campaigns, useV2Creators, useV2CurrentBrand } from '../v2Hooks';
 import { collabsForCampaign, isActiveCollab } from '../v2Adapters';
 import { useStore } from '@/lib/api/store';
-import type { V2CampaignPerf, V2Collab, V2Creator } from '../data';
+import type { V2Collab, V2Creator } from '../data';
+import { readPerformance, aggregatePerformance } from '../performance';
 import { pushToast } from '@/lib/utils/toast';
 import { downloadCSV } from '@/lib/utils/csv';
 import {
-  derivePerf, KpiTile, BigPerfChart, BreakdownBar,
-  TopPerformersTable, ContentTypeTile,
+  KpiTile, BigPerfChart, BreakdownBar,
+  TopPerformersTable, ContentTypeTile, SampleDataBanner,
 } from './CampaignDetail';
 
 interface Props {
@@ -28,7 +29,9 @@ interface Props {
 }
 
 type Range = 'campaign' | '7d' | '30d';
-type Metric = 'impressions' | 'engagement' | 'er';
+// 'er' dropped: that chart mode was `6 + v * 0.2` over the engagement
+// series — the same curve restretched, unrelated to the real ER figure.
+type Metric = 'impressions' | 'engagement';
 
 export function BrandAnalytics({ onRoute }: Props) {
   void onRoute;
@@ -46,8 +49,6 @@ export function BrandAnalytics({ onRoute }: Props) {
   // design's components consume.
   const { aggregatedPerf, allCollabs, totalSpent, totalBudget, reportingCount } = useMemo(() => {
     const allCollabsAcc: V2Collab[] = [];
-    let agg: V2CampaignPerf | null = null;
-    let _reportingCount = 0;
     let _spent = 0;
     let _budget = 0;
     for (const camp of campaigns) {
@@ -56,56 +57,18 @@ export function BrandAnalytics({ onRoute }: Props) {
       // Active only. Portfolio aggregates shouldn't count creators who are out
       // of the running — cancelled rows were filtered out upstream before, so
       // this accumulator never used to see them.
-      const collabs = collabsForCampaign(camp.id, db).filter(isActiveCollab);
-      allCollabsAcc.push(...collabs);
-      const perf = derivePerf(camp, collabs, creators);
-      if (!perf) continue;
-      // Counts campaigns that HAVE reportable performance, which is not the
-      // same as campaigns that are live: this increments only past the
-      // `!perf` guard. The crumb used to label it "active campaigns", so it
-      // disagreed with the live count in this same file (line ~257) and with
-      // My campaigns' "13 live". Renamed to say what it measures.
-      _reportingCount += 1;
-      if (!agg) {
-        // Clone so we don't mutate the per-campaign object.
-        agg = {
-          impressions: perf.impressions,
-          reach: perf.reach,
-          engagement: perf.engagement,
-          er: perf.er,
-          cpm: perf.cpm,
-          cpe: perf.cpe,
-          saves: perf.saves,
-          shares: perf.shares,
-          profileVisits: perf.profileVisits,
-          weeklySeries: perf.weeklySeries.slice(),
-        };
-      } else {
-        agg.impressions    += perf.impressions;
-        agg.reach          += perf.reach;
-        agg.engagement     += perf.engagement;
-        agg.saves          += perf.saves;
-        agg.shares         += perf.shares;
-        agg.profileVisits  += perf.profileVisits;
-        // Stretch each weekly series to the longest-so-far length.
-        const longer = perf.weeklySeries.length > agg.weeklySeries.length
-          ? perf.weeklySeries : agg.weeklySeries;
-        const shorter = perf.weeklySeries.length > agg.weeklySeries.length
-          ? agg.weeklySeries : perf.weeklySeries;
-        agg.weeklySeries = longer.map((v, i) => v + (shorter[i] ?? 0));
-      }
+      allCollabsAcc.push(...collabsForCampaign(camp.id, db).filter(isActiveCollab));
     }
-    if (agg) {
-      // Recompute derived rates on the aggregate so they don't carry
-      // the (averaged) value of any single campaign.
-      agg.er  = agg.impressions > 0
-        ? Number(((agg.engagement / agg.impressions) * 100).toFixed(1))
-        : 0;
-      agg.cpm = agg.impressions > 0
-        ? Math.round((_spent / agg.impressions) * 1000) : 0;
-      agg.cpe = agg.engagement > 0
-        ? Math.round(_spent / agg.engagement) : 0;
-    }
+    // Summing + rate recomputation now live in `aggregatePerformance`, so the
+    // portfolio view and a single campaign can't disagree about how a total
+    // is built. This was ~60 lines of hand-rolled accumulation over numbers
+    // `derivePerf` had invented per campaign.
+    const agg = aggregatePerformance(campaigns.map((c) => ({ id: c.id, spent: c.spent })), db);
+    // Campaigns that HAVE reported performance — not the same as campaigns
+    // that are live. The crumb used to say "active campaigns", disagreeing
+    // with the live count in this same file and with My campaigns' "13 live".
+    const _reportingCount = campaigns
+      .filter((c) => readPerformance(c.id, c.spent, db) !== null).length;
     return {
       aggregatedPerf: agg,
       allCollabs: allCollabsAcc,
@@ -114,6 +77,41 @@ export function BrandAnalytics({ onRoute }: Props) {
       reportingCount: _reportingCount,
     };
   }, [campaigns, db]);
+
+  // These two useMemo calls MUST run before the early return below.
+  // They used to sit after it, so the hook count differed between the
+  // "no data" render and the "has data" render — and the store is
+  // reactive, so a brand whose first campaign started reporting while
+  // they were on this page hit React's "rendered more hooks than during
+  // the previous render" and the screen crashed.
+  // Pre-fix the range chip group (All campaigns / 7d / 30d) was a dead
+  // control — `setRange` flipped state, the data ignored it. Wired now:
+  // we clip the aggregated weeklySeries to the window the user picked
+  // and recompute wk/wk delta + chart payload off the clipped series.
+  // Each `weeklySeries` entry represents one week of impressions, so
+  // "7d" reads the most recent entry, "30d" reads the most recent 4,
+  // "campaign" reads everything.
+  const windowedSeries = useMemo(() => {
+    const s = aggregatedPerf?.weeklySeries ?? [];
+    if (range === '7d') return s.slice(-1);
+    if (range === '30d') return s.slice(-4);
+    return s;
+  }, [aggregatedPerf, range]);
+
+  // wk/wk impressions delta — uses the last two entries of the windowed
+  // series. Pre-fix this was a hardcoded "+18% wk/wk" string that didn't
+  // move regardless of state. Falls back to '' (no chip) when we don't
+  // have at least 2 comparable weeks.
+  const impressionsWkDelta = useMemo(() => {
+    const s = windowedSeries.length >= 2 ? windowedSeries : (aggregatedPerf?.weeklySeries ?? []);
+    if (s.length < 2) return null;
+    const cur = s[s.length - 1];
+    const prev = s[s.length - 2];
+    if (prev === 0) return null;
+    const pct = Math.round(((cur - prev) / prev) * 100);
+    return { pct, positive: pct >= 0 };
+  }, [windowedSeries, aggregatedPerf]);
+
 
   // Empty state — no campaigns have any live placements yet, so there's
   // nothing to chart. Soft prompt to launch a campaign or look at the
@@ -135,12 +133,16 @@ export function BrandAnalytics({ onRoute }: Props) {
               marginBottom: 6,
               letterSpacing: '-0.014em',
             }}>
-              Analytics unlock once content goes live
+              No performance reported yet
             </div>
             <div className="v2-muted" style={{ fontSize: 13.5, lineHeight: 1.6, marginBottom: 18 }}>
-              You'll see impressions, engagement, audience and ROI here as
-              creators on your campaigns publish their content. Per-campaign
-              numbers also surface on each campaign's Analytics tab.
+              {/* Matched to the per-campaign empty state. Content going live
+                  isn't the trigger — reach and engagement come from platform
+                  accounts, which nothing connects to yet — and "ROI" named
+                  the EMV/ROAS tiles that were removed for being invented. */}
+              Reach and engagement come from creators’ connected platform
+              accounts. Spend and roster progress are on each campaign in the
+              meantime — those are measured.
             </div>
             <button
               type="button"
@@ -156,39 +158,7 @@ export function BrandAnalytics({ onRoute }: Props) {
   }
 
   // Earned media value benchmark — same calc as the per-campaign tab.
-  const benchCPM = 50; // USD, paid social benchmark
-  const emv = Math.round((aggregatedPerf.impressions / 1000) * benchCPM);
-  const roas = totalSpent > 0 ? (emv / totalSpent).toFixed(2) : '—';
-  const cpmDeltaPositive = aggregatedPerf.cpm < benchCPM;
-  const cpmDeltaPct = Math.round(Math.abs(benchCPM - aggregatedPerf.cpm) / benchCPM * 100);
-
-  // Pre-fix the range chip group (All campaigns / 7d / 30d) was a dead
-  // control — `setRange` flipped state, the data ignored it. Wired now:
-  // we clip the aggregated weeklySeries to the window the user picked
-  // and recompute wk/wk delta + chart payload off the clipped series.
-  // Each `weeklySeries` entry represents one week of impressions, so
-  // "7d" reads the most recent entry, "30d" reads the most recent 4,
-  // "campaign" reads everything.
-  const windowedSeries = useMemo(() => {
-    const s = aggregatedPerf.weeklySeries;
-    if (range === '7d') return s.slice(-1);
-    if (range === '30d') return s.slice(-4);
-    return s;
-  }, [aggregatedPerf, range]);
-
-  // wk/wk impressions delta — uses the last two entries of the windowed
-  // series. Pre-fix this was a hardcoded "+18% wk/wk" string that didn't
-  // move regardless of state. Falls back to '' (no chip) when we don't
-  // have at least 2 comparable weeks.
-  const impressionsWkDelta = useMemo(() => {
-    const s = windowedSeries.length >= 2 ? windowedSeries : aggregatedPerf.weeklySeries;
-    if (s.length < 2) return null;
-    const cur = s[s.length - 1];
-    const prev = s[s.length - 2];
-    if (prev === 0) return null;
-    const pct = Math.round(((cur - prev) / prev) * 100);
-    return { pct, positive: pct >= 0 };
-  }, [windowedSeries, aggregatedPerf]);
+  // EMV / ROAS removed — see the note on the CPM tile below.
 
   return (
     <>
@@ -282,11 +252,13 @@ export function BrandAnalytics({ onRoute }: Props) {
           </div>
         </div>
 
-        {/* KPI tiles — 4 across with sparklines + deltas. */}
+        {aggregatedPerf.sample && <SampleDataBanner />}
+
+        {/* KPI tiles. */}
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(4, 1fr)',
+            gridTemplateColumns: 'repeat(3, 1fr)',
             gap: 12,
             marginBottom: 20,
           }}
@@ -314,17 +286,16 @@ export function BrandAnalytics({ onRoute }: Props) {
             deltaPositive
             accent
           />
+          {/* CPM is spend ÷ impressions — real money over a reported count.
+              The EMV and ROAS tiles that sat here are gone: both were built
+              on a `benchCPM = 50` constant invented in this file, over
+              impressions that were themselves invented. Also note this tile
+              used to divide CPM by 1000 and suffix "k", rendering "$0.0k"
+              for every realistic value. */}
           <KpiTile
             label="CPM"
-            value={`$${(aggregatedPerf.cpm / 1000).toFixed(1)}k`}
-            delta={`${cpmDeltaPositive ? '−' : '+'}${cpmDeltaPct}% vs paid social`}
-            deltaPositive={cpmDeltaPositive}
-          />
-          <KpiTile
-            label="EMV"
-            value={`$${(emv / 1_000).toFixed(1)}k`}
-            delta={`${roas}× ROAS`}
-            deltaPositive
+            value={aggregatedPerf.cpm !== null ? `$${aggregatedPerf.cpm.toLocaleString()}` : '—'}
+            delta={aggregatedPerf.cpm !== null ? 'spend ÷ impressions' : 'needs spend + impressions'}
           />
         </div>
 
@@ -349,7 +320,6 @@ export function BrandAnalytics({ onRoute }: Props) {
                 {([
                   { id: 'impressions', label: 'Impressions' },
                   { id: 'engagement',  label: 'Engagements' },
-                  { id: 'er',          label: 'ER %' },
                 ] as const).map((m) => (
                   <button
                     key={m.id}
@@ -437,8 +407,7 @@ export function BrandAnalytics({ onRoute }: Props) {
           <TopPerformersTable
             collabs={allCollabs}
             creators={creators}
-            totalEngagement={aggregatedPerf.engagement}
-            totalImpressions={aggregatedPerf.impressions}
+            byCreator={aggregatedPerf.byCreator}
           />
         </div>
 
@@ -466,36 +435,26 @@ export function BrandAnalytics({ onRoute }: Props) {
                 icon="▶"
                 label="Reels"
                 count={countDeliverables(allCollabs, /reel/i)}
-                avgEr="12.8%"
               />
               <ContentTypeTile
                 icon="◯"
                 label="Stories"
                 count={countDeliverables(allCollabs, /stor/i)}
-                avgEr="6.2%"
               />
               <ContentTypeTile
                 icon="▦"
                 label="Posts"
                 count={countDeliverables(allCollabs, /post/i)}
-                avgEr="9.1%"
               />
             </div>
-            <div className="v2-eyebrow" style={{ marginBottom: 8 }}>Best-performing format</div>
-            <div
-              style={{
-                padding: 12,
-                background: 'var(--v2-bg)',
-                borderRadius: 'var(--v2-r-md)',
-                borderLeft: '3px solid var(--v2-moss)',
-              }}
-            >
-              <div style={{ fontSize: 13.5, fontWeight: 600 }}>Reels with daily-life framing</div>
-              <div className="v2-muted" style={{ fontSize: 12, marginTop: 2, lineHeight: 1.5 }}>
-                2.8× higher save rate than studio-styled posts. Spark recommends shifting
-                next campaign's mix toward Reels.
-              </div>
-            </div>
+                      {/* A "Best-performing format" callout used to sit here: static
+                JSX reading "Reels with daily-life framing — 2.8x higher save
+                rate than studio-styled posts. Spark recommends shifting next
+                campaign's mix toward Reels." Identical on every campaign and
+                every brand, attributed by name to the AI feature as though it
+                were a generated, data-backed recommendation. Nothing measures
+                save rate by format. Removed rather than reworded. */}
+
           </div>
         </div>
       </div>
@@ -520,7 +479,13 @@ function AudienceBreakdown({ collabs, creators }: { collabs: V2Collab[]; creator
   // Weight by total reach so a 2M-follower creator counts more than a 50K one.
   type Bucket = { weight: number; label: string };
   const cityWeights = new Map<string, number>();
+  // Two denominators on purpose. `totalReach` covers every involved
+  // creator and drives the city split; `audienceReach` covers only the
+  // ones whose channels report demographics and drives age + gender.
+  // Sharing one denominator would either scale the city bars past 100%
+  // or fold unknowns into the age mix.
   let totalReach = 0;
+  let audienceReach = 0;
   let weightedFemale = 0;
   let weightedAge2534 = 0;
   let weightedAge1824 = 0;
@@ -530,13 +495,22 @@ function AudienceBreakdown({ collabs, creators }: { collabs: V2Collab[]; creator
   for (const cr of involved) {
     const reach = cr.channels.reduce((s, ch) => s + ch.followers, 0);
     if (reach <= 0) continue;
-    totalReach += reach;
+    // Creators whose channels report no demographics are excluded from the
+    // age/gender mix — `?? 0` counted them as 0% female and, because the
+    // 45+ bar is a residual, as 100% over-45. One unprofiled creator with
+    // real reach could therefore hand a brand an audience that was mostly
+    // male and mostly 45+ purely because nothing was known about them.
+    // They still count toward city weighting, which comes from `cr.city`
+    // and doesn't depend on the audience block.
     const city = cr.city || 'Other';
+    totalReach += reach;
     cityWeights.set(city, (cityWeights.get(city) ?? 0) + reach);
-    weightedFemale += (cr.audience?.female ?? 0) * reach;
-    const a25 = cr.audience?.age2534 ?? 0;
-    const a18 = cr.audience?.age1824 ?? 0;
-    const a35 = cr.audience?.age3544 ?? 0;
+    if (!cr.audience) continue;
+    audienceReach += reach;
+    weightedFemale += cr.audience.female * reach;
+    const a25 = cr.audience.age2534;
+    const a18 = cr.audience.age1824 ?? 0;
+    const a35 = cr.audience.age3544 ?? 0;
     weightedAge2534 += a25 * reach;
     weightedAge1824 += a18 * reach;
     weightedAge3544 += a35 * reach;
@@ -562,10 +536,11 @@ function AudienceBreakdown({ collabs, creators }: { collabs: V2Collab[]; creator
   const pct = (w: number) => Math.round((w / totalReach) * 100);
   const cityColors = ['var(--v2-ink)', 'var(--v2-ink-2)', 'var(--v2-ink-3)', 'var(--v2-ink-4)', 'var(--v2-line-2)'];
 
-  const femalePct = Math.round(weightedFemale / totalReach);
-  const age2534Pct = Math.round(weightedAge2534 / totalReach);
-  const age1824Pct = Math.round(weightedAge1824 / totalReach);
-  const age3544Pct = Math.round(weightedAge3544 / totalReach);
+  const hasAudience = audienceReach > 0;
+  const femalePct = hasAudience ? Math.round(weightedFemale / audienceReach) : 0;
+  const age2534Pct = hasAudience ? Math.round(weightedAge2534 / audienceReach) : 0;
+  const age1824Pct = hasAudience ? Math.round(weightedAge1824 / audienceReach) : 0;
+  const age3544Pct = hasAudience ? Math.round(weightedAge3544 / audienceReach) : 0;
   const age45Pct = Math.max(0, 100 - age2534Pct - age1824Pct - age3544Pct);
 
   return (
@@ -578,6 +553,13 @@ function AudienceBreakdown({ collabs, creators }: { collabs: V2Collab[]; creator
       </div>
       <div>
         <div className="v2-eyebrow" style={{ marginBottom: 8 }}>By age</div>
+        {!hasAudience ? (
+          <p className="v2-muted" style={{ fontSize: 12.5, margin: 0, lineHeight: 1.5 }}>
+            None of these creators' channels report audience demographics yet,
+            so there's no age or gender split to show.
+          </p>
+        ) : (
+          <>
         <BreakdownBar label="18–24" value={age1824Pct} total={100} color="var(--v2-accent)" pct />
         <BreakdownBar label="25–34" value={age2534Pct} total={100} color="var(--v2-accent)" pct />
         <BreakdownBar label="35–44" value={age3544Pct} total={100} color="var(--v2-accent)" pct />
@@ -591,6 +573,8 @@ function AudienceBreakdown({ collabs, creators }: { collabs: V2Collab[]; creator
           <span className="v2-muted">Male</span>
           <span className="v2-tabular" style={{ fontWeight: 600 }}>{100 - femalePct}%</span>
         </div>
+          </>
+        )}
       </div>
     </div>
   );

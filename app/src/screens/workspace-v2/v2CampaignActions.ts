@@ -23,7 +23,7 @@
 
 import { tx, useStore } from '@/lib/api/store';
 import type {
-  Application, Brand, Campaign, Offer, OfferRound, Submission, Transaction, User,
+  Application, Brand, Campaign, Database, Offer, OfferRound, Submission, Transaction, User,
 } from '@/lib/api/types';
 import { getAcceptedCreators } from '@/lib/api/relations';
 // P1c §1.1 — every mutation that touches an Application/Offer/Submission/payout
@@ -61,6 +61,11 @@ import {
 // line of its `tx` block. If the actor lacks the capability the helper
 // throws; if no actor is set (test/seed mode) the check is bypassed.
 import { requireCapability, getActorUserId } from '@/lib/permissions';
+// Platform economics live in ONE module. These rates used to be redeclared
+// here and in four other files, with six UI sites hardcoding `* 0.85` as
+// the net multiplier — a different function from the release maths below,
+// which quoted creators a net they didn't receive. See lib/api/money.ts.
+import { PLATFORM_FEE, WHT, splitGross, slotGross, netOf } from '@/lib/api/money';
 // Phase 2 / 3 — Supabase write path for brand + campaign updates.
 // Reads continue going through the local store (which is hydrated
 // from Supabase at boot in lib/api/store.ts). Writes mirror locally
@@ -357,8 +362,32 @@ function mirrorMessageInsertToSupabase(message: import('@/lib/api/types').Messag
   })();
 }
 
-const PLATFORM_FEE = 0.10;
-const WHT = 0.05;
+/**
+ * Withhold repayment of an active income advance from a payout, returning the
+ * amount taken (0 when there's nothing outstanding). Mutates the advance row.
+ *
+ * This lived only inside `client.ts`'s `decideSubmission` — the legacy
+ * approval path — so an advance was repaid only when a brand happened to
+ * approve from the notification bell. Approving through the campaign UI, the
+ * path the product actually uses, repaid nothing: the advance stayed `active`
+ * forever while the creator drew full payouts against a debt that never
+ * cleared. Moved here so the one canonical release path handles it.
+ */
+function applyAdvanceRepayment(db: Database, creatorId: string, payoutNet: number): number {
+  if (payoutNet <= 0) return 0;
+  const active = db.advances?.find((a) => a.creatorId === creatorId && a.status === 'active');
+  if (!active) return 0;
+  const remaining = active.amount - active.repaidAmount;
+  if (remaining <= 0) return 0;
+
+  const taken = Math.min(remaining, payoutNet);
+  active.repaidAmount += taken;
+  if (active.repaidAmount >= active.amount) {
+    active.status = 'repaid';
+    active.repaidAt = nowIso();
+  }
+  return taken;
+}
 
 function newId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -825,7 +854,7 @@ export function v2AcceptOffer(offerId: string): Offer {
     );
 
     // Net to creator (gross - 10% fee - 5% WHT) becomes pending until release
-    const netToCreator = Math.round(offer.rate * (1 - PLATFORM_FEE - WHT));
+    const netToCreator = netOf(offer.rate);
     db.creators = db.creators.map((c) =>
       c.id === creator.id
         ? { ...c, pendingBalance: c.pendingBalance + netToCreator }
@@ -1194,20 +1223,13 @@ export function v2ApproveContent(submissionId: string): Submission {
       // deliverable rows: the whole rate belongs to this approval.
       gross = acceptedOffer.rate;
     } else {
-      const base = Math.floor(acceptedOffer.rate / slotCount);
       const slotIdx = thisDelId ? slots.findIndex((d) => d.id === thisDelId) : -1;
-      gross = slotIdx === slotCount - 1
-        // Last slot absorbs the rounding remainder.
-        ? acceptedOffer.rate - base * (slotCount - 1)
-        // Unresolvable slot (-1) also takes `base` — deliberately the
-        // conservative side: under-releasing leaves money in escrow (the
-        // brand can be made whole), over-releasing cannot be undone.
-        : base;
+      // Slot share + rounding-remainder rules live in money.ts so the
+      // contract snapshot can sum the identical function.
+      gross = slotGross(acceptedOffer.rate, slotCount, slotIdx);
     }
 
-    const fee = Math.round(gross * PLATFORM_FEE);
-    const tax = Math.round(gross * WHT);
-    const net = gross - fee - tax;
+    const { fee, tax, net } = splitGross(gross);
 
     // P2 §1.4 — set the 7-day dispute window expiry on approval. UI
     // gates the "Raise dispute" CTA off this; a P4 ScheduledNotification
@@ -1235,13 +1257,18 @@ export function v2ApproveContent(submissionId: string): Submission {
         : c,
     );
 
-    // Update creator
+    // Update creator. An outstanding income advance is repaid out of this
+    // payout before it reaches the wallet: `lifetimeEarnings` still counts
+    // the full net (they earned it) and the pending hold clears in full,
+    // but only the remainder is spendable.
+    const advanceRepaid = applyAdvanceRepayment(db, creator.id, net);
+    const toWallet = net - advanceRepaid;
     db.creators = db.creators.map((c) =>
       c.id === creator.id
         ? {
             ...c,
             pendingBalance: Math.max(0, c.pendingBalance - net),
-            walletBalance: c.walletBalance + net,
+            walletBalance: c.walletBalance + toWallet,
             lifetimeEarnings: c.lifetimeEarnings + net,
           }
         : c,
@@ -1263,13 +1290,26 @@ export function v2ApproveContent(submissionId: string): Submission {
         counterpartyUserId: creatorUser.id,
         note: `Released to ${creator.name} — ${camp.title}`,
       });
-      // Creator-side: payout (positive — into creator wallet)
+      // Creator-side: payout (positive — the GROSS the deal was worth).
+      //
+      // This row used to carry `net`, which made the two deduction rows
+      // below decorative: they described money already removed, so a
+      // creator's ledger summed to (balance − fee − tax) and never
+      // reconciled with the balance beside it. It also disagreed with the
+      // seed, which has always written payouts at gross, and with the
+      // brand's mirror row (`escrow_release: -gross`).
+      //
+      // Gross here + real negative deductions below means the creator's
+      // rows for a campaign sum to exactly what the wallet moved by. The
+      // visible consequence is that the wallet's "Lifetime earned" is now
+      // gross earnings rather than take-home; the deductions are itemised
+      // one row below it, and the tax statement wants gross anyway.
       db.transactions.push({
         id: newId('tx'),
         at: ts,
         userId: creatorUser.id,
         kind: 'payout',
-        amount: net,
+        amount: gross,
         status: 'cleared',
         campaignId: camp.id,
         counterpartyUserId: brandUser.id,
@@ -1297,11 +1337,28 @@ export function v2ApproveContent(submissionId: string): Submission {
         campaignId: camp.id,
         note: `Withholding tax (${Math.round(WHT * 100)}%)`,
       });
+      // Creator-side: advance repayment (negative) — only when one was
+      // outstanding. Without this row the ledger wouldn't reconcile: the
+      // wallet would move by less than the payout row claims.
+      if (advanceRepaid > 0) {
+        db.transactions.push({
+          id: newId('tx'),
+          at: ts,
+          userId: creatorUser.id,
+          kind: 'fee',
+          amount: -advanceRepaid,
+          status: 'cleared',
+          campaignId: camp.id,
+          note: 'Income advance repayment',
+        });
+      }
       // Notify creator
       db.notifications.push({
         id: newId('n'),
         userId: creatorUser.id,
-        text: `${brand.name} approved your work — $${net.toLocaleString()} released`,
+        text: advanceRepaid > 0
+          ? `${brand.name} approved your work — $${toWallet.toLocaleString()} to your wallet ($${advanceRepaid.toLocaleString()} went to your advance)`
+          : `${brand.name} approved your work — $${net.toLocaleString()} released`,
         href: `/v2`,
         at: nowIso(),
         read: false,
@@ -1455,6 +1512,9 @@ export interface LaunchCampaignInput {
   brief: string;
   objective: string;
   placement: string;
+  /** Structured placement rows behind `placement`. Persisted on drafts so
+   *  the wizard can reopen one exactly as authored. */
+  placements?: { platform: string; format: string; count: number }[];
   budget: number;
   perCreator: number;
   deadline: string;
@@ -1833,7 +1893,7 @@ export function v2AcceptCounter(offerId: string): Offer {
         ? { ...b, walletBalance: b.walletBalance - newRate, escrowHeld: b.escrowHeld + newRate }
         : b,
     );
-    const netToCreator = Math.round(newRate * (1 - PLATFORM_FEE - WHT));
+    const netToCreator = netOf(newRate);
     db.creators = db.creators.map((c) =>
       c.id === creator.id ? { ...c, pendingBalance: c.pendingBalance + netToCreator } : c,
     );
@@ -2638,13 +2698,33 @@ export function v2LeaveReview(input: {
     // both have `review.write`.
     requireCapability(getActorUserId(), 'review.write', db);
 
+    // One review per party per campaign.
+    //
+    // The dead legacy `leaveReview` in client.ts had this guard; this one
+    // never did, and the creator-side "Leave review" button shows
+    // unconditionally at stage 'paid' (the brand side correctly hides it
+    // once used). So a creator could submit unlimited reviews for one
+    // campaign and move a brand's public average at will — `trustForBrand`
+    // computes it live from `db.reviews`.
+    const already = db.reviews.some((r) =>
+      r.campaignId === input.campaignId &&
+      r.fromUserId === input.fromUserId &&
+      r.reviewType === input.reviewType,
+    );
+    if (already) {
+      throw new Error('You’ve already reviewed this campaign.');
+    }
+    // Clamp rather than trust the caller. The UI validates, but a rating
+    // outside 1–5 would silently skew every average that reads it.
+    const rating = Math.max(1, Math.min(5, Math.round(input.rating)));
+
     const review: import('@/lib/api/types').Review = {
       id: newId('rev'),
       campaignId: input.campaignId,
       fromUserId: input.fromUserId,
       reviewType: input.reviewType,
       targetId: input.targetId,
-      rating: input.rating,
+      rating,
       text: input.text,
       at: nowIso(),
     };
@@ -2706,11 +2786,35 @@ export function getApplicationFor(campaignId: string, creatorId: string) {
     .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime())[0];
 }
 
-export function getLatestSubmissionFor(campaignId: string, creatorId: string) {
+/**
+ * The most recent submission for a pair, optionally scoped to one deliverable.
+ *
+ * Sorting by `round` across deliverables was wrong: `round` restarts at 1
+ * for each deliverable (`previousForDeliverable.length + 1`), so on a
+ * multi-deliverable collab — "1 Reel + 3 Stories", the running example
+ * throughout this codebase — the highest round could belong to an entirely
+ * different slot. The kanban's single "Mark as live" button targets whatever
+ * this returns, so it could point at an already-resolved deliverable while
+ * the genuinely pending one had no path from the Pipeline tab.
+ *
+ * Ordering now falls back to recency, which is comparable across slots.
+ */
+export function getLatestSubmissionFor(
+  campaignId: string,
+  creatorId: string,
+  deliverableId?: string,
+) {
   const db = useStore.getState().db;
   return db.submissions
-    .filter((s) => s.campaignId === campaignId && s.creatorId === creatorId)
-    .sort((a, b) => b.round - a.round)[0];
+    .filter((s) =>
+      s.campaignId === campaignId &&
+      s.creatorId === creatorId &&
+      (deliverableId ? s.deliverableId === deliverableId : true))
+    .sort((a, b) => {
+      // Within one deliverable, `round` is the meaningful order.
+      if (deliverableId) return b.round - a.round;
+      return +new Date(b.submittedAt) - +new Date(a.submittedAt);
+    })[0];
 }
 
 // =====================================================================
@@ -2723,18 +2827,101 @@ export function getLatestSubmissionFor(campaignId: string, creatorId: string) {
  * with stage='live' so creators can apply / be invited. Reserves no
  * funds yet — funds reserve as offers get accepted.
  */
+/**
+ * The brand the signed-in user is acting for. Throws rather than guessing.
+ *
+ * This used to fall back to `db.brands.find(b => b.userId === 'u_hannah')` —
+ * the SEEDED DEMO BRAND — whenever a brand-role user's row had no `brandId`.
+ * It sat behind the capability gate in the highest-stakes brand mutation, so
+ * any account in that state would have created real campaigns, real offers
+ * and real notifications under a demo identity, and synced them to
+ * production. Every current signup path sets `brandId` atomically, so this
+ * was unreachable — but a data repair, a partial write or a manual edit
+ * would have armed it silently. Failing loudly is the only safe behaviour
+ * when we can't tell whose brand this is.
+ */
+function resolveActingBrand(db: Database): Brand {
+  const session = useStore.getState().session;
+  const brandUser = session ? db.users.find((u) => u.id === session.userId) : null;
+  if (!brandUser?.brandId) {
+    throw new Error("Couldn't find your brand profile. Sign out and back in, then try again.");
+  }
+  const brand = db.brands.find((b) => b.id === brandUser.brandId);
+  if (!brand) {
+    throw new Error("Couldn't find your brand profile. Sign out and back in, then try again.");
+  }
+  return brand;
+}
+
+/**
+ * Save the wizard's current state as a resumable draft campaign.
+ *
+ * "Save as draft" used to be a `pushToast('Draft saved · pick it up from
+ * Campaigns')` followed by a navigation, with no write of any kind — the
+ * wizard's state was component-local and died on unmount. A brand could
+ * author a full brief, click the button, read a green confirmation telling
+ * them exactly where to find it, and lose everything. Nothing anywhere
+ * wrote `stage: 'draft'` from this screen, so there was never a mechanism
+ * behind the promise.
+ *
+ * Pass `existingId` to update a draft in place, so repeated saves don't
+ * litter the campaign list with copies.
+ */
+export function v2SaveCampaignDraft(input: LaunchCampaignInput, existingId?: string): Campaign {
+  const result = tx((db) => {
+    requireCapability(getActorUserId(), 'campaign.create', db);
+    const brand = resolveActingBrand(db);
+
+    const existing = existingId
+      ? db.campaigns.find((c) => c.id === existingId && c.brandId === brand.id)
+      : undefined;
+    // Only a draft may be rewritten this way. Once a campaign is live,
+    // creators may already have applied against its brief.
+    if (existing && existing.stage !== 'draft') {
+      throw new Error('This campaign is already live — edit it from its settings instead.');
+    }
+
+    const id = existing?.id ?? newId('cmp');
+    const camp: Campaign = {
+      ...(existing ?? {}),
+      id,
+      brandId: brand.id,
+      title: input.name.trim() || 'Untitled campaign',
+      pitch: input.brief.slice(0, 200),
+      brief: input.brief,
+      cover: existing?.cover ?? '',
+      budget: input.budget,
+      spent: existing?.spent ?? 0,
+      escrowHeld: existing?.escrowHeld ?? 0,
+      region: input.audienceCity.join(', ') || 'Pakistan',
+      category: input.categories[0] ?? 'Lifestyle',
+      categories: input.categories,
+      objective: input.objective,
+      audienceGender: input.audienceGender,
+      audienceAge: input.audienceAge,
+      placements: input.placements,
+      stage: 'draft',
+      deliverablesText: input.placement,
+      deliverableIds: existing?.deliverableIds ?? [],
+      deadline: input.deadline,
+      createdAt: existing?.createdAt ?? nowIso(),
+      history: existing?.history ?? [{ stage: 'draft', at: nowIso(), by: brand.userId }],
+    } as Campaign;
+
+    db.campaigns = existing
+      ? db.campaigns.map((c) => (c.id === id ? camp : c))
+      : [...db.campaigns, camp];
+    return camp;
+  });
+  return result;
+}
+
 export function v2LaunchCampaign(input: LaunchCampaignInput): Campaign {
   const result = tx((db) => {
     // P5 §4.1 — admin/ops only; finance + viewer cannot create campaigns.
     requireCapability(getActorUserId(), 'campaign.create', db);
 
-    const brandUser = useStore.getState().session
-      ? db.users.find((u) => u.id === useStore.getState().session!.userId)
-      : null;
-    const brand = brandUser?.brandId
-      ? db.brands.find((b) => b.id === brandUser.brandId)
-      : db.brands.find((b) => b.userId === 'u_hannah');
-    if (!brand) throw new Error("Couldn't find your brand profile. Sign out and back in, then try again.");
+    const brand = resolveActingBrand(db);
 
     const id = newId('cmp');
     const camp: Campaign = {
@@ -2749,6 +2936,13 @@ export function v2LaunchCampaign(input: LaunchCampaignInput): Campaign {
       escrowHeld: 0,
       region: input.audienceCity.join(', ') || 'Pakistan',
       category: input.categories[0] ?? 'Lifestyle',
+      // The brand confirmed these on the review step; keep all of them.
+      // `categories` used to be truncated to its first entry and the other
+      // three fields were never read at all.
+      categories: input.categories,
+      objective: input.objective,
+      audienceGender: input.audienceGender,
+      audienceAge: input.audienceAge,
       stage: 'live',
       // P1d §1.5 — `placement` is the wizard's free-form deliverables
       // string; we promote it to `deliverablesText` and materialize
@@ -2840,6 +3034,16 @@ export function v2LaunchCampaign(input: LaunchCampaignInput): Campaign {
         const msg = err instanceof Error ? err.message : String(err);
         // eslint-disable-next-line no-console
         console.warn('[v2LaunchCampaign] Supabase insert failed:', msg);
+        // Tell the brand. This was a bare console.warn, so an RLS
+        // rejection, an FK violation or a dropped connection looked
+        // identical to success: the UI had already said "live and
+        // accepting applications" off the local write, and the campaign
+        // simply wasn't there after the next hydrate from Postgres.
+        const { pushToast } = await import('@/lib/utils/toast');
+        pushToast(
+          'Campaign saved locally but not synced to the server — reload and check it’s still there before sharing the brief.',
+          'bad',
+        );
       }
     })();
   }
@@ -2936,7 +3140,15 @@ export async function v2UpdateCampaign(
   if (isSupabaseConfigured()) {
     try {
       const { updateCampaignInSupabase } = await import('@/lib/data/campaignsRepo');
-      serverResult = await updateCampaignInSupabase(campaignId, patch);
+      // Pass `expectedVersion`. Without it `campaignsRepo` omits the
+      // `.eq('version', …)` predicate entirely and the write becomes
+      // unconditional last-write-wins — two teammates editing campaign
+      // settings silently clobber each other, and StaleVersionError can
+      // never fire. Every sibling mutation goes through
+      // `mirrorCampaignToSupabase`, which does this correctly.
+      const expectedVersion = useStore.getState().db.campaigns
+        .find((c) => c.id === campaignId)?.version;
+      serverResult = await updateCampaignInSupabase(campaignId, patch, expectedVersion);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (!/no rows|0 rows|not found|JSON object requested/i.test(msg)) {

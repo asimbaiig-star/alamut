@@ -278,6 +278,7 @@ export function buildDb(parts: Partial<Database> = {}): Database {
     referrals: [],
     advances: [],
     testimonials: [],
+    campaignPerformance: [],
     // (collaborations + deliverables + contracts defaults follow below)
     // P1c §1.1 — Collaboration is a stored entity. Tests that exercise
     // collab-stage transitions can pass `collaborations: [...]` in `parts`;

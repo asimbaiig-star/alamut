@@ -62,6 +62,13 @@ function mirrorCreatorToSupabase(creator: Creator): void {
         availability: creator.availability ?? null,
         featuredReviewIds: creator.featuredReviewIds,
         savedBriefs: creator.savedBriefs,
+        // Migration 032. Omitted from this payload until now, which is why
+        // a submitted tax form never reached Postgres: `v2SaveTaxForm` went
+        // through this same mirror, but the field wasn't in the body, so
+        // the write silently dropped it and the next hydrate erased it.
+        agreementAcceptedAt: creator.agreementAcceptedAt,
+        agreementVersion: creator.agreementVersion,
+        taxForm: creator.taxForm,
       }, expectedVersion);
       // Write the bumped version back to the local store so the next
       // mirror call sends the right expectedVersion. Bypass tx() —
@@ -653,6 +660,32 @@ export function v2SaveTaxForm(input: Omit<TaxFormRecord, 'signedAt'>): Creator |
     if (idx === -1) return null;
     const record: TaxFormRecord = { ...input, signedAt: new Date().toISOString() };
     db.creators[idx] = { ...db.creators[idx], taxForm: record };
+    return db.creators[idx];
+  });
+}
+
+// =====================================================================
+// Creator agreement acceptance
+// =====================================================================
+//
+// Lives here rather than inside the KYC modal so it goes through
+// `txCreator` — i.e. through the one Supabase mirror — like every other
+// creator mutation. The modal originally called `tx()` directly, which
+// updated local state and never told Postgres.
+
+export function v2AcceptCreatorAgreement(version: string): Creator | null {
+  return txCreator((db) => {
+    const session = useStoreModule.useStore.getState().session;
+    if (!session?.userId) return null;
+    const me = db.users.find((u) => u.id === session.userId);
+    if (!me?.creatorId) return null;
+    const idx = db.creators.findIndex((c) => c.id === me.creatorId);
+    if (idx === -1) return null;
+    db.creators[idx] = {
+      ...db.creators[idx],
+      agreementAcceptedAt: new Date().toISOString(),
+      agreementVersion: version,
+    };
     return db.creators[idx];
   });
 }

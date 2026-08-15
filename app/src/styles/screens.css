@@ -5992,8 +5992,17 @@ a.activity-link:hover {
   font-size: 9px;
 }
 
+/* The row is a CONTAINER, not a button. It used to be a single
+   <button role="menuitem"> with the quick-action buttons nested inside —
+   invalid HTML and an invalid ARIA menu. The grid moved to
+   `.notif-row-open`, the full-width button that opens the notification;
+   the action buttons are now its siblings. */
 .notif-row {
   --kind-hue: var(--ink-60);
+  border-left: 2px solid transparent;
+  transition: background 0.12s, border-left-color 0.18s;
+}
+.notif-row-open {
   display: grid;
   grid-template-columns: 28px 1fr;
   gap: 12px;
@@ -6001,14 +6010,20 @@ a.activity-link:hover {
   padding: 10px 16px;
   background: none;
   border: 0;
-  border-left: 2px solid transparent;
   cursor: pointer;
   text-align: left;
-  transition: background 0.12s, border-left-color 0.18s;
+  font: inherit;
+  color: inherit;
 }
 .notif-row:hover {
   background: color-mix(in oklab, var(--kind-hue) 6%, transparent);
   border-left-color: var(--kind-hue);
+}
+/* Keyboard focus must be visible now that the row has several tab stops. */
+.notif-row-open:focus-visible,
+.notif-quick-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 .notif-row.is-unread {
   background: color-mix(in oklab, var(--accent) 4%, transparent);
@@ -6071,7 +6086,11 @@ a.activity-link:hover {
 .notif-row-actions {
   display: flex;
   gap: 6px;
-  margin-top: 8px;
+  /* Was nested inside `.notif-row-body`, so it sat in the grid's second
+     column for free. As a sibling of `.notif-row-open` it has to line up
+     under the text itself: 16px row padding + 28px dot + 12px gap. */
+  padding: 0 16px 10px 56px;
+  margin-top: -2px;
 }
 .notif-quick-action {
   font-family: var(--mono);

@@ -251,9 +251,15 @@ describe('v2ResolveDispute — release path (full to creator)', () => {
     const db = useStore.getState().db;
     const txs = db.transactions.filter((t) => t.campaignId === 'cmp_1');
     expect(txs.find((t) => t.kind === 'escrow_release' && t.amount === -1500)).toBeDefined();
-    expect(txs.find((t) => t.kind === 'payout' && t.amount === 1275)).toBeDefined();
+    // Payout is the GROSS release; the two negative rows are the real
+    // deductions, so the creator's rows sum to what the wallet gained.
+    expect(txs.find((t) => t.kind === 'payout' && t.amount === 1500)).toBeDefined();
     expect(txs.find((t) => t.kind === 'fee' && t.amount === -150)).toBeDefined();
     expect(txs.find((t) => t.kind === 'fee' && t.amount === -75)).toBeDefined();
+    const creatorRows = txs
+      .filter((t) => t.userId === 'u_creator')
+      .reduce((sum, t) => sum + t.amount, 0);
+    expect(creatorRows).toBe(1275);
   });
 });
 

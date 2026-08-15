@@ -10,9 +10,14 @@ export interface TrustSnapshot {
   verified: boolean;
   // Public-facing micro-metrics
   responseHrs: number;
-  onTimeRatePct: number;        // % of accepted campaigns delivered before deadline
   avgRevisionRounds: number;    // average submission rounds per closed campaign
-  payoutReliabilityPct: number; // brand-side: % of campaigns with on-time payout
+  // `onTimeRatePct` and `payoutReliabilityPct` used to live here. Both were
+  // pure functions of the review-rating average — `85 + avg * 3` and
+  // `88 + avg * 2`, defaulting to 95% for someone with ZERO completed
+  // campaigns — labelled "% on time" and "% payout reliability" on public
+  // profiles. The app has the raw material for real versions (deliverable
+  // due dates, submission timestamps, transaction timestamps); it just
+  // never used them. Removed rather than left armed behind a prop.
 }
 
 const closedStages = new Set(['closed', 'reporting', 'posted']);
@@ -36,9 +41,6 @@ export function trustForCreator(db: Database, creator: Creator): TrustSnapshot {
   const totalRounds = Object.values(subsByCampaign).reduce((a, b) => a + b, 0);
   const avgRevisionRounds = closed.length > 0 ? +(totalRounds / Math.max(closed.length, 1)).toFixed(1) : 0;
 
-  // On-time delivery rate — mock heuristic: assume 88-98% based on rating
-  const onTimeRatePct = avg > 0 ? Math.min(100, Math.round(85 + avg * 3)) : 95;
-
   return {
     tier,
     completedCampaigns: closed.length,
@@ -46,9 +48,7 @@ export function trustForCreator(db: Database, creator: Creator): TrustSnapshot {
     reviewCount: reviewsForC.length,
     verified: creator.verified,
     responseHrs: creator.responseHrs,
-    onTimeRatePct,
     avgRevisionRounds,
-    payoutReliabilityPct: 0, // creator-side N/A
   };
 }
 
@@ -63,9 +63,6 @@ export function trustForBrand(db: Database, brand: Brand): TrustSnapshot {
   if (closed.length >= 10 && avg >= 4.6 && brand.verified) tier = 'gold';
   else if (closed.length >= 3 && avg >= 4.2) tier = 'silver';
 
-  // Payout reliability: % of releases that happened within 2 days of submission approval (mock)
-  const releases = db.transactions.filter((t) => t.kind === 'escrow_release' && t.userId === brand.userId);
-  const payoutReliabilityPct = releases.length > 0 ? Math.min(100, 88 + Math.round(avg * 2)) : 95;
 
   return {
     tier,
@@ -74,9 +71,7 @@ export function trustForBrand(db: Database, brand: Brand): TrustSnapshot {
     reviewCount: reviewsForB.length,
     verified: brand.verified,
     responseHrs: 0,
-    onTimeRatePct: 0,
     avgRevisionRounds: 0,
-    payoutReliabilityPct,
   };
 }
 

@@ -50,7 +50,7 @@ export function CreatorHome({ onRoute }: Props) {
   const myCollabs = allMyCollabs.filter(isActiveCollab);
   const db = useStore((s) => s.db);
 
-  const me = creator ? creatorToV2(creator) : allCreators[0];
+  const me = creator ? creatorToV2(creator, db) : allCreators[0];
   if (!me) {
     return (
       <>
@@ -98,7 +98,13 @@ export function CreatorHome({ onRoute }: Props) {
     // 2. Pending deliverable uploads — same direct-jump to the upload
     //    modal so the Today tile is one click away from action.
     for (const c of myCollabs) {
-      if (c.stage !== 'confirmed' && c.stage !== 'pitched') continue;
+      // `pitched` was in this list, so a creator who had merely APPLIED got a
+      // "Submit <deliverable>" tile on their home screen — deep-linking to the
+      // upload modal for a collab `v2SubmitContent` refuses, under a sub-line
+      // claiming their proposed rate was "in escrow" when nothing was held.
+      // Escrow is reserved when an offer is accepted, which is exactly the
+      // `confirmed` stage and no earlier.
+      if (c.stage !== 'confirmed') continue;
       const pending = c.deliverables.find((d) => d.status === 'pending');
       if (pending) {
         const camp = allCampaigns.find((x) => x.id === c.campaignId);
@@ -197,7 +203,8 @@ export function CreatorHome({ onRoute }: Props) {
           title: pendingSteps === 1
             ? 'One KYC step left to unlock payouts'
             : `${pendingSteps} KYC steps left to unlock payouts`,
-          sub: 'Unlock payouts above $1,000 · 2 minutes',
+          // Echoed the same unbacked $1,000 threshold from KycTax.
+          sub: 'Required before you can withdraw · 2 minutes',
           route: 'kyc?action=next-step',
         });
       }
@@ -336,8 +343,13 @@ function EarningsHero({ wallet, myCollabs, onRoute }: {
     for (const t of db.transactions) {
       if (t.kind !== 'payout' || t.status !== 'cleared') continue;
       if (myUserId && t.userId !== myUserId) continue;
+      // Withdrawals are `kind: 'payout'` with a negative amount, and the
+      // `Math.abs` below turned each one back into "earned". A creator who
+      // earned $850 and moved it to their bank read $1,700 earned this
+      // month — the same money, counted on its way in and on its way out.
+      if (t.amount <= 0) continue;
       const at = +new Date(t.at);
-      const amt = Math.abs(t.amount);
+      const amt = t.amount;
       if (at >= thisMonthStart) thisMonth += amt;
       if (at >= lastMonthStart && at < thisMonthStart) lastMonth += amt;
       if (at >= weekStart) week += amt;
@@ -1081,7 +1093,10 @@ function CreatorGoals({ wallet, me, myCollabs, onRoute }: {
         <button
           type="button"
           className="v2-pill v2-pill-moss"
-          onClick={() => onRoute('wallet')}
+          // 'wallet' is the BRAND wallet. Routing there from a creator
+          // screen made `go()` flip the persona and render BrandWallet —
+          // another party's top-ups, escrow and ledger — from a tier badge.
+          onClick={() => onRoute('creator-wallet')}
           style={{ fontSize: 11, border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
           title="View your earnings + tier progress"
         >

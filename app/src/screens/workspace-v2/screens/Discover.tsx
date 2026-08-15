@@ -17,9 +17,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { fmtUSD, fmtFollowers, Icon, ScoreBadge, PLATFORM_META, Topbar } from '../lib';
 import { type V2Creator } from '../data';
-import { useV2Creators } from '../v2Hooks';
+import { useV2Creators, useV2BrandShortlist, v2ToggleSavedCreator } from '../v2Hooks';
 import { useStore } from '@/lib/api/store';
 import { computeTrustProfile, trustSummary } from '../creatorTrust';
+import { SendBriefModal } from './WorkflowModals';
 
 interface Props {
   onRoute: (r: string) => void;
@@ -44,13 +45,12 @@ interface FilterState {
   minER: number;
   priceMax: number;
   verified: boolean;
-  brandSafe: boolean;
 }
 
 const INITIAL_FILTERS: FilterState = {
   platforms: [], followers: [], categories: [], cities: [], ages: [],
   audienceGender: 'all',
-  minER: 0, priceMax: 1_000_000, verified: false, brandSafe: false,
+  minER: 0, priceMax: 1_000_000, verified: false,
 };
 
 // Static option lists used by the multi-select chips. Labels are
@@ -144,6 +144,10 @@ export function Discover({ onRoute }: Props) {
   // Age-band helper: maps a creator's audience distribution to which
   // age buckets they "lean toward" (≥25% of audience falls into a band).
   const ageBucketsFor = (a: V2Creator['audience']): string[] => {
+    // No reported demographics = no age lean. Returning [] means such a
+    // creator matches no age filter, which is the honest outcome: we can't
+    // claim they fit, and we mustn't invent a distribution to pretend.
+    if (!a) return [];
     const out: string[] = [];
     if ((a.age1824 ?? 0) >= 25) out.push('young');
     if (a.age2534 >= 40) out.push('primeworking');
@@ -157,7 +161,6 @@ export function Discover({ onRoute }: Props) {
   const moreCount =
     (filters.audienceGender !== 'all' ? 1 : 0) +
     (filters.verified ? 1 : 0) +
-    (filters.brandSafe ? 1 : 0) +
     (filters.minER > 0 ? 1 : 0) +
     (filters.priceMax < 1_000_000 ? 1 : 0);
 
@@ -198,8 +201,11 @@ export function Discover({ onRoute }: Props) {
         return buckets.some((b) => filters.ages.includes(b));
       });
     }
-    if (filters.audienceGender === 'female') r = r.filter((c) => c.audience.female >= 60);
-    if (filters.audienceGender === 'male')   r = r.filter((c) => c.audience.male   >= 60);
+    // Same rule as the age filter: a creator with no reported demographics
+    // can't be asserted to match a gender skew, so they drop out of a
+    // gender-filtered search rather than being counted as a match.
+    if (filters.audienceGender === 'female') r = r.filter((c) => (c.audience?.female ?? 0) >= 60);
+    if (filters.audienceGender === 'male')   r = r.filter((c) => (c.audience?.male   ?? 0) >= 60);
     if (filters.verified) r = r.filter((c) => c.verified);
     if (filters.minER > 0) {
       r = r.filter((c) => Math.max(...c.channels.map((ch) => ch.engagement)) >= filters.minER);
@@ -291,13 +297,6 @@ export function Discover({ onRoute }: Props) {
       key: 'verified',
       label: 'Verified only',
       clear: () => setFilters((f) => ({ ...f, verified: false })),
-    });
-  }
-  if (filters.brandSafe) {
-    activeChips.push({
-      key: 'safe',
-      label: 'Brand-safe',
-      clear: () => setFilters((f) => ({ ...f, brandSafe: false })),
     });
   }
 
@@ -535,11 +534,14 @@ export function Discover({ onRoute }: Props) {
                       checked={filters.verified}
                       onChange={(v) => setFilters((f) => ({ ...f, verified: v }))}
                     />
-                    <ToggleChip
-                      label="Brand-safe"
-                      checked={filters.brandSafe}
-                      onChange={(v) => setFilters((f) => ({ ...f, brandSafe: v }))}
-                    />
+                    {/* A "Brand-safe" toggle sat here. It was declared in
+                        FilterState, counted in the "+More" badge and given a
+                        dismissible chip in the active-filter bar — and never
+                        referenced in the results memo. `V2Creator` has no
+                        brand-safety field either, so there was nothing it
+                        could have filtered on. A brand toggled it, watched
+                        the UI confirm it in three places, and the results
+                        didn't move. Removed rather than faked. */}
                   </div>
                 </div>
               )}
@@ -640,6 +642,7 @@ export function Discover({ onRoute }: Props) {
               <CreatorCard
                 key={c.id}
                 creator={c}
+                onRoute={onRoute}
                 onClick={() => onRoute(`creator:${c.id}`)}
               />
             ))}
@@ -999,10 +1002,19 @@ function ToggleChip({
   );
 }
 
-function CreatorCard({ creator, onClick }: {
+function CreatorCard({ creator, onClick, onRoute }: {
   creator: V2Creator;
   onClick: () => void;
+  onRoute: (r: string) => void;
 }) {
+  // Shortlisting and briefing used to require opening the profile first:
+  // the whole card was a single link to `creator:<id>`, so a brand
+  // triaging thirty results had to round-trip through a detail screen to
+  // save any of them. Both actions live on the card now; each stops
+  // propagation so the card's own click still opens the profile.
+  const savedIds = useV2BrandShortlist();
+  const isSaved = savedIds.includes(creator.id);
+  const [briefOpen, setBriefOpen] = useState(false);
   // T3.2 — cold start. A creator with no reviews now correctly shows "New"
   // rather than a defaulted 90 (T1.1), but that left a brand with nothing to
   // judge them on. Summarise what IS checkable — identity verified, channel
@@ -1022,6 +1034,7 @@ function CreatorCard({ creator, onClick }: {
   const totalFollowers = creator.channels.reduce((s, ch) => s + ch.followers, 0);
 
   return (
+    <>
     <article
       className="v2-card v2-card-clickable"
       onClick={onClick}
@@ -1160,24 +1173,34 @@ function CreatorCard({ creator, onClick }: {
           </span>
         </div>
 
-        {/* Audience — one-line summary + slim gender-split bar. */}
-        <div style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 11.5, color: 'var(--v2-ink-2)', marginBottom: 4 }}>
-            <span style={{ fontWeight: 550 }}>{creator.audience.female}%</span> female ·{' '}
-            <span style={{ fontWeight: 550 }}>{creator.audience.age2534}%</span> 25–34 ·{' '}
-            <span>{creator.audience.topCity}</span>
+        {/* Audience — one-line summary + slim gender-split bar. Rendered
+            only when the creator's channels actually report demographics;
+            pre-fix an absent breakdown was filled with a fixed
+            60/40 · Lahore placeholder, so every creator without connected
+            channels looked identically well-profiled. */}
+        {creator.audience ? (
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 11.5, color: 'var(--v2-ink-2)', marginBottom: 4 }}>
+              <span style={{ fontWeight: 550 }}>{creator.audience.female}%</span> female ·{' '}
+              <span style={{ fontWeight: 550 }}>{creator.audience.age2534}%</span> 25–34 ·{' '}
+              <span>{creator.audience.topCity}</span>
+            </div>
+            <div style={{
+              display: 'flex',
+              height: 3,
+              borderRadius: 2,
+              overflow: 'hidden',
+              background: 'var(--v2-bg-2)',
+            }}>
+              <div style={{ width: `${creator.audience.female}%`, background: 'var(--v2-accent)' }} />
+              <div style={{ width: `${creator.audience.male}%`,   background: 'var(--v2-moss)'   }} />
+            </div>
           </div>
-          <div style={{
-            display: 'flex',
-            height: 3,
-            borderRadius: 2,
-            overflow: 'hidden',
-            background: 'var(--v2-bg-2)',
-          }}>
-            <div style={{ width: `${creator.audience.female}%`, background: 'var(--v2-accent)' }} />
-            <div style={{ width: `${creator.audience.male}%`,   background: 'var(--v2-moss)'   }} />
+        ) : (
+          <div className="v2-muted" style={{ fontSize: 11.5, marginBottom: 10 }}>
+            Audience breakdown not shared
           </div>
-        </div>
+        )}
 
         {/* Past brands — quieter inline line, capped at 2 with "+N more". */}
         {creator.pastBrands.length > 0 && (
@@ -1233,7 +1256,41 @@ function CreatorCard({ creator, onClick }: {
             </div>
           </div>
         </div>
+
+        {/* Card-level actions */}
+        <div className="v2-row" style={{ gap: 8, marginTop: 10 }}>
+          <button
+            className="v2-btn v2-btn-outline v2-btn-sm"
+            type="button"
+            aria-pressed={isSaved}
+            style={{ flex: 1, justifyContent: 'center' }}
+            onClick={(e) => { e.stopPropagation(); v2ToggleSavedCreator(creator.id); }}
+          >
+            {isSaved ? Icon.check : Icon.plus}
+            <span>{isSaved ? 'Shortlisted' : 'Shortlist'}</span>
+          </button>
+          <button
+            className="v2-btn v2-btn-outline v2-btn-sm"
+            type="button"
+            style={{ flex: 1, justifyContent: 'center' }}
+            onClick={(e) => { e.stopPropagation(); setBriefOpen(true); }}
+          >
+            {Icon.send}<span>Send brief</span>
+          </button>
+        </div>
       </div>
     </article>
+    {/* Outside the <article> on purpose: the card is clickable, and a
+        modal nested inside it would bubble its overlay clicks up to
+        the card's own handler — dismissing the modal AND navigating
+        to the profile behind it. */}
+    {briefOpen && (
+      <SendBriefModal
+        creator={creator}
+        onRoute={onRoute}
+        onClose={() => setBriefOpen(false)}
+      />
+    )}
+    </>
   );
 }

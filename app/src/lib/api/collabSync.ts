@@ -424,6 +424,15 @@ export function ensureCollabState(
         );
         if (!owns) return;
 
+        // Second gate: the row must also have a campaign Postgres knows
+        // about. `collaborations.campaign_id` is an FK, and the generated
+        // seed campaigns (`cmp_g*`) were never mirrored — so these writes
+        // came back `23503 Key is not present in table "campaigns"`. The
+        // ownership gate above cut ~32 doomed writes per sign-in to 2;
+        // these were those 2. See lib/data/remoteRegistry.ts.
+        const { mayMirrorForCampaign } = await import('@/lib/data/remoteRegistry');
+        if (!mayMirrorForCampaign(collabSnapshot.campaignId)) return;
+
         const { writeCollabInSupabase } = await import('@/lib/data/collaborationsRepo');
         const updated = await writeCollabInSupabase(collabSnapshot, expectedVersion);
         // Write the bumped version back to local state so the next

@@ -25,7 +25,7 @@ import type {
 } from './types';
 import { isDemoCreator } from '@/lib/utils/demoData';
 
-export const CURRENT_MIGRATION_VERSION = 9;
+export const CURRENT_MIGRATION_VERSION = 10;
 
 type Migrator = (db: Database) => void;
 
@@ -531,8 +531,19 @@ const LEGACY_DISPUTE_STATUS_TO_NEW: Record<string, DisputeStatus> = {
   withdrawn:             'withdrawn',
 };
 
-const PLATFORM_FEE_RATE = 0.10;
-const WHT_RATE = 0.05;
+// DELIBERATELY NOT imported from lib/api/money.ts, unlike every other
+// fee/WHT site in the app.
+//
+// Migrators backfill HISTORICAL rows. `migrateP2` reconstructs contracts for
+// collaborations that were accepted long before this code runs, so it must
+// use the rates that applied to those deals — not whatever the platform
+// charges today. Pointing these at the live constants would silently rewrite
+// past contracts the first time the rate changes.
+//
+// If the rate ever does change, add a dated constant here (and pick by the
+// collab's acceptance date) rather than importing the current one.
+const PLATFORM_FEE_RATE_AT_P2 = 0.10;
+const WHT_RATE_AT_P2 = 0.05;
 
 function coerceNumericTimestamp(v: unknown, fallback: number): number {
   if (typeof v === 'number') return v;
@@ -570,8 +581,8 @@ function migrateP2(db: Database): void {
     if (!acceptedOffer) continue;
 
     const rate = acceptedOffer.rate;
-    const platformFee = Math.round(rate * PLATFORM_FEE_RATE);
-    const withholdingTax = Math.round(rate * WHT_RATE);
+    const platformFee = Math.round(rate * PLATFORM_FEE_RATE_AT_P2);
+    const withholdingTax = Math.round(rate * WHT_RATE_AT_P2);
     const netToCreator = rate - platformFee - withholdingTax;
 
     const acceptedAt = coerceNumericTimestamp(
@@ -910,6 +921,80 @@ function migrateP6(db: Database): void {
   if (!db.outreach) (db as Database).outreach = [];
 }
 
+
+// ---------------------------------------------------------------------
+// P7 — the creator payout row becomes GROSS
+// ---------------------------------------------------------------------
+//
+// Until now `v2ApproveContent` and `v2ResolveDispute` wrote the creator's
+// payout row at NET, and the platform-fee / withholding rows beside it
+// described money that had already been taken out. The rows therefore
+// summed to (balance − fee − tax) and could never reconcile with the
+// balance printed above them. Both writers now record gross, and the two
+// deductions do real work.
+//
+// Rows written before that change are still net. This backfills them:
+// for each cleared positive payout, find the fee rows sharing its campaign
+// and timestamp, and if the payout equals (payout + |fees|) − |fees| under
+// the OLD convention — i.e. it looks like a net figure — restore the gross.
+//
+// Detection has to be exact rather than heuristic, because re-running it on
+// an already-migrated row would inflate the ledger. A row is only rewritten
+// when `net === gross − fee − tax` holds for the fee rows found AND the
+// payout is not already equal to that gross. Idempotent by construction:
+// after the first pass the equality no longer holds.
+//
+// Rates are pinned at their values on the day this shipped, deliberately
+// NOT imported from money.ts — same reasoning as migrateP2 above. A future
+// rate change must not retroactively rewrite history.
+const PLATFORM_FEE_RATE_AT_P7 = 0.10;
+const WHT_RATE_AT_P7 = 0.05;
+
+export function normalizeLedgerToGross(db: Pick<Database, 'transactions'>): void {
+  // Index the deduction rows ONCE by (user, campaign, timestamp).
+  //
+  // This used to re-filter the whole transactions array for every payout
+  // row, which is quadratic — and because the function moved from
+  // "runs once per migration" to "runs on every Supabase hydrate", that
+  // cost is now paid on each page load, synchronously inside setState.
+  // At ~400 payouts over 1.3k rows it was ~540k comparisons; at 3k payouts
+  // over 10k rows it is ~30M and visibly stalls the main thread.
+  const deductedByKey = new Map<string, number>();
+  for (const d of db.transactions) {
+    if (d.kind !== 'fee' || d.amount >= 0 || !d.campaignId) continue;
+    // Advance repayments share `kind: 'fee'` but are not part of the
+    // gross→net split; they debit the wallet in both conventions.
+    if (d.note === 'Income advance repayment') continue;
+    const key = `${d.userId}|${d.campaignId}|${d.at}`;
+    deductedByKey.set(key, (deductedByKey.get(key) ?? 0) + Math.abs(d.amount));
+  }
+
+  for (const t of db.transactions) {
+    if (t.kind !== 'payout' || t.status !== 'cleared' || t.amount <= 0) continue;
+    if (!t.campaignId) continue;
+    const deducted = deductedByKey.get(`${t.userId}|${t.campaignId}|${t.at}`) ?? 0;
+    if (deducted === 0) continue;
+    const impliedGross = t.amount + deducted;
+    const expectedFee = Math.round(impliedGross * PLATFORM_FEE_RATE_AT_P7);
+    const expectedTax = Math.round(impliedGross * WHT_RATE_AT_P7);
+    // Only rewrite when the row is exactly the net of that gross under the
+    // rates in force. Anything else is left alone.
+    if (expectedFee + expectedTax !== deducted) continue;
+    t.amount = impliedGross;
+  }
+}
+
+// The version-gated wrapper. The rewrite itself is exported above because
+// the local store is not the only source of these rows: after rehydration
+// the app overlays every table from Supabase, and rows mirrored there
+// before this change are still net. Running the normalizer again after
+// that overlay keeps the ledger a client renders consistent no matter
+// which side the row came from. Postgres itself needs the companion SQL
+// migration to be corrected at rest.
+function migrateP7(db: Database): void {
+  normalizeLedgerToGross(db);
+}
+
 const migrations: Record<number, Migrator> = {
   1: migrateP1a,
   2: migrateP1b,
@@ -920,6 +1005,7 @@ const migrations: Record<number, Migrator> = {
   7: migrateP4,
   8: migrateP5,
   9: migrateP6,
+  10: migrateP7,
 };
 
 /**

@@ -12,10 +12,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Icon, Topbar } from '../lib';
 import { pushToast } from '@/lib/utils/toast';
+import {
+  CREATOR_AGREEMENT, CREATOR_AGREEMENT_VERSION,
+  CREATOR_AGREEMENT_LAST_UPDATED, creatorAgreementAsText,
+} from '@/lib/legal/creatorAgreement';
+import { useModalEscape } from '@/lib/utils/useModalEscape';
 import { downloadCSV } from '@/lib/utils/csv';
 import { useV2CurrentCreator } from '../v2Hooks';
 import { useStore, tx } from '@/lib/api/store';
 import { TaxFormModal } from './TaxFormModal';
+import { v2AcceptCreatorAgreement } from '../v2CreatorActions';
 import type { TaxFormRecord } from '@/lib/api/types';
 
 interface Props {
@@ -43,9 +49,10 @@ interface Step {
  *  - identity / address: gated by `creator.verified`
  *  - tax-form: pending until creator.payout has a country indicator
  *  - bank: action until creator.payout.account is set
- *  - agreement: locked until bank is set; verified once Creator has
- *    at least one paid collab (signal that the agreement was signed
- *    when the first offer was accepted)
+ *  - agreement: locked until bank is set; verified once the creator has
+ *    actually accepted it (`agreementAcceptedAt`). It used to key off
+ *    "has a paid collab", which inferred a signature from an unrelated
+ *    event — and there was no document to sign in the first place.
  */
 export function buildSteps(creator: {
   verified?: boolean;
@@ -53,7 +60,9 @@ export function buildSteps(creator: {
   city?: string;
   country?: string;
   taxForm?: TaxFormRecord;
-} | null | undefined, hasPaidCollab: boolean): Step[] {
+  agreementAcceptedAt?: string;
+  agreementVersion?: string;
+} | null | undefined, _hasPaidCollab: boolean): Step[] {
   const c = creator;
   const verified = !!c?.verified;
   const hasBank = !!(c?.payout?.account && c.payout.account.trim().length > 0);
@@ -66,13 +75,33 @@ export function buildSteps(creator: {
     ? (hasTaxForm ? 'verified' : 'action')
     : 'locked';
   const bankStatus: StepStatus = verified ? (hasBank ? 'verified' : 'action') : 'locked';
-  const agreementStatus: StepStatus = hasBank && hasPaidCollab ? 'verified' : hasBank ? 'action' : 'locked';
+  // `_hasPaidCollab` is kept in the signature (callers and tests still pass
+  // it) but deliberately unused: a payout is not a signature. Renamed with
+  // the underscore so the compiler enforces that nothing reads it again.
+  // Version matters, or recording it is theatre. Pre-fix this was
+  // `!!agreementAcceptedAt` alone, so bumping CREATOR_AGREEMENT_VERSION left
+  // every existing creator showing "Verified" against terms they had never
+  // seen — while the agreement itself promises "you will be asked to accept
+  // the new version before you take on further work". The modal already
+  // handled a stale version; nobody would ever open it, because the step
+  // said there was nothing to do.
+  const acceptedCurrentAgreement =
+    !!c?.agreementAcceptedAt && c.agreementVersion === CREATOR_AGREEMENT_VERSION;
+  const agreementStatus: StepStatus = !hasBank ? 'locked'
+    : acceptedCurrentAgreement ? 'verified'
+    : 'action';
 
   return [
     {
       id: 'identity',
       title: 'Identity verification',
-      description: 'Government-issued ID + selfie. Powered by Persona — typically clears in under 5 minutes.',
+      // NO VENDOR NAME. This said "Powered by Persona" — a real company
+      // that is not integrated in any form. The CTA sets `verified = true`
+      // client-side; no document is collected, uploaded or checked. Naming
+      // a third party for work nobody does is the worst version of an
+      // unbacked claim, because the reassurance borrows someone else's
+      // credibility.
+      description: 'Confirm who you are before payouts can be released. Identity checks aren’t automated yet — the Alamut team reviews these manually.',
       detail: c?.country ? `${c.country} national ID` : undefined,
       status: idStatus,
       completedAt: idStatus === 'verified' ? 'Verified' : undefined,
@@ -81,7 +110,8 @@ export function buildSteps(creator: {
     {
       id: 'address',
       title: 'Address verification',
-      description: 'Utility bill or bank statement showing your name and current address.',
+      // No upload exists — naming the documents implied one.
+      description: 'Confirm the address your payouts are associated with.',
       detail: c?.city ? `${c.city}${c.country ? `, ${c.country}` : ''}` : undefined,
       status: addrStatus,
       completedAt: addrStatus === 'verified' ? 'Verified' : undefined,
@@ -90,7 +120,10 @@ export function buildSteps(creator: {
     {
       id: 'tax-form',
       title: 'Tax form (W-9 / W-8BEN)',
-      description: 'W-9 for US persons; W-8BEN for everyone else. Required before your first payout clears.',
+      // "Required before your first payout clears" was not enforced
+      // anywhere: neither v2ApproveContent nor v2CanWithdraw reads
+      // `taxForm`. Say what's true — it's collected, not gating.
+      description: 'W-9 for US persons; W-8BEN for everyone else. Kept on file for your records.',
       detail: taxStatus === 'verified' && c?.taxForm
         ? `${c.taxForm.kind} on file · signed ${new Date(c.taxForm.signedAt).toLocaleDateString()}`
         : '',
@@ -110,17 +143,23 @@ export function buildSteps(creator: {
     {
       id: 'agreement',
       title: 'Creator agreement',
-      description: 'Standard payment + content-rights agreement. One-time signature.',
-      detail: agreementStatus === 'verified' ? 'Signed via first accepted offer' : '',
+      description: 'How you get paid, and what rights a brand gets in your content. One-time signature.',
+      detail: agreementStatus === 'verified' && c?.agreementAcceptedAt
+        ? `Accepted ${new Date(c.agreementAcceptedAt).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}${c.agreementVersion ? ` · v${c.agreementVersion}` : ''}`
+        : '',
       status: agreementStatus,
       cta: agreementStatus === 'locked' ? 'Locked until bank verified'
-        : agreementStatus === 'verified' ? undefined
+        : agreementStatus === 'verified' ? 'Read again'
+        // Distinguish "never accepted" from "accepted an older version" so
+        // the creator knows why it reopened.
+        : c?.agreementAcceptedAt ? 'Review updated agreement'
         : 'Review agreement',
     },
   ];
 }
 
 export function KycTax({ onRoute, initialAction }: Props) {
+  const [agreementOpen, setAgreementOpen] = useState(false);
   const me = useV2CurrentCreator();
   const db = useStore((s) => s.db);
   const [showBankModal, setShowBankModal] = useState(false);
@@ -129,9 +168,16 @@ export function KycTax({ onRoute, initialAction }: Props) {
   // Real creator state — used to compute step status + filter tax docs.
   const rawCreator = me ? db.creators.find((c) => c.id === me.id) : null;
   // "Has at least one paid collab" — used to mark Creator Agreement verified.
+  //
+  // `amount > 0` matters: WITHDRAWALS are also `kind: 'payout'`, with a
+  // negative amount. Without the guard, a creator who took an income
+  // advance and withdrew it flipped this to true and saw the agreement step
+  // marked "Signed via first accepted offer" without a single approved
+  // submission behind it.
   const hasPaidCollab = rawCreator
     ? db.transactions.some(
-        (t) => t.kind === 'payout' && t.status === 'cleared' && t.userId === rawCreator.userId,
+        (t) => t.kind === 'payout' && t.status === 'cleared'
+          && t.userId === rawCreator.userId && t.amount > 0,
       )
     : false;
 
@@ -143,8 +189,16 @@ export function KycTax({ onRoute, initialAction }: Props) {
   const pct = Math.round((completed / STEPS.length) * 100);
   const nextActionStep = STEPS.find((s) => s.status === 'action');
 
-  // Quarterly tax docs derived from the creator's payout transactions —
-  // groups by year+quarter, sums declared amount per bucket.
+  // Quarterly earnings statements, derived from the creator's INCOMING
+  // payout transactions — grouped by year+quarter.
+  //
+  // Two guards carry the whole thing. Withdrawals share `kind: 'payout'`
+  // with a negative amount, and this used to bucket them via
+  // `Math.abs(t.amount)` — flipping money leaving the wallet back into
+  // positive "income". Earn $850, withdraw it, and the statement declared
+  // ~$1,700: the same money counted twice, in a figure the page offers for
+  // the creator's accountant. Filter on `amount > 0` and sum the signed
+  // value; never `Math.abs` a ledger row whose sign carries direction.
   const taxDocs = useMemo(() => {
     if (!rawCreator) return [] as { id: string; name: string; date: string; amount: number; period: string }[];
     type Bucket = { year: number; q: number; sum: number; periodStart: Date };
@@ -152,13 +206,14 @@ export function KycTax({ onRoute, initialAction }: Props) {
     for (const t of db.transactions) {
       if (t.userId !== rawCreator.userId) continue;
       if (t.kind !== 'payout' || t.status !== 'cleared') continue;
+      if (t.amount <= 0) continue;
       const at = new Date(t.at);
       const q = Math.floor(at.getMonth() / 3) + 1;
       const year = at.getFullYear();
       const key = `${year}-Q${q}`;
       const existing = buckets.get(key);
-      if (existing) existing.sum += Math.abs(t.amount);
-      else buckets.set(key, { year, q, sum: Math.abs(t.amount), periodStart: new Date(year, (q - 1) * 3, 1) });
+      if (existing) existing.sum += t.amount;
+      else buckets.set(key, { year, q, sum: t.amount, periodStart: new Date(year, (q - 1) * 3, 1) });
     }
     return Array.from(buckets.values())
       .sort((a, b) => (b.year - a.year) || (b.q - a.q))
@@ -207,8 +262,10 @@ export function KycTax({ onRoute, initialAction }: Props) {
         setShowBankModal(true);
         break;
       case 'agreement':
-        // Mark creator's first collab as agreement-signed by toasting.
-        pushToast('Creator agreement reviewed — sign on your first offer acceptance');
+        // There IS an agreement now (lib/legal/creatorAgreement.ts), so the
+        // button opens it to be read and accepted. Previously this toasted
+        // an explanation because no document existed to show.
+        setAgreementOpen(true);
         break;
     }
   }
@@ -267,7 +324,14 @@ export function KycTax({ onRoute, initialAction }: Props) {
                 {completed} of {STEPS.length} steps verified
               </h2>
               <p className="v2-muted" style={{ margin: '6px 0 0', fontSize: 13.5, maxWidth: 540 }}>
-                Finish KYC to unlock instant withdrawals, international wire transfers, and brand payouts above $1,000.
+                {/* Three claims, none backed. "Instant withdrawals": no
+                    expedited path exists — the withdraw modal always says
+                    1–2 business days regardless of KYC state. "$1,000":
+                    no dollar threshold anywhere ties to `verified`.
+                    "International wire": selectable as soon as identity +
+                    address are done, not after finishing KYC. What IS true
+                    is that withdrawals require KYC and a bank account. */}
+                Finish KYC to withdraw your earnings — payouts stay in your wallet until it's complete.
               </p>
             </div>
             <div className="v2-tabular" style={{
@@ -405,11 +469,15 @@ export function KycTax({ onRoute, initialAction }: Props) {
                     const q = parseInt(qStr, 10);
                     const quarterStart = +new Date(year, (q - 1) * 3, 1);
                     const quarterEnd = +new Date(year, q * 3, 1);
+                    // Same `amount > 0` rule as the on-screen figure above,
+                    // so the CSV and the tile can't disagree — this export
+                    // is offered for the creator's accountant.
                     const rows = db.transactions
                       .filter((t) =>
                         t.userId === rawCreator.userId &&
                         t.kind === 'payout' &&
                         t.status === 'cleared' &&
+                        t.amount > 0 &&
                         +new Date(t.at) >= quarterStart &&
                         +new Date(t.at) < quarterEnd,
                       )
@@ -417,7 +485,7 @@ export function KycTax({ onRoute, initialAction }: Props) {
                         date: new Date(t.at).toISOString().slice(0, 10),
                         description: t.note,
                         campaign_id: t.campaignId ?? '',
-                        amount_usd: Math.abs(t.amount),
+                        amount_usd: t.amount,
                       }));
                     downloadCSV(`alamut-${doc.period}-statement`, rows);
                     pushToast(`${doc.name} exported · ${rows.length} payouts`);
@@ -430,7 +498,140 @@ export function KycTax({ onRoute, initialAction }: Props) {
           </div>
         </section>
       </div>
+      {agreementOpen && rawCreator && (
+        <CreatorAgreementModal
+          acceptedAt={rawCreator.agreementAcceptedAt}
+          acceptedVersion={rawCreator.agreementVersion}
+          onClose={() => setAgreementOpen(false)}
+        />
+      )}
     </>
+  );
+}
+
+// =====================================================================
+// CreatorAgreementModal — read it, then accept it
+// =====================================================================
+//
+// The step this belongs to has existed since the KYC checklist was built,
+// with a CTA reading "Review agreement" and nothing behind it. Acceptance is
+// now a recorded fact (`Creator.agreementAcceptedAt` + the version), not an
+// inference drawn from an unrelated payout.
+//
+// Re-opening after acceptance is deliberately allowed and shows when it was
+// accepted: an agreement you can't re-read is a worse agreement.
+
+function CreatorAgreementModal({ acceptedAt, acceptedVersion, onClose }: {
+  acceptedAt?: string;
+  acceptedVersion?: string;
+  onClose: () => void;
+}) {
+  useModalEscape(onClose);
+  const alreadyAccepted = !!acceptedAt;
+  // Accepting is a commitment, so it needs a deliberate act rather than a
+  // button that happens to be under the cursor.
+  const [confirmed, setConfirmed] = useState(false);
+  const staleVersion = alreadyAccepted && acceptedVersion !== CREATOR_AGREEMENT_VERSION;
+
+  const accept = () => {
+    // Goes through v2CreatorActions so it uses the same Supabase mirror as
+    // every other creator write. A raw `tx()` here updated local state only,
+    // and the acceptance died at the next hydrate.
+    const updated = v2AcceptCreatorAgreement(CREATOR_AGREEMENT_VERSION);
+    if (!updated) {
+      pushToast('Could not record your acceptance — try again', 'bad');
+      return;
+    }
+    pushToast('Creator agreement accepted', 'good');
+    onClose();
+  };
+
+  return (
+    <div className="v2-modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
+      <div
+        className="v2-card v2-upload-modal"
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: 720, maxHeight: '88vh', display: 'flex', flexDirection: 'column' }}
+      >
+        <header className="v2-upload-modal-head">
+          <div>
+            <h2 style={{
+              fontFamily: 'var(--v2-font-display)',
+              fontSize: 22, fontWeight: 500, margin: 0, letterSpacing: '-0.02em',
+            }}>Creator agreement</h2>
+            <div className="v2-muted" style={{ fontSize: 12.5, marginTop: 4 }}>
+              Version {CREATOR_AGREEMENT_VERSION} · Last updated {CREATOR_AGREEMENT_LAST_UPDATED}
+              {alreadyAccepted && (
+                <> · Accepted {new Date(acceptedAt!).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  {acceptedVersion ? ` (v${acceptedVersion})` : ''}</>
+              )}
+            </div>
+          </div>
+          <button type="button" className="v2-icon-btn" onClick={onClose} aria-label="Close">×</button>
+        </header>
+
+        <div style={{ flex: '1 1 auto', overflowY: 'auto', padding: '18px 22px', lineHeight: 1.6 }}>
+          {staleVersion && (
+            <p style={{
+              fontSize: 13, margin: '0 0 16px', padding: '10px 12px',
+              background: 'var(--v2-accent-soft)', borderRadius: 8,
+            }}>
+              You accepted version {acceptedVersion}. This is version {CREATOR_AGREEMENT_VERSION} —
+              read it through and accept again to stay current.
+            </p>
+          )}
+          {CREATOR_AGREEMENT.map((section) => (
+            <section key={section.heading} style={{ marginBottom: 20 }}>
+              <h3 style={{
+                fontFamily: 'var(--v2-font-display)', fontSize: 16, fontWeight: 500,
+                margin: '0 0 6px', letterSpacing: '-0.01em',
+              }}>{section.heading}</h3>
+              {section.body.map((para, i) => (
+                <p key={i} style={{ fontSize: 13.5, margin: '0 0 8px', color: 'var(--v2-ink-2)' }}>
+                  {para}
+                </p>
+              ))}
+            </section>
+          ))}
+        </div>
+
+        <footer className="v2-upload-modal-foot">
+          <div className="v2-row" style={{ gap: 10, width: '100%', alignItems: 'center', flexWrap: 'wrap' }}>
+            <button
+              className="v2-btn v2-btn-outline v2-btn-sm"
+              type="button"
+              onClick={() => {
+                void navigator.clipboard.writeText(creatorAgreementAsText()).then(
+                  () => pushToast('Agreement copied'),
+                  () => pushToast('Copy failed — select the text manually', 'bad'),
+                );
+              }}
+            >Copy text</button>
+            <span className="v2-spacer" />
+            {alreadyAccepted && !staleVersion ? (
+              <button className="v2-btn v2-btn-primary" type="button" onClick={onClose}>Done</button>
+            ) : (
+              <>
+                <label className="v2-row" style={{ gap: 8, fontSize: 13, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={confirmed}
+                    onChange={(e) => setConfirmed(e.target.checked)}
+                  />
+                  <span>I've read and agree to these terms</span>
+                </label>
+                <button
+                  className="v2-btn v2-btn-primary"
+                  type="button"
+                  disabled={!confirmed}
+                  onClick={accept}
+                >Accept agreement</button>
+              </>
+            )}
+          </div>
+        </footer>
+      </div>
+    </div>
   );
 }
 

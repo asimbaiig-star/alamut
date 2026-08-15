@@ -40,7 +40,7 @@ function emptyDb(overrides: Partial<Database> = {}): Database {
     disputes: [],
     referrals: [],
     advances: [],
-    testimonials: [],
+    testimonials: [], campaignPerformance: [],
     collaborations: [],
     deliverables: [],
     contracts: [],

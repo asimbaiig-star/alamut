@@ -37,24 +37,33 @@ type CalendarEntry = {
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TODAY = (() => { const d = new Date(); d.setHours(0,0,0,0); return d; })();
 
-function parseDue(due: string | undefined): Date | null {
+/**
+ * The deadline for a deliverable.
+ *
+ * Reads `dueAt` (a real ISO date) and only falls back to parsing the human
+ * `due` string for rows persisted before that field existed.
+ *
+ * The fallback keeps a year guess because "Jun 5" genuinely doesn't carry
+ * one — but the guess no longer decides anything for current data, and the
+ * old rule is gone: it assumed that anything landing >30 days in the past
+ * must have meant NEXT year, so a deliverable 31+ days overdue was pushed
+ * ~11 months into the future. It disappeared from the overdue count, the
+ * 7-day list and the grid — the most neglected work was the work that
+ * vanished. Now a past date stays past.
+ */
+function parseDue(del: { due?: string; dueAt?: string }): Date | null {
+  if (del.dueAt) {
+    const d = new Date(del.dueAt);
+    if (!Number.isNaN(+d)) { d.setHours(0, 0, 0, 0); return d; }
+  }
+  const due = del.due;
   if (!due) return null;
-  // V2Deliverable.due is a short-format string like "Jun 5" or "today".
-  // The underlying submission/campaign carries the real ISO via deadline;
-  // we get there via campaign deadline as a fallback.
   if (/^today$/i.test(due)) return TODAY;
   if (/^tomorrow$/i.test(due)) return new Date(TODAY.getTime() + DAY_MS);
-  // Try Date.parse on a "Mon DD" string with current year prepended.
-  const year = TODAY.getFullYear();
-  const tryFull = new Date(`${due}, ${year}`);
-  if (!Number.isNaN(+tryFull)) {
-    // If parsing comes out > 11 months in the past, assume next year.
-    if (tryFull.getTime() < TODAY.getTime() - 30 * DAY_MS) {
-      return new Date(`${due}, ${year + 1}`);
-    }
-    return tryFull;
-  }
-  // Last resort: native parse on whatever raw string we have.
+  // Legacy rows only: "Mon DD" with the current year. If that lands in the
+  // past it IS in the past — we don't roll it forward.
+  const tryFull = new Date(`${due}, ${TODAY.getFullYear()}`);
+  if (!Number.isNaN(+tryFull)) return tryFull;
   const raw = new Date(due);
   return Number.isNaN(+raw) ? null : raw;
 }
@@ -94,6 +103,8 @@ export function Calendar({ onRoute }: Props) {
   const db = useStore((s) => s.db);
 
   const [cursor, setCursor] = useState<Date>(startOfMonth(TODAY));
+  // Which day is expanded to show every entry, via the "+N more" control.
+  const [expandedDay, setExpandedDay] = useState<string | null>(null);
 
   /** Flatten every (collab × deliverable) into a single calendar entry. */
   const entries = useMemo<CalendarEntry[]>(() => {
@@ -110,7 +121,7 @@ export function Calendar({ onRoute }: Props) {
           if (collab.stage === 'paid' || !isActiveCollab(collab)) continue;
           for (const del of collab.deliverables) {
             if (del.status === 'live') continue;
-            const date = parseDue(del.due);
+            const date = parseDue(del);
             if (!date) continue;
             const cr = creators.find((x) => x.id === collab.creatorId);
             list.push({
@@ -133,7 +144,7 @@ export function Calendar({ onRoute }: Props) {
         const camp = campaigns.find((c) => c.id === collab.campaignId);
         for (const del of collab.deliverables) {
           if (del.status === 'live') continue;
-          const date = parseDue(del.due);
+          const date = parseDue(del);
           if (!date) continue;
           list.push({
             date,
@@ -292,7 +303,7 @@ export function Calendar({ onRoute }: Props) {
                     {d.getDate()}
                     {isToday && <span style={{ fontSize: 10, marginLeft: 4 }}>· today</span>}
                   </div>
-                  {dayEntries.slice(0, 3).map((e) => {
+                  {(expandedDay === key ? dayEntries : dayEntries.slice(0, 3)).map((e) => {
                     // Same predicate as the crumb count above.
                     const overdue = !isToday && isOverdueEntry(e);
                     return (
@@ -321,10 +332,27 @@ export function Calendar({ onRoute }: Props) {
                       </button>
                     );
                   })}
-                  {dayEntries.length > 3 && (
-                    <div className="v2-muted" style={{ fontSize: 10 }}>
+                  {expandedDay === key && dayEntries.length > 3 && (
+                    <button
+                      type="button"
+                      className="v2-link-btn v2-muted"
+                      style={{ fontSize: 10, padding: 0, textAlign: 'left' }}
+                      onClick={(ev) => { ev.stopPropagation(); setExpandedDay(null); }}
+                    >
+                      Show less
+                    </button>
+                  )}
+                  {expandedDay !== key && dayEntries.length > 3 && (
+                    // Was plain text — a count with no way to reach what it
+                    // counted. Opens the day so the rest are reachable.
+                    <button
+                      type="button"
+                      className="v2-link-btn v2-muted"
+                      style={{ fontSize: 10, padding: 0, textAlign: 'left' }}
+                      onClick={(ev) => { ev.stopPropagation(); setExpandedDay(key); }}
+                    >
                       +{dayEntries.length - 3} more
-                    </div>
+                    </button>
                   )}
                 </div>
               );
@@ -347,7 +375,13 @@ export function Calendar({ onRoute }: Props) {
           )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {entries.slice(0, 12).map((e) => {
-              const overdue = +e.date < +TODAY;
+              // The shared predicate — not a third inline copy. This one
+              // omitted the `approved`/`live` exclusion, so an approved but
+              // past-deadline deliverable read correctly in the header and
+              // the grid and `⚠ overdue` in this list, on the same screen.
+              // I fixed this predicate in two places and never grepped for
+              // the third.
+              const overdue = isOverdueEntry(e);
               return (
                 <button
                   key={e.deliverable.id}

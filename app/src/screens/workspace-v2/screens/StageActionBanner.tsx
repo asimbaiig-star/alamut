@@ -19,6 +19,7 @@
 
 import type React from 'react';
 import { fmtUSD, Icon } from '../lib';
+import { netOf } from '@/lib/api/money';
 import type { V2CollabStage } from '../data';
 
 export interface StageActionBannerProps {
@@ -119,7 +120,7 @@ export function StageActionBanner({
     );
   } else if (stage === 'negotiating' && pendingOffer) {
     title = `${campaignBrand} sent an offer`;
-    body = `${fmtUSD(pendingOffer.rate)} for ${campaignPlacement}. ${pendingOffer.message ? `"${pendingOffer.message}"` : ''} Your net after fees: ${fmtUSD(Math.round(pendingOffer.rate * 0.85))}.`;
+    body = `${fmtUSD(pendingOffer.rate)} for ${campaignPlacement}. ${pendingOffer.message ? `"${pendingOffer.message}"` : ''} Your net after fees: ${fmtUSD(netOf(pendingOffer.rate))}.`;
     actions = (
       <>
         <button className="v2-btn v2-btn-outline v2-btn-sm" type="button" onClick={onCounter}>
@@ -129,6 +130,22 @@ export function StageActionBanner({
           {Icon.check} Accept ({fmtUSD(pendingOffer.rate)})
         </button>
       </>
+    );
+  } else if (stage === 'negotiating') {
+    // The creator countered and it's the BRAND's move.
+    //
+    // `computeCollabStage` puts a pair at 'negotiating' whenever an offer is
+    // pending OR countered, regardless of who moved last — but `pendingOffer`
+    // only resolves when the ball is in the CREATOR's court. So after
+    // countering, no branch matched, the component returned null, and the
+    // entire "What's next" card vanished: zero acknowledgement that the
+    // counter had been sent. A test pinned that as correct behaviour.
+    title = 'Counter sent — waiting on the brand';
+    body = `We'll notify you as soon as ${campaignBrand} responds. You can keep talking in the meantime.`;
+    actions = (
+      <button className="v2-btn v2-btn-outline v2-btn-sm" type="button" onClick={onMessageBrand}>
+        Message brand
+      </button>
     );
   } else if (stage === 'confirmed') {
     title = 'Confirmed — start creating';
@@ -160,7 +177,10 @@ export function StageActionBanner({
       );
     } else {
       title = 'Submitted — awaiting brand review';
-      body = `${campaignBrand} typically reviews within 24 hours. We'll notify you when they respond.`;
+      // No "typically reviews within 24 hours" — nothing measures brand
+      // review time. This was written three lines below the comment
+      // explaining why the same claim was removed from the pitched branch.
+      body = `We'll notify you as soon as ${campaignBrand} responds.`;
       tone = 'accent';
       actions = (
         <button className="v2-btn v2-btn-outline v2-btn-sm" type="button" onClick={onMessageBrand}>
@@ -199,7 +219,7 @@ export function StageActionBanner({
     title = 'This collaboration isn\'t going ahead';
     body = 'Every offer and application here was declined or withdrawn. Nothing more to do — the record stays for your reference.';
   } else if (stage === 'paid') {
-    title = `Paid — ${activeOfferRate ? fmtUSD(Math.round(activeOfferRate * 0.85)) : ''} received`;
+    title = `Paid — ${activeOfferRate ? fmtUSD(netOf(activeOfferRate)) : ''} received`;
     body = 'Funds are in your wallet. Withdraw to bank anytime.';
     tone = 'moss';
     actions = (
