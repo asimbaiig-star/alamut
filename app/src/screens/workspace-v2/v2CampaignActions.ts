@@ -792,7 +792,19 @@ export function v2SendOffer(
  *   - Transaction (escrow_hold) recorded for both sides
  *   - acceptedCreators list updated on Campaign
  */
-export function v2AcceptOffer(offerId: string): Offer {
+export function v2AcceptOffer(
+  offerId: string,
+  /** Which capability the actor must hold. Defaults to the creator's
+   *  `offer.counter` because accepting is normally a creator action.
+   *
+   *  `v2AcceptPitch` passes `application.decide`: when a brand accepts a
+   *  creator's PITCH, the creator already made the offer (the pitch carried
+   *  their proposed rate), so the brand is the accepting party. Everything
+   *  else about the acceptance — escrow, balances, notifications, collab
+   *  sync — is identical, which is why this is a parameter rather than a
+   *  second copy of 205 lines. */
+  requiredCapability: import('@/lib/api/types').Capability = 'offer.counter',
+): Offer {
   // P62 — was `Offer | null` with 4 silent failure paths (3× return null,
   // 2× return-the-unchanged-offer). The only caller (CollabDetail) fired
   // and forgot, so a no-op accept (campaign paused, brand short on funds,
@@ -801,10 +813,10 @@ export function v2AcceptOffer(offerId: string): Offer {
   // re-clicking on an already-accepted offer is treated as idempotent
   // success (returns the unchanged accepted offer).
   const result = tx((db) => {
-    // P5 §4.1 — accept is a creator-side action (creators have
-    // `offer.counter` which covers accept/decline/counter on their
-    // own offers).
-    requireCapability(getActorUserId(), 'offer.counter', db);
+    // P5 §4.1 — accept is normally a creator-side action (creators have
+    // `offer.counter`, which covers accept/decline/counter on their own
+    // offers). The brand-accepts-a-pitch path passes its own capability.
+    requireCapability(getActorUserId(), requiredCapability, db);
 
     const offerIdx = db.offers.findIndex((o) => o.id === offerId);
     if (offerIdx === -1) throw new Error("Couldn't find that offer — it may have been withdrawn. Refresh the page.");
@@ -2003,6 +2015,72 @@ export function v2AcceptCounter(offerId: string): Offer {
  * Brand rejects a creator's pitch. Application.status → rejected.
  * Notifies creator.
  */
+/**
+ * Brand accepts a creator's pitch outright, at the rate the creator asked for.
+ *
+ * WHY THIS EXISTS
+ *
+ * `ApplicationStatus` had no `accepted`. A brand who wanted to say "yes, at
+ * your price" had no way to: the only forward move was to send a fresh Offer,
+ * which the creator then had to accept. Two extra round trips to agree on
+ * terms both sides had already agreed on — and an asymmetry, because the
+ * brand-initiated path costs the creator exactly one action. A creator
+ * pitching at the campaign's advertised rate is saying "I accept your posted
+ * terms", and the product treated that as an opening bid.
+ *
+ * Mechanically this is offer-and-acceptance with the roles the right way
+ * round: the pitch IS the offer, so the brand is the accepting party.
+ *
+ * `rateOverride` exists for "yes, but at this number" — it still lands as an
+ * accepted deal rather than another negotiation round, and the creator is
+ * told the agreed rate in the notification either way.
+ *
+ * NOT ATOMIC, deliberately: this sends the offer and then accepts it as two
+ * transactions. If the accept fails (brand short on funds, campaign paused),
+ * the offer survives as a normal pending offer awaiting the creator — i.e. it
+ * degrades exactly to the old behaviour rather than to a broken state.
+ */
+export function v2AcceptPitch(applicationId: string, rateOverride?: number): Offer {
+  const db0 = useStore.getState().db;
+  const app = db0.applications.find((a: Application) => a.id === applicationId);
+  if (!app) throw new Error("Couldn't find that pitch — it may have been withdrawn. Refresh and try again.");
+  if (app.status === 'withdrawn') throw new Error('The creator withdrew this pitch.');
+  if (app.status === 'rejected') throw new Error('This pitch was already passed on.');
+
+  const rate = rateOverride ?? app.proposedRate ?? 0;
+  if (!Number.isFinite(rate) || rate <= 0) {
+    throw new Error('This pitch has no rate attached — send an offer with a rate instead.');
+  }
+
+  const creator = db0.creators.find((c: import('@/lib/api/types').Creator) => c.id === app.creatorId);
+  const firstName = creator?.name.split(' ')[0] ?? 'there';
+
+  // Offer first (brand capability: offer.send), then accept it as the brand
+  // (application.decide). Both reuse the canonical paths.
+  const offer = v2SendOffer(
+    app.campaignId,
+    app.creatorId,
+    rate,
+    rateOverride !== undefined && rateOverride !== app.proposedRate
+      ? `Hi ${firstName} — we'd like to move ahead at ${rateOverride}. Accepting your pitch on that basis.`
+      : `Hi ${firstName} — accepting your pitch as proposed. Looking forward to it.`,
+    app.id,
+    'application',
+  );
+
+  const accepted = v2AcceptOffer(offer.id, 'application.decide');
+
+  // Mark the application itself, so the pitch reads as accepted rather than
+  // merely "shortlisted" (which is what sending an offer sets).
+  tx((db) => {
+    const idx = db.applications.findIndex((a) => a.id === applicationId);
+    if (idx === -1) return;
+    db.applications[idx] = { ...db.applications[idx], status: 'accepted', decidedAt: nowIso() };
+  });
+
+  return accepted;
+}
+
 export function v2RejectApplication(applicationId: string): Application {
   const result = tx((db) => {
     // P5 §4.1 — brand-side application decision.

@@ -810,7 +810,18 @@ export interface Outreach {
   resultingOfferId?: string;
 }
 
-export type ApplicationStatus = 'submitted' | 'shortlisted' | 'rejected' | 'withdrawn';
+// 'accepted' exists because a brand could not previously say yes to a pitch.
+// The only forward move was to send a fresh Offer that the creator then had
+// to accept — two extra round trips to agree on terms both sides had already
+// agreed on, and an asymmetry with the brand-initiated path, which costs the
+// creator a single action. `v2AcceptPitch` sets it and creates the accepted
+// offer in one step.
+export type ApplicationStatus =
+  | 'submitted'
+  | 'shortlisted'
+  | 'accepted'
+  | 'rejected'
+  | 'withdrawn';
 
 export interface Application {
   id: string;

@@ -74,6 +74,7 @@ export const stageTone = (s: CampaignStage | string | undefined): Tone =>
 export const APPLICATION_STATUS_LABEL: Record<ApplicationStatus, string> = {
   submitted:   'Submitted',
   shortlisted: 'Shortlisted',
+  accepted:    'Accepted',
   rejected:    'Declined',
   withdrawn:   'Withdrawn',
 };
@@ -81,6 +82,7 @@ export const APPLICATION_STATUS_LABEL: Record<ApplicationStatus, string> = {
 export const APPLICATION_STATUS_TONE: Record<ApplicationStatus, Tone> = {
   submitted:   'info',
   shortlisted: 'good',
+  accepted:    'good',
   rejected:    'bad',
   withdrawn:   'neutral',
 };

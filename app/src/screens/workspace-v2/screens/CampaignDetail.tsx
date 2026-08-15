@@ -35,11 +35,12 @@ import { ContentReviewModal } from './ContentReviewModal';
 import { LeaveReviewModal } from './LeaveReviewModal';
 import { SendOfferModal, MarkLiveModal, CounterOfferModal, InviteCreatorsModal } from './WorkflowModals';
 import { TeamAccessAside } from './TeamAccess';
+import { nextAction } from '../nextAction';
 import {
   v2EndCampaign, v2PauseCampaign, v2RejectApplication, v2ResumeCampaign,
   v2WithdrawOffer, v2AcceptCounter, v2DeclineOffer, v2UpdateCampaign,
   v2ArchiveCampaign, v2UnarchiveCampaign, v2DuplicateCampaign,
-  getApplicationFor, getActiveOfferFor, getLatestSubmissionFor,
+  getApplicationFor, getActiveOfferFor, getLatestSubmissionFor, v2AcceptPitch,
 } from '../v2CampaignActions';
 import { v2RequestCollabCancel } from '../v2CollabActions';
 import { v2LeaveReview } from '../v2CampaignActions';
@@ -301,6 +302,20 @@ export function CampaignDetail({
             onReview={setReviewing}
             onRoute={onRoute}
             onSendOffer={(creator, defaultRate) => setOffering({ creator, defaultRate })}
+            onAcceptPitch={(collab, creator, rate) => {
+              const app = db.applications.find(
+                (a) => a.campaignId === collab.campaignId &&
+                  a.creatorId === collab.creatorId &&
+                  (a.status === 'submitted' || a.status === 'shortlisted'),
+              );
+              if (!app) { pushToast('That pitch is no longer open — refresh and try again', 'bad'); return; }
+              try {
+                v2AcceptPitch(app.id);
+                pushToast(`Accepted ${creator.name.split(' ')[0]}'s pitch at ${fmtUSD(rate)} — escrow reserved`, 'good');
+              } catch (err) {
+                pushToast(err instanceof Error ? err.message : 'Could not accept the pitch', 'bad');
+              }
+            }}
             onMarkLive={(submissionId, name) => setMarkingLive({ submissionId, campaignName: name })}
             onCounterBack={(offerId, counterRate, creatorName) =>
               setCounterBack({ offerId, counterRate, creatorName })}
@@ -989,12 +1004,13 @@ function cv2DaysUntil(due: string): number {
 // Pipeline Kanban (8 columns)
 // =====================================================================
 
-function PipelineKanban({ collabs, creators, onReview, onRoute, onSendOffer, onMarkLive, onCounterBack, onLeaveReview, campaignName }: {
+function PipelineKanban({ collabs, creators, onReview, onRoute, onSendOffer, onAcceptPitch, onMarkLive, onCounterBack, onLeaveReview, campaignName }: {
   collabs: V2Collab[];
   creators: V2Creator[];
   onReview: (c: V2Collab) => void;
   onRoute: (r: string) => void;
   onSendOffer: (creator: V2Creator, defaultRate: number) => void;
+  onAcceptPitch: (collab: V2Collab, creator: V2Creator, rate: number) => void;
   onMarkLive: (submissionId: string, campaignName: string) => void;
   onCounterBack: (offerId: string, counterRate: number, creatorName: string) => void;
   onLeaveReview: (collab: V2Collab, creator: V2Creator) => void;
@@ -1090,6 +1106,7 @@ function PipelineKanban({ collabs, creators, onReview, onRoute, onSendOffer, onM
                     creator={creator}
                     campaignName={campaignName}
                     onReview={onReview}
+                    onAcceptPitch={onAcceptPitch}
                     onRoute={onRoute}
                     onSendOffer={onSendOffer}
                     onMarkLive={onMarkLive}
@@ -1111,13 +1128,14 @@ function PipelineKanban({ collabs, creators, onReview, onRoute, onSendOffer, onM
 // KanbanCollabCard — stage-appropriate inline actions
 // =====================================================================
 
-function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, onSendOffer, onMarkLive, onCounterBack, onLeaveReview }: {
+function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, onSendOffer, onAcceptPitch, onMarkLive, onCounterBack, onLeaveReview }: {
   collab: V2Collab;
   creator: V2Creator;
   campaignName: string;
   onReview: (c: V2Collab) => void;
   onRoute: (r: string) => void;
   onSendOffer: (creator: V2Creator, defaultRate: number) => void;
+  onAcceptPitch: (collab: V2Collab, creator: V2Creator, rate: number) => void;
   onMarkLive: (submissionId: string, campaignName: string) => void;
   onCounterBack: (offerId: string, counterRate: number, creatorName: string) => void;
   onLeaveReview: (collab: V2Collab, creator: V2Creator) => void;
@@ -1133,7 +1151,15 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
       && r.targetId === creator.id
       && r.fromUserId === sessionUid,
   );
+  const kanbanDb = useStore((st) => st.db);
   const hasReview = collab.deliverables.some((d) => d.status === 'in_review');
+  // The creator's live pitch on this campaign, if any — carries the rate
+  // they asked for, which is what "Accept" binds.
+  const pitchApplication = kanbanDb.applications.find(
+    (a) => a.campaignId === collab.campaignId &&
+      a.creatorId === collab.creatorId &&
+      (a.status === 'submitted' || a.status === 'shortlisted'),
+  );
   // Overdue: any pending deliverable whose human-format `due` is past.
   // Drives the gold left-border indicator on the kanban card.
   const isOverdue = collab.deliverables.some(
@@ -1146,6 +1172,13 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
 
   // Per-stage inline action button
   let stageAction: React.ReactNode = null;
+  // Set AFTER the branch chain below when nothing matched — see the note at
+  // the fallback. Declared here so the chain can stay a plain if/else.
+  const fallbackLine = (text: string) => (
+    <div className="v2-muted" style={{ fontSize: 11, marginTop: 8, textAlign: 'center', fontStyle: 'italic' }}>
+      {text}
+    </div>
+  );
   const stop = (e: React.MouseEvent) => e.stopPropagation();
   // P5 gating — Pass + Withdraw are decision/lifecycle actions on
   // applications and offers respectively. Admin + ops on the brand
@@ -1155,6 +1188,9 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
 
   if (collab.stage === 'pitched') {
     const rate = collab.price > 0 ? collab.price : creator.rate;
+    // The creator's OWN ask, kept distinct from `rate` (which falls back to
+    // their list price). Only a real pitch price can be accepted outright.
+    const pitchRate = pitchApplication?.proposedRate ?? 0;
     const application = getApplicationFor(collab.campaignId, collab.creatorId);
     stageAction = (
       <div className="v2-row" style={{ gap: 6, marginTop: 8 }}>
@@ -1178,13 +1214,29 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
             {canDecide ? 'Pass' : 'Locked'}
           </button>
         )}
+        {/* Accepting a pitch used to be impossible: the brand's only forward
+            move was a fresh offer the creator then had to accept — two extra
+            round trips to agree on terms both sides already agreed on. The
+            pitch IS an offer, so this binds it directly. Only shown when the
+            creator actually named a price. */}
+        {pitchRate > 0 && (
+          <button
+            type="button"
+            className="v2-btn v2-btn-sm v2-btn-primary"
+            style={{ flex: 2, justifyContent: 'center', fontSize: 11 }}
+            title={`Accept at ${fmtUSD(pitchRate)} — the rate ${creator.name.split(' ')[0]} asked for`}
+            onClick={(e) => { stop(e); onAcceptPitch(collab, creator, pitchRate); }}
+          >
+            Accept {fmtUSD(pitchRate)}
+          </button>
+        )}
         <button
           type="button"
-          className="v2-btn v2-btn-sm v2-btn-primary"
+          className="v2-btn v2-btn-sm v2-btn-outline"
           style={{ flex: 2, justifyContent: 'center', fontSize: 11 }}
           onClick={(e) => { stop(e); onSendOffer(creator, rate); }}
         >
-          Send offer
+          {pitchRate > 0 ? 'Counter' : 'Send offer'}
         </button>
       </div>
     );
@@ -1367,9 +1419,11 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
       );
     }
   } else if (collab.stage === 'live') {
+    // `paid` requires the CAMPAIGN to be closed, and nothing said so — both
+    // sides read "live" as finished and the deal sat there indefinitely.
     stageAction = (
       <div className="v2-muted" style={{ fontSize: 11, marginTop: 8, textAlign: 'center', fontStyle: 'italic' }}>
-        Live · tracking
+        Live · end the campaign to settle this deal
       </div>
     );
   } else if (collab.stage === 'paid') {
@@ -1413,6 +1467,21 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
         <CancelCollabButton collab={collab} />
       </div>
     );
+  }
+  // NOTHING MATCHED. `submitted` with every slot in `revision` (waiting on
+  // the creator to resubmit) fell through the whole chain and the card
+  // rendered BLANK — not "waiting on the creator", nothing at all, so the
+  // brand could not tell whether they were the blocker. `nextAction` owns
+  // the answer for every stage; this renders its waiting line.
+  if (!stageAction) {
+    const na = nextAction(collab.stage, {
+      hasSlotInReview: hasReview,
+      hasSlotInRevision: collab.deliverables.some((d) => d.status === 'revision'),
+      allSlotsHavePermalink: collab.deliverables
+        .filter((d) => d.status === 'approved' || d.status === 'live')
+        .every((d) => !!d.permalink),
+    });
+    stageAction = fallbackLine(na.owner === 'brand' ? na.label : na.waitingLabel);
   }
 
   return (

@@ -46,6 +46,12 @@ export interface StageActionBannerProps {
   onWithdraw: () => void;
   onMessageBrand: () => void;
   onLeaveReview: () => void;
+  /** Opens the permalink editor on the first approved deliverable. Optional
+   *  so existing call sites keep compiling; when absent the banner falls
+   *  back to messaging alone. */
+  onAddLiveLink?: () => void;
+  /** The rate the creator asked for in their pitch, when they pitched. */
+  myProposedRate?: number;
 }
 
 export function StageActionBanner({
@@ -53,7 +59,7 @@ export function StageActionBanner({
   myApplicationId, myApplicationStatus, latestSubmissionStatus, livePermalink,
   activeOfferRate, latestRevisionNote, inviteMessage,
   onAccept, onCounter, onUpload, onWithdraw, onMessageBrand,
-  onLeaveReview,
+  onLeaveReview, onAddLiveLink, myProposedRate,
 }: StageActionBannerProps) {
   // Each stage gets its own banner content. The container uses the same
   // soft-accent gradient so the visual rhythm stays consistent.
@@ -61,6 +67,15 @@ export function StageActionBanner({
   let body = '';
   let actions: React.ReactNode = null;
   let tone: 'accent' | 'moss' | 'ink' = 'accent';
+
+  // A2 — the creator's own ask, so an offer is never presented as a neutral
+  // number. Pitch $2,000, receive $1,200, and the UI used to show only
+  // $1,200; neither side saw that a gap existed.
+  const askLine = myProposedRate && pendingOffer && myProposedRate !== pendingOffer.rate
+    ? ` You asked ${fmtUSD(myProposedRate)}${pendingOffer.rate < myProposedRate
+        ? ` — this is ${fmtUSD(myProposedRate - pendingOffer.rate)} below it.`
+        : ` — this is ${fmtUSD(pendingOffer.rate - myProposedRate)} above it.`}`
+    : '';
 
   if (stage === 'invited' && pendingOffer) {
     title = `${campaignBrand} invited you to ${campaignName}`;
@@ -120,7 +135,7 @@ export function StageActionBanner({
     );
   } else if (stage === 'negotiating' && pendingOffer) {
     title = `${campaignBrand} sent an offer`;
-    body = `${fmtUSD(pendingOffer.rate)} for ${campaignPlacement}. ${pendingOffer.message ? `"${pendingOffer.message}"` : ''} Your net after fees: ${fmtUSD(netOf(pendingOffer.rate))}.`;
+    body = `${fmtUSD(pendingOffer.rate)} for ${campaignPlacement}. ${pendingOffer.message ? `"${pendingOffer.message}"` : ''} Your net after fees: ${fmtUSD(netOf(pendingOffer.rate))}.${askLine}`;
     actions = (
       <>
         <button className="v2-btn v2-btn-outline v2-btn-sm" type="button" onClick={onCounter}>
@@ -195,10 +210,21 @@ export function StageActionBanner({
     title = 'Approved — funds released, post it';
     body = `${campaignBrand} approved your work and your payout is in your wallet. Post the content, then paste the live URL on the deliverable below so ${campaignBrand} can confirm.`;
     tone = 'moss';
+    // The banner told the creator to paste the live URL and then offered
+    // only "Message brand" — the actual move had no CTA at the exact moment
+    // they hold the ball. `onAddLiveLink` scrolls/opens the permalink editor
+    // on the deliverable; messaging stays as the secondary.
     actions = (
-      <button className="v2-btn v2-btn-outline v2-btn-sm" type="button" onClick={onMessageBrand}>
-        Message brand
-      </button>
+      <>
+        {onAddLiveLink && (
+          <button className="v2-btn v2-btn-primary v2-btn-sm" type="button" onClick={onAddLiveLink}>
+            {Icon.external} Add live link
+          </button>
+        )}
+        <button className="v2-btn v2-btn-outline v2-btn-sm" type="button" onClick={onMessageBrand}>
+          Message brand
+        </button>
+      </>
     );
   } else if (stage === 'live') {
     title = 'Your post is live';
