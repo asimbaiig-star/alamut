@@ -60,6 +60,8 @@ const usedCampaignTitles = new Set<string>(
     'b_lecreuset::Slow Sundays',
     'b_aesop::Studio Notes',
     'b_lecreuset::Holiday Tables',
+    'b_aesop::Quiet Hours',
+    'b_aesop::Second Light',
     'b_aesop::Quiet Objects 2026 — Q3 (draft)',
     'b_aesop::Reset Skincare — Spring',
     'b_aesop::Hand-care kit · launch teaser',
@@ -1461,6 +1463,254 @@ STAGE_DISTRIBUTION.forEach(({ stage, internalProgress, count }) => {
     generatedCampaigns.push(genCampaign(cmpIdx++, stage, undefined, undefined, internalProgress));
   }
 });
+
+// ============ SHOWCASE — every collaboration stage, on purpose ============
+//
+// WHY THIS EXISTS
+//
+// Profiling the seed found that `confirmed` appeared ONCE across the entire
+// product and `live` never at all, because the generator accepts an offer and
+// creates submissions in the same step (skipping `confirmed`), and its
+// "reporting" campaigns don't reliably land every slot on a permalink
+// (skipping `live`). Someone exploring the demo could not see the pipeline
+// the product is built around.
+//
+// These two campaigns fix that by construction rather than by chance. Each
+// creator below is engineered into exactly one stage, following the rules in
+// `computeCollabStage`:
+//
+//   pitched      application, no offer
+//   negotiating  offer pending (or countered)
+//   confirmed    offer accepted, NO submission
+//   submitted    accepted + submission in_review  (and one in `revisions`,
+//                which is the same stage but the creator's move)
+//   approved     accepted + submission approved, NO permalink
+//   live         accepted + submission approved WITH permalink
+//   paid         all of the above + a cleared payout + campaign CLOSED
+//
+// TWO campaigns because `paid` requires `campIsClosed` — a single live
+// campaign structurally cannot display it, so a one-screen "every stage"
+// board is impossible and the closed twin carries the settled deal.
+//
+// Deliverables are a single slot ('1 IG Reel') on purpose: with one slot per
+// creator, one submission fully determines the stage, so these stay readable
+// and cannot drift into a half-approved multi-slot state.
+const SHOWCASE_LIVE_ID = 'cmp_show_live';
+const SHOWCASE_CLOSED_ID = 'cmp_show_closed';
+
+/** Cast picked from the seeded creator pool, one per stage. */
+const showcaseCast = {
+  pitched:     'c_sarah',
+  negotiating: 'c_yuki',
+  confirmed:   'c_amir',
+  inReview:    generatedCreators[0]?.creator.id,
+  revision:    generatedCreators[1]?.creator.id,
+  approved:    generatedCreators[2]?.creator.id,
+  live:        generatedCreators[3]?.creator.id,
+} as const;
+
+function showcaseUser(creatorId: string | undefined): string {
+  return allCreators.find((c) => c.id === creatorId)?.userId ?? '';
+}
+
+const showcaseApps: Application[] = [];
+const showcaseOffers: Offer[] = [];
+const showcaseSubs: Submission[] = [];
+
+/** Every stage past `pitched` still has an application behind it — that is
+ *  how a real deal starts, and it keeps the brand's Applicants tab honest. */
+function showcaseApply(creatorId: string, rate: number, status: Application['status'], daysAgo: number) {
+  showcaseApps.push({
+    id: `app_show_${creatorId}`,
+    campaignId: SHOWCASE_LIVE_ID,
+    creatorId,
+    pitch: 'Quiet, unhurried footage — morning light, no voiceover. Two concept directions attached.',
+    proposedRate: rate,
+    status,
+    submittedAt: dayAgo(daysAgo),
+    decidedAt: status === 'submitted' ? undefined : dayAgo(Math.max(1, daysAgo - 2)),
+  });
+}
+
+function showcaseOffer(creatorId: string, rate: number, status: Offer['status'], daysAgo: number, countered = false) {
+  showcaseOffers.push({
+    id: `off_show_${creatorId}`,
+    campaignId: SHOWCASE_LIVE_ID,
+    creatorId,
+    rate,
+    message: 'Would love to have you on this one — the brief is deliberately light on direction.',
+    status,
+    sentAt: dayAgo(daysAgo),
+    respondedAt: status === 'pending' ? undefined : dayAgo(Math.max(1, daysAgo - 1)),
+    rounds: countered
+      ? [
+        { by: 'brand',   at: +new Date(dayAgo(daysAgo)),     rate,           message: 'Opening offer.' },
+        { by: 'creator', at: +new Date(dayAgo(daysAgo - 1)), rate: rate + 400, message: 'Close — could you meet me at this?' },
+      ]
+      : [{ by: 'brand', at: +new Date(dayAgo(daysAgo)), rate, message: 'Opening offer.' }],
+    applicationId: `app_show_${creatorId}`,
+    source: 'application',
+  });
+}
+
+function showcaseSubmission(
+  creatorId: string,
+  status: import('./types').SubmissionStatus,
+  daysAgo: number,
+  permalink?: string,
+) {
+  showcaseSubs.push({
+    id: `sub_show_${creatorId}`,
+    campaignId: SHOWCASE_LIVE_ID,
+    creatorId,
+    round: 1,
+    files: [{ name: 'Reel_v1.mp4', url: upx(COVERS[2], 400, 400) }],
+    notes: '[slot:0] Single Reel, 42s, natural audio.',
+    status,
+    submittedAt: dayAgo(daysAgo),
+    feedback: status === 'revisions'
+      ? [{ from: 'u_hannah', text: 'Beautiful — but the product needs to read in the first three seconds. Can you recut the open?', at: dayAgo(Math.max(0, daysAgo - 1)) }]
+      : status === 'approved'
+        ? [{ from: 'u_hannah', text: 'Approved — exactly the tone we wanted.', at: dayAgo(Math.max(0, daysAgo - 1)) }]
+        : [],
+    permalink,
+  });
+}
+
+// pitched — applied, brand hasn't responded. The "Accept pitch" CTA lands here.
+showcaseApply(showcaseCast.pitched, 2400, 'submitted', 6);
+
+// negotiating — the creator countered, so it is the BRAND's move.
+showcaseApply(showcaseCast.negotiating, 2600, 'shortlisted', 12);
+showcaseOffer(showcaseCast.negotiating, 2200, 'countered', 9, true);
+
+// confirmed — accepted, work not started. The stage that was missing entirely.
+if (showcaseCast.confirmed) {
+  showcaseApply(showcaseCast.confirmed, 1800, 'shortlisted', 16);
+  showcaseOffer(showcaseCast.confirmed, 1800, 'accepted', 13);
+}
+
+// submitted — content in review, the brand's move.
+if (showcaseCast.inReview) {
+  showcaseApply(showcaseCast.inReview, 1600, 'shortlisted', 20);
+  showcaseOffer(showcaseCast.inReview, 1600, 'accepted', 18);
+  showcaseSubmission(showcaseCast.inReview, 'in_review', 2);
+}
+
+// submitted (revision) — same stage, but the CREATOR's move. Worth showing
+// separately: it is the case the brand kanban used to render blank for.
+if (showcaseCast.revision) {
+  showcaseApply(showcaseCast.revision, 1500, 'shortlisted', 22);
+  showcaseOffer(showcaseCast.revision, 1500, 'accepted', 19);
+  showcaseSubmission(showcaseCast.revision, 'revisions', 4);
+}
+
+// approved — paid out, awaiting the public link. The creator's move.
+if (showcaseCast.approved) {
+  showcaseApply(showcaseCast.approved, 2000, 'shortlisted', 26);
+  showcaseOffer(showcaseCast.approved, 2000, 'accepted', 24);
+  showcaseSubmission(showcaseCast.approved, 'approved', 6);
+}
+
+// live — posted, link attached. Never occurred anywhere in the old seed.
+if (showcaseCast.live) {
+  showcaseApply(showcaseCast.live, 2200, 'shortlisted', 30);
+  showcaseOffer(showcaseCast.live, 2200, 'accepted', 28);
+  showcaseSubmission(showcaseCast.live, 'approved', 9, 'https://www.instagram.com/p/DShowcaseLive/');
+}
+
+const showcaseLive: CampaignSeed = {
+  campaign: {
+    id: SHOWCASE_LIVE_ID, brandId: 'b_aesop', title: 'Quiet Hours',
+    pitch: 'One Reel each. Morning light, no voiceover, no hard sell.',
+    brief: 'A deliberately open brief: one Instagram Reel, 30–60s, shot in natural morning light. No voiceover, no script. Show the product in use rather than in frame. We review within 48 hours.',
+    cover: upx(COVERS[4], 800, 600),
+    budget: 14_000,
+    spent: 0,
+    // Escrow for the four accepted-and-unsettled deals.
+    escrowHeld: 1800 + 1600 + 1500 + 2000 + 2200,
+    region: 'US/UK', category: 'Beauty',
+    stage: 'live', deliverablesText: '1 IG Reel', deliverableIds: [],
+    deadline: futureDeadline(12),
+    createdAt: dayAgo(34),
+    history: [
+      { stage: 'draft', at: dayAgo(34), by: 'u_hannah' },
+      { stage: 'live',  at: dayAgo(31), by: 'u_hannah' },
+    ],
+    milestones: [],
+    applications: showcaseApps.map((a) => a.id),
+    offers: showcaseOffers.map((o) => o.id),
+  },
+  progress: 'production',
+  applications: showcaseApps,
+  offers: showcaseOffers,
+  submissions: showcaseSubs,
+  transactions: [],
+  threads: [],
+  messages: [],
+  reviews: [],
+};
+
+// The closed twin — carries the one stage a live campaign cannot show.
+const paidCreator = showcaseCast.live ?? 'c_sarah';
+const PAID_RATE = 2600;
+const showcaseClosed: CampaignSeed = {
+  campaign: {
+    id: SHOWCASE_CLOSED_ID, brandId: 'b_aesop', title: 'Second Light',
+    pitch: 'The autumn run. Settled and closed out.',
+    brief: 'One Reel plus two stories, shot late afternoon. Completed campaign — kept as a worked example of a settled deal end to end.',
+    cover: upx(COVERS[6], 800, 600),
+    budget: 6_000, spent: PAID_RATE, escrowHeld: 0,
+    region: 'US/UK', category: 'Beauty',
+    stage: 'closed', deliverablesText: '1 IG Reel', deliverableIds: [],
+    deadline: dayAgo(20),
+    createdAt: dayAgo(96),
+    history: [
+      { stage: 'draft',  at: dayAgo(96), by: 'u_hannah' },
+      { stage: 'live',   at: dayAgo(92), by: 'u_hannah' },
+      { stage: 'closed', at: dayAgo(18), by: 'u_hannah' },
+    ],
+    milestones: [],
+    applications: ['app_show_paid'],
+    offers: ['off_show_paid'],
+  },
+  progress: 'closed',
+  applications: [{
+    id: 'app_show_paid', campaignId: SHOWCASE_CLOSED_ID, creatorId: paidCreator,
+    pitch: 'Late-afternoon light, one Reel plus two stories.',
+    proposedRate: PAID_RATE, status: 'accepted',
+    submittedAt: dayAgo(90), decidedAt: dayAgo(88),
+  }],
+  offers: [{
+    id: 'off_show_paid', campaignId: SHOWCASE_CLOSED_ID, creatorId: paidCreator,
+    rate: PAID_RATE, message: 'Accepting your pitch as proposed.',
+    status: 'accepted', sentAt: dayAgo(88), respondedAt: dayAgo(88),
+    rounds: [{ by: 'brand', at: +new Date(dayAgo(88)), rate: PAID_RATE, message: 'Accepting your pitch as proposed.' }],
+    applicationId: 'app_show_paid', source: 'application',
+  }],
+  submissions: [{
+    id: 'sub_show_paid', campaignId: SHOWCASE_CLOSED_ID, creatorId: paidCreator,
+    round: 1,
+    files: [{ name: 'Final.mp4', url: upx(COVERS[6], 400, 400) }],
+    notes: '[slot:0] Final cut.',
+    status: 'approved', submittedAt: dayAgo(40),
+    feedback: [{ from: 'u_hannah', text: 'Approved — lovely work.', at: dayAgo(38) }],
+    permalink: 'https://www.instagram.com/p/DShowcasePaid/',
+  }],
+  // The cleared payout `paid` requires. GROSS on the payout row with the two
+  // deductions beside it, matching the convention the release path writes.
+  transactions: [
+    { id: 'tx_show_paid_rel', at: dayAgo(37), userId: 'u_hannah', kind: 'escrow_release', amount: -PAID_RATE, status: 'cleared', campaignId: SHOWCASE_CLOSED_ID, counterpartyUserId: showcaseUser(paidCreator), note: `Released · Second Light` },
+    { id: 'tx_show_paid_pay', at: dayAgo(37), userId: showcaseUser(paidCreator), kind: 'payout', amount: PAID_RATE, status: 'cleared', campaignId: SHOWCASE_CLOSED_ID, counterpartyUserId: 'u_hannah', note: `Payout from Aesop · Second Light` },
+    { id: 'tx_show_paid_fee', at: dayAgo(37), userId: showcaseUser(paidCreator), kind: 'fee', amount: -Math.round(PAID_RATE * 0.10), status: 'cleared', campaignId: SHOWCASE_CLOSED_ID, note: 'Platform fee (10%)' },
+    { id: 'tx_show_paid_tax', at: dayAgo(37), userId: showcaseUser(paidCreator), kind: 'fee', amount: -Math.round(PAID_RATE * 0.05), status: 'cleared', campaignId: SHOWCASE_CLOSED_ID, note: 'Withholding tax (5%)' },
+  ],
+  threads: [],
+  messages: [],
+  reviews: [],
+};
+
+generatedCampaigns.push(showcaseLive, showcaseClosed);
 
 // ============ DEMO CAMPAIGNS (the ones the demo flow showcases) ============
 const demoCampaigns: Campaign[] = [
