@@ -47,11 +47,38 @@ describe('every collaboration stage is represented', () => {
       .filter((c) => c.campaignId === campaignId)
       .map((c) => computeCollabStage(c.campaignId, c.creatorId, db));
 
-  it('the live board covers pitched through live', () => {
+  it('the live board covers invited through live', () => {
     const stages = new Set(stagesOn(LIVE));
-    for (const expected of ['pitched', 'negotiating', 'confirmed', 'submitted', 'approved', 'live'] as CollabStage[]) {
+    for (const expected of ['invited', 'pitched', 'negotiating', 'confirmed', 'submitted', 'approved', 'live'] as CollabStage[]) {
       expect(stages.has(expected), `missing ${expected} on the showcase board`).toBe(true);
     }
+  });
+
+  it('`invited` is authored, because it cannot be derived', () => {
+    // An invite is a collaboration with NO application, offer or submission
+    // behind it — there is nothing for migrator P1c to build it from. It has
+    // to ship as a row, which is why that migrator's idempotency had to
+    // become per-pair rather than "return if any row exists".
+    const invited = db.collaborations.filter((c) => c.stage === 'invited');
+    expect(invited.length).toBeGreaterThan(0);
+    const seeded = db.collaborations.find((c) => c.id === 'col_show_invited');
+    expect(seeded).toBeDefined();
+    expect(db.applications.some((a) => a.campaignId === seeded!.campaignId && a.creatorId === seeded!.creatorId)).toBe(false);
+    expect(db.offers.some((o) => o.campaignId === seeded!.campaignId && o.creatorId === seeded!.creatorId)).toBe(false);
+  });
+
+  it('the demo creator holds an invite she can actually answer', () => {
+    // `pitched` is the BRAND's move, so Sarah sitting there gave the creator
+    // demo nothing to do. She holds `invited` instead — hers to accept or
+    // decline.
+    const sarah = db.collaborations.find((c) => c.creatorId === 'c_sarah' && c.stage === 'invited');
+    expect(sarah).toBeDefined();
+  });
+
+  it('seeding an invite does not suppress derivation of everything else', () => {
+    // The failure mode of the old all-or-nothing guard: one seeded row meant
+    // ZERO derived collaborations product-wide.
+    expect(db.collaborations.length).toBeGreaterThan(400);
   });
 
   it('the closed twin carries `paid`', () => {

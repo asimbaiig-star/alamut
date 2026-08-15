@@ -188,7 +188,19 @@ function _legacyComputeCollabStage(
 
 function migrateP1c(db: Database): void {
   if (!db.collaborations) (db as Database).collaborations = [];
-  if (db.collaborations.length > 0) return; // idempotent — already migrated
+  // Idempotency is PER PAIR, not all-or-nothing.
+  //
+  // This used to be `if (db.collaborations.length > 0) return`, which meant a
+  // single pre-existing row suppressed derivation for every other pair. That
+  // made an `invited` collaboration unseedable: `invited` is by definition a
+  // collab with no application, offer or submission to derive from, so it has
+  // to be authored directly — and authoring one produced a database with NO
+  // collaborations at all, because this migrator bailed on the first line.
+  //
+  // The loop below already builds one row per pair, so skipping pairs that
+  // already have a row gives the same idempotency with none of that coupling.
+  // Version-gated to stores below v3, so already-migrated stores are
+  // unaffected either way.
 
   // 1. Group existing applications + offers + submissions by (campaignId, creatorId)
   const pairs = new Set<string>();
@@ -200,6 +212,8 @@ function migrateP1c(db: Database): void {
     const [campaignId, creatorId] = pair.split('|');
     const camp = db.campaigns.find((c) => c.id === campaignId);
     if (!camp) continue;
+    // Already have a row for this pair (seeded, or a previous partial run).
+    if (db.collaborations.some((c) => c.campaignId === campaignId && c.creatorId === creatorId)) continue;
 
     const stage = _legacyComputeCollabStage(campaignId, creatorId, db);
 

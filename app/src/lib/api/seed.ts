@@ -1500,7 +1500,10 @@ const SHOWCASE_CLOSED_ID = 'cmp_show_closed';
 
 /** Cast picked from the seeded creator pool, one per stage. */
 const showcaseCast = {
-  pitched:     'c_sarah',
+  // Sarah is deliberately NOT the pitcher: `pitched` is the BRAND's move, so
+  // the demo creator would have nothing to do on it. She holds the `invited`
+  // row below instead, which is hers to accept or decline.
+  pitched:     generatedCreators[5]?.creator.id ?? 'c_yuki',
   negotiating: 'c_yuki',
   confirmed:   'c_amir',
   inReview:    generatedCreators[0]?.creator.id,
@@ -1711,6 +1714,43 @@ const showcaseClosed: CampaignSeed = {
 };
 
 generatedCampaigns.push(showcaseLive, showcaseClosed);
+
+// ---- `invited` — the one stage that must be authored, not derived --------
+//
+// A cold invite is a Collaboration with NO application, offer or submission
+// behind it: the brand reached out, the creator hasn't answered. There is
+// nothing for migrator P1c to derive it from, so these rows are seeded
+// directly. (That migrator's idempotency guard used to be all-or-nothing,
+// which made seeding even one of these produce a database with zero
+// collaborations — it is now per-pair.)
+//
+// Two, so both sides of the demo have one: one on the showcase board that a
+// brand sees waiting on the creator, and one addressed to Sarah so the
+// creator's own board shows an invitation needing a reply.
+const invitedAt = +new Date(dayAgo(3));
+const seededInvitedCollabs: import('./types').Collaboration[] = [
+  {
+    // Sarah's. She has no application or offer on this campaign, which is
+    // what makes the row survive: a pair with prior activity derives a
+    // further-along stage, and `dedupeCollabRows` (correctly) keeps that one.
+    // An earlier attempt put this on cmp_3, where she already had a pending
+    // offer — the invite was silently replaced by the `confirmed` row.
+    id: 'col_show_invited',
+    campaignId: SHOWCASE_LIVE_ID,
+    creatorId: 'c_sarah',
+    brandId: 'b_aesop',
+    stage: 'invited',
+    createdAt: invitedAt,
+    updatedAt: invitedAt,
+    agreedRate: null,
+    acceptedOfferId: null,
+    contractId: null,
+    cancelledAt: null,
+    cancellationReason: null,
+    history: [{ at: invitedAt, from: null, to: 'invited', actorUserId: 'u_hannah', reason: 'brand-invite' }],
+  },
+];
+
 
 // ============ DEMO CAMPAIGNS (the ones the demo flow showcases) ============
 const demoCampaigns: Campaign[] = [
@@ -2795,7 +2835,10 @@ export const SEED: Database = {
   // array here means migrator 3's idempotent guard works correctly:
   // first-load runs the migrator (since `collaborations.length === 0`),
   // subsequent loads skip (since `collaborations.length > 0`).
-  collaborations: [],
+  // Only the authored `invited` rows. Every other collaboration is DERIVED
+  // from applications/offers/submissions by migrator P1c on first hydrate —
+  // seeding those too would mean two sources of truth for the same pair.
+  collaborations: seededInvitedCollabs,
   // P1d §1.5 — Same pattern as collaborations: migrator 4 walks every
   // campaign on first hydrate and parses its `deliverablesText` into N
   // structured Deliverable rows + writes the FK list back to the
