@@ -379,16 +379,25 @@ campaign ids Postgres actually returned; the two FK-bearing mirrors
 
 ## Still open — Asim's to run
 
-**030–034 are applied. `035` is new and NOT yet applied.**
+**All six SQL migrations are applied (030–035 + the earlier set).**
 
-- **`035_amendments.sql` — TO RUN.** Three columns behind E2/E3:
-  `collaborations.amendments jsonb`, `contracts.rights_snapshot jsonb`,
-  `deliverables.creator_id text`, plus a partial index. No backfill, safe to
-  re-run. The verification `select` returns three rows.
+- ~~`035_amendments.sql`~~ — **APPLIED 2026-08-16**, returning the expected
+  three rows. Adds `collaborations.amendments`, `contracts.rights_snapshot`,
+  `deliverables.creator_id` and a partial index, behind E2/E3.
 
-  `deliverables.creator_id` is the load-bearing one: NULL means campaign-wide,
-  which is every existing row, so behaviour is unchanged until an amendment
-  creates a creator-scoped slot.
+  Verified against production with RLS in force and **no rows modified**:
+  - **Read** — all three columns select `200`.
+  - **Write** — a PATCH of each, filtered to an id matching nothing, returns
+    `200` with 0 rows. Column existence and privileges are checked at plan
+    time, so this proves the write path without touching data.
+  - **Negative control** — a column that does not exist returns `400 / 42703`,
+    which is what makes the three `200`s above mean something rather than
+    PostgREST quietly ignoring unknown names.
+  - **Default materialised** — `amendments` is `NOT NULL DEFAULT '[]'`, unlike
+    033/034's nullable columns, so this one was checked on real rows: five
+    visible collaborations all return `[]`, none null. An empty list and "no
+    list" mean the same thing for amendments, and the default is what removes
+    the null case the client would otherwise handle everywhere.
 
 
 - **`034_disputes_proposal.sql` — TO RUN.** Adds `disputes.proposal jsonb`,
