@@ -485,6 +485,17 @@ describe('a step that self-approves does not claim a human reviews it', () => {
     expect(kyc()).toMatch(/Simulated in this beta/);
   });
 
+  it('a step nobody verifies does not wear a "Verified" pill', () => {
+    // bankStatus flips to 'verified' the moment an account number is typed:
+    // no micro-deposit, no Plaid, no check of any kind. On a BANK row that
+    // is the costliest version of the overclaim — a creator reads it as
+    // "they confirmed this account can receive my payout".
+    const src = code('screens/workspace-v2/screens/KycTax.tsx');
+    expect(src).toMatch(/verifiedLabel: 'On file'/);
+    // And the override has to actually reach the pill.
+    expect(src).toMatch(/step\.verifiedLabel/);
+  });
+
   it('no third-party verification vendor is named in user-visible copy', () => {
     // The earlier version of this same defect claimed "Powered by Persona"
     // — borrowing a real company's credibility for work nobody does.

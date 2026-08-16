@@ -43,6 +43,14 @@ interface Step {
   status: StepStatus;
   completedAt?: string;
   cta?: string;
+  /** Overrides the "Verified" pill for a step that is COMPLETE but that
+   *  nobody actually verified. `bankStatus` is `verified` the moment the
+   *  creator types an account number — there is no micro-deposit, no Plaid,
+   *  no check of any kind — so the default label claimed a confirmation the
+   *  product never performs. "Verified" on a bank row is the version of that
+   *  overclaim most likely to cost someone money, because a creator reads it
+   *  as "they confirmed this account can receive my payout". */
+  verifiedLabel?: string;
 }
 
 /** Build the step list from the actual creator state.
@@ -143,9 +151,10 @@ export function buildSteps(creator: {
     {
       id: 'bank',
       title: 'Bank account',
-      description: 'Where we deposit your earnings. Domestic bank or international wire.',
+      description: 'Where we deposit your earnings. Domestic bank or international wire. Stored as you entered it — we don\u2019t confirm the account until the first payout runs.',
       detail: hasBank ? `${c?.payout?.method ?? 'Bank'} · ${c?.payout?.account}` : '',
       status: bankStatus,
+      verifiedLabel: 'On file',
       cta: bankStatus === 'verified' ? 'Update' : 'Add bank account',
     },
     {
@@ -713,7 +722,10 @@ function StepRow({ step, index, onCta }: { step: Step; index: number; onCta: (s:
     action: { pill: 'v2-pill-live', label: 'Action needed' },
     locked: { pill: '', label: 'Locked' },
   };
-  const meta = statusMeta[step.status];
+  const base = statusMeta[step.status];
+  const meta = step.status === 'verified' && step.verifiedLabel
+    ? { ...base, label: step.verifiedLabel }
+    : base;
 
   return (
     <article
