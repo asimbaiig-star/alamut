@@ -288,6 +288,24 @@ const PERSISTED = [
     } as Record<string, string>,
     sentinels: ['proposal', 'resolution'],
   },
+  {
+    entity: 'Contract',
+    repo: 'lib/data/contractsRepo.ts',
+    fromRow: 'toContract',
+    toRow: 'toInsertRow',
+    exempt: {
+      version: 'optimistic lock — read for the guard, never in the write payload',
+    } as Record<string, string>,
+    sentinels: ['rightsSnapshot', 'briefSnapshot'],
+  },
+  {
+    entity: 'Deliverable',
+    repo: 'lib/data/deliverablesRepo.ts',
+    fromRow: 'toDeliverable',
+    toRow: 'toInsertRow',
+    exempt: {} as Record<string, string>,
+    sentinels: ['creatorId', 'dueOffsetDays'],
+  },
 ] as const;
 
 describe.each(PERSISTED)(
@@ -301,7 +319,11 @@ describe.each(PERSISTED)(
       // Guards the parser: a regex that silently matched nothing would make
       // every assertion below vacuously pass.
       for (const s of sentinels) expect(fields).toContain(s);
-      expect(fields.length).toBeGreaterThan(10);
+      // Universal floor, not a per-entity count: the sentinels above already
+      // prove the parser matched real declarations, and the smallest entity
+      // here (Deliverable) has 9 fields. A hardcoded `> 10` was a threshold
+      // fitted to Collaboration that failed the moment the table grew.
+      expect(fields.length, `${entity}: parser matched suspiciously few fields`).toBeGreaterThan(5);
       // Nested keys of a SettlementTerms field must not leak in as fields.
       expect(fields).not.toContain('releaseToCreator');
     });

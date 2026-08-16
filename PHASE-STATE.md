@@ -379,7 +379,17 @@ campaign ids Postgres actually returned; the two FK-bearing mirrors
 
 ## Still open — Asim's to run
 
-**030–033 are applied. `034` is new and NOT yet applied.**
+**030–034 are applied. `035` is new and NOT yet applied.**
+
+- **`035_amendments.sql` — TO RUN.** Three columns behind E2/E3:
+  `collaborations.amendments jsonb`, `contracts.rights_snapshot jsonb`,
+  `deliverables.creator_id text`, plus a partial index. No backfill, safe to
+  re-run. The verification `select` returns three rows.
+
+  `deliverables.creator_id` is the load-bearing one: NULL means campaign-wide,
+  which is every existing row, so behaviour is unchanged until an amendment
+  creates a creator-scoped slot.
+
 
 - **`034_disputes_proposal.sql` — TO RUN.** Adds `disputes.proposal jsonb`,
   behind the F3 dispute-settlement handshake. Same shape as 033: one

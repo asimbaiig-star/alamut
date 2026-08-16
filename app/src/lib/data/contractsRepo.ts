@@ -23,6 +23,7 @@ type Row = {
   withholding_tax: number;
   deliverables: ContractDeliverableSnapshot[];
   brief_snapshot: string;
+  rights_snapshot: Contract['rightsSnapshot'];
   brief_snapshot_at: string;
   accepted_at: string;
   accepted_by_user_id: string;
@@ -36,7 +37,7 @@ type Row = {
 const COLUMNS =
   'id, collaboration_id, campaign_id, creator_id, brand_id, ' +
   'agreed_rate, net_to_creator, platform_fee, withholding_tax, ' +
-  'deliverables, brief_snapshot, brief_snapshot_at, ' +
+  'deliverables, brief_snapshot, rights_snapshot, brief_snapshot_at, ' +
   'accepted_at, accepted_by_user_id, status, fulfilled_at, cancelled_at, ' +
   'created_at, updated_at';
 
@@ -53,6 +54,7 @@ function toContract(row: Row): Contract {
     withholdingTax: row.withholding_tax,
     deliverables: row.deliverables ?? [],
     briefSnapshot: row.brief_snapshot,
+    rightsSnapshot: row.rights_snapshot ?? null,
     briefSnapshotAt: +new Date(row.brief_snapshot_at),
     acceptedAt: +new Date(row.accepted_at),
     acceptedByUserId: row.accepted_by_user_id,
@@ -75,6 +77,7 @@ function toInsertRow(c: Contract): Record<string, unknown> {
     withholding_tax: c.withholdingTax,
     deliverables: c.deliverables,
     brief_snapshot: c.briefSnapshot,
+    rights_snapshot: c.rightsSnapshot ?? null,
     brief_snapshot_at: new Date(c.briefSnapshotAt).toISOString(),
     accepted_at: new Date(c.acceptedAt).toISOString(),
     accepted_by_user_id: c.acceptedByUserId,

@@ -33,7 +33,7 @@ import { getAcceptedCreators } from '@/lib/api/relations';
 // records, and appends a history entry if the stage changed. This is how we
 // keep Collaboration.stage in lockstep with the apps/offers/subs source of
 // truth without rewriting every mutation to dual-write.
-import { ensureCollabState, deliverableIdForSubmission } from '@/lib/api/collabSync';
+import { deliverablesFor, ensureCollabState, deliverableIdForSubmission } from '@/lib/api/collabSync';
 // P1d §1.5 — net-new campaigns materialize structured Deliverable rows
 // from the wizard's free-form `placement` string at create-time, so
 // submissions can attach via Submission.deliverableId without waiting
@@ -954,7 +954,9 @@ export function v2AcceptOffer(
     if (collabAfter && brandUser && creatorUserForSync) {
       const confirmedAt = Date.now();
       const fallbackDueAt = camp.deadline ? +new Date(camp.deadline) : confirmedAt + 14 * 24 * 60 * 60 * 1000;
-      const campDeliverables = db.deliverables.filter((d) => d.campaignId === camp.id);
+      // E3 — creator-scoped rows exist now, so a plain campaignId filter
+      // would enqueue another creator's amendment deadline against this one.
+      const campDeliverables = deliverablesFor(db, camp.id, creator.id);
       for (const del of campDeliverables) {
         const dueAtMs = del.dueOffsetDays !== null
           ? confirmedAt + del.dueOffsetDays * 24 * 60 * 60 * 1000
@@ -1978,7 +1980,9 @@ export function v2AcceptCounter(offerId: string): Offer {
     if (collabAfter && brandUser && creatorUserForSched) {
       const confirmedAt = Date.now();
       const fallbackDueAt = camp.deadline ? +new Date(camp.deadline) : confirmedAt + 14 * 24 * 60 * 60 * 1000;
-      const campDeliverables = db.deliverables.filter((d) => d.campaignId === camp.id);
+      // E3 — creator-scoped rows exist now, so a plain campaignId filter
+      // would enqueue another creator's amendment deadline against this one.
+      const campDeliverables = deliverablesFor(db, camp.id, creator.id);
       for (const del of campDeliverables) {
         const dueAtMs = del.dueOffsetDays !== null
           ? confirmedAt + del.dueOffsetDays * 24 * 60 * 60 * 1000

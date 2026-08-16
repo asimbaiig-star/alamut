@@ -84,14 +84,36 @@ export interface CollabSlot {
  *  drift (P67 — pre-fix the two sides grouped/coerced independently:
  *  the adapter flipped approved→live on any payout, the stored side
  *  only looked at the single latest submission across all slots). */
+/**
+ * The deliverables ONE creator owes on a campaign, in slot order.
+ *
+ * WORKFLOW-GAPS E3. Campaign-wide rows (`creatorId` null — every row that
+ * existed before amendments) are owed by everyone; rows added by an agreed
+ * scope amendment are owed by that creator alone.
+ *
+ * Every consumer must go through here. Filtering on `campaignId` alone was
+ * correct only while deliverables were uniformly campaign-wide, and the
+ * failure mode is quiet and severe: one creator's extra slot appears on
+ * every other creator's collab, and because stage is derived from slot
+ * completion, it drags them all backwards out of `approved` and `paid`.
+ */
+export function deliverablesFor(
+  db: Database,
+  campaignId: string,
+  creatorId: string,
+): Deliverable[] {
+  return db.deliverables
+    .filter((d) => d.campaignId === campaignId
+      && (d.creatorId == null || d.creatorId === creatorId))
+    .sort((a, b) => a.index - b.index);
+}
+
 export function computeSlotStatuses(
   campaignId: string,
   creatorId: string,
   db: Database,
 ): CollabSlot[] {
-  const campDeliverables = db.deliverables
-    .filter((d) => d.campaignId === campaignId)
-    .sort((a, b) => a.index - b.index);
+  const campDeliverables = deliverablesFor(db, campaignId, creatorId);
   if (campDeliverables.length === 0) return [];
   const subs = db.submissions.filter(
     (s) => s.campaignId === campaignId && s.creatorId === creatorId,

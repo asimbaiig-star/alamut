@@ -36,6 +36,7 @@ import { LeaveReviewModal } from './LeaveReviewModal';
 import { SendOfferModal, MarkLiveModal, CounterOfferModal, InviteCreatorsModal } from './WorkflowModals';
 import { TeamAccessAside } from './TeamAccess';
 import { DisputePanel } from './DisputePanel';
+import { AmendmentPanel } from './AmendmentPanel';
 import { nextAction } from '../nextAction';
 import { reviewOverdue, ageInDays } from '@/lib/api/staleness';
 import {
@@ -216,6 +217,18 @@ export function CampaignDetail({
   const activeCollabs = collabs.filter(isActiveCollab);
   // F3 — disputes on this campaign that are still live. Rendered above the
   // pipeline: escrow is frozen behind each one.
+  // E2/E3 — collabs on this campaign with a change awaiting an answer.
+  const openAmendments = db.collaborations.filter(
+    (c) => c.campaignId === campaign.id
+      && (c.amendments ?? []).some((a) => a.status === 'proposed'),
+  );
+  // Deals the brand could propose a change ON: accepted, not closed, not
+  // frozen by a dispute, and not already mid-negotiation (those render above).
+  const amendableCollabs = db.collaborations.filter(
+    (c) => c.campaignId === campaign.id
+      && !!c.acceptedOfferId && !c.cancelledAt && !c.escrowFrozen
+      && !(c.amendments ?? []).some((a) => a.status === 'proposed'),
+  );
   const openDisputes = db.disputes.filter(
     (d) => d.campaignId === campaign.id && (d.status === 'open' || d.status === 'in-review'),
   );
@@ -317,6 +330,45 @@ export function CampaignDetail({
                 <DisputePanel key={d.id} collabId={d.collaborationId} />
               ))}
             </section>
+          )}
+          {/* E2/E3 — a change the creator proposed needs the brand's answer,
+              and the brand's own proposals live here too. Same reason the
+              dispute panel is on both sides: a handshake shipped on one
+              party's screen is not a handshake. */}
+          {openAmendments.length > 0 && (
+            <section style={{ marginBottom: 16 }}>
+              {openAmendments.map((c) => (
+                <AmendmentPanel key={c.id} collabId={c.id} />
+              ))}
+            </section>
+          )}
+          {/* And the brand's own entry point. Rendering the panel ONLY for
+              collabs with something pending let the brand answer a proposal
+              but never start one — and the brand is the party most likely to
+              want more after seeing the results, which is the whole case E2
+              and E3 exist for. Found by clicking through, not by a test.
+
+              A disclosure rather than a panel per creator: on a campaign with
+              twenty creators, twenty always-open panels is noise. */}
+          {amendableCollabs.length > 0 && (
+            <details style={{ marginBottom: 16 }}>
+              <summary
+                className="v2-muted"
+                style={{ fontSize: 12, cursor: 'pointer', padding: '4px 0' }}
+              >
+                Propose a change to a deal — extend usage rights, or add a deliverable
+              </summary>
+              <div style={{ marginTop: 8, display: 'grid', gap: 10 }}>
+                {amendableCollabs.map((c) => (
+                  <div key={c.id}>
+                    <div className="v2-eyebrow" style={{ marginBottom: 2 }}>
+                      {db.creators.find((cr) => cr.id === c.creatorId)?.name ?? 'Creator'}
+                    </div>
+                    <AmendmentPanel collabId={c.id} />
+                  </div>
+                ))}
+              </div>
+            </details>
           )}
           <PipelineKanban
             collabs={activeCollabs}

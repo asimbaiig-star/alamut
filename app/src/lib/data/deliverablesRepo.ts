@@ -7,6 +7,7 @@ import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
 type Row = {
   id: string;
   campaign_id: string;
+  creator_id: string | null;
   index: number;
   platform: DeliverablePlatform;
   format: DeliverableFormat;
@@ -18,12 +19,13 @@ type Row = {
 };
 
 const COLUMNS =
-  'id, campaign_id, index, platform, format, quantity, due_offset_days, specs, created_at, updated_at';
+  'id, campaign_id, creator_id, index, platform, format, quantity, due_offset_days, specs, created_at, updated_at';
 
 function toDeliverable(row: Row): Deliverable {
   return {
     id: row.id,
     campaignId: row.campaign_id,
+    creatorId: row.creator_id,
     index: row.index,
     platform: row.platform,
     format: row.format,
@@ -37,6 +39,7 @@ function toInsertRow(d: Deliverable): Record<string, unknown> {
   return {
     id: d.id,
     campaign_id: d.campaignId,
+    creator_id: d.creatorId ?? null,
     index: d.index,
     platform: d.platform,
     format: d.format,

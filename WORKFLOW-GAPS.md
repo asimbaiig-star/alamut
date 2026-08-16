@@ -368,8 +368,53 @@ recorded fact (`postDownAt`), so both can be true at once.
   is NOT offered Agree → sign in as brand → sees it, agrees → escrow_release
   −1350, payout +1350, refund +450, fee −135, tax −68. Creator's rows sum to
   1147, and 1147 + 135 + 68 + 450 = 1800 — exactly what was held.
-- **E2 / E3 (usage-rights extension, post-delivery amendments).** Both are
-  revenue-expansion features and both need commercial decisions first.
+- ~~**E2 / E3 (usage-rights extension, post-delivery amendments)**~~ —
+  **SHIPPED.** One `Amendment` mechanism covers both, and it is the F1/F3
+  handshake a third time: propose with a figure, the OTHER side agrees or
+  declines. Either party may propose — a creator selling wider rights is as
+  legitimate as a brand asking for them.
+
+  **Asim's commercial calls**, made explicitly:
+  - A rights extension **pays out on agreement**, net of fee and withholding.
+    There is no deliverable to approve, so escrow would have nothing to
+    release against and holding it would freeze the creator's money for up to
+    a year against work already delivered.
+  - A scope addition **funds escrow** and flows through the ordinary
+    submit → approve → pay path. Anything else pays for work before it exists.
+  - The proposer names the figure. No platform-set formula.
+  - A scope addition **reopens the deal to `confirmed`**, even from `paid`.
+    One deal, one history, correct kanban position.
+
+  **Two bugs found on the way in.**
+
+  `Contract` snapshotted the deliverables and the brief text but NOT the
+  rights — so a brand editing `Campaign.rights` afterwards silently rewrote
+  the licence every past creator had signed. That is exactly what the other
+  two snapshots exist to prevent, missing on the term with the longest tail.
+  Now `Contract.rightsSnapshot`, and it wins over the campaign.
+
+  Deliverables were uniformly campaign-wide and every consumer filtered on
+  `campaignId` alone. Adding one creator's extra Story as a plain campaign row
+  would have put an unfilled slot on EVERY creator's collab — and since stage
+  is derived from slot completion, dragged them all backwards out of
+  `approved` and `paid`. `Deliverable.creatorId` fixes it (null = campaign-wide,
+  so every existing row is unchanged), read through one shared
+  `deliverablesFor()` so the four call sites cannot drift.
+
+  Also refuses a rights "extension" that is not actually wider — charging for
+  a licence the brand already holds.
+
+  Browser-verified with Supabase off. E2: creator proposes 12-month re-use for
+  $800 → brand agrees on their own screen → brand −800, creator +680, escrow
+  untouched, no new deliverable, and 680 + 80 + 40 = 800. E3 on a **paid**
+  deal: brand proposes an extra Story for $450 → creator agrees → escrow
+  funded 450, pending +382, stage `live` → `confirmed`, Sarah at 7 slots and
+  **every other creator on the campaign still at 6 and still `paid`**.
+
+  Found by clicking, not by a test: the brand could ANSWER a proposal but
+  never START one, because the panel rendered only for collabs with something
+  pending — and the brand is the party most likely to want more after seeing
+  the results, which is the whole case these features exist for.
 
 ### The original findings
 
@@ -387,7 +432,7 @@ deals routinely add "one more Story" for an agreed bump; here that requires a
 whole second campaign.
 
 *Severity: E1 medium (it is the integrity of the whole "live" state), E2/E3
-lower but they are the revenue-expansion path.*
+lower but they are the revenue-expansion path.* **(E2/E3 shipped — see above.)**
 
 ---
 

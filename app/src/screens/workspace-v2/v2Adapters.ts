@@ -753,8 +753,13 @@ function deliverableFromSubmission(
  * That keeps card copy stable across the migration.
  */
 export function deliverableLabel(d: Deliverable, db: Database): string {
+  // E3 — count only the rows that share this one's audience. A creator's
+  // amendment slot must not renumber "Story" into "Story 1 / Story 2" on
+  // every other creator's card, and a campaign-wide row must not be
+  // renumbered by someone else's private addition.
   const sameKind = db.deliverables.filter(
-    (x) => x.campaignId === d.campaignId && x.platform === d.platform && x.format === d.format,
+    (x) => x.campaignId === d.campaignId && x.platform === d.platform && x.format === d.format
+      && (x.creatorId ?? null) === (d.creatorId ?? null),
   );
   const fmt = d.format.charAt(0).toUpperCase() + d.format.slice(1);
   const plat = d.platform === 'x' ? 'X' : (d.platform.charAt(0).toUpperCase() + d.platform.slice(1));

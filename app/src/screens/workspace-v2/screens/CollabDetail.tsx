@@ -18,6 +18,7 @@ import {
 } from '../v2CampaignActions';
 import { v2RaiseDispute } from '../v2DisputeActions';
 import { DisputePanel } from './DisputePanel';
+import { AmendmentPanel } from './AmendmentPanel';
 import { v2AgreeCollabCancel, v2DeclineCollabCancel,
   v2ProposeSettlement, v2AgreeSettlement, v2DeclineSettlement, v2SettleableAmount,
 } from '../v2CollabActions';
@@ -459,6 +460,10 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
                   the dispute escape hatch on purpose: it is the step BEFORE
                   escalating. Cancelling returns everything to the brand,
                   which is the wrong answer when work was part-delivered. */}
+              {/* WORKFLOW-GAPS E2/E3 — extend the licence, or add a
+                  deliverable for an agreed bump. Both were impossible: every
+                  term was frozen at acceptance. */}
+              <AmendmentPanel collabId={collabRow?.id ?? ''} />
               <SettlementBlock collabId={collabRow?.id ?? ''} stage={collab.stage} />
               {/* WORKFLOW-GAPS F3 — the open dispute itself. Before this, a
                   party could FILE a dispute and then see nothing at all: no

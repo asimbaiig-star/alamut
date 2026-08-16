@@ -652,6 +652,17 @@ export interface Contract {
    *  what this creator signed. */
   briefSnapshot: string;
   briefSnapshotAt: number;
+  /** WORKFLOW-GAPS E2 — the rights the creator actually agreed to.
+   *
+   *  Deliverables and brief text were snapshotted here; rights were not, so
+   *  a brand editing `Campaign.rights` afterwards silently rewrote what
+   *  every past creator had signed. That is the same bug the two snapshots
+   *  above exist to prevent, missing on the term with the longest tail.
+   *
+   *  Also the base an E2 extension widens from: you cannot extend a window
+   *  that was never recorded. Null on contracts predating this field —
+   *  callers fall back to the campaign's rights. */
+  rightsSnapshot?: ContentRights | null;
   acceptedAt: number;
   /** The user who accepted the offer (creator side for offers,
    *  brand side for counter-acceptance). */
@@ -904,6 +915,21 @@ export interface Deliverable {
    *  same data produces stable IDs. */
   id: string;
   campaignId: string;
+  /** WORKFLOW-GAPS E3 — scopes this deliverable to ONE creator.
+   *
+   *  `null`/absent = campaign-wide, owed by everyone on the brief. That is
+   *  every row that existed before amendments, so the default is the old
+   *  behaviour exactly.
+   *
+   *  Set = added mid-deal by an agreed amendment ("one more Story for an
+   *  agreed bump") and owed by that creator alone. Without this the extra
+   *  slot would appear on EVERY creator's collab on the campaign, and since
+   *  stage is derived from slot completion, it would drag everyone else
+   *  backwards out of `approved`/`paid`.
+   *
+   *  Always read through `deliverablesFor()` — never filter on campaignId
+   *  alone. */
+  creatorId?: string | null;
   /** 0-based, stable. Matches the position in `Campaign.deliverableIds`. */
   index: number;
   platform: DeliverablePlatform;
@@ -1404,6 +1430,56 @@ export interface CollabHistoryEntry {
  * not in what is being proposed, so the terms are shared and the outcomes are
  * not.
  */
+/** WORKFLOW-GAPS E2/E3 — what an amendment changes. */
+export type AmendmentKind = 'rights-extension' | 'scope-addition';
+
+/**
+ * A change to a deal AFTER acceptance, in exchange for money.
+ *
+ * Every term used to be frozen at acceptance, so the two commonest things
+ * real deals do had no representation at all:
+ *
+ *   E2 — the brand wants to keep running the asset past the licence window.
+ *   E3 — the brand wants one more Story for an agreed bump.
+ *
+ * Both required tearing down and re-running a whole second campaign.
+ *
+ * Same handshake as {@link SettlementTerms}: one side proposes with a figure,
+ * the OTHER agrees or declines. Three features now share that shape (F1
+ * settlement, F3 dispute split, and this), which is one mental model rather
+ * than three.
+ *
+ * WHERE THE MONEY GOES differs by kind, and it is not arbitrary:
+ *   - `rights-extension` has no deliverable to approve, so escrow would have
+ *     nothing to release against. It pays out on agreement, net of fee and
+ *     withholding, like any other payment for work already done.
+ *   - `scope-addition` creates real new work, so it funds escrow and releases
+ *     through the ordinary submit → approve → pay path. The deal reopens to
+ *     `confirmed` until the new slot lands.
+ */
+export interface Amendment {
+  id: string;
+  kind: AmendmentKind;
+  /** User id of the proposer. They may not agree to their own proposal. */
+  proposedBy: string;
+  proposedAt: number;
+  /** GROSS. Paid out on agreement (rights) or held in escrow (scope). */
+  amount: number;
+  note: string;
+  /** `rights-extension` — the widened window. Absent fields are unchanged. */
+  repurposeTo?: ContentRights['repurpose'];
+  exclusivityTo?: ContentRights['exclusivity'];
+  /** `scope-addition` — the deliverable to add, owed by this creator alone. */
+  addDeliverable?: {
+    platform: DeliverablePlatform;
+    format: DeliverableFormat;
+    specs?: string | null;
+  };
+  status: 'proposed' | 'agreed' | 'declined' | 'withdrawn';
+  decidedAt: number | null;
+  decidedBy: string | null;
+}
+
 export interface SettlementTerms {
   /** User id of the proposer. They may not agree to their own proposal. */
   by: string;
@@ -1432,6 +1508,11 @@ export interface Collaboration {
   /** WORKFLOW-GAPS F1 — a proposed partial settlement, awaiting the OTHER
    *  party's agreement. See {@link SettlementTerms}. */
   settlementProposal?: SettlementTerms | null;
+  /** WORKFLOW-GAPS E2/E3 — post-acceptance changes to this deal, proposed,
+   *  agreed, declined or withdrawn. Append-only: a declined amendment stays
+   *  on the record rather than vanishing, because "we asked and they said
+   *  no" is part of the deal's history. See {@link Amendment}. */
+  amendments?: Amendment[];
   // P2 §1.4 — escrow freeze flag for active disputes:
   escrowFrozen?: boolean;
   /** Migration 020 optimistic lock — see Dispute.version for the rationale.
