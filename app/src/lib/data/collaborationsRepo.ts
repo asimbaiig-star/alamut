@@ -23,6 +23,7 @@ type Row = {
   cancellation_reason: string | null;
   history: CollabHistoryEntry[];
   cancellation_request: Collaboration['cancellationRequest'] | null;
+  settlement_proposal: Collaboration['settlementProposal'] | null;
   escrow_frozen: boolean;
   version: number;
   created_at: string;
@@ -32,7 +33,8 @@ type Row = {
 const COLUMNS =
   'id, campaign_id, creator_id, brand_id, stage, agreed_rate, ' +
   'accepted_offer_id, contract_id, cancelled_at, cancellation_reason, ' +
-  'history, cancellation_request, escrow_frozen, version, created_at, updated_at';
+  'history, cancellation_request, settlement_proposal, escrow_frozen, ' +
+  'version, created_at, updated_at';
 
 export function toCollab(row: Row): Collaboration {
   return {
@@ -50,6 +52,7 @@ export function toCollab(row: Row): Collaboration {
     updatedAt: +new Date(row.updated_at),
     history: row.history ?? [],
     cancellationRequest: row.cancellation_request ?? null,
+    settlementProposal: row.settlement_proposal ?? null,
     escrowFrozen: row.escrow_frozen,
     version: row.version,
   };
@@ -69,6 +72,7 @@ function toRowFields(c: Collaboration): Record<string, unknown> {
     cancellation_reason: c.cancellationReason,
     history: c.history,
     cancellation_request: c.cancellationRequest ?? null,
+    settlement_proposal: c.settlementProposal ?? null,
     escrow_frozen: c.escrowFrozen ?? false,
   };
 }

@@ -312,6 +312,23 @@ recorded fact (`postDownAt`), so both can be true at once.
   Refuses while a dispute has frozen escrow: a split under dispute is the
   arbitrator's call, not the parties'.
 
+  **Browser-verified 2026-08-15, which found a real defect.** Production
+  serves the right build and the propose form is correct (prefills half,
+  `max` clamped to escrow, note required). Exercised the full handshake
+  locally rather than on production, to avoid leaving a pending settlement
+  on the shared demo accounts: propose as the brand → Sarah sees
+  "SETTLEMENT PROPOSED" with **Agree to this split** / **Decline** → agree →
+  escrow_release −1288, payout +1288, refund +858. 1288 + 858 = 2146, exactly
+  what was held, and the creator's rows sum to 1095 = net of 1288.
+
+  The defect: **`settlement_proposal` had no Supabase column.** Every other
+  part shipped — type, mutations, UI, tests — and the field was dropped on
+  every mirror. A settlement is a handshake, so the one party who must see
+  the proposal was the one party who structurally never could. Fixed by
+  migration `033` (Asim to run) plus the four repo mappings, and
+  `mergeCollabRows` now preserves it per its own documented "set beats null"
+  rule. Generalised into regressionGuards CLASS 7.
+
   19 tests, weighted toward the invariants rather than the happy path. The one
   that matters most asserts **conservation**: `refunded + net + fee + tax`
   equals exactly what was held — this codebase has already minted phantom

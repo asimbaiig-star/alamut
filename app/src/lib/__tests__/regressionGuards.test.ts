@@ -15,9 +15,15 @@
 //   5. A test that pinned a dangerous default as correct.
 //   6. A per-migration scan promoted to a per-render one without being
 //      re-costed.
+//
+// Added since:
+//
+//   7. A field added to a persisted type, wired through the UI and the
+//      mutations, and never added to the repository that saves it — so it
+//      works perfectly in one browser and does not exist in any other.
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   recordRemoteCampaigns, mayMirrorForCampaign, __resetRemoteRegistry,
@@ -207,5 +213,116 @@ describe('platform economics have one source', () => {
     expect(src).toContain('PLATFORM_FEE_RATE_AT_P2');
     expect(src).toContain('PLATFORM_FEE_RATE_AT_P7');
     expect(src).not.toContain("from '@/lib/api/money'");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// CLASS 7 — every persisted field survives the round trip to Postgres
+// ─────────────────────────────────────────────────────────────────────
+//
+// `settlementProposal` shipped complete: type, mutations, UI, tests. It
+// worked in one browser and nowhere else, because the repository that
+// writes collaborations to Supabase had never heard of it. A settlement
+// is a handshake — the one person who had to see the proposal was the one
+// person who structurally could not.
+//
+// Adding a field to a persisted interface has FIVE obligations, and
+// TypeScript enforces none of them: the SQL column, the repo `Row` type,
+// the SELECT list, the row→object mapper, and the object→row mapper. Miss
+// any one and the field silently becomes browser-local.
+//
+// This derives the field list from the type itself, so a field added
+// tomorrow is covered without anyone remembering to extend this test.
+
+/** camelCase → snake_case, matching the column convention used throughout. */
+function snake(s: string): string {
+  return s.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
+}
+
+/** Field names declared on an exported interface in types.ts. */
+function interfaceFields(name: string): string[] {
+  const src = read('lib/api/types.ts');
+  const start = src.indexOf(`export interface ${name} {`);
+  expect(start, `interface ${name} not found in types.ts`).toBeGreaterThan(-1);
+  const body = src.slice(start, src.indexOf('\n}', start));
+  const out = new Set<string>();
+  for (const line of body.split('\n').slice(1)) {
+    // Only top-level declarations: exactly two spaces of indent. Skips
+    // comments, and the inner keys of nested object literals.
+    const m = /^ {2}(\w+)\??:/.exec(line);
+    if (m) out.add(m[1]);
+  }
+  return [...out];
+}
+
+describe('a persisted field is persisted everywhere, or it is browser-local', () => {
+  // Derived, not hand-listed, so new fields are covered automatically.
+  const fields = interfaceFields('Collaboration');
+
+  // Genuinely not columns to map, each for a stated reason.
+  const EXEMPT: Record<string, string> = {
+    createdAt: 'timestamptz default, never written by the client',
+    updatedAt: 'timestamptz, set by trigger on write',
+    version: 'optimistic lock — read for the guard, never in the write payload',
+  };
+
+  it('the Collaboration interface is actually being read', () => {
+    // Guards the parser: a regex that silently matched nothing would make
+    // every assertion below vacuously pass.
+    expect(fields).toContain('settlementProposal');
+    expect(fields).toContain('cancellationRequest');
+    expect(fields.length).toBeGreaterThan(10);
+    // Nested keys of settlementProposal must not leak in as fields.
+    expect(fields).not.toContain('releaseToCreator');
+  });
+
+  it('every field reaches Postgres and comes back', () => {
+    const repo = code('lib/data/collaborationsRepo.ts');
+    // The three mappings, isolated so a failure names which one is missing.
+    const columns = /const COLUMNS =([\s\S]*?);/.exec(repo)?.[1] ?? '';
+    const toObj = /export function toCollab\(([\s\S]*?)\n}/.exec(repo)?.[1] ?? '';
+    const toRow = /function toRowFields\(([\s\S]*?)\n}/.exec(repo)?.[1] ?? '';
+    expect(columns, 'COLUMNS not found').not.toBe('');
+    expect(toObj, 'toCollab not found').not.toBe('');
+    expect(toRow, 'toRowFields not found').not.toBe('');
+
+    const missing: string[] = [];
+    for (const f of fields) {
+      if (f in EXEMPT) continue;
+      const col = snake(f);
+      if (!columns.includes(col)) missing.push(`${f}: absent from the SELECT list`);
+      if (!toObj.includes(col)) missing.push(`${f}: not read in toCollab (hydrate drops it)`);
+      if (!toRow.includes(col)) missing.push(`${f}: not written in toRowFields (save drops it)`);
+    }
+    expect(missing, missing.join('\n')).toEqual([]);
+  });
+
+  it('a column added to the repo has a migration that creates it', () => {
+    // The other half: a mapping with no column behind it fails at runtime
+    // with a PostgREST 42703, which the repo logs as a console.warn.
+    const repo = code('lib/data/collaborationsRepo.ts');
+    const columns = /const COLUMNS =([\s\S]*?);/.exec(repo)?.[1] ?? '';
+    const declared = [...columns.matchAll(/\b([a-z][a-z0-9_]*)\b/g)].map((m) => m[1]);
+
+    const dir = join(SRC, '..', 'supabase', 'migrations');
+    const sql = readdirSync(dir)
+      .filter((f) => f.endsWith('.sql'))
+      .map((f) => readFileSync(join(dir, f), 'utf8'))
+      .join('\n');
+
+    const orphans = declared.filter((c) => !sql.includes(c));
+    expect(orphans, `selected but never created in SQL: ${orphans.join(', ')}`).toEqual([]);
+  });
+
+  it('merging duplicate rows preserves every nullable, per its own contract', () => {
+    // mergeCollabRows documents "a set value beats a null on every nullable
+    // field". settlementProposal was omitted from that list, so deduping two
+    // rows could drop a live proposal.
+    const src = code('lib/api/collabSync.ts');
+    const merge = /export function mergeCollabRows\(([\s\S]*?)\n}/.exec(src)?.[1] ?? '';
+    expect(merge, 'mergeCollabRows not found').not.toBe('');
+    for (const f of ['cancellationRequest', 'settlementProposal', 'contractId']) {
+      expect(merge, `${f} not merged — a duplicate row can drop it`).toContain(f);
+    }
   });
 });

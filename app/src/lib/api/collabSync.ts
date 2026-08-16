@@ -290,6 +290,10 @@ export function mergeCollabRows(a: Collaboration, b: Collaboration): Collaborati
     cancelledAt: primary.cancelledAt ?? other.cancelledAt,
     cancellationReason: primary.cancellationReason ?? other.cancellationReason,
     cancellationRequest: primary.cancellationRequest ?? other.cancellationRequest,
+    // Set-beats-null, same as every other nullable here. A resurrected stale
+    // proposal is harmless — the UI only offers it on a live, uncancelled
+    // deal, and either party can decline. Silently dropping a live one is not.
+    settlementProposal: primary.settlementProposal ?? other.settlementProposal,
     escrowFrozen: primary.escrowFrozen || other.escrowFrozen,
     history,
   };

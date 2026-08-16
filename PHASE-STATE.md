@@ -308,11 +308,21 @@ All six fixed; 717 tests green.
    `userId|campaignId|at`.
 
 ### The standing guard: `src/lib/__tests__/regressionGuards.test.ts`
-16 tests encoding these as CLASSES rather than instances — fail-open guards,
+20 tests encoding these as CLASSES rather than instances — fail-open guards,
 per-group totals, version enforcement, one-label-one-quantity, ledger
 reconciliation + idempotency, and a timing assertion that fails if the
 quadratic scan returns. Run it before every commit. Each block carries the
 failure story so a future fix addresses the pattern.
+
+**CLASS 7 — persistence round-trip (added 2026-08-15).** Adding a field to a
+persisted interface has five obligations and TypeScript enforces none of them:
+the SQL column, the repo `Row` type, the SELECT list, the row→object mapper,
+and the object→row mapper. Miss one and the field silently becomes
+browser-local. The test derives the field list from the `Collaboration`
+interface itself, so a field added later is covered without anyone remembering
+to extend the test; a companion assertion catches the reverse (a column
+selected that no migration creates). Each arm was mutation-tested — deleting
+any one of the four mappings, or migration 033, makes it fail.
 
 The common thread, worth stating plainly: **every one of these shipped because
 I verified the thing I changed, not the thing my change touched.**
@@ -369,7 +379,23 @@ campaign ids Postgres actually returned; the two FK-bearing mirrors
 
 ## Still open — Asim's to run
 
-**All four SQL migrations are now applied (030, 031, 032 + the earlier set).**
+**030, 031 and 032 are applied. `033` is new and NOT yet applied.**
+
+- **`033_collaborations_settlement_proposal.sql` — TO RUN.** Adds
+  `collaborations.settlement_proposal jsonb`. Paste it into the Supabase SQL
+  editor; it is a single `add column if not exists`, touches no data, and is
+  safe to re-run. The verification `select` at the bottom should return one
+  row: `settlement_proposal | jsonb | YES`.
+
+  **Until it runs, the settlement handshake is browser-local on remote deals.**
+  The code degrades quietly rather than breaking: PostgREST rejects the unknown
+  column, `collaborationsRepo` logs a `console.warn`, and the local store keeps
+  working — so a proposal is visible to the proposer and invisible to the
+  person who has to agree to it. Everything else about the deal still syncs.
+
+  Found by browser-verifying F1 end-to-end: the UI, the money and the tests
+  were all correct, and the column had never been created. Now covered by a
+  standing guard — see CLASS 7 under "The standing guard" above.
 
 
 - ~~`031_payout_rows_to_gross.sql`~~ — **APPLIED 2026-08-14.** Reported
