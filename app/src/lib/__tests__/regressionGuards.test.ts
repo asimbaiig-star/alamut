@@ -21,6 +21,9 @@
 //   7. A field added to a persisted type, wired through the UI and the
 //      mutations, and never added to the repository that saves it — so it
 //      works perfectly in one browser and does not exist in any other.
+//   8. A rule enforced in the mutation but not consulted by the UI that
+//      fires it, so the user gets a dead button or a surprise toast instead
+//      of the reason.
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -388,5 +391,55 @@ describe('persistence round-trip, cross-cutting', () => {
     for (const f of ['cancellationRequest', 'settlementProposal', 'contractId']) {
       expect(merge, `${f} not merged — a duplicate row can drop it`).toContain(f);
     }
+  });
+});
+
+
+// ─────────────────────────────────────────────────────────────────────
+// CLASS 8 — the UI asks the same question the mutation answers
+// ─────────────────────────────────────────────────────────────────────
+//
+// `SendBriefModal` knew about per-campaign conflicts ("already applied",
+// "offer already sent") but never consulted the creator's STANDING
+// instructions. So a creator at capacity, on vacation, or auto-declining the
+// category gave the brand a disabled button with no reason, then a toast from
+// the mutation that did check. Found by clicking, after the same class had
+// already been fixed twice: the topbar/DeliverableRow submit gate, and
+// `SendOfferModal`'s three ad-hoc booleans.
+//
+// The rule is not "call this function" — it is that a guard which can refuse
+// a user action must be reachable by the surface offering that action.
+
+describe('a mutation guard the UI cannot see is a dead button', () => {
+  const modalSrc = () => code('screens/workspace-v2/screens/WorkflowModals.tsx');
+
+  it('every modal that sends work to a creator consults availability', () => {
+    const src = modalSrc();
+    // Both send-to-creator modals live in this file; both fire a mutation
+    // that calls `availabilityBlock` and throws.
+    const uses = src.match(/availabilityVerdict\(/g) ?? [];
+    expect(uses.length, 'a send-to-creator modal is not checking availability')
+      .toBeGreaterThanOrEqual(2);
+  });
+
+  it('and passes the live deal count, not just the creator', () => {
+    // C4 blocks on a COUNT the verdict cannot derive on its own. Omitting it
+    // silently disables only the capacity rule while the mutation still
+    // enforces it — the worst version of this bug, because the other rules
+    // keep working and hide it.
+    const src = modalSrc();
+    const calls = src.match(/availabilityVerdict\([\s\S]{0,220}?\)/g) ?? [];
+    expect(calls.length).toBeGreaterThanOrEqual(2);
+    for (const c of calls) {
+      expect(c, `availabilityVerdict call omits activeDeals:\n${c}`).toContain('activeDeals');
+    }
+  });
+
+  it('the mutations still enforce it themselves', () => {
+    // The UI check is a courtesy; the mutation is the guarantee. If this
+    // fails, the modal is the only thing standing between a creator and an
+    // offer they said they did not want.
+    expect(code('screens/workspace-v2/v2CampaignActions.ts')).toContain('availabilityBlock(');
+    expect(code('screens/workspace-v2/v2CollabActions.ts')).toContain('availabilityBlock(');
   });
 });

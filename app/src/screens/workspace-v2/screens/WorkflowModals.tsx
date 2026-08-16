@@ -1130,7 +1130,17 @@ export function SendBriefModal({ creator, onRoute, onClose }: SendBriefProps) {
     return out;
   }, [db.applications, db.offers, db.collaborations, creator.id]);
 
+  // C4/availability — this modal knew about per-campaign conflicts ("already
+  // applied", "offer sent") but not about the creator's STANDING instructions,
+  // so someone at capacity, on vacation, or auto-declining the category gave
+  // the brand a disabled button with no reason and then a toast. The mutation
+  // was already guarded; the UI simply never asked. Same function, so the
+  // button state and the thrown error cannot disagree.
   const selected = live.find((c) => c.id === campaignId);
+  const availability = availabilityVerdict(creator, {
+    category: selected?.category,
+    activeDeals: activeDealCount(db, creator.id),
+  });
   const defaultMessage = selected
     ? `We'd love to have you on "${selected.title}". Take a look and let us know if it's a fit.`
     : '';
@@ -1239,6 +1249,16 @@ export function SendBriefModal({ creator, onRoute, onClose }: SendBriefProps) {
                   Pick another, or open the campaign to carry on there.
                 </p>
               )}
+              {availability.block && (
+                <p style={{ fontSize: 12.5, marginTop: 10, color: 'var(--v2-danger, #c0392b)' }}>
+                  {availability.block}
+                </p>
+              )}
+              {!availability.block && availability.warn && (
+                <p className="v2-muted" style={{ fontSize: 12.5, marginTop: 10 }}>
+                  {availability.warn}
+                </p>
+              )}
             </>
           )}
         </div>
@@ -1250,7 +1270,7 @@ export function SendBriefModal({ creator, onRoute, onClose }: SendBriefProps) {
               <button
                 className="v2-btn v2-btn-primary"
                 type="button"
-                disabled={!canInvite || !campaignId || !!blocked || sending || !body.trim()}
+                disabled={!canInvite || !campaignId || !!blocked || !!availability.block || sending || !body.trim()}
                 title={!canInvite ? 'Admin/ops only' : undefined}
                 onClick={onSend}
               >

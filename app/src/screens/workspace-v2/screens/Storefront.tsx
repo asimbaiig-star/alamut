@@ -998,7 +998,7 @@ function AvailabilityBlock({ creator, editing, onEdit, onClose }: {
   return (
     <Block
       label="Availability & guardrails"
-      tip="Status, vacation mode, minimum rate, and topics you don't take. Brands see all of this on your storefront and offer flow."
+      tip="Status, vacation mode, minimum rate, how many deals you'll run at once, and topics you don't take. Brands see all of this on your storefront and offer flow."
       action={!editing ? <EditButton onClick={onEdit} /> : null}
     >
       {!editing ? (

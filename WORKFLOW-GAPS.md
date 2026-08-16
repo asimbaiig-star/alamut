@@ -582,3 +582,39 @@ structured record.
 only moves the number must not wipe the scope agreed a round earlier, or every
 price nudge silently reopens what the work is. Resolution walks the transcript
 backwards per-term, and the banner and the tests use the same walk.
+
+### Browser pass on C4 / D2 / A3 — and what it found
+
+All three verified end to end with Supabase off, and the pass earned its keep
+again.
+
+**Found: `SendBriefModal` never consulted availability.** It knew about
+per-campaign conflicts ("already applied", "offer already sent") but not about
+the creator's standing instructions — so a creator at capacity, on vacation, or
+auto-declining the category gave the brand a **disabled button with no reason**,
+then a toast from the mutation that did check. The mutation was correctly
+guarded; the surface offering the action simply never asked. Fixed, and
+generalised into regressionGuards **CLASS 8**, which now fails if a
+send-to-creator modal drops the check — or the subtler variant, keeping the
+call but omitting `activeDeals`, which silently disables only the capacity rule
+while the other rules keep working and hide it.
+
+Also fixed: the storefront's guardrails tip still listed the old four settings
+and never mentioned the cap.
+
+**C4** — set a cap of 3 through the real editor with 6 deals in flight; other
+availability fields survived the save; `v2SendOffer` refused with *"Sarah caps
+concurrent work at 3 deals and is at capacity"*; after the fix the same
+sentence appears in the modal with the button disabled.
+
+**D2** — the picker lists the real Aesop team (hannah/thom/finance) with a
+proper label; reassigning to Thom persisted, notified him, and wrote a
+`reassigned:u_thom` history entry. Then the load-bearing check: a creator-side
+amendment proposal **routed to Thom, not Hannah** — reassignment is not
+cosmetic.
+
+**A3** — both fields render; a creator counter carried
+`scope: "2 Reels + 3 Stories, one revision round"` and `deliverBy: 2026-10-20`;
+a brand counter-back on **price only** left both intact, and the creator's
+banner read *"Scope on the table: 2 Reels + 3 Stories, one revision round,
+delivered by 2026-10-20."*
