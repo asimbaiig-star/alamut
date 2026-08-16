@@ -585,6 +585,15 @@ export interface Dispute {
   raisedAt: number;
   updatedAt: number;
   messages: DisputeMessage[];
+  /** WORKFLOW-GAPS F3 — a split the PARTIES proposed to each other, to settle
+   *  without waiting for an arbitrator. Distinct from `resolution`, which is
+   *  the outcome: this is an offer that has not been accepted yet, and is
+   *  cleared to null on agree, decline, or withdrawal.
+   *
+   *  Agreement by the other party resolves the dispute and moves the money
+   *  through exactly the same path an admin resolution uses — the parties get
+   *  a faster route to the same place, not a second implementation of it. */
+  proposal?: SettlementTerms | null;
   /** Migration 020 optimistic lock — server row version. Bumped on
    *  every UPDATE; mirror functions pass the prior version as
    *  `expectedVersion` so a cross-tab race lands a StaleVersionError
@@ -1378,6 +1387,32 @@ export interface CollabHistoryEntry {
   reason?: string;  // 'campaign-ended', 'creator-withdrew', 'offer-declined', etc.
 }
 
+/**
+ * A proposed split of held escrow, awaiting the OTHER party's agreement.
+ *
+ * Cancellation is all-or-nothing: escrow returns to the brand. That is wrong
+ * when a creator delivered 3 of 4 slots — the work exists and someone has to
+ * be paid for it. A settlement splits the held amount instead.
+ *
+ * Only `releaseToCreator` is stored, never the refund: the refund is whatever
+ * is left, and holding both numbers invites them to disagree.
+ *
+ * ONE shape, deliberately, for the two places parties negotiate a split:
+ *   - `Collaboration.settlementProposal` — WORKFLOW-GAPS F1, outside a dispute.
+ *   - `Dispute.proposal` — WORKFLOW-GAPS F3, settling one without an arbitrator.
+ * They differ in what agreement DOES (ends the deal vs. resolves the dispute),
+ * not in what is being proposed, so the terms are shared and the outcomes are
+ * not.
+ */
+export interface SettlementTerms {
+  /** User id of the proposer. They may not agree to their own proposal. */
+  by: string;
+  at: number;
+  /** GROSS to release to the creator; the remainder refunds to the brand. */
+  releaseToCreator: number;
+  note: string;
+}
+
 export interface Collaboration {
   id: string;                      // 'col_<short>'
   campaignId: string;
@@ -1395,21 +1430,8 @@ export interface Collaboration {
   // P3 §2.3 — populated when either party requests cancellation post-confirmation:
   cancellationRequest?: { by: string; at: number; reason: string } | null;
   /** WORKFLOW-GAPS F1 — a proposed partial settlement, awaiting the OTHER
-   *  party's agreement.
-   *
-   *  Cancellation is all-or-nothing: escrow returns to the brand. That is
-   *  wrong when a creator delivered 3 of 4 slots — the work exists and someone
-   *  has to be paid for it. A settlement splits the held amount instead.
-   *
-   *  Only `releaseToCreator` is stored, never the refund: the refund is
-   *  whatever is left, and holding both invites them to disagree. */
-  settlementProposal?: {
-    by: string;
-    at: number;
-    /** GROSS to release to the creator; the remainder refunds to the brand. */
-    releaseToCreator: number;
-    note: string;
-  } | null;
+   *  party's agreement. See {@link SettlementTerms}. */
+  settlementProposal?: SettlementTerms | null;
   // P2 §1.4 — escrow freeze flag for active disputes:
   escrowFrozen?: boolean;
   /** Migration 020 optimistic lock — see Dispute.version for the rationale.

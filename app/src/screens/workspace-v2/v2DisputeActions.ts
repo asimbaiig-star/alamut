@@ -45,6 +45,9 @@ import { isSupabaseConfigured } from '@/lib/supabase';
 
 // Fee/withholding rates come from one module — see lib/api/money.ts.
 import { PLATFORM_FEE, WHT, netOf, splitGross } from '@/lib/api/money';
+// F3 — one definition of "how much escrow is on the table", shared with the
+// settlement handshake rather than copied. See its export note.
+import { settleableEscrow } from './v2CollabActions';
 
 /** Fire-and-forget mirror for a new Dispute INSERT. Silenced on FK
  *  (collab/campaign tied to generated rows) + RLS. */
@@ -312,23 +315,36 @@ export function v2AddDisputeMessage(disputeId: string, fromUserId: string, body:
  * any sibling submissions (rare but possible — e.g. a partial resolve
  * still leaves room for the creator to deliver further work).
  */
-export function v2ResolveDispute(disputeId: string, input: {
+export interface DisputeOutcome {
   status: Extract<DisputeStatus, 'resolved-refund' | 'resolved-release' | 'resolved-partial'>;
-  resolvedByUserId: string;
+  /** Whoever's decision this was: an admin, or the party who agreed. */
+  by: string;
   note: string;
   releaseAmount?: number;
   refundAmount?: number;
-}): Dispute | null {
-  const result = tx((db) => {
-    // P5 §4.1 — admin-only. The `dispute.resolve` capability is held
-    // by the `super` and `disputes` AdminRoles; brand-side teamRoles
-    // never get it.
-    requireCapability(getActorUserId(), 'dispute.resolve', db);
+}
 
-    const disp = db.disputes.find((d) => d.id === disputeId);
-    if (!disp) return null;
-    if (disp.status !== 'open' && disp.status !== 'in-review') return disp;
-
+/**
+ * Apply a dispute outcome: move the money, unfreeze escrow, terminalize a
+ * dead deal, notify both sides, recompute the collab stage.
+ *
+ * WORKFLOW-GAPS F3 — extracted from `v2ResolveDispute` so that the parties
+ * agreeing a split and an admin imposing one land in EXACTLY the same place.
+ * The alternative was a second implementation of the dispute money path, and
+ * this codebase has already paid for that mistake five times over: every
+ * money operation here once had a correct version and a drifted copy still
+ * wired to the UI.
+ *
+ * Deliberately carries no capability check. The two callers gate differently
+ * — admin capability vs. being the non-proposing party — and burying either
+ * rule in here would make the other caller's gate invisible.
+ */
+function applyDisputeResolution(
+  db: Database,
+  disp: Dispute,
+  input: DisputeOutcome,
+  notifyText: (campaignTitle: string) => string,
+): Dispute | null {
     const camp = db.campaigns.find((c) => c.id === disp.campaignId);
     const collab = db.collaborations.find((c) => c.id === disp.collaborationId);
     if (!camp || !collab) return null;
@@ -338,7 +354,7 @@ export function v2ResolveDispute(disputeId: string, input: {
     const now = nowMs();
     disp.status = input.status;
     disp.resolution = {
-      by: input.resolvedByUserId,
+      by: input.by,
       at: now,
       note: input.note,
       releaseAmount: input.releaseAmount,
@@ -499,7 +515,7 @@ export function v2ResolveDispute(disputeId: string, input: {
     db.notifications.push({
       id: newId('n'),
       userId: disp.raisedByUserId,
-      text: `Dispute resolved on ${camp.title}`,
+      text: notifyText(camp.title),
       href: '/v2',
       at: ts,
       read: false,
@@ -512,7 +528,7 @@ export function v2ResolveDispute(disputeId: string, input: {
       db.notifications.push({
         id: newId('n'),
         userId: counterUserId,
-        text: `Dispute resolved on ${camp.title}`,
+        text: notifyText(camp.title),
         href: '/v2',
         at: ts,
         read: false,
@@ -531,7 +547,7 @@ export function v2ResolveDispute(disputeId: string, input: {
       collab.campaignId,
       collab.creatorId,
       db,
-      input.resolvedByUserId,
+      input.by,
       `dispute-resolved:${input.status}`,
     );
     // P2 §1.3 — if the contract should now be marked fulfilled (full
@@ -539,19 +555,288 @@ export function v2ResolveDispute(disputeId: string, input: {
     if (collabAfter?.contractId && collabAfter.stage === 'paid') {
       markContractFulfilled(db, collabAfter.contractId);
     }
+  return disp;
+}
 
-    return disp;
+/**
+ * Admin resolution. The arbitrated path: an admin decides the split.
+ */
+export function v2ResolveDispute(disputeId: string, input: {
+  status: Extract<DisputeStatus, 'resolved-refund' | 'resolved-release' | 'resolved-partial'>;
+  resolvedByUserId: string;
+  note: string;
+  releaseAmount?: number;
+  refundAmount?: number;
+}): Dispute | null {
+  const result = tx((db) => {
+    // P5 §4.1 — admin-only. The `dispute.resolve` capability is held
+    // by the `super` and `disputes` AdminRoles; brand-side teamRoles
+    // never get it.
+    requireCapability(getActorUserId(), 'dispute.resolve', db);
+
+    const disp = db.disputes.find((d) => d.id === disputeId);
+    if (!disp) return null;
+    if (disp.status !== 'open' && disp.status !== 'in-review') return disp;
+
+    // An admin ruling overrides any split the parties were still discussing.
+    disp.proposal = null;
+
+    return applyDisputeResolution(db, disp, {
+      status: input.status,
+      by: input.resolvedByUserId,
+      note: input.note,
+      releaseAmount: input.releaseAmount,
+      refundAmount: input.refundAmount,
+    }, (title) => `Dispute resolved on ${title}`);
   });
   if (result) {
     mirrorDisputeUpdateToSupabase(disputeId, {
       status: result.status,
       resolution: result.resolution,
+      proposal: result.proposal ?? null,
     });
   }
   return result;
 }
 
 // Read-only convenience helpers
+
+// =====================================================================
+// PARTY-PROPOSED SETTLEMENT INSIDE A DISPUTE (WORKFLOW-GAPS F3)
+// =====================================================================
+//
+// A dispute could only be ended by an admin. The two people who actually know
+// what happened had no way to say "call it 60/40 and we're done", so every
+// disagreement — however small, however willing both sides were to split the
+// difference — queued behind an arbitrator with the escrow frozen throughout.
+//
+// This is the same handshake as F1's settlement, and deliberately so: propose
+// → the OTHER side agrees or declines. What differs is only what agreement
+// DOES. F1 settles a live deal and closes it; here it resolves the dispute,
+// through the identical money path an admin resolution uses.
+//
+// F1's own error message already promised this door existed — "Resolve the
+// dispute instead — that is where a split gets arbitrated." It did not. Now
+// it does, and it does not require an arbitrator to open it.
+
+/** Which side of this dispute is this user on, if any? */
+function partyRole(db: Database, disp: Dispute, userId: string): 'brand' | 'creator' | null {
+  const collab = db.collaborations.find((c) => c.id === disp.collaborationId);
+  if (!collab) return null;
+  const u = db.users.find((x) => x.id === userId);
+  if (!u) return null;
+  if (u.creatorId && u.creatorId === collab.creatorId) return 'creator';
+  if (u.brandId && u.brandId === collab.brandId) return 'brand';
+  return null;
+}
+
+/** How much escrow this dispute can actually split, for the UI to bound its
+ *  input. Uses the SAME helper as F1's settlement — see the note on its
+ *  export in v2CollabActions. */
+export function v2DisputeSettleableAmount(disputeId: string): number {
+  const db = useStore.getState().db;
+  const disp = db.disputes.find((d) => d.id === disputeId);
+  if (!disp) return 0;
+  const collab = db.collaborations.find((c) => c.id === disp.collaborationId);
+  return collab ? settleableEscrow(db, collab) : 0;
+}
+
+/**
+ * Offer the other party a split, to end the dispute without an arbitrator.
+ *
+ * `releaseToCreator` is GROSS — the creator receives it net of fee and
+ * withholding, exactly as an approval would pay, because it IS payment for
+ * work done rather than a special case.
+ */
+export function v2ProposeDisputeSplit(
+  disputeId: string,
+  releaseToCreator: number,
+  note: string,
+  byUserId: string,
+): Dispute {
+  const result = tx((db) => {
+    const disp = db.disputes.find((d) => d.id === disputeId);
+    if (!disp) throw new Error("Couldn't find that dispute — refresh and try again.");
+    if (disp.status !== 'open' && disp.status !== 'in-review') {
+      throw new Error('This dispute is already resolved.');
+    }
+    // Only the two parties. An admin who wants a split imposes one through
+    // v2ResolveDispute; letting them "propose" would create a proposal the
+    // other side could accept on an arbitrator's behalf.
+    if (!partyRole(db, disp, byUserId)) {
+      throw new Error('Only the brand or the creator on this deal can propose a settlement.');
+    }
+    if (disp.proposal) {
+      throw new Error('A settlement is already on the table. Wait for the other side, or withdraw it first.');
+    }
+
+    const collab = db.collaborations.find((c) => c.id === disp.collaborationId);
+    const available = collab ? settleableEscrow(db, collab) : 0;
+    if (available <= 0) {
+      throw new Error('There is no escrow held on this deal to split.');
+    }
+    if (!Number.isFinite(releaseToCreator) || releaseToCreator < 0 || releaseToCreator > available) {
+      throw new Error(`Enter an amount between $0 and $${available.toLocaleString()} — that is what is actually held.`);
+    }
+    if (!note.trim()) {
+      throw new Error('Add a note explaining the split — the other side has to agree to it.');
+    }
+
+    const now = nowMs();
+    disp.proposal = {
+      by: byUserId,
+      at: now,
+      releaseToCreator: Math.round(releaseToCreator),
+      note: note.trim(),
+    };
+    disp.updatedAt = now;
+
+    const camp = db.campaigns.find((c) => c.id === disp.campaignId);
+    const other = otherPartyUserId(db, disp, byUserId);
+    if (other && camp) {
+      db.notifications.push({
+        id: newId('n'),
+        userId: other,
+        text: `Settlement proposed to end the dispute on ${camp.title}: $${Math.round(releaseToCreator).toLocaleString()} to the creator, the rest refunded — needs your agreement`,
+        href: '/v2',
+        at: new Date(now).toISOString(),
+        read: false,
+        meta: { campaignId: disp.campaignId, collaborationId: disp.collaborationId },
+      });
+    }
+    return disp;
+  });
+  if (result) {
+    mirrorDisputeUpdateToSupabase(disputeId, { proposal: result.proposal ?? null });
+  }
+  return result;
+}
+
+/** The party on the other side of this dispute from `userId`. */
+function otherPartyUserId(db: Database, disp: Dispute, userId: string): string | null {
+  const collab = db.collaborations.find((c) => c.id === disp.collaborationId);
+  if (!collab) return null;
+  const creatorUser = db.users.find((u) => u.creatorId === collab.creatorId);
+  const brandUser = db.users.find((u) => u.brandId === collab.brandId);
+  if (userId === creatorUser?.id) return brandUser?.id ?? null;
+  if (userId === brandUser?.id) return creatorUser?.id ?? null;
+  return null;
+}
+
+/**
+ * Agree to the proposed split. Resolves the dispute and moves the money.
+ *
+ * The proposer cannot accept their own proposal — without that check this is
+ * a unilateral escrow withdrawal wearing a handshake's clothes.
+ */
+export function v2AgreeDisputeSplit(disputeId: string, byUserId: string): Dispute {
+  const result = tx((db) => {
+    const disp = db.disputes.find((d) => d.id === disputeId);
+    if (!disp) throw new Error("Couldn't find that dispute — refresh and try again.");
+    if (disp.status !== 'open' && disp.status !== 'in-review') {
+      throw new Error('This dispute is already resolved.');
+    }
+    const proposal = disp.proposal;
+    if (!proposal) throw new Error('There is no settlement proposal on this dispute.');
+    if (proposal.by === byUserId) {
+      throw new Error('You proposed this settlement — the other side has to agree to it.');
+    }
+    if (!partyRole(db, disp, byUserId)) {
+      throw new Error('Only the brand or the creator on this deal can agree to a settlement.');
+    }
+
+    const collab = db.collaborations.find((c) => c.id === disp.collaborationId);
+    if (!collab) throw new Error("Couldn't find the collaboration behind this dispute.");
+
+    // Re-clamp at agreement time: escrow may have moved since the proposal.
+    const available = settleableEscrow(db, collab);
+    const releaseAmount = Math.min(proposal.releaseToCreator, available);
+    const refundAmount = available - releaseAmount;
+
+    // The outcome describes what the split actually was, so the admin queue
+    // and every metric that reads `status` sees the truth rather than a
+    // blanket "partial". An agreed 100%-to-creator IS a release.
+    const status = releaseAmount <= 0
+      ? 'resolved-refund' as const
+      : refundAmount <= 0
+        ? 'resolved-release' as const
+        : 'resolved-partial' as const;
+
+    disp.proposal = null;
+
+    return applyDisputeResolution(db, disp, {
+      status,
+      by: byUserId,
+      note: `Settled by agreement: $${releaseAmount.toLocaleString()} to the creator, $${refundAmount.toLocaleString()} refunded. ${proposal.note}`,
+      releaseAmount,
+      refundAmount,
+    }, (title) => `Dispute on ${title} settled by agreement — $${releaseAmount.toLocaleString()} released, $${refundAmount.toLocaleString()} refunded`);
+  });
+  if (!result) throw new Error("Couldn't settle this dispute — refresh and try again.");
+  mirrorDisputeUpdateToSupabase(disputeId, {
+    status: result.status,
+    resolution: result.resolution,
+    proposal: null,
+  });
+  return result;
+}
+
+/** Turn down a proposed split. Clears it so either side can make a different
+ *  one; the dispute stays open and nothing moves. */
+export function v2DeclineDisputeSplit(disputeId: string, byUserId: string, reason?: string): Dispute {
+  const result = tx((db) => {
+    const disp = db.disputes.find((d) => d.id === disputeId);
+    if (!disp) throw new Error("Couldn't find that dispute — refresh and try again.");
+    const proposal = disp.proposal;
+    if (!proposal) throw new Error('There is no settlement proposal to decline.');
+    if (proposal.by === byUserId) {
+      throw new Error('You proposed this — withdraw it rather than declining your own offer.');
+    }
+    if (!partyRole(db, disp, byUserId)) {
+      throw new Error('Only the brand or the creator on this deal can decline a settlement.');
+    }
+
+    disp.proposal = null;
+    disp.updatedAt = nowMs();
+
+    const camp = db.campaigns.find((c) => c.id === disp.campaignId);
+    if (camp) {
+      db.notifications.push({
+        id: newId('n'),
+        userId: proposal.by,
+        text: `Your settlement proposal on ${camp.title} was declined${reason ? `: ${reason}` : ''} — the dispute stays open`,
+        href: '/v2',
+        at: new Date(nowMs()).toISOString(),
+        read: false,
+        meta: { campaignId: disp.campaignId, collaborationId: disp.collaborationId },
+      });
+    }
+    return disp;
+  });
+  if (result) {
+    mirrorDisputeUpdateToSupabase(disputeId, { proposal: null });
+  }
+  return result;
+}
+
+/** Withdraw your own proposal. The mirror image of declining. */
+export function v2WithdrawDisputeSplit(disputeId: string, byUserId: string): Dispute {
+  const result = tx((db) => {
+    const disp = db.disputes.find((d) => d.id === disputeId);
+    if (!disp) throw new Error("Couldn't find that dispute — refresh and try again.");
+    if (!disp.proposal) throw new Error('There is no settlement proposal to withdraw.');
+    if (disp.proposal.by !== byUserId) {
+      throw new Error("You can't withdraw the other side's proposal — decline it instead.");
+    }
+    disp.proposal = null;
+    disp.updatedAt = nowMs();
+    return disp;
+  });
+  if (result) {
+    mirrorDisputeUpdateToSupabase(disputeId, { proposal: null });
+  }
+  return result;
+}
 
 export function getOpenDisputeForCollab(collabId: string): Dispute | null {
   const db = useStore.getState().db;

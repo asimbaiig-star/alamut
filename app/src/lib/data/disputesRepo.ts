@@ -22,6 +22,7 @@ type Row = {
   evidence: DisputeEvidence[];
   status: DisputeStatus;
   resolution: Dispute['resolution'];
+  proposal: Dispute['proposal'];
   raised_at: string;
   messages: DisputeMessage[];
   version: number;
@@ -31,8 +32,8 @@ type Row = {
 
 const COLUMNS =
   'id, collaboration_id, campaign_id, raised_by_user_id, raised_by_role, ' +
-  'category, description, evidence, status, resolution, raised_at, ' +
-  'messages, version, created_at, updated_at';
+  'category, description, evidence, status, resolution, proposal, ' +
+  'raised_at, messages, version, created_at, updated_at';
 
 export function toDispute(row: Row): Dispute {
   return {
@@ -46,6 +47,7 @@ export function toDispute(row: Row): Dispute {
     evidence: row.evidence ?? [],
     status: row.status,
     resolution: row.resolution ?? null,
+    proposal: row.proposal ?? null,
     raisedAt: +new Date(row.raised_at),
     updatedAt: +new Date(row.updated_at),
     messages: row.messages ?? [],
@@ -65,6 +67,7 @@ function toInsertRow(d: Dispute): Record<string, unknown> {
     evidence: d.evidence,
     status: d.status,
     resolution: d.resolution,
+    proposal: d.proposal ?? null,
     raised_at: new Date(d.raisedAt).toISOString(),
     messages: d.messages,
   };
@@ -73,6 +76,7 @@ function toInsertRow(d: Dispute): Record<string, unknown> {
 type UpdatablePatch = Partial<{
   status: DisputeStatus;
   resolution: Dispute['resolution'];
+  proposal: Dispute['proposal'];
   messages: DisputeMessage[];
 }>;
 
@@ -80,6 +84,7 @@ function toUpdateRowPatch(patch: UpdatablePatch): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   if (patch.status !== undefined) out.status = patch.status;
   if (patch.resolution !== undefined) out.resolution = patch.resolution;
+  if (patch.proposal !== undefined) out.proposal = patch.proposal;
   if (patch.messages !== undefined) out.messages = patch.messages;
   return out;
 }

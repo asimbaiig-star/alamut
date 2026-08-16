@@ -466,8 +466,13 @@ export function v2DeclineCollabCancel(
  *
  *  The clamp is not defensive noise: `cancelCollabInternal` carries a bug-fix
  *  note about crediting the full rate while debiting a smaller campaign hold,
- *  which minted phantom dollars. Same trap here, so the same clamp. */
-function settleableEscrow(db: Database, collab: Collaboration): number {
+ *  which minted phantom dollars. Same trap here, so the same clamp.
+ *
+ *  Exported for `v2DisputeActions` (WORKFLOW-GAPS F3), which needs the same
+ *  answer for a split proposed inside a dispute. One definition on purpose —
+ *  a second copy of "how much is on the table" is precisely how this codebase
+ *  ended up with five implementations of three money operations. */
+export function settleableEscrow(db: Database, collab: Collaboration): number {
   const acceptedOffer = db.offers.find(
     (o) => o.campaignId === collab.campaignId && o.creatorId === collab.creatorId && o.status === 'accepted',
   );
@@ -500,7 +505,9 @@ export function v2ProposeSettlement(
     const collab = db.collaborations.find((c) => c.id === collabId);
     if (!collab) throw new Error("Couldn't find that collaboration — refresh and try again.");
     if (collab.escrowFrozen) {
-      throw new Error('Escrow is frozen while a dispute is open. Resolve the dispute instead — that is where a split gets arbitrated.');
+      // F3 made this door real: propose the split inside the dispute instead,
+      // where agreeing resolves it. Until F3 this message pointed at nothing.
+      throw new Error('Escrow is frozen while a dispute is open. Propose the split inside the dispute instead — agreeing there resolves it.');
     }
     if (collab.cancelledAt) throw new Error('This collaboration is already closed.');
     if (collab.settlementProposal) {
@@ -562,7 +569,7 @@ export function v2AgreeSettlement(collabId: string, byUserId: string): Collabora
       throw new Error("You proposed this settlement — the other side has to agree to it.");
     }
     if (collab.escrowFrozen) {
-      throw new Error('Escrow is frozen while a dispute is open. Resolve the dispute instead.');
+      throw new Error('Escrow is frozen while a dispute is open. Settle it inside the dispute instead.');
     }
 
     const camp = db.campaigns.find((c) => c.id === collab.campaignId);

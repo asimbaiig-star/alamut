@@ -17,6 +17,7 @@ import {
   getLatestSubmissionFor, v2SetSubmissionPermalink, v2LeaveReview,
 } from '../v2CampaignActions';
 import { v2RaiseDispute } from '../v2DisputeActions';
+import { DisputePanel } from './DisputePanel';
 import { v2AgreeCollabCancel, v2DeclineCollabCancel,
   v2ProposeSettlement, v2AgreeSettlement, v2DeclineSettlement, v2SettleableAmount,
 } from '../v2CollabActions';
@@ -270,6 +271,13 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
     (c) => c.campaignId === collab.campaignId && c.creatorId === collab.creatorId,
   );
   const cancelRequest = collabRow?.cancellationRequest ?? null;
+  // F3 — an open dispute suppresses the "raise a dispute" link and drives
+  // the panel below it.
+  const openDispute = collabRow
+    ? db.disputes.find(
+        (d) => d.collaborationId === collabRow.id && (d.status === 'open' || d.status === 'in-review'),
+      ) ?? null
+    : null;
 
   // Cold-invite pitch — `v2InviteCreator` writes the brand's invitation
   // message into history as `"brand-invite: <message>"`. We surface it
@@ -452,10 +460,16 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
                   escalating. Cancelling returns everything to the brand,
                   which is the wrong answer when work was part-delivered. */}
               <SettlementBlock collabId={collabRow?.id ?? ''} stage={collab.stage} />
+              {/* WORKFLOW-GAPS F3 — the open dispute itself. Before this, a
+                  party could FILE a dispute and then see nothing at all: no
+                  thread, no status, no way out except an admin, with their
+                  escrow frozen and no explanation on the page. */}
+              <DisputePanel collabId={collabRow?.id ?? ''} />
               {/* Dispute escape hatch — visible in money-at-stake stages
                   so the creator can flag an issue with the brand. Pre-fix
-                  v2RaiseDispute was unreachable from any v2 surface. */}
-              {['confirmed', 'submitted', 'approved', 'live'].includes(collab.stage) && (
+                  v2RaiseDispute was unreachable from any v2 surface. Hidden
+                  once one is open: you cannot raise a second. */}
+              {!openDispute && ['confirmed', 'submitted', 'approved', 'live'].includes(collab.stage) && (
                 <div style={{ marginTop: 10, textAlign: 'right' }}>
                   <button
                     type="button"

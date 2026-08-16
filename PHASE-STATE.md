@@ -379,7 +379,18 @@ campaign ids Postgres actually returned; the two FK-bearing mirrors
 
 ## Still open — Asim's to run
 
-**All five SQL migrations are applied (030, 031, 032, 033 + the earlier set).**
+**030–033 are applied. `034` is new and NOT yet applied.**
+
+- **`034_disputes_proposal.sql` — TO RUN.** Adds `disputes.proposal jsonb`,
+  behind the F3 dispute-settlement handshake. Same shape as 033: one
+  `add column if not exists`, no backfill, safe to re-run. The verification
+  `select` should return one row: `proposal | jsonb | YES`.
+
+  Until it runs, a split proposed inside a dispute is browser-local — the
+  identical failure 033 fixed for collaborations, which is why CLASS 7 of
+  regressionGuards is now table-driven across both entities rather than
+  hardcoded to `Collaboration`. It would not have caught this one otherwise.
+
 
 - ~~`033_collaborations_settlement_proposal.sql`~~ — **APPLIED 2026-08-15**,
   returning the expected `settlement_proposal | jsonb | YES`. Adds the column

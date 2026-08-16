@@ -35,6 +35,7 @@ import { ContentReviewModal } from './ContentReviewModal';
 import { LeaveReviewModal } from './LeaveReviewModal';
 import { SendOfferModal, MarkLiveModal, CounterOfferModal, InviteCreatorsModal } from './WorkflowModals';
 import { TeamAccessAside } from './TeamAccess';
+import { DisputePanel } from './DisputePanel';
 import { nextAction } from '../nextAction';
 import { reviewOverdue, ageInDays } from '@/lib/api/staleness';
 import {
@@ -213,6 +214,11 @@ export function CampaignDetail({
   // collabs — but those match no kanban column, so the badge said 12 while the
   // columns showed 10 and nothing explained the gap.
   const activeCollabs = collabs.filter(isActiveCollab);
+  // F3 — disputes on this campaign that are still live. Rendered above the
+  // pipeline: escrow is frozen behind each one.
+  const openDisputes = db.disputes.filter(
+    (d) => d.campaignId === campaign.id && (d.status === 'open' || d.status === 'in-review'),
+  );
   const closedCollabs = collabs.filter((c) => !isActiveCollab(c));
 
   // Action paths run on ACTIVE collabs only. These filter on deliverable
@@ -297,6 +303,21 @@ export function CampaignDetail({
 
         {tab === 'pipeline' && (
           <>
+          {/* WORKFLOW-GAPS F3 — open disputes, at the top of the pipeline
+              because frozen escrow blocks everything below them.
+
+              The brand previously had NO dispute surface anywhere: a creator
+              raised one, the brand got a notification, and there was nowhere
+              to go. CollabDetail is creator-only by design and refuses them
+              outright. So a settlement the brand had to agree to was visible
+              only to the creator who proposed it. */}
+          {openDisputes.length > 0 && (
+            <section style={{ marginBottom: 16 }}>
+              {openDisputes.map((d) => (
+                <DisputePanel key={d.id} collabId={d.collaborationId} />
+              ))}
+            </section>
+          )}
           <PipelineKanban
             collabs={activeCollabs}
             creators={creators}

@@ -255,64 +255,106 @@ function interfaceFields(name: string): string[] {
   return [...out];
 }
 
-describe('a persisted field is persisted everywhere, or it is browser-local', () => {
-  // Derived, not hand-listed, so new fields are covered automatically.
-  const fields = interfaceFields('Collaboration');
+/** Every entity whose fields must survive a round trip to Postgres.
+ *
+ *  Table-driven on purpose. The first version of this guard checked only
+ *  `Collaboration` — and so would NOT have caught `Dispute.proposal`, the
+ *  very next field added, which is the identical bug one table over. A guard
+ *  that only covers the instance that prompted it is barely a guard. */
+const PERSISTED = [
+  {
+    entity: 'Collaboration',
+    repo: 'lib/data/collaborationsRepo.ts',
+    /** row → object, and object → row. Named per repo; both must map it. */
+    fromRow: 'toCollab',
+    toRow: 'toRowFields',
+    /** A field present on the type but deliberately not a mapped column. */
+    exempt: {
+      createdAt: 'timestamptz default, never written by the client',
+      updatedAt: 'timestamptz, set by trigger on write',
+      version: 'optimistic lock — read for the guard, never in the write payload',
+    } as Record<string, string>,
+    /** Proves the parser matched something real. */
+    sentinels: ['settlementProposal', 'cancellationRequest'],
+  },
+  {
+    entity: 'Dispute',
+    repo: 'lib/data/disputesRepo.ts',
+    fromRow: 'toDispute',
+    toRow: 'toInsertRow',
+    exempt: {
+      updatedAt: 'timestamptz, set by trigger on write',
+      version: 'optimistic lock — read for the guard, never in the write payload',
+    } as Record<string, string>,
+    sentinels: ['proposal', 'resolution'],
+  },
+] as const;
 
-  // Genuinely not columns to map, each for a stated reason.
-  const EXEMPT: Record<string, string> = {
-    createdAt: 'timestamptz default, never written by the client',
-    updatedAt: 'timestamptz, set by trigger on write',
-    version: 'optimistic lock — read for the guard, never in the write payload',
-  };
+describe.each(PERSISTED)(
+  'a persisted field is persisted everywhere, or it is browser-local: $entity',
+  ({ entity, repo: repoPath, fromRow, toRow, exempt, sentinels }) => {
+    // Derived from the type, not hand-listed, so new fields are covered
+    // without anyone remembering to extend this test.
+    const fields = interfaceFields(entity);
 
-  it('the Collaboration interface is actually being read', () => {
-    // Guards the parser: a regex that silently matched nothing would make
-    // every assertion below vacuously pass.
-    expect(fields).toContain('settlementProposal');
-    expect(fields).toContain('cancellationRequest');
-    expect(fields.length).toBeGreaterThan(10);
-    // Nested keys of settlementProposal must not leak in as fields.
-    expect(fields).not.toContain('releaseToCreator');
-  });
+    it('the interface is actually being read', () => {
+      // Guards the parser: a regex that silently matched nothing would make
+      // every assertion below vacuously pass.
+      for (const s of sentinels) expect(fields).toContain(s);
+      expect(fields.length).toBeGreaterThan(10);
+      // Nested keys of a SettlementTerms field must not leak in as fields.
+      expect(fields).not.toContain('releaseToCreator');
+    });
 
-  it('every field reaches Postgres and comes back', () => {
-    const repo = code('lib/data/collaborationsRepo.ts');
-    // The three mappings, isolated so a failure names which one is missing.
-    const columns = /const COLUMNS =([\s\S]*?);/.exec(repo)?.[1] ?? '';
-    const toObj = /export function toCollab\(([\s\S]*?)\n}/.exec(repo)?.[1] ?? '';
-    const toRow = /function toRowFields\(([\s\S]*?)\n}/.exec(repo)?.[1] ?? '';
-    expect(columns, 'COLUMNS not found').not.toBe('');
-    expect(toObj, 'toCollab not found').not.toBe('');
-    expect(toRow, 'toRowFields not found').not.toBe('');
+    it('every field reaches Postgres and comes back', () => {
+      const repo = code(repoPath);
+      // The three mappings, isolated so a failure names which one is missing.
+      const columns = /const COLUMNS =([\s\S]*?);/.exec(repo)?.[1] ?? '';
+      const toObj = new RegExp(`function ${fromRow}\\(([\\s\\S]*?)\\n}`).exec(repo)?.[1] ?? '';
+      const toRowSrc = new RegExp(`function ${toRow}\\(([\\s\\S]*?)\\n}`).exec(repo)?.[1] ?? '';
+      expect(columns, 'COLUMNS not found').not.toBe('');
+      expect(toObj, `${fromRow} not found`).not.toBe('');
+      expect(toRowSrc, `${toRow} not found`).not.toBe('');
 
-    const missing: string[] = [];
-    for (const f of fields) {
-      if (f in EXEMPT) continue;
-      const col = snake(f);
-      if (!columns.includes(col)) missing.push(`${f}: absent from the SELECT list`);
-      if (!toObj.includes(col)) missing.push(`${f}: not read in toCollab (hydrate drops it)`);
-      if (!toRow.includes(col)) missing.push(`${f}: not written in toRowFields (save drops it)`);
-    }
-    expect(missing, missing.join('\n')).toEqual([]);
-  });
+      const missing: string[] = [];
+      for (const f of fields) {
+        if (f in exempt) continue;
+        const col = snake(f);
+        if (!columns.includes(col)) missing.push(`${f}: absent from the SELECT list`);
+        if (!toObj.includes(col)) missing.push(`${f}: not read in ${fromRow} (hydrate drops it)`);
+        if (!toRowSrc.includes(col)) missing.push(`${f}: not written in ${toRow} (save drops it)`);
+      }
+      expect(missing, missing.join('\n')).toEqual([]);
+    });
 
-  it('a column added to the repo has a migration that creates it', () => {
-    // The other half: a mapping with no column behind it fails at runtime
-    // with a PostgREST 42703, which the repo logs as a console.warn.
-    const repo = code('lib/data/collaborationsRepo.ts');
-    const columns = /const COLUMNS =([\s\S]*?);/.exec(repo)?.[1] ?? '';
-    const declared = [...columns.matchAll(/\b([a-z][a-z0-9_]*)\b/g)].map((m) => m[1]);
+    it('a column added to the repo has a migration that creates it', () => {
+      // The other half: a mapping with no column behind it fails at runtime
+      // with a PostgREST 42703, which the repo logs as a console.warn.
+      const repo = code(repoPath);
+      const columns = /const COLUMNS =([\s\S]*?);/.exec(repo)?.[1] ?? '';
+      const declared = [...columns.matchAll(/\b([a-z][a-z0-9_]*)\b/g)].map((m) => m[1]);
 
-    const dir = join(SRC, '..', 'supabase', 'migrations');
-    const sql = readdirSync(dir)
-      .filter((f) => f.endsWith('.sql'))
-      .map((f) => readFileSync(join(dir, f), 'utf8'))
-      .join('\n');
+      const dir = join(SRC, '..', 'supabase', 'migrations');
+      const sql = readdirSync(dir)
+        .filter((f) => f.endsWith('.sql'))
+        .map((f) => readFileSync(join(dir, f), 'utf8'))
+        // Strip `--` comments: a column named only in prose is not a column.
+        // Migration 034's header discusses `settlement_proposal` at length.
+        .map((f) => f.replace(/--[^\n]*/g, ''))
+        .join('\n');
 
-    const orphans = declared.filter((c) => !sql.includes(c));
-    expect(orphans, `selected but never created in SQL: ${orphans.join(', ')}`).toEqual([]);
-  });
+      // Whole-word, not substring. `includes('proposal')` was satisfied by
+      // the `settlement_proposal` in migration 033, so deleting 034 entirely
+      // left this test green — a guard with a hole exactly where the next
+      // bug was. `_` is a word character, so \bproposal\b correctly does not
+      // match inside settlement_proposal.
+      const orphans = declared.filter((c) => !new RegExp(`\\b${c}\\b`).test(sql));
+      expect(orphans, `selected but never created in SQL: ${orphans.join(', ')}`).toEqual([]);
+    });
+  },
+);
+
+describe('persistence round-trip, cross-cutting', () => {
 
   it('merging duplicate rows preserves every nullable, per its own contract', () => {
     // mergeCollabRows documents "a set value beats a null on every nullable

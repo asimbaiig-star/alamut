@@ -99,6 +99,10 @@ vi.mock('@/lib/api/store', () => ({
         users: [{ id: 'u_hannah', brandId: 'b_aesop' }, { id: 'u_marcus', brandId: 'b_lecreuset' }],
         collaborations: [], notifications: [], transactions: [], reviews: [],
         submissions: [], offers: [], applications: [], deliverables: [],
+        // `Database.disputes` is non-optional and the real store always
+        // populates it; this hand-listed mock had simply drifted behind the
+        // type — the same failure the v2Adapters note below describes.
+        disputes: [],
         campaigns: HAS_CAMPAIGN ? [{ id: 'cmp_1', brandId: 'b_aesop', stage: 'live' }] : [],
         brands: [ownerBrand, otherBrand], creators: [],
       } };

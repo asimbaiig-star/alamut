@@ -334,9 +334,40 @@ recorded fact (`postDownAt`), so both can be true at once.
   equals exactly what was held — this codebase has already minted phantom
   dollars once, in the cancellation path, by crediting a full rate while
   debiting a clamped one.
-- **F3 (partial-fault disputes).** `v2ResolveDispute` already supports a split
-  release; what is missing is a way for the parties to PROPOSE one. That is
-  negotiation UI, not a fix.
+- ~~**F3 (partial-fault disputes)**~~ — **SHIPPED.** `v2ProposeDisputeSplit` /
+  `v2AgreeDisputeSplit` / `v2DeclineDisputeSplit` / `v2WithdrawDisputeSplit`,
+  the same handshake as F1: propose, the OTHER side agrees or declines. What
+  differs is only what agreement DOES — here it resolves the dispute.
+
+  The money path is **extracted, not duplicated**: `applyDisputeResolution`
+  now backs both the admin ruling and the parties' agreement, so the two
+  cannot drift. That mattered more than the feature — five money operations
+  in this codebase once had a correct version and a copy still wired up.
+
+  Agreement records the outcome truthfully at the extremes: all-to-creator is
+  `resolved-release`, all-back is `resolved-refund`, and only a genuine split
+  is `resolved-partial`. A full refund withdraws the offer so the collab can
+  reach `cancelled` instead of parking as a zombie.
+
+  **Two holes, not one.** Alongside the missing proposal, `v2AddDisputeMessage`,
+  `v2WithdrawDispute` and `getOpenDisputeForCollab` were implemented, tested
+  and called from NO screen: a party could file a dispute, watch escrow
+  freeze, and find nothing on the page acknowledging it. `DisputePanel` is
+  that missing surface.
+
+  **And the brand had no dispute surface at all.** `CollabDetail` is
+  creator-only by design — it refuses a brand outright — and `CampaignDetail`
+  never mentioned disputes. So the settlement the brand had to agree to was
+  visible only to the creator who proposed it: the F1 bug exactly, one
+  feature later. Found by clicking through as the brand; no test would have
+  caught it. The panel now renders on both sides.
+
+  Browser-verified end to end with Supabase switched off so production could
+  not be touched: file as creator → panel appears and the "raise" link
+  disappears → propose 1350 of 1800 → proposer sees "waiting" + Withdraw and
+  is NOT offered Agree → sign in as brand → sees it, agrees → escrow_release
+  −1350, payout +1350, refund +450, fee −135, tax −68. Creator's rows sum to
+  1147, and 1147 + 135 + 68 + 450 = 1800 — exactly what was held.
 - **E2 / E3 (usage-rights extension, post-delivery amendments).** Both are
   revenue-expansion features and both need commercial decisions first.
 
@@ -373,7 +404,7 @@ work they dislike or escalate to a dispute. Nothing in between.
 
 **F3 — A dispute has no partial-fault path in the UI.** `v2ResolveDispute`
 supports a split release, but nothing on the creator or brand side proposes or
-negotiates a split — it is admin-only.
+negotiates a split — it is admin-only. *(Shipped — see above.)*
 
 ---
 
