@@ -379,19 +379,24 @@ campaign ids Postgres actually returned; the two FK-bearing mirrors
 
 ## Still open — Asim's to run
 
-**030, 031 and 032 are applied. `033` is new and NOT yet applied.**
+**All five SQL migrations are applied (030, 031, 032, 033 + the earlier set).**
 
-- **`033_collaborations_settlement_proposal.sql` — TO RUN.** Adds
-  `collaborations.settlement_proposal jsonb`. Paste it into the Supabase SQL
-  editor; it is a single `add column if not exists`, touches no data, and is
-  safe to re-run. The verification `select` at the bottom should return one
-  row: `settlement_proposal | jsonb | YES`.
+- ~~`033_collaborations_settlement_proposal.sql`~~ — **APPLIED 2026-08-15**,
+  returning the expected `settlement_proposal | jsonb | YES`. Adds the column
+  behind the settlement handshake.
 
-  **Until it runs, the settlement handshake is browser-local on remote deals.**
-  The code degrades quietly rather than breaking: PostgREST rejects the unknown
-  column, `collaborationsRepo` logs a `console.warn`, and the local store keeps
-  working — so a proposal is visible to the proposer and invisible to the
-  person who has to agree to it. Everything else about the deal still syncs.
+  Verified against production afterwards, with Sarah signed in so RLS was
+  actually in force, and **without modifying a single row**:
+  - **Read** — the exact 17-column SELECT `collaborationsRepo` issues returned
+    `200`, 3 rows, `settlement_proposal` present and `null`. Before the
+    migration this same request was a `400 / 42703`.
+  - **Write** — a PATCH setting `settlement_proposal`, filtered to an id that
+    matches nothing, returned `200` with 0 rows affected. Postgres checks
+    column existence and privileges at plan time, so a zero-row UPDATE proves
+    the write path without touching data. This was worth checking separately:
+    had any migration used **column-level** grants, a newly added column would
+    not have been covered by them. It doesn't — all grants here are
+    table-level, which cover future columns automatically.
 
   Found by browser-verifying F1 end-to-end: the UI, the money and the tests
   were all correct, and the column had never been created. Now covered by a
