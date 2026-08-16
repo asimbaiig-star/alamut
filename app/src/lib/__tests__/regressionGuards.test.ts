@@ -443,3 +443,62 @@ describe('a mutation guard the UI cannot see is a dead button', () => {
     expect(code('screens/workspace-v2/v2CollabActions.ts')).toContain('availabilityBlock(');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// CLASS 9 — copy must describe what the code actually does
+// ─────────────────────────────────────────────────────────────────────
+//
+// The KYC identity step read "Identity checks aren't automated yet — the
+// Alamut team reviews these manually" while its CTA set `verified = true`
+// instantly, client-side, with no document collected. Found by signing up as
+// a genuinely new creator and pressing the button.
+//
+// Promising a human review and then self-approving on click is worse than
+// either alone: the first person who presses it learns the rest of the page
+// cannot be trusted either. Simulated is fine in a beta — this codebase
+// simulates payments and says so. Simulated while claiming otherwise is the
+// thing Phase 5 existed to remove, and it grew back in the one place a
+// curious tester is most likely to click.
+//
+// The guard is narrow on purpose: it pins THIS contradiction rather than
+// trying to police prose generally.
+
+describe('a step that self-approves does not claim a human reviews it', () => {
+  const kyc = () => read('screens/workspace-v2/screens/KycTax.tsx');
+
+  it('the identity CTA still verifies synchronously', () => {
+    // If this stops being true the rest of the block is moot — and the copy
+    // should then be changed back to describe the real process.
+    const src = code('screens/workspace-v2/screens/KycTax.tsx');
+    expect(src).toMatch(/case 'identity':[\s\S]{0,600}?verified: true/);
+  });
+
+  it('so it does not promise a manual review', () => {
+    // Comments are stripped: the ban is on user-visible copy, and the note
+    // explaining the fix legitimately quotes the old wording.
+    const src = code('screens/workspace-v2/screens/KycTax.tsx');
+    expect(src).not.toMatch(/team reviews these manually/i);
+    expect(src).not.toMatch(/aren.t automated yet/i);
+  });
+
+  it('and it says plainly that it is simulated', () => {
+    expect(kyc()).toMatch(/Simulated in this beta/);
+  });
+
+  it('no third-party verification vendor is named in user-visible copy', () => {
+    // The earlier version of this same defect claimed "Powered by Persona"
+    // — borrowing a real company's credibility for work nobody does.
+    //
+    // Comment-stripped, like the assertion above: the code comments name
+    // those vendors precisely to record that they are NOT integrated, and
+    // banning the word outright would delete the explanation along with
+    // the claim. (This test failed on its own first run for exactly that
+    // reason.)
+    for (const rel of [
+      'screens/workspace-v2/screens/KycTax.tsx',
+      'screens/workspace-v2/screens/CreatorWallet.tsx',
+    ]) {
+      expect(code(rel)).not.toMatch(/\bPersona\b|\bOnfido\b|\bJumio\b|\bStripe Identity\b/);
+    }
+  });
+});

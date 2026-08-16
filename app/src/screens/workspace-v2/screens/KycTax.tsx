@@ -101,20 +101,28 @@ export function buildSteps(creator: {
       // a third party for work nobody does is the worst version of an
       // unbacked claim, because the reassurance borrows someone else's
       // credibility.
-      description: 'Confirm who you are before payouts can be released. Identity checks aren’t automated yet — the Alamut team reviews these manually.',
+      // AND the copy has to match what the button DOES. This previously
+      // read "the Alamut team reviews these manually" — while the CTA
+      // marked the step verified instantly, client-side, with no document
+      // collected. Promising a human review and then self-approving on
+      // click is worse than either alone: the first person to press it
+      // learns the rest of the page can't be trusted either. Simulated is
+      // fine in a beta; simulated-while-claiming-otherwise is not.
+      description: 'Confirm who you are before payouts can be released. Simulated in this beta — approved instantly so you can walk the whole flow. Real identity checks will be a manual review before launch.',
       detail: c?.country ? `${c.country} national ID` : undefined,
       status: idStatus,
-      completedAt: idStatus === 'verified' ? 'Verified' : undefined,
+      completedAt: idStatus === 'verified' ? 'Verified · simulated' : undefined,
       cta: idStatus === 'verified' ? undefined : 'Start verification',
     },
     {
       id: 'address',
       title: 'Address verification',
       // No upload exists — naming the documents implied one.
-      description: 'Confirm the address your payouts are associated with.',
+      // Same simulated path as identity — one CTA sets both.
+      description: 'Confirm the address your payouts are associated with. Simulated in this beta, like the identity step.',
       detail: c?.city ? `${c.city}${c.country ? `, ${c.country}` : ''}` : undefined,
       status: addrStatus,
-      completedAt: addrStatus === 'verified' ? 'Verified' : undefined,
+      completedAt: addrStatus === 'verified' ? 'Verified · simulated' : undefined,
       cta: addrStatus === 'verified' ? undefined : 'Upload document',
     },
     {
