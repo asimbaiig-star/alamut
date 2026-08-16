@@ -1394,6 +1394,22 @@ export interface Collaboration {
   history: CollabHistoryEntry[];
   // P3 §2.3 — populated when either party requests cancellation post-confirmation:
   cancellationRequest?: { by: string; at: number; reason: string } | null;
+  /** WORKFLOW-GAPS F1 — a proposed partial settlement, awaiting the OTHER
+   *  party's agreement.
+   *
+   *  Cancellation is all-or-nothing: escrow returns to the brand. That is
+   *  wrong when a creator delivered 3 of 4 slots — the work exists and someone
+   *  has to be paid for it. A settlement splits the held amount instead.
+   *
+   *  Only `releaseToCreator` is stored, never the refund: the refund is
+   *  whatever is left, and holding both invites them to disagree. */
+  settlementProposal?: {
+    by: string;
+    at: number;
+    /** GROSS to release to the creator; the remainder refunds to the brand. */
+    releaseToCreator: number;
+    note: string;
+  } | null;
   // P2 §1.4 — escrow freeze flag for active disputes:
   escrowFrozen?: boolean;
   /** Migration 020 optimistic lock — see Dispute.version for the rationale.

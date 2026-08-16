@@ -17,8 +17,11 @@ import {
   getLatestSubmissionFor, v2SetSubmissionPermalink, v2LeaveReview,
 } from '../v2CampaignActions';
 import { v2RaiseDispute } from '../v2DisputeActions';
-import { v2AgreeCollabCancel, v2DeclineCollabCancel } from '../v2CollabActions';
+import { v2AgreeCollabCancel, v2DeclineCollabCancel,
+  v2ProposeSettlement, v2AgreeSettlement, v2DeclineSettlement, v2SettleableAmount,
+} from '../v2CollabActions';
 import { useStore } from '@/lib/api/store';
+import { parseNumberInput } from '@/lib/utils/format';
 import { pushToast } from '@/lib/utils/toast';
 import { LeaveReviewModal } from './LeaveReviewModal';
 import { RaiseDisputeModal } from './RaiseDisputeModal';
@@ -444,6 +447,11 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
                   collab.deliverables.find((d) => d.status === 'revision')?.notes
                 }
               />
+              {/* Partial settlement (WORKFLOW-GAPS F1). Sits directly above
+                  the dispute escape hatch on purpose: it is the step BEFORE
+                  escalating. Cancelling returns everything to the brand,
+                  which is the wrong answer when work was part-delivered. */}
+              <SettlementBlock collabId={collabRow?.id ?? ''} stage={collab.stage} />
               {/* Dispute escape hatch — visible in money-at-stake stages
                   so the creator can flag an issue with the brand. Pre-fix
                   v2RaiseDispute was unreachable from any v2 surface. */}
@@ -1312,5 +1320,145 @@ function CollabActivityCard({
         ))}
       </div>
     </section>
+  );
+}
+
+// =====================================================================
+// SettlementBlock — propose / agree a partial split of held escrow
+// =====================================================================
+//
+// The deal ended half-delivered. Cancelling refunds everything to the brand
+// and paying in full rewards work that wasn't done, so the parties agree a
+// split. BOTH must agree — the escrow is money both have a claim on — which
+// is why this renders an Agree/Decline pair for the party who did NOT
+// propose, and a read-only "waiting" state for the one who did.
+
+function SettlementBlock({ collabId, stage }: { collabId: string; stage: V2CollabStage }) {
+  const db = useStore((s) => s.db);
+  const session = useStore((s) => s.session);
+  const [proposing, setProposing] = useState(false);
+  const [amount, setAmount] = useState(0);
+  const [note, setNote] = useState('');
+
+  const collabRow = db.collaborations.find((c) => c.id === collabId);
+  const proposal = collabRow?.settlementProposal;
+  const available = collabId ? v2SettleableAmount(collabId) : 0;
+  const meId = session?.userId ?? '';
+
+  // Only while money is actually held and the deal is still open.
+  const settleable = ['confirmed', 'submitted'].includes(stage)
+    && available > 0 && !collabRow?.escrowFrozen && !collabRow?.cancelledAt;
+  if (!collabId || (!settleable && !proposal)) return null;
+
+  if (proposal) {
+    const mine = proposal.by === meId;
+    const refund = Math.max(0, available - proposal.releaseToCreator);
+    return (
+      <div className="v2-card v2-card-pad" style={{ marginTop: 10, borderLeft: '3px solid var(--v2-gold)' }}>
+        <div className="v2-eyebrow" style={{ marginBottom: 6 }}>Settlement proposed</div>
+        <p style={{ fontSize: 13.5, margin: '0 0 4px' }}>
+          {fmtUSD(proposal.releaseToCreator)} to the creator, {fmtUSD(refund)} refunded to the brand.
+        </p>
+        <p className="v2-muted" style={{ fontSize: 12.5, margin: '0 0 10px' }}>“{proposal.note}”</p>
+        {mine ? (
+          <p className="v2-muted" style={{ fontSize: 12, margin: 0 }}>
+            Waiting on the other side to agree. Escrow stays held until they do.
+          </p>
+        ) : (
+          <div className="v2-row" style={{ gap: 8 }}>
+            <button
+              className="v2-btn v2-btn-primary v2-btn-sm"
+              type="button"
+              onClick={() => {
+                try {
+                  v2AgreeSettlement(collabId, meId);
+                  pushToast('Settled — the split has been paid out', 'good');
+                } catch (err) {
+                  pushToast(err instanceof Error ? err.message : 'Could not settle', 'bad');
+                }
+              }}
+            >Agree to this split</button>
+            <button
+              className="v2-btn v2-btn-outline v2-btn-sm"
+              type="button"
+              onClick={() => {
+                try {
+                  v2DeclineSettlement(collabId, meId);
+                  pushToast('Proposal declined');
+                } catch (err) {
+                  pushToast(err instanceof Error ? err.message : 'Could not decline', 'bad');
+                }
+              }}
+            >Decline</button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (!proposing) {
+    return (
+      <div style={{ marginTop: 10, textAlign: 'right' }}>
+        <button
+          type="button"
+          className="v2-link-btn v2-muted"
+          style={{ fontSize: 12 }}
+          onClick={() => { setAmount(Math.round(available / 2)); setProposing(true); }}
+        >
+          Propose a settlement
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="v2-card v2-card-pad" style={{ marginTop: 10 }}>
+      <div className="v2-eyebrow" style={{ marginBottom: 8 }}>Propose a settlement</div>
+      <p className="v2-muted" style={{ fontSize: 12.5, margin: '0 0 10px', lineHeight: 1.5 }}>
+        {fmtUSD(available)} is held on this deal. Split it: the rest refunds to
+        the brand. Both sides have to agree before anything moves.
+      </p>
+      <label className="v2-eyebrow" htmlFor="v2-settle-amount" style={{ display: 'block', marginBottom: 6 }}>
+        To the creator
+      </label>
+      <div className="v2-onboarding-rate" style={{ marginBottom: 10 }}>
+        <span className="v2-onboarding-rate-prefix">$</span>
+        <input
+          id="v2-settle-amount"
+          type="number"
+          min={0}
+          max={available}
+          value={amount}
+          onChange={(e) => setAmount(parseNumberInput(e.target.value, { min: 0, max: available }))}
+        />
+      </div>
+      <textarea
+        className="v2-input"
+        rows={2}
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="Why this split — e.g. three of four deliverables landed."
+        style={{ width: '100%', marginBottom: 10, resize: 'vertical' }}
+      />
+      <div className="v2-row" style={{ gap: 8, justifyContent: 'flex-end' }}>
+        <button className="v2-btn v2-btn-outline v2-btn-sm" type="button" onClick={() => setProposing(false)}>
+          Cancel
+        </button>
+        <button
+          className="v2-btn v2-btn-primary v2-btn-sm"
+          type="button"
+          disabled={!note.trim()}
+          onClick={() => {
+            try {
+              v2ProposeSettlement(collabId, amount, note, meId);
+              pushToast('Settlement proposed — waiting on the other side', 'good');
+              setProposing(false);
+            } catch (err) {
+              pushToast(err instanceof Error ? err.message : 'Could not propose', 'bad');
+            }
+          }}
+        >Propose</button>
+      </div>
+    </div>
   );
 }

@@ -18,12 +18,12 @@
 //     Either side can request; the other agrees or declines. On agree,
 //     escrow is refunded to the brand, the collab moves to 'cancelled'.
 
-import { tx } from '@/lib/api/store';
+import { tx, useStore } from '@/lib/api/store';
 import { availabilityBlock } from '@/lib/api/availability';
 import type { Collaboration, Database } from '@/lib/api/types';
 import { ensureCollabState } from '@/lib/api/collabSync';
 // Fee/withholding rates come from one module — see lib/api/money.ts.
-import { netOf } from '@/lib/api/money';
+import { netOf, splitGross, PLATFORM_FEE, WHT } from '@/lib/api/money';
 // P5 §4.1 — capability gate. See `lib/permissions.ts` for the matrix.
 import { requireCapability, getActorUserId } from '@/lib/permissions';
 
@@ -443,4 +443,271 @@ export function v2DeclineCollabCancel(
 }
 
 /** Internal export — also used by v2EndCampaign's auto-cancel pass. */
+// =====================================================================
+// PARTIAL SETTLEMENT (WORKFLOW-GAPS F1)
+// =====================================================================
+//
+// Cancellation is all-or-nothing: escrow returns to the brand. That is the
+// wrong answer when a creator delivered 3 of 4 slots and then went quiet —
+// the work exists, someone has to be paid for it, and today the fourth slot
+// simply sits forever with the money frozen behind it.
+//
+// A settlement splits the held amount. It requires BOTH parties to agree
+// (Asim's call): the escrow is money both have a claim on, so neither side
+// gets to decide unilaterally, and the platform does not arbitrate — that is
+// what disputes are for.
+//
+// Shape mirrors the cancellation handshake deliberately: propose → the OTHER
+// party agrees or declines. Reusing the pattern means one mental model for
+// "we need to agree on something", not two.
+
+/** Escrow actually recoverable for this pair, clamped to the campaign's
+ *  remaining hold.
+ *
+ *  The clamp is not defensive noise: `cancelCollabInternal` carries a bug-fix
+ *  note about crediting the full rate while debiting a smaller campaign hold,
+ *  which minted phantom dollars. Same trap here, so the same clamp. */
+function settleableEscrow(db: Database, collab: Collaboration): number {
+  const acceptedOffer = db.offers.find(
+    (o) => o.campaignId === collab.campaignId && o.creatorId === collab.creatorId && o.status === 'accepted',
+  );
+  const held = acceptedOffer?.rate ?? 0;
+  const camp = db.campaigns.find((c) => c.id === collab.campaignId);
+  return camp ? Math.min(camp.escrowHeld, held) : 0;
+}
+
+/** How much is on the table, for the UI to bound its input. */
+export function v2SettleableAmount(collabId: string): number {
+  const db = useStore.getState().db;
+  const collab = db.collaborations.find((c: Collaboration) => c.id === collabId);
+  return collab ? settleableEscrow(db, collab) : 0;
+}
+
+/**
+ * Propose splitting the held escrow. Either side may propose.
+ *
+ * `releaseToCreator` is GROSS — the creator receives it net of fee and
+ * withholding, exactly as an approval would pay, because it IS a payment for
+ * work done rather than a special case.
+ */
+export function v2ProposeSettlement(
+  collabId: string,
+  releaseToCreator: number,
+  note: string,
+  byUserId: string,
+): Collaboration {
+  return tx((db) => {
+    const collab = db.collaborations.find((c) => c.id === collabId);
+    if (!collab) throw new Error("Couldn't find that collaboration — refresh and try again.");
+    if (collab.escrowFrozen) {
+      throw new Error('Escrow is frozen while a dispute is open. Resolve the dispute instead — that is where a split gets arbitrated.');
+    }
+    if (collab.cancelledAt) throw new Error('This collaboration is already closed.');
+    if (collab.settlementProposal) {
+      throw new Error('A settlement is already on the table. Wait for the other side, or withdraw it first.');
+    }
+
+    const available = settleableEscrow(db, collab);
+    if (available <= 0) {
+      throw new Error('There is no escrow held on this collaboration to settle.');
+    }
+    if (!Number.isFinite(releaseToCreator) || releaseToCreator < 0 || releaseToCreator > available) {
+      throw new Error(`Enter an amount between $0 and $${available.toLocaleString()} — that is what is actually held.`);
+    }
+    if (!note.trim()) {
+      throw new Error('Add a note explaining the split — the other side has to agree to it.');
+    }
+
+    collab.settlementProposal = {
+      by: byUserId,
+      at: Date.now(),
+      releaseToCreator: Math.round(releaseToCreator),
+      note: note.trim(),
+    };
+    collab.updatedAt = Date.now();
+
+    const camp = db.campaigns.find((c) => c.id === collab.campaignId);
+    const creatorUser = db.users.find((u) => u.creatorId === collab.creatorId);
+    const brandUser = db.users.find((u) => u.brandId === collab.brandId);
+    // Notify whoever did NOT propose.
+    const recipient = byUserId === creatorUser?.id ? brandUser : creatorUser;
+    if (recipient && camp) {
+      db.notifications.push({
+        id: newId('n'),
+        userId: recipient.id,
+        text: `Settlement proposed on ${camp.title}: $${Math.round(releaseToCreator).toLocaleString()} to the creator, the rest refunded — needs your agreement`,
+        href: '/creator/collabs',
+        at: nowIso(),
+        read: false,
+      });
+    }
+    return collab;
+  });
+}
+
+/**
+ * Agree to the proposed split, and move the money.
+ *
+ * The proposer cannot accept their own proposal — that is the entire point of
+ * requiring agreement, and without the check a settlement would be a
+ * unilateral escrow withdrawal wearing a handshake's clothes.
+ */
+export function v2AgreeSettlement(collabId: string, byUserId: string): Collaboration {
+  return tx((db) => {
+    const collab = db.collaborations.find((c) => c.id === collabId);
+    if (!collab) throw new Error("Couldn't find that collaboration — refresh and try again.");
+    const proposal = collab.settlementProposal;
+    if (!proposal) throw new Error('There is no settlement proposal on this collaboration.');
+    if (proposal.by === byUserId) {
+      throw new Error("You proposed this settlement — the other side has to agree to it.");
+    }
+    if (collab.escrowFrozen) {
+      throw new Error('Escrow is frozen while a dispute is open. Resolve the dispute instead.');
+    }
+
+    const camp = db.campaigns.find((c) => c.id === collab.campaignId);
+    const brand = db.brands.find((b) => b.id === collab.brandId);
+    const creator = db.creators.find((c) => c.id === collab.creatorId);
+
+    // Re-clamp at agreement time: escrow may have moved since the proposal.
+    const available = settleableEscrow(db, collab);
+    const releaseGross = Math.min(proposal.releaseToCreator, available);
+    const refund = available - releaseGross;
+    const { fee, tax, net } = splitGross(releaseGross);
+
+    if (camp) {
+      db.campaigns = db.campaigns.map((c) =>
+        c.id === camp.id
+          ? { ...c, escrowHeld: Math.max(0, c.escrowHeld - available), spent: c.spent + releaseGross }
+          : c,
+      );
+    }
+    if (brand) {
+      db.brands = db.brands.map((b) =>
+        b.id === brand.id
+          ? {
+              ...b,
+              escrowHeld: Math.max(0, b.escrowHeld - available),
+              walletBalance: b.walletBalance + refund,
+            }
+          : b,
+      );
+    }
+    if (creator) {
+      db.creators = db.creators.map((c) =>
+        c.id === creator.id
+          ? {
+              ...c,
+              // The whole hold clears; only the settled part becomes wallet.
+              pendingBalance: Math.max(0, c.pendingBalance - netOf(available)),
+              walletBalance: c.walletBalance + net,
+              lifetimeEarnings: c.lifetimeEarnings + net,
+            }
+          : c,
+      );
+    }
+
+    const ts = nowIso();
+    const title = camp?.title ?? 'collaboration';
+    if (brand && releaseGross > 0) {
+      // Same ledger convention as every other release: the payout row carries
+      // GROSS and the deductions do real work, so the creator's rows sum to
+      // what their wallet actually gained.
+      db.transactions.push({
+        id: newId('tx'), at: ts, userId: brand.userId, kind: 'escrow_release',
+        amount: -releaseGross, status: 'cleared', campaignId: collab.campaignId,
+        counterpartyUserId: creator?.userId, note: `Settlement · ${title}`,
+      });
+      if (creator) {
+        db.transactions.push({
+          id: newId('tx'), at: ts, userId: creator.userId, kind: 'payout',
+          amount: releaseGross, status: 'cleared', campaignId: collab.campaignId,
+          counterpartyUserId: brand.userId, note: `Settlement from ${brand.name} · ${title}`,
+        });
+        db.transactions.push({
+          id: newId('tx'), at: ts, userId: creator.userId, kind: 'fee',
+          amount: -fee, status: 'cleared', campaignId: collab.campaignId,
+          note: `Platform fee (${Math.round(PLATFORM_FEE * 100)}%)`,
+        });
+        db.transactions.push({
+          id: newId('tx'), at: ts, userId: creator.userId, kind: 'fee',
+          amount: -tax, status: 'cleared', campaignId: collab.campaignId,
+          note: `Withholding tax (${Math.round(WHT * 100)}%)`,
+        });
+      }
+    }
+    if (brand && refund > 0) {
+      db.transactions.push({
+        id: newId('tx'), at: ts, userId: brand.userId, kind: 'refund',
+        amount: refund, status: 'cleared', campaignId: collab.campaignId,
+        counterpartyUserId: creator?.userId, note: `Settlement refund · ${title}`,
+      });
+    }
+
+    // Close the deal out. Offer withdrawn + open applications terminalized is
+    // what lets `computeCollabStage` reach `cancelled` — the same treatment a
+    // cancellation gets, because a settled deal is equally finished.
+    const acceptedOffer = db.offers.find(
+      (o) => o.campaignId === collab.campaignId && o.creatorId === collab.creatorId && o.status === 'accepted',
+    );
+    if (acceptedOffer) {
+      const idx = db.offers.findIndex((o) => o.id === acceptedOffer.id);
+      if (idx !== -1) db.offers[idx] = { ...db.offers[idx], status: 'withdrawn', respondedAt: ts };
+    }
+    db.applications = db.applications.map((a) =>
+      a.campaignId === collab.campaignId && a.creatorId === collab.creatorId &&
+      (a.status === 'submitted' || a.status === 'shortlisted')
+        ? { ...a, status: 'rejected' as const, decidedAt: ts }
+        : a,
+    );
+
+    collab.settlementProposal = null;
+    collab.cancelledAt = Date.now();
+    collab.cancellationReason = `settled · $${releaseGross.toLocaleString()} released, $${refund.toLocaleString()} refunded`;
+    collab.updatedAt = Date.now();
+
+    const creatorUser = db.users.find((u) => u.creatorId === collab.creatorId);
+    const brandUser = db.users.find((u) => u.brandId === collab.brandId);
+    for (const u of [creatorUser, brandUser]) {
+      if (!u) continue;
+      db.notifications.push({
+        id: newId('n'), userId: u.id,
+        text: `${title} settled — $${releaseGross.toLocaleString()} released to the creator, $${refund.toLocaleString()} refunded`,
+        href: u.id === creatorUser?.id ? '/creator/earnings' : '/brand/wallet',
+        at: ts, read: false,
+      });
+    }
+
+    ensureCollabState(collab.campaignId, collab.creatorId, db, byUserId, 'settled');
+    return collab;
+  });
+}
+
+/** Turn down a proposed split. Clears the proposal so either side can make a
+ *  different one; nothing moves. */
+export function v2DeclineSettlement(collabId: string, byUserId: string, reason?: string): Collaboration {
+  return tx((db) => {
+    const collab = db.collaborations.find((c) => c.id === collabId);
+    if (!collab) throw new Error("Couldn't find that collaboration — refresh and try again.");
+    const proposal = collab.settlementProposal;
+    if (!proposal) throw new Error('There is no settlement proposal to decline.');
+    if (proposal.by === byUserId) {
+      throw new Error('You proposed this — withdraw it rather than declining your own offer.');
+    }
+    collab.settlementProposal = null;
+    collab.updatedAt = Date.now();
+
+    const camp = db.campaigns.find((c) => c.id === collab.campaignId);
+    const proposerUser = db.users.find((u) => u.id === proposal.by);
+    if (proposerUser && camp) {
+      db.notifications.push({
+        id: newId('n'), userId: proposerUser.id,
+        text: `Your settlement proposal on ${camp.title} was declined${reason ? `: ${reason}` : ''}`,
+        href: '/creator/collabs', at: nowIso(), read: false,
+      });
+    }
+    return collab;
+  });
+}
+
 export const __cancelCollabInternal = cancelCollabInternal;

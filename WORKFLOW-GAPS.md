@@ -294,12 +294,29 @@ recorded fact (`postDownAt`), so both can be true at once.
 
 **NOT BUILT, and each for a reason:**
 
-- **F1 (partial settlement).** A creator who delivers 3 of 4 slots and goes
-  quiet still leaves the fourth stuck. Closing it out means moving escrow that
-  both parties have a claim on, so it is a mutual settlement flow — a feature
-  with its own design, not a gap to patch. `rejected` slots no longer hold the
-  collab at `submitted`, which removes the *stuck-looking* half of the problem
-  without pretending to solve the money half.
+- ~~**F1 (partial settlement)**~~ — **SHIPPED.** Both parties must agree
+  (Asim's call). `v2ProposeSettlement` / `v2AgreeSettlement` /
+  `v2DeclineSettlement`, mirroring the cancellation handshake so there is one
+  mental model for "we need to agree", not two.
+
+  The proposer **cannot accept their own proposal** — without that check a
+  settlement is a unilateral escrow withdrawal wearing a handshake's clothes.
+  Either side may propose, including a creator offering to hand money back.
+
+  Only `releaseToCreator` is stored; the refund is whatever is left, so the
+  two numbers cannot drift apart. The release pays through the same ledger
+  convention as any approval — gross payout row, fee and withholding doing
+  real work — because it IS payment for work done, not a special case.
+  Re-clamped at agreement time in case escrow moved since the proposal.
+
+  Refuses while a dispute has frozen escrow: a split under dispute is the
+  arbitrator's call, not the parties'.
+
+  19 tests, weighted toward the invariants rather than the happy path. The one
+  that matters most asserts **conservation**: `refunded + net + fee + tax`
+  equals exactly what was held — this codebase has already minted phantom
+  dollars once, in the cancellation path, by crediting a full rate while
+  debiting a clamped one.
 - **F3 (partial-fault disputes).** `v2ResolveDispute` already supports a split
   release; what is missing is a way for the parties to PROPOSE one. That is
   negotiation UI, not a fix.
