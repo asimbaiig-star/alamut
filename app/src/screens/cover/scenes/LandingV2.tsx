@@ -673,7 +673,7 @@ const HOW_BRAND: Step[] = [
   {
     n: '04',
     verb: 'Measure.',
-    body: "Every accepted creator gets a tracking link. Conversions land in your dashboard alongside reach and engagement. The deal closes with a public review on the creator's profile — receipts, not promises.",
+    body: "Reach and engagement land in your dashboard next to what you actually spent, each traceable to a row you can open. The deal closes with a public review on the creator's profile — receipts, not promises.",
     iconD: ICON.chart,
     chipKey: 'ROAS',
     chipValue: '4.2× · UTM-tracked',
@@ -803,23 +803,40 @@ interface WhyCard {
 
 const WHY_BRAND: WhyCard[] = [
   {
-    title: 'Vetted, not scraped.',
-    body: 'Every creator on Alamut is reviewed before they can apply to a brief. No bot followers, no AI-generated portfolios, no recycled stock work.',
+    title: 'Verified before they get paid.',
+    // Was: "Every creator is reviewed before they can apply to a brief."
+    // Nothing gates applying — `v2ApplyToCampaign` has no verification
+    // check, and a brand-new account can apply the minute it signs up.
+    // What IS real: identity and channel ownership are verified before
+    // money can leave escrow.
+    body: 'Identity and channel ownership are confirmed before a creator can be paid, and every profile shows what has actually been verified rather than a badge you have to take on trust.',
     Illust: VettedShield,
   },
   {
-    title: 'Audience-fit matching.',
-    body: 'Applications come pre-sorted by audience overlap with your existing customers, plus language, region, and past brand work. Read three pitches, not three hundred.',
+    title: 'Fit-scored, and honest about it.',
+    // Was: "pre-sorted by audience overlap with your existing customers".
+    // Alamut holds no customer data of yours — `matching.ts` scores niche,
+    // engagement, region, rate fit and past brand work, and returns
+    // `score: null` rather than a number when it lacks the signal.
+    body: 'Applications come scored on niche fit, engagement, region, rate and past brand work — and when there is not enough signal to score someone fairly, it says so instead of inventing a number. Read three pitches, not three hundred.',
     Illust: ApplicationsStack,
   },
   {
     title: 'Escrow-secured.',
-    body: 'The brief budget locks in escrow the second you accept an offer. Released only when content is live and tracked. No upfront wires, no creator ghosting after deposit.',
+    // "Released only when content is live and tracked" — release happens on
+    // your APPROVAL, and nothing is tracked. Say what the button does.
+    body: 'The brief budget locks in escrow the second an offer is accepted, and is released when you approve the work. Every release itemises the platform fee and withholding as their own rows. No upfront wires, no creator ghosting after deposit.',
     Illust: EscrowVault,
   },
   {
-    title: 'ROAS per UTM, not per quarter.',
-    body: 'Every accepted creator gets a tracking link. Clicks, conversions, attributed revenue — in your dashboard, in real time.',
+    title: 'Numbers you can stand behind.',
+    // Was: "Every accepted creator gets a tracking link. Clicks,
+    // conversions, attributed revenue — in your dashboard, in real time."
+    // There is no tracking link, no click capture and no attribution. The
+    // EMV and ROAS tiles this described were DELETED in Phase 5 for being
+    // computed from invented impressions — so the landing page was still
+    // selling the exact feature the product removed for dishonesty.
+    body: 'Spend, deliverables and CPM, each traceable to a row you can open. Attribution and conversion tracking are on the roadmap, not in the dashboard — so nothing here is a number we made up.',
     Illust: ROASChart,
   },
 ];
@@ -1086,7 +1103,7 @@ const FAQ_BRAND: FaqItem[] = [
   },
   {
     q: 'Are the creators actually vetted?',
-    a: 'Yes. Every creator on Alamut is reviewed before they can apply to a brief. We verify platform handles, check audience demographics and credibility scores, confirm past brand work. No bot followers, no AI-generated portfolios, no recycled stock work passes review.',
+    a: 'Partly, and the profile tells you which parts. Channel ownership and identity are confirmed before a creator can be paid, and every storefront shows what has been verified rather than a single badge. Applying is open — screening happens at the money, not at the door. Audience-quality scoring is on the roadmap; we do not claim it today.',
   },
   {
     q: 'How does payment work?',
@@ -1094,11 +1111,11 @@ const FAQ_BRAND: FaqItem[] = [
   },
   {
     q: "What if the creator doesn't deliver?",
-    a: 'Two paths. (a) Revisions — you request changes, the creator updates, repeat as needed. (b) Dispute — if irreconcilable, we mediate. If the creator failed to deliver to brief, escrow refunds. Most disputes resolve in 5–7 days.',
+    a: 'Three paths. (a) Revisions — you request changes, the creator updates. (b) Settle — either side proposes splitting the held escrow, and it moves when the other agrees. (c) Dispute — escrow freezes, and you can either settle it between yourselves or wait for a reviewer. We have no resolution-time average to quote yet.',
   },
   {
-    q: 'How do you measure ROAS?',
-    a: 'Every accepted creator gets a UTM-tagged tracking link automatically. Clicks, conversions, and attributed revenue land in your dashboard alongside reach and engagement. You see ROAS per creator, per platform, per campaign — not in a quarterly report.',
+    q: 'What can I actually measure today?',
+    a: 'Spend, deliverables, reach and engagement where a creator reports it, and CPM derived from those — each traceable to a row you can open. There is no click tracking or revenue attribution yet, so there is no ROAS figure: we removed the one we used to show because it was computed from numbers nobody measured.',
   },
   {
     q: 'Can I run paid amplification on creator content?',
@@ -1110,7 +1127,7 @@ const FAQ_BRAND: FaqItem[] = [
   },
   {
     q: 'Can I work with multiple creators on one brief?',
-    a: 'Yes. Open the brief to multiple acceptances, set a per-deliverable budget, and accept as many creators as fit. Each accepted offer is its own escrow line, its own contract, its own tracking link.',
+    a: 'Yes. Open the brief to multiple acceptances, set a per-deliverable budget, and accept as many creators as fit. Each accepted offer is its own escrow line and its own contract, settled independently of the others.',
   },
   {
     q: 'Do you support agencies?',

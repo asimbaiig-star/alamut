@@ -523,3 +523,71 @@ describe('a step that self-approves does not claim a human reviews it', () => {
     }
   });
 });
+
+
+// ─────────────────────────────────────────────────────────────────────
+// CLASS 10 — the landing page must not sell what the product deleted
+// ─────────────────────────────────────────────────────────────────────
+//
+// The marketing surfaces were written before the honesty passes and never
+// re-read afterwards. By the time Phase 5 finished deleting EMV and ROAS
+// from the dashboard for being computed off invented impressions, the
+// landing page was still promising "ROAS per UTM... clicks, conversions,
+// attributed revenue — in your dashboard, in real time."
+//
+// That is the worst placement of an overclaim: it is the first thing a
+// visitor reads and the last thing anyone re-reads. Four more sat beside it
+// — reviewed-before-applying (nothing gates applying), audience overlap with
+// your customers (no customer data exists), released when live and tracked
+// (release is on approval; nothing is tracked), and PayPal payouts plus a
+// "4 day average" that were invented whole.
+//
+// This pins the specific claims to the specific capabilities.
+
+describe('marketing copy does not outrun the product', () => {
+  const marketing = () =>
+    ['screens/cover/scenes/LandingV2.tsx', 'screens/cover/Cover.tsx']
+      .map((f) => code(f)).join('\n');
+
+  it('does not promise attribution the dashboard does not do', () => {
+    const src = marketing();
+    expect(src).not.toMatch(/ROAS per UTM/i);
+    expect(src).not.toMatch(/attributed revenue/i);
+    expect(src).not.toMatch(/tracking link/i);
+  });
+
+  it('does not name a payout rail that does not exist', () => {
+    // PayPal appeared in exactly one sentence and nowhere in the payout code.
+    expect(marketing()).not.toMatch(/PayPal/i);
+    expect(code('screens/workspace-v2/screens/KycTax.tsx')).not.toMatch(/PayPal/i);
+  });
+
+  it('does not quote an average nobody measured', () => {
+    expect(marketing()).not.toMatch(/average \d+ days/i);
+  });
+
+  it('does not claim creators are screened before they can apply', () => {
+    // v2ApplyToCampaign has no verification gate — a brand-new account can
+    // apply the minute it signs up. If that changes, this test should be
+    // updated deliberately, together with the copy.
+    const apply = code('screens/workspace-v2/v2CampaignActions.ts');
+    const fn = apply.slice(apply.indexOf('export function v2ApplyToCampaign'));
+    expect(fn.slice(0, fn.indexOf('\n}'))).not.toMatch(/creator\.verified/);
+    expect(marketing()).not.toMatch(/reviewed before they can apply/i);
+  });
+
+  it('the case study quotes no figure derived from a feature we lack', () => {
+    // BrandLanding rendered a headline "5.2× ROAS" tile and pull-quote,
+    // computed from seeded `tracking[].revenueAttributed`. A multiple is
+    // the most quotable number on the page, which made it the most
+    // damaging one to invent.
+    const src = code('screens/cover/BrandLanding.tsx');
+    expect(src).not.toMatch(/revenueAttributed/);
+    expect(src).not.toMatch(/ROAS/);
+  });
+
+  it('does not claim matching uses the brand\'s own customer data', () => {
+    // matching.ts scores niche, engagement, geo, rate, history, category.
+    expect(marketing()).not.toMatch(/overlap with your existing customers/i);
+  });
+});

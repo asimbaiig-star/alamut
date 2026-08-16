@@ -55,31 +55,27 @@ interface CaseStudyData {
   applicantCount: number;
   daysToClose: number;
   reach: number;
-  roas: number | null;
-  totalRevenue: number;
+  deliverableCount: number;
 }
 
 function useCaseStudy(): CaseStudyData | null {
   const db = useStore((s) => s.db);
   return useMemo(() => {
-    // Reject campaigns whose ROAS would be absurd (>12×). Same clamp
-    // as the outcomes hook for consistency with the rest of the page.
+    // Pick on things we actually hold: a finished campaign, real
+    // acceptances, enough applicants to be worth showing. The old filter
+    // also clamped candidates by a ROAS ratio derived from
+    // `tracking[].revenueAttributed` — choosing which case study to show
+    // by a number the product cannot produce.
     const candidates = db.campaigns
       .filter((c) => {
-        // P1b §1.2: post-collapse, "ready for case study" = closed OR
-        // live with tracking data already flowing (live covers what was
-        // posted/reporting before).
+        // "Ready for case study" = closed, or live and far enough along
+        // that money has moved.
         if (c.stage !== 'closed' && c.stage !== 'live') return false;
         if (getAcceptedCreators(c.id, db).length === 0) return false;
         if (c.applications.length < 5) return false;
-        if (!c.tracking || c.tracking.length === 0) return false;
-        if (c.spent > 0) {
-          const rev = c.tracking.reduce((s, t) => s + (t.revenueAttributed ?? 0), 0);
-          if (rev > 0) {
-            const ratio = rev / c.spent;
-            if (ratio < 1 || ratio > 12) return false;
-          }
-        }
+        // Money actually moved — the one financial condition that means
+        // something without attribution data.
+        if (c.spent <= 0) return false;
         return true;
       })
       .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
@@ -108,12 +104,12 @@ function useCaseStudy(): CaseStudyData | null {
       );
 
       const reach = cmp.reach ?? creator.reach;
-      const totalRevenue = (cmp.tracking ?? []).reduce((s, t) => s + (t.revenueAttributed ?? 0), 0);
-      const roas = cmp.spent > 0 && totalRevenue > 0
-        ? Number((totalRevenue / cmp.spent).toFixed(1))
-        : null;
+      // `tracking[].revenueAttributed` is seeded data for a feature that
+      // does not exist, so nothing derived from it can appear on a page
+      // that presents itself as a case study.
+      const deliverableCount = db.deliverables.filter((d) => d.campaignId === cmp.id).length;
 
-      return { campaign: cmp, brand, creator, totalPaid, applicantCount, daysToClose, reach, roas, totalRevenue };
+      return { campaign: cmp, brand, creator, totalPaid, applicantCount, daysToClose, reach, deliverableCount };
     }
     return null;
   }, [db]);
@@ -555,7 +551,7 @@ function BrandControl({ reduced }: { reduced: boolean | null }) {
       bullets: [
         'Brand criteria + brief → AI auto-accepts top-3 audience-fit creators.',
         'Escrow funds release on creator delivery — no manual approval gate.',
-        'Daily ROAS digest; you only step in if a flag fires.',
+        'A daily digest of spend and delivery; you only step in if a flag fires.',
       ],
     },
   ];
@@ -623,7 +619,7 @@ function BrandCaseStudy() {
     );
   }
 
-  const { campaign, brand, totalPaid, applicantCount, daysToClose, reach, roas, totalRevenue } = cs;
+  const { campaign, brand, totalPaid, applicantCount, daysToClose, reach, deliverableCount } = cs;
 
   return (
     <section id="case" className="brand-landing-case" aria-labelledby="brand-case-h">
@@ -634,7 +630,7 @@ function BrandCaseStudy() {
             <em>{brand.name}</em> · {campaign.title}.
           </h2>
           <p className="cn-lede">
-            How a {brand.industry?.split('/')[0].trim() || 'brand'} ran a {campaign.region}-focused campaign through Alamut — from brief to attributed revenue, in {daysToClose} days.
+            How a {brand.industry?.split('/')[0].trim() || 'brand'} ran a {campaign.region}-focused campaign through Alamut — from brief to approved, paid deliverables, in {daysToClose} days.
           </p>
         </header>
 
@@ -660,11 +656,17 @@ function BrandCaseStudy() {
               <div className="brand-landing-case-stat-k mono-meta">Reach</div>
               <div className="brand-landing-case-stat-v">{fmtCount(reach)}</div>
             </div>
+            {/* The ROAS tile that sat here was computed from
+                `cmp.tracking[].revenueAttributed` — seeded numbers for a
+                feature the product does not have. A headline multiple is
+                the single most quotable figure on this page, so it was
+                also the most damaging one to invent. Cost per deliverable
+                divides two things we actually hold. */}
             <div className="brand-landing-case-stat">
-              <div className="brand-landing-case-stat-k mono-meta">ROAS</div>
+              <div className="brand-landing-case-stat-k mono-meta">Cost per deliverable</div>
               <div className="brand-landing-case-stat-v">
-                {roas !== null
-                  ? <>{roas.toFixed(1)}<span className="brand-landing-case-stat-u">×</span></>
+                {deliverableCount > 0
+                  ? fmtMoneyFull(Math.round(totalPaid / deliverableCount))
                   : <span className="brand-landing-case-stat-na">—</span>}
               </div>
             </div>
@@ -673,16 +675,14 @@ function BrandCaseStudy() {
           <aside className="brand-landing-case-narrative">
             <Pill tone="good">{campaign.stage === 'closed' ? 'Closed' : campaign.stage}</Pill>
             <p>
-              <strong>{brand.name}</strong> posted a {campaign.region} brief for {campaign.category.toLowerCase()} creators. {applicantCount} applications came in, sorted by audience overlap with their existing customer base.
+              <strong>{brand.name}</strong> posted a {campaign.region} brief for {campaign.category.toLowerCase()} creators. {applicantCount} applications came in, scored on niche fit, engagement, region and rate.
             </p>
             <p>
-              Brief budget locked in escrow on the first accepted offer. {fmtMoneyFull(Math.round(totalPaid))} cleared to creators after content went live. UTM-tagged tracking attributed {totalRevenue > 0 ? fmtMoneyFull(Math.round(totalRevenue)) : '—'} in downstream revenue.
+              Brief budget locked in escrow on the first accepted offer. {fmtMoneyFull(Math.round(totalPaid))} cleared to creators after the work was approved, each release itemised with the platform fee and withholding as their own rows.
             </p>
-            {roas !== null && (
-              <p className="brand-landing-case-narrative-pull">
-                A <strong>{roas.toFixed(1)}× ROAS</strong> from a {daysToClose}-day campaign, on a {fmtMoneyFull(campaign.budget)} brief — without an agency in the loop.
-              </p>
-            )}
+            <p className="brand-landing-case-narrative-pull">
+              {fmtMoneyFull(Math.round(totalPaid))} cleared across {deliverableCount || 'the'} approved {deliverableCount === 1 ? 'deliverable' : 'deliverables'} in {daysToClose} days, on a {fmtMoneyFull(campaign.budget)} brief — without an agency in the loop.
+            </p>
           </aside>
         </div>
       </div>
@@ -778,8 +778,8 @@ const BRAND_FAQ: Array<{ q: string; a: string }> = [
     a: "No. Creators on Alamut are independent professionals — they accept work from agencies, direct outreach, and other platforms. We don't lock them in, and we don't lock you in either. Per-brief contracting means you can run one campaign or one hundred without a master agreement.",
   },
   {
-    q: 'How is ROAS attributed? Is it pixel-based?',
-    a: 'UTM-based. Every accepted creator gets a uniquely-tagged tracking link automatically appended to their content placements. Clicks land on your site, fire whatever pixel / GA4 / Segment event you already use, and the conversion rolls back into the campaign dashboard. No SDK install required.',
+    q: 'Can I attribute revenue to a creator?',
+    a: 'Not yet. Spend, deliverables, reach and engagement are in the dashboard and every figure traces to a row you can open, but there is no click tracking or revenue attribution today — so we would rather say so than show you a number we invented. Attribution is the next thing we are building.',
   },
   {
     q: 'What if a creator goes silent or delivers off-brief?',

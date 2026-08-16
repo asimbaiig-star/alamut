@@ -490,8 +490,12 @@ function CreatorHowItWorks({ reduced }: { reduced: boolean | null }) {
     },
     {
       n: '4',
-      title: 'Fast, secure payouts.',
-      body: 'The brand\'s budget was already in escrow before you started. Approval triggers payout — average 4 days from approval to your wallet, withdrawable to bank or PayPal.',
+      title: 'Paid on approval.',
+      // Was: "average 4 days from approval to your wallet, withdrawable to
+      // bank or PayPal." Two inventions: there is no 4-day average (approval
+      // credits the wallet immediately), and PayPal appeared nowhere in the
+      // product but this sentence.
+      body: 'The brand\'s budget is in escrow before you start. Approval credits your wallet straight away, itemised with the platform fee and withholding as their own rows, and you withdraw to your bank once verification is complete.',
     },
   ];
   return (

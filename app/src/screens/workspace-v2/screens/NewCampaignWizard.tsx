@@ -552,7 +552,13 @@ function StepAudience({ draft, update }: { draft: Draft; update: (p: Partial<Dra
   return (
     <>
       <H2>Who should this reach?</H2>
-      <Sub>Spark uses these to filter creators by audience overlap.</Sub>
+      {/* Was: "Spark uses these to filter creators by audience overlap."
+          Spark reads none of these. `audienceCity` becomes the brief's
+          region, which the fit score's geo facet does use; gender and age
+          are recorded on the brief for creators to read and filter nothing.
+          Telling a brand a field drives matching when it does not is how
+          they end up blaming the matching for their own inputs. */}
+      <Sub>Cities set the brief’s region, which fit scoring uses. Age and gender are shown to creators on the brief — they don’t filter who sees it.</Sub>
 
       <Field label="Cities (audience location)">
         <ChipMulti options={cities} selected={draft.audienceCity} onChange={(v) => update({ audienceCity: v })} />
