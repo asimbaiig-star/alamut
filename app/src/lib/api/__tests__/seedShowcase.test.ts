@@ -117,3 +117,115 @@ describe('the clutter stays cut', () => {
     expect(db.advances.some((a) => a.status === 'repaid')).toBe(true);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// The messy outcomes — disputes and amendments (WORKFLOW-GAPS F3, E2/E3)
+// ─────────────────────────────────────────────────────────────────────
+//
+// The stage board shows a deal going RIGHT. Nothing showed one going
+// sideways, so the dispute and amendment panels were invisible until someone
+// thought to create one — a feature nobody can find is a feature nobody has.
+//
+// The load-bearing property here is that BOTH personas have something to act
+// on. A demo where every card is waiting on the other guy demonstrates
+// nothing, and that is the easiest thing to get wrong when authoring seed by
+// hand.
+
+const AFTER = 'cmp_show_after';
+
+describe('the demo shows deals that went sideways', () => {
+  const db = hydrated();
+  const sarahUser = db.users.find((u) => u.creatorId === 'c_sarah')?.id;
+
+  const afterCollabs = () => db.collaborations.filter((c) => c.campaignId === AFTER);
+  const afterDisputes = () => db.disputes.filter((d) => d.campaignId === AFTER);
+
+  it('ships the campaign, separate from the stage board', () => {
+    // Separate on purpose: disputes freeze escrow and amendments reopen
+    // stages, so mixing them in would stop the stage board meaning what it
+    // says.
+    expect(db.campaigns.find((c) => c.id === AFTER)?.stage).toBe('live');
+    expect(db.campaigns.find((c) => c.id === AFTER)?.brandId).toBe('b_aesop');
+  });
+
+  it('shows a dispute mid-negotiation, with a split actually on the table', () => {
+    const withProposal = afterDisputes().filter((d) => d.status === 'open' && d.proposal);
+    expect(withProposal.length).toBe(2);
+  });
+
+  it('BOTH SIDES HAVE A DECISION WAITING', () => {
+    // The one property that makes this seed worth having. One dispute
+    // proposal awaits the creator, one awaits the brand.
+    const open = afterDisputes().filter((d) => d.proposal);
+    const proposers = open.map((d) => d.proposal!.by);
+    expect(proposers).toContain('u_hannah');          // brand proposed → creator answers
+    expect(proposers.some((p) => p !== 'u_hannah')).toBe(true); // creator proposed → brand answers
+
+    // And an amendment awaiting the brand.
+    const pendingAmendment = afterCollabs()
+      .flatMap((c) => c.amendments ?? [])
+      .filter((a) => a.status === 'proposed');
+    expect(pendingAmendment.length).toBe(1);
+    expect(pendingAmendment[0].proposedBy).not.toBe('u_hannah');
+  });
+
+  it('the demo creator is the one who must answer a settlement', () => {
+    // Sarah is who an investor signs in as on the creator side; a dispute she
+    // cannot act on teaches them nothing.
+    const hers = afterDisputes().find(
+      (d) => d.collaborationId === 'col_after_c_sarah',
+    );
+    expect(hers?.proposal?.by).toBe('u_hannah');
+    expect(hers?.status).toBe('open');
+    // And her escrow is frozen, which is what a dispute is FOR.
+    expect(db.collaborations.find((c) => c.id === 'col_after_c_sarah')?.escrowFrozen).toBe(true);
+  });
+
+  it('shows a settled rights extension, not only pending ones', () => {
+    const agreed = afterCollabs()
+      .flatMap((c) => c.amendments ?? [])
+      .filter((a) => a.status === 'agreed' && a.kind === 'rights-extension');
+    expect(agreed.length).toBe(1);
+    expect(agreed[0].repurposeTo).toBe('365d');
+  });
+
+  it('the agreed extension has the ledger rows to match', () => {
+    // An amendment that widened rights without paying anybody would be the
+    // fiction this project spent six phases removing.
+    // Matched by id, not by note text: the fee and withholding rows read
+    // "Platform fee (10%)" / "Withholding tax (5%)" — deliberately, since
+    // that is what the release path writes — so a note filter silently finds
+    // only half the group and any sum over it is wrong by exactly the
+    // deductions. (It did, on the first run of this test.)
+    const rows = db.transactions.filter((t) => t.id.startsWith('tx_after_rights_'));
+    expect(rows).toHaveLength(4);
+    expect(rows.find((t) => t.kind === 'payout')?.amount).toBe(900);
+    expect(rows.find((t) => t.kind === 'escrow_release')?.amount).toBe(-900);
+    // Creator rows sum to the net that reached the wallet.
+    const creatorRows = rows.filter((t) => t.userId !== 'u_hannah');
+    expect(creatorRows.reduce((s, t) => s + t.amount, 0))
+      .toBe(900 - Math.round(900 * 0.10) - Math.round(900 * 0.05));
+  });
+
+  it('authored rows survive derivation rather than being overwritten', () => {
+    // escrowFrozen and amendments have no application/offer/submission behind
+    // them, so P1c cannot derive them — the row has to be authored, and P1c's
+    // per-pair idempotency is what lets it survive.
+    expect(afterCollabs().length).toBe(4);
+    expect(afterCollabs().filter((c) => c.escrowFrozen).length).toBe(2);
+    expect(afterCollabs().filter((c) => (c.amendments ?? []).length > 0).length).toBe(2);
+    expect(sarahUser).toBeTruthy();
+  });
+
+  it('every dispute points at a collaboration that exists', () => {
+    for (const d of afterDisputes()) {
+      expect(db.collaborations.some((c) => c.id === d.collaborationId)).toBe(true);
+    }
+  });
+
+  it('escrow adds up: held covers exactly the unsettled deals', () => {
+    const camp = db.campaigns.find((c) => c.id === AFTER)!;
+    // Three still held (2400 + 1900 + 1700); the fourth is delivered and paid.
+    expect(camp.escrowHeld).toBe(2400 + 1900 + 1700);
+  });
+});

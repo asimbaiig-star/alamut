@@ -1761,6 +1761,252 @@ const seededInvitedCollabs: import('./types').Collaboration[] = [
 ];
 
 
+// ==== SHOWCASE 2 — the messy outcomes: disputes and amendments ============
+//
+// The stage board above shows a deal going RIGHT. Nothing in the seed showed
+// one going sideways, so the dispute panel and the amendment panel were both
+// invisible until someone thought to create one — a feature you cannot find
+// is a feature you do not have.
+//
+// A separate campaign on purpose. Disputes freeze escrow and amendments
+// reopen stages, so mixing them into the stage board would make that board
+// stop meaning what it says.
+//
+// FOUR worked examples, chosen so BOTH personas have something to act on —
+// a demo where every card is waiting on the other guy shows nothing:
+//
+//   A  dispute open, BRAND proposed a split      → Sarah (creator) must answer
+//   B  dispute open, CREATOR proposed a split    → Aesop (brand) must answer
+//   C  rights extension already AGREED           → the settled E2 outcome
+//   D  scope addition proposed by the creator    → Aesop (brand) must answer
+//
+// Money discipline: this campaign is `progress: 'production'`, so the
+// aggregate below puts every accepted offer's rate into the creator's
+// PENDING balance. Three of the four move no money at all, which is what
+// makes that safe. C is the exception — an agreed extension pays out — so its
+// four ledger rows are written here AND the creator's wallet is adjusted
+// explicitly further down, because the aggregate derives wallet from offer
+// rates and would otherwise disagree with the ledger it sits beside.
+const SHOWCASE_AFTER_ID = 'cmp_show_after';
+
+const afterCast = {
+  disputeAwaitingCreator: 'c_sarah',
+  disputeAwaitingBrand:   generatedCreators[6]?.creator.id ?? 'c_yuki',
+  rightsExtended:         generatedCreators[7]?.creator.id ?? 'c_amir',
+  scopeAwaitingBrand:     generatedCreators[8]?.creator.id ?? 'c_yuki',
+} as const;
+
+const AFTER_RATES: Record<string, number> = {
+  [afterCast.disputeAwaitingCreator]: 2400,
+  [afterCast.disputeAwaitingBrand]:   1900,
+  [afterCast.rightsExtended]:         2100,
+  [afterCast.scopeAwaitingBrand]:     1700,
+};
+
+const afterApps: Application[] = [];
+const afterOffers: Offer[] = [];
+const afterSubs: Submission[] = [];
+
+function afterDeal(creatorId: string, daysAgo: number, subStatus: Submission['status'], permalink?: string) {
+  const rate = AFTER_RATES[creatorId];
+  afterApps.push({
+    id: `app_after_${creatorId}`, campaignId: SHOWCASE_AFTER_ID, creatorId,
+    pitch: 'One Reel, shot in my own kitchen.', proposedRate: rate,
+    status: 'accepted', submittedAt: dayAgo(daysAgo + 4), decidedAt: dayAgo(daysAgo + 2),
+  });
+  afterOffers.push({
+    id: `off_after_${creatorId}`, campaignId: SHOWCASE_AFTER_ID, creatorId,
+    rate, message: 'Accepting your pitch as proposed.', status: 'accepted',
+    sentAt: dayAgo(daysAgo + 2), respondedAt: dayAgo(daysAgo + 2),
+    rounds: [{ by: 'brand', at: +new Date(dayAgo(daysAgo + 2)), rate, message: 'Accepting your pitch as proposed.' }],
+    applicationId: `app_after_${creatorId}`, source: 'application',
+  });
+  afterSubs.push({
+    id: `sub_after_${creatorId}`, campaignId: SHOWCASE_AFTER_ID, creatorId, round: 1,
+    files: [{ name: 'Cut01.mp4', url: upx(COVERS[2], 400, 400) }],
+    notes: '[slot:0] First cut.', status: subStatus, submittedAt: dayAgo(daysAgo),
+    feedback: [], ...(permalink ? { permalink } : {}),
+  });
+}
+
+afterDeal(afterCast.disputeAwaitingCreator, 11, 'in_review');
+afterDeal(afterCast.disputeAwaitingBrand, 14, 'in_review');
+afterDeal(afterCast.rightsExtended, 26, 'approved', 'https://www.instagram.com/p/DShowcaseRights/');
+afterDeal(afterCast.scopeAwaitingBrand, 9, 'approved');
+
+const RIGHTS_EXT_FEE = 900;
+const rightsUser = showcaseUser(afterCast.rightsExtended);
+
+const showcaseAfter: CampaignSeed = {
+  campaign: {
+    id: SHOWCASE_AFTER_ID, brandId: 'b_aesop', title: 'Held Over',
+    pitch: 'The run that needed renegotiating. Kept as worked examples.',
+    brief: 'One Instagram Reel each. Kept deliberately as a set of deals that did NOT run straight: two in dispute, one with the licence extended, one with an extra deliverable on the table.',
+    cover: upx(COVERS[8 % COVERS.length], 800, 600),
+    budget: 12_000,
+    // C's original rate is spent (its content is live and the licence
+    // extended); the extension fee is spend too. The other three are held.
+    spent: AFTER_RATES[afterCast.rightsExtended] + RIGHTS_EXT_FEE,
+    escrowHeld: AFTER_RATES[afterCast.disputeAwaitingCreator]
+      + AFTER_RATES[afterCast.disputeAwaitingBrand]
+      + AFTER_RATES[afterCast.scopeAwaitingBrand],
+    region: 'US/UK', category: 'Beauty',
+    stage: 'live', deliverablesText: '1 IG Reel', deliverableIds: [],
+    deadline: futureDeadline(9),
+    createdAt: dayAgo(40),
+    history: [
+      { stage: 'draft', at: dayAgo(40), by: 'u_hannah' },
+      { stage: 'live',  at: dayAgo(37), by: 'u_hannah' },
+    ],
+    milestones: [],
+    applications: afterApps.map((a) => a.id),
+    offers: afterOffers.map((o) => o.id),
+  },
+  progress: 'production',
+  applications: afterApps,
+  offers: afterOffers,
+  submissions: afterSubs,
+  // C's agreed rights extension, in the ledger convention every release
+  // uses: GROSS on the payout row, the two deductions doing real work.
+  transactions: rightsUser ? [
+    { id: 'tx_after_rights_rel', at: dayAgo(6), userId: 'u_hannah', kind: 'escrow_release', amount: -RIGHTS_EXT_FEE, status: 'cleared', campaignId: SHOWCASE_AFTER_ID, counterpartyUserId: rightsUser, note: 'Usage rights extension · Held Over' },
+    { id: 'tx_after_rights_pay', at: dayAgo(6), userId: rightsUser, kind: 'payout', amount: RIGHTS_EXT_FEE, status: 'cleared', campaignId: SHOWCASE_AFTER_ID, counterpartyUserId: 'u_hannah', note: 'Rights extension from Aesop · Held Over' },
+    { id: 'tx_after_rights_fee', at: dayAgo(6), userId: rightsUser, kind: 'fee', amount: -Math.round(RIGHTS_EXT_FEE * 0.10), status: 'cleared', campaignId: SHOWCASE_AFTER_ID, note: 'Platform fee (10%)' },
+    { id: 'tx_after_rights_tax', at: dayAgo(6), userId: rightsUser, kind: 'fee', amount: -Math.round(RIGHTS_EXT_FEE * 0.05), status: 'cleared', campaignId: SHOWCASE_AFTER_ID, note: 'Withholding tax (5%)' },
+  ] : [],
+  threads: [],
+  messages: [],
+  reviews: [],
+};
+
+generatedCampaigns.push(showcaseAfter);
+// ---- Aftermath collab rows — authored, because they carry state no
+// ---- application/offer/submission can imply.
+//
+// `escrowFrozen` and `amendments` are collaboration fields with no signal
+// behind them, so migrator P1c cannot derive them. Authoring the row is what
+// makes them exist — and P1c skips any pair that already has a row (its
+// idempotency is per-pair, which is exactly why that fix mattered).
+function afterCollab(
+  creatorId: string,
+  extra: Partial<import('./types').Collaboration>,
+): import('./types').Collaboration {
+  const at = +new Date(dayAgo(20));
+  return {
+    id: `col_after_${creatorId}`,
+    campaignId: SHOWCASE_AFTER_ID,
+    creatorId,
+    brandId: 'b_aesop',
+    stage: 'submitted',
+    createdAt: at,
+    updatedAt: at,
+    agreedRate: AFTER_RATES[creatorId],
+    acceptedOfferId: `off_after_${creatorId}`,
+    contractId: null,
+    cancelledAt: null,
+    cancellationReason: null,
+    history: [{ at, from: null, to: 'confirmed', actorUserId: 'u_hannah', reason: 'seed-showcase' }],
+    ...extra,
+  };
+}
+
+const seededAftermathCollabs: import('./types').Collaboration[] = [
+  // A + B — both frozen: a dispute holds the escrow until it resolves.
+  afterCollab(afterCast.disputeAwaitingCreator, { escrowFrozen: true }),
+  afterCollab(afterCast.disputeAwaitingBrand, { escrowFrozen: true }),
+  // C — the settled E2 outcome. Agreed, paid, licence widened to 12 months.
+  afterCollab(afterCast.rightsExtended, {
+    stage: 'live',
+    amendments: [{
+      id: 'amd_show_rights',
+      kind: 'rights-extension',
+      proposedBy: 'u_hannah',
+      proposedAt: +new Date(dayAgo(8)),
+      amount: RIGHTS_EXT_FEE,
+      note: 'The Reel is still pulling. We would like to keep running it as paid social through the winter.',
+      repurposeTo: '365d',
+      status: 'agreed',
+      decidedAt: +new Date(dayAgo(6)),
+      decidedBy: showcaseUser(afterCast.rightsExtended),
+    }],
+  }),
+  // D — E3 mid-flight, and it is the BRAND's move.
+  afterCollab(afterCast.scopeAwaitingBrand, {
+    stage: 'approved',
+    amendments: [{
+      id: 'amd_show_scope',
+      kind: 'scope-addition',
+      proposedBy: showcaseUser(afterCast.scopeAwaitingBrand),
+      proposedAt: +new Date(dayAgo(2)),
+      amount: 650,
+      note: 'The Reel overperformed — happy to cut a Story from the same shoot if useful.',
+      addDeliverable: { platform: 'instagram', format: 'story' },
+      status: 'proposed',
+      decidedAt: null,
+      decidedBy: null,
+    }],
+  }),
+];
+
+// The two live disputes, each with a split on the table. `collaborationId` is
+// filled in directly here (unlike disp_seed_1/2, which leave it empty to
+// exercise the migrator's backfill) because these rows are the ONLY thing
+// pointing at an authored collab — a backfill keyed on (campaignId, role)
+// would have two candidates on this campaign and no way to choose.
+const seededAftermathDisputes: Dispute[] = [
+  {
+    id: 'disp_show_awaiting_creator',
+    collaborationId: `col_after_${afterCast.disputeAwaitingCreator}`,
+    campaignId: SHOWCASE_AFTER_ID,
+    raisedByUserId: 'u_hannah',
+    raisedByRole: 'brand',
+    category: 'quality',
+    description: 'The cut we received is 14 seconds and the brief asked for 30–60. We have asked twice for a longer version.',
+    evidence: [],
+    status: 'open',
+    resolution: null,
+    raisedAt: +new Date(dayAgo(6)),
+    updatedAt: +new Date(dayAgo(2)),
+    messages: [
+      { at: +new Date(dayAgo(5)), userId: showcaseUser(afterCast.disputeAwaitingCreator), body: 'The 14s cut was the one you approved on the call. Happy to recut but that is a second shoot day.' },
+      { at: +new Date(dayAgo(4)), userId: 'u_hannah', body: 'Understood. We would rather settle this than argue about the call.' },
+    ],
+    // Waiting on Sarah — the demo creator opens the app with a decision.
+    proposal: {
+      by: 'u_hannah',
+      at: +new Date(dayAgo(2)),
+      releaseToCreator: 1600,
+      note: 'Two thirds for the work as delivered, the rest back to us. No hard feelings.',
+    },
+  },
+  {
+    id: 'disp_show_awaiting_brand',
+    collaborationId: `col_after_${afterCast.disputeAwaitingBrand}`,
+    campaignId: SHOWCASE_AFTER_ID,
+    raisedByUserId: showcaseUser(afterCast.disputeAwaitingBrand),
+    raisedByRole: 'creator',
+    category: 'late-payment',
+    description: 'Delivered 14 days ago, approved 11 days ago, and the escrow has not been released. Two follow-ups unanswered.',
+    evidence: [],
+    status: 'open',
+    resolution: null,
+    raisedAt: +new Date(dayAgo(5)),
+    updatedAt: +new Date(dayAgo(1)),
+    messages: [
+      { at: +new Date(dayAgo(3)), userId: 'u_hannah', body: 'Apologies — this sat with someone who has left. Looking at it now.' },
+    ],
+    // Waiting on the brand, so the Aesop demo account has a decision too.
+    proposal: {
+      by: showcaseUser(afterCast.disputeAwaitingBrand),
+      at: +new Date(dayAgo(1)),
+      releaseToCreator: 1900,
+      note: 'The work was approved. I am asking for the full amount and we close this out today.',
+    },
+  },
+];
+
+
+
 // ============ DEMO CAMPAIGNS (the ones the demo flow showcases) ============
 const demoCampaigns: Campaign[] = [
   {
@@ -2834,7 +3080,7 @@ export const SEED: Database = {
   transactions: allTransactions,
   notifications,
   reviews: [...seededReviews, ...generatedCampaignReviews],
-  disputes: seededDisputes,
+  disputes: [...seededDisputes, ...seededAftermathDisputes],
   referrals: seededReferrals,
   advances: seededAdvances,
   testimonials: seededTestimonials,
@@ -2847,7 +3093,7 @@ export const SEED: Database = {
   // Only the authored `invited` rows. Every other collaboration is DERIVED
   // from applications/offers/submissions by migrator P1c on first hydrate —
   // seeding those too would mean two sources of truth for the same pair.
-  collaborations: seededInvitedCollabs,
+  collaborations: [...seededInvitedCollabs, ...seededAftermathCollabs],
   // P1d §1.5 — Same pattern as collaborations: migrator 4 walks every
   // campaign on first hydrate and parses its `deliverablesText` into N
   // structured Deliverable rows + writes the FK list back to the
