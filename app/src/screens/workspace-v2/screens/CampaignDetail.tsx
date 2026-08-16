@@ -37,6 +37,7 @@ import { SendOfferModal, MarkLiveModal, CounterOfferModal, InviteCreatorsModal }
 import { TeamAccessAside } from './TeamAccess';
 import { DisputePanel } from './DisputePanel';
 import { AmendmentPanel } from './AmendmentPanel';
+import { DealOwnerRow } from './DealOwners';
 import { nextAction } from '../nextAction';
 import { reviewOverdue, ageInDays } from '@/lib/api/staleness';
 import {
@@ -222,6 +223,9 @@ export function CampaignDetail({
     (c) => c.campaignId === campaign.id
       && (c.amendments ?? []).some((a) => a.status === 'proposed'),
   );
+  // D2 — the reassign UI only means anything on a team of more than one.
+  const campaignBrandId = db.campaigns.find((c) => c.id === campaign.id)?.brandId;
+  const brandTeamSize = db.users.filter((u) => u.brandId === campaignBrandId && u.status === 'active').length;
   // Deals the brand could propose a change ON: accepted, not closed, not
   // frozen by a dispute, and not already mid-negotiation (those render above).
   const amendableCollabs = db.collaborations.filter(
@@ -341,6 +345,28 @@ export function CampaignDetail({
                 <AmendmentPanel key={c.id} collabId={c.id} />
               ))}
             </section>
+          )}
+          {/* WORKFLOW-GAPS D2 — who on the team runs each deal.
+              A brand is a team, but a deal belonged to the brand as a whole:
+              every notification went to whoever held the brandId, so when
+              that person left the deal had no human attached to it. */}
+          {amendableCollabs.length > 0 && brandTeamSize > 1 && (
+            <details style={{ marginBottom: 16 }}>
+              <summary className="v2-muted" style={{ fontSize: 12, cursor: 'pointer', padding: '4px 0' }}>
+                Who runs each deal — reassign inside your team
+              </summary>
+              <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>
+                {db.collaborations
+                  .filter((c) => c.campaignId === campaign.id && !!c.acceptedOfferId && !c.cancelledAt)
+                  .map((c) => (
+                    <DealOwnerRow
+                      key={c.id}
+                      collabId={c.id}
+                      creatorName={db.creators.find((cr) => cr.id === c.creatorId)?.name ?? 'Creator'}
+                    />
+                  ))}
+              </div>
+            </details>
           )}
           {/* And the brand's own entry point. Rendering the panel ONLY for
               collabs with something pending let the brand answer a proposal

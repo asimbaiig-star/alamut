@@ -965,6 +965,10 @@ function AvailabilityBlock({ creator, editing, onEdit, onClose }: {
     initial.minRate !== undefined ? String(initial.minRate) : '',
   );
   const [autoDecline, setAutoDecline] = useState<string[]>(initial.autoDeclineCategories ?? []);
+  // C4 — a hard cap on concurrent work.
+  const [maxDeals, setMaxDeals] = useState<string>(
+    initial.maxConcurrentDeals !== undefined ? String(initial.maxConcurrentDeals) : '',
+  );
 
   useEffect(() => {
     if (editing) {
@@ -974,6 +978,7 @@ function AvailabilityBlock({ creator, editing, onEdit, onClose }: {
       setVacationMode(initial.vacationMode ?? false);
       setMinRate(initial.minRate !== undefined ? String(initial.minRate) : '');
       setAutoDecline(initial.autoDeclineCategories ?? []);
+      setMaxDeals(initial.maxConcurrentDeals !== undefined ? String(initial.maxConcurrentDeals) : '');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing]);
@@ -1037,6 +1042,12 @@ function AvailabilityBlock({ creator, editing, onEdit, onClose }: {
               {(initial.autoDeclineCategories?.length ?? 0) > 0
                 ? (initial.autoDeclineCategories ?? []).join(' · ')
                 : '—'}
+            </span>
+            <span>
+              <span className="v2-muted" style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, marginRight: 6 }}>
+                Max at once
+              </span>
+              {initial.maxConcurrentDeals !== undefined ? initial.maxConcurrentDeals : '—'}
             </span>
           </div>
         </div>
@@ -1121,6 +1132,29 @@ function AvailabilityBlock({ creator, editing, onEdit, onClose }: {
             </div>
           </FormField>
 
+          {/* C4 — concurrent capacity. Deliberately next to the min-rate
+              field and deliberately worded as a hard stop: unlike the floor,
+              this one REFUSES the send rather than warning. */}
+          <FormField label="Maximum deals at once (optional)" htmlFor="v2-max-deals">
+            <input
+              id="v2-max-deals"
+              className="v2-input"
+              type="number"
+              min={1}
+              step={1}
+              value={maxDeals}
+              onChange={(e) => setMaxDeals(e.target.value)}
+              placeholder="e.g., 3"
+              style={{ width: '100%' }}
+            />
+            <div className="v2-muted" style={{ fontSize: 11.5, marginTop: 6 }}>
+              A hard stop, not a warning: at capacity, brands cannot send you a
+              new offer at all. Counts deals with work actually in flight —
+              confirmed through live — not pitches or finished work. Leave blank
+              for no limit.
+            </div>
+          </FormField>
+
           {/* Auto-decline categories */}
           <FormField label="Auto-decline these categories (optional)">
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -1174,6 +1208,9 @@ function AvailabilityBlock({ creator, editing, onEdit, onClose }: {
                   vacationMode: vacationMode || undefined,
                   minRate: minRateNum,
                   autoDeclineCategories: autoDecline.length > 0 ? autoDecline : undefined,
+                  maxConcurrentDeals: maxDeals.trim() === ''
+                    ? undefined
+                    : Math.max(1, parseInt(maxDeals, 10) || 1),
                 });
                 onClose();
               }}

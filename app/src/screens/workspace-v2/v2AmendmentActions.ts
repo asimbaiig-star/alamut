@@ -39,6 +39,7 @@ import type {
 } from '@/lib/api/types';
 import { ensureCollabState } from '@/lib/api/collabSync';
 import { netOf, splitGross, PLATFORM_FEE, WHT } from '@/lib/api/money';
+import { dealOwnerUserId } from './v2TeamActions';
 
 function newId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -115,7 +116,11 @@ function partyRole(db: Database, collab: Collaboration, userId: string): 'brand'
 
 function otherPartyUserId(db: Database, collab: Collaboration, userId: string): string | null {
   const creatorUser = db.users.find((u) => u.creatorId === collab.creatorId);
-  const brandUser = db.users.find((u) => u.brandId === collab.brandId);
+  // D2 — route to the deal's OWNER, not just whoever holds the brandId.
+  // Without this, reassignment would be cosmetic: the new owner would see
+  // the deal on their board and none of its notifications.
+  const brandOwner = dealOwnerUserId(db, collab);
+  const brandUser = brandOwner ? db.users.find((u) => u.id === brandOwner) : undefined;
   if (userId === creatorUser?.id) return brandUser?.id ?? null;
   if (userId === brandUser?.id) return creatorUser?.id ?? null;
   return null;
@@ -246,7 +251,10 @@ export function v2AgreeAmendment(collabId: string, amendmentId: string, byUserId
     const creator = db.creators.find((c) => c.id === collab.creatorId);
     if (!camp || !brand || !creator) throw new Error("Couldn't load this deal — refresh and try again.");
 
-    const brandUser = db.users.find((u) => u.brandId === brand.id);
+    // D2 — the owner is who hears about it.
+    const brandOwnerId = dealOwnerUserId(db, collab);
+    const brandUser = db.users.find((u) => u.id === brandOwnerId)
+      ?? db.users.find((u) => u.brandId === brand.id);
     const creatorUser = db.users.find((u) => u.creatorId === creator.id);
     const gross = amendment.amount;
 

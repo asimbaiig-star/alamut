@@ -379,7 +379,19 @@ campaign ids Postgres actually returned; the two FK-bearing mirrors
 
 ## Still open — Asim's to run
 
-**All six SQL migrations are applied (030–035 + the earlier set).**
+**030–035 are applied. `036` is new and NOT yet applied.**
+
+- **`036_deal_owner_and_capacity.sql` — TO RUN.** Adds
+  `collaborations.owner_user_id text` (WORKFLOW-GAPS D2) and a partial index.
+  One nullable column, no backfill, safe to re-run.
+
+  C4's creator capacity needs no column — it lives inside the existing
+  `creators.availability` jsonb. The migration says so explicitly so the
+  absence is not read later as an oversight.
+
+  NULL = the brand's primary user, which is every existing row, so behaviour
+  is unchanged until someone reassigns a deal.
+
 
 - ~~`035_amendments.sql`~~ — **APPLIED 2026-08-16**, returning the expected
   three rows. Adds `collaborations.amendments`, `contracts.rights_snapshot`,

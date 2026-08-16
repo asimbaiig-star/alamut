@@ -10,7 +10,7 @@
 import { useMemo, useState } from 'react';
 import { fmtUSD, Icon } from '../lib';
 import { netOf } from '@/lib/api/money';
-import { availabilityVerdict } from '@/lib/api/availability';
+import { activeDealCount, availabilityVerdict } from '@/lib/api/availability';
 import { parseNumberInput } from '@/lib/utils/format';
 import {
   v2CounterOffer, v2CounterCounter, v2DeclineOffer, v2MarkContentLive,
@@ -43,6 +43,7 @@ interface SendOfferProps {
 
 export function SendOfferModal({ campaignId, creator, defaultRate, onClose }: SendOfferProps) {
   useModalEscape(onClose);
+  const db = useStore((s) => s.db);
   const [rate, setRate] = useState<number>(defaultRate);
   const [message, setMessage] = useState<string>(
     `Hi ${creator.name.split(' ')[0]} — we'd love to work with you. Offering $${defaultRate.toLocaleString()} for the brief — let me know if you'd like to discuss.`,
@@ -52,7 +53,12 @@ export function SendOfferModal({ campaignId, creator, defaultRate, onClose }: Se
   // "don't send me work". The verdict is now the same function the mutation
   // enforces, so the button state and the thrown error cannot disagree about
   // whether a send is allowed or why.
-  const verdict = availabilityVerdict(creator, { rate });
+  // C4 — the capacity count comes from the same helper the mutation uses,
+  // so the disabled button and the thrown error cannot disagree.
+  const verdict = availabilityVerdict(creator, {
+    rate,
+    activeDeals: activeDealCount(db, creator.id),
+  });
   const onVacation = !!creator.availability?.vacationMode;
   const minRate = creator.availability?.minRate;
   const isBelowFloor = minRate !== undefined && rate > 0 && rate < minRate;
@@ -349,6 +355,10 @@ export function CounterOfferModal(
   } = props;
   useModalEscape(onClose);
   const otherName = counterpartyName ?? brandName ?? 'The other side';
+  // A3 — what is being proposed besides the price. Optional, because most
+  // counters really are just about the number.
+  const [scope, setScope] = useState('');
+  const [deliverBy, setDeliverBy] = useState('');
 
   // Default counter direction depends on side: creators counter UP
   // (~10% above the brand's last offer); brands counter DOWN
@@ -434,6 +444,45 @@ export function CounterOfferModal(
               onChange={(e) => setMessage(e.target.value)}
             />
           </div>
+          {/* A3 — scope and timing, alongside the price.
+              Negotiation used to be rate-only, so a creator who thought the
+              brief was two Reels rather than one countered higher and hoped
+              the brand inferred why. The 10× sanity bound in v2CounterOffer
+              even calls those "scope-correction counters" — the model
+              admitting scope was being argued through a field that cannot
+              say it. */}
+          <div style={{ marginTop: 14, display: 'grid', gap: 10 }}>
+            <div>
+              <label className="v2-eyebrow" htmlFor="v2-counter-scope" style={{ display: 'block', marginBottom: 6 }}>
+                Scope you're proposing (optional)
+              </label>
+              <input
+                id="v2-counter-scope"
+                className="v2-input"
+                value={scope}
+                onChange={(e) => setScope(e.target.value)}
+                placeholder="e.g., 1 Reel + 2 Stories, one round of revisions"
+                style={{ width: '100%' }}
+              />
+            </div>
+            <div>
+              <label className="v2-eyebrow" htmlFor="v2-counter-by" style={{ display: 'block', marginBottom: 6 }}>
+                Deliver by (optional)
+              </label>
+              <input
+                id="v2-counter-by"
+                className="v2-input"
+                type="date"
+                value={deliverBy}
+                onChange={(e) => setDeliverBy(e.target.value)}
+                style={{ width: '100%' }}
+              />
+            </div>
+            <div className="v2-muted" style={{ fontSize: 11.5 }}>
+              Leave either blank to keep what was last proposed. Both are
+              recorded on the negotiation transcript.
+            </div>
+          </div>
         </div>
         <footer className="v2-upload-modal-foot">
           <div className="v2-row" style={{ gap: 8 }}>
@@ -460,8 +509,9 @@ export function CounterOfferModal(
               disabled={rate <= 0 || (currentRate > 0 && rate > currentRate * 10)}
               onClick={() => {
                 try {
-                  if (side === 'brand') v2CounterCounter(offerId, rate, message);
-                  else v2CounterOffer(offerId, rate, message);
+                  const terms = { scope: scope.trim() || null, deliverBy: deliverBy || null };
+                  if (side === 'brand') v2CounterCounter(offerId, rate, message, terms);
+                  else v2CounterOffer(offerId, rate, message, terms);
                   pushToast(`Counter sent at ${fmtUSD(rate)}`, 'good');
                   onClose();
                 } catch (err) {

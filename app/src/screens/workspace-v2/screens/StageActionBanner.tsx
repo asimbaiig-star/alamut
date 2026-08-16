@@ -25,7 +25,12 @@ import type { V2CollabStage } from '../data';
 
 export interface StageActionBannerProps {
   stage: V2CollabStage;
-  pendingOffer?: { id: string; rate: number; message: string };
+  pendingOffer?: {
+    id: string; rate: number; message: string;
+    /** A3 — the full transcript, so the banner can show what was proposed
+     *  besides the price. Optional: older call sites pass neither. */
+    rounds?: { by: 'brand' | 'creator'; rate: number; scope?: string | null; deliverBy?: string | null }[];
+  };
   campaignBrand: string;
   campaignName: string;
   campaignPlacement: string;
@@ -87,6 +92,25 @@ export function StageActionBanner({
     ? offerStaleness(offerSentAt).note
     : null;
 
+  // A3 — scope/timing from the most recent round that actually stated them.
+  // Walked backwards rather than read off the last round, because "absent
+  // means unchanged": a price-only counter must not erase the scope the
+  // round before it proposed.
+  const latestTerms = (() => {
+    const rs = pendingOffer?.rounds ?? [];
+    let scope: string | null = null;
+    let deliverBy: string | null = null;
+    for (let i = rs.length - 1; i >= 0; i -= 1) {
+      if (scope === null && rs[i].scope) scope = rs[i].scope!;
+      if (deliverBy === null && rs[i].deliverBy) deliverBy = rs[i].deliverBy!;
+    }
+    return { scope, deliverBy };
+  })();
+  const termsLine = latestTerms.scope || latestTerms.deliverBy
+    ? ` Scope on the table: ${latestTerms.scope ?? 'as briefed'}${
+        latestTerms.deliverBy ? `, delivered by ${latestTerms.deliverBy}` : ''}.`
+    : '';
+
   const askLine = myProposedRate && pendingOffer && myProposedRate !== pendingOffer.rate
     ? ` You asked ${fmtUSD(myProposedRate)}${pendingOffer.rate < myProposedRate
         ? ` — this is ${fmtUSD(myProposedRate - pendingOffer.rate)} below it.`
@@ -95,7 +119,7 @@ export function StageActionBanner({
 
   if (stage === 'invited' && pendingOffer) {
     title = `${campaignBrand} invited you to ${campaignName}`;
-    body = `Offered ${fmtUSD(pendingOffer.rate)} for ${campaignPlacement}. ${pendingOffer.message ? `"${pendingOffer.message}"` : ''}`;
+    body = `Offered ${fmtUSD(pendingOffer.rate)} for ${campaignPlacement}. ${pendingOffer.message ? `"${pendingOffer.message}"` : ''}${termsLine}`;
     actions = (
       <>
         <button className="v2-btn v2-btn-outline v2-btn-sm" type="button" onClick={onMessageBrand}>
@@ -162,7 +186,7 @@ export function StageActionBanner({
     );
   } else if (stage === 'negotiating' && pendingOffer) {
     title = `${campaignBrand} sent an offer`;
-    body = `${fmtUSD(pendingOffer.rate)} for ${campaignPlacement}. ${pendingOffer.message ? `"${pendingOffer.message}"` : ''} Your net after fees: ${fmtUSD(netOf(pendingOffer.rate))}.${askLine}${staleNote ? ` ${staleNote}` : ''}`;
+    body = `${fmtUSD(pendingOffer.rate)} for ${campaignPlacement}. ${pendingOffer.message ? `"${pendingOffer.message}"` : ''} Your net after fees: ${fmtUSD(netOf(pendingOffer.rate))}.${termsLine}${askLine}${staleNote ? ` ${staleNote}` : ''}`;
     actions = (
       <>
         <button className="v2-btn v2-btn-outline v2-btn-sm" type="button" onClick={onCounter}>

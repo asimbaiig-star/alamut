@@ -48,6 +48,7 @@ import { PLATFORM_FEE, WHT, netOf, splitGross } from '@/lib/api/money';
 // F3 — one definition of "how much escrow is on the table", shared with the
 // settlement handshake rather than copied. See its export note.
 import { settleableEscrow } from './v2CollabActions';
+import { dealOwnerUserId } from './v2TeamActions';
 
 /** Fire-and-forget mirror for a new Dispute INSERT. Silenced on FK
  *  (collab/campaign tied to generated rows) + RLS. */
@@ -717,7 +718,10 @@ function otherPartyUserId(db: Database, disp: Dispute, userId: string): string |
   const collab = db.collaborations.find((c) => c.id === disp.collaborationId);
   if (!collab) return null;
   const creatorUser = db.users.find((u) => u.creatorId === collab.creatorId);
-  const brandUser = db.users.find((u) => u.brandId === collab.brandId);
+  // D2 — route to the deal's OWNER, not just whoever holds the brandId.
+  // Without this, reassignment would be cosmetic: the new owner would see
+  // the deal on their board and none of its notifications.
+  const brandUser = db.users.find((u) => u.id === dealOwnerUserId(db, collab));
   if (userId === creatorUser?.id) return brandUser?.id ?? null;
   if (userId === brandUser?.id) return creatorUser?.id ?? null;
   return null;

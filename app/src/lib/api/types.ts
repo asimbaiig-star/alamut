@@ -137,6 +137,17 @@ export interface Availability {
    *  gambling offers. See lib/api/availability.ts for why this blocks while
    *  `minRate` warns. */
   autoDeclineCategories?: string[];
+  /** WORKFLOW-GAPS C4 — how many deals the creator will run at once.
+   *
+   *  ENFORCED, for the same reason `autoDeclineCategories` is: it is a
+   *  standing instruction ("never more than three"), not a preference to be
+   *  weighed against a good offer. `booked` only warns because "fully
+   *  scheduled now" is a judgement about this month; a hard cap is a rule the
+   *  creator set about their own capacity.
+   *
+   *  Counts deals with work genuinely in flight — see `activeDealCount`.
+   *  Undefined means no cap, which is every creator until they set one. */
+  maxConcurrentDeals?: number;
 }
 
 export type UserStatus =
@@ -970,6 +981,26 @@ export interface OfferRound {
   at: number;
   rate: number;
   message: string | null;
+  /** WORKFLOW-GAPS A3 — what is being proposed BESIDES the price.
+   *
+   *  Negotiation was rate-only, so every non-price disagreement had to be
+   *  smuggled through the number: a creator who thought the brief was two
+   *  Reels rather than one countered higher and hoped the brand inferred
+   *  why. `v2CounterOffer`'s own 10× sanity bound describes this — it calls
+   *  them "legitimate scope-correction counters" — which is the model
+   *  admitting scope was being negotiated through a field that cannot
+   *  express it.
+   *
+   *  Both optional and both free text on purpose: at counter time the
+   *  parties are still arguing about what the work IS, and forcing that into
+   *  structured deliverable rows before they agree would be modelling the
+   *  outcome rather than the conversation. Once accepted, the deliverables
+   *  and the deadline are the structured record.
+   *
+   *  Absent = unchanged from the previous round. */
+  scope?: string | null;
+  /** ISO date the counter-party is proposing to deliver by. */
+  deliverBy?: string | null;
 }
 
 export interface Offer {
@@ -1508,6 +1539,17 @@ export interface Collaboration {
   /** WORKFLOW-GAPS F1 — a proposed partial settlement, awaiting the OTHER
    *  party's agreement. See {@link SettlementTerms}. */
   settlementProposal?: SettlementTerms | null;
+  /** WORKFLOW-GAPS D2 — which member of the brand's team owns this deal.
+   *
+   *  A brand is a team, but a deal belonged to the brand as a whole: every
+   *  notification went to whichever user held the `brandId`, and when that
+   *  person left or went on leave the deal had no human attached to it. The
+   *  dispute seeded in the demo says exactly this — "this sat with someone
+   *  who has left".
+   *
+   *  `null`/absent = the brand's primary user, which is every deal until
+   *  someone reassigns one. Read through `dealOwnerUserId()`. */
+  ownerUserId?: string | null;
   /** WORKFLOW-GAPS E2/E3 — post-acceptance changes to this deal, proposed,
    *  agreed, declined or withdrawn. Append-only: a declined amendment stays
    *  on the record rather than vanishing, because "we asked and they said

@@ -19,13 +19,14 @@
 //     escrow is refunded to the brand, the collab moves to 'cancelled'.
 
 import { tx, useStore } from '@/lib/api/store';
-import { availabilityBlock } from '@/lib/api/availability';
+import { activeDealCount, availabilityBlock } from '@/lib/api/availability';
 import type { Collaboration, Database } from '@/lib/api/types';
 import { ensureCollabState } from '@/lib/api/collabSync';
 // Fee/withholding rates come from one module — see lib/api/money.ts.
 import { netOf, splitGross, PLATFORM_FEE, WHT } from '@/lib/api/money';
 // P5 §4.1 — capability gate. See `lib/permissions.ts` for the matrix.
 import { requireCapability, getActorUserId } from '@/lib/permissions';
+import { dealOwnerUserId } from './v2TeamActions';
 
 function newId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -57,7 +58,10 @@ export function v2InviteCreator(
     // Same standing instructions as v2SendOffer. A cold invite carries no
     // rate, so only the category and vacation blocks can apply — but those
     // are exactly the two that are instructions rather than judgement calls.
-    const inviteBlocked = availabilityBlock(creator, { category: camp.category });
+    const inviteBlocked = availabilityBlock(creator, {
+      category: camp.category,
+      activeDeals: activeDealCount(db, creator.id),
+    });
     if (inviteBlocked) throw new Error(inviteBlocked);
 
     // IDEMPOTENCY GUARD — pre-fix a double-click on Invite pushed a
@@ -535,7 +539,10 @@ export function v2ProposeSettlement(
 
     const camp = db.campaigns.find((c) => c.id === collab.campaignId);
     const creatorUser = db.users.find((u) => u.creatorId === collab.creatorId);
-    const brandUser = db.users.find((u) => u.brandId === collab.brandId);
+    // D2 — route to the deal's OWNER, not just whoever holds the brandId.
+    // Without this, reassignment would be cosmetic: the new owner would see
+    // the deal on their board and none of its notifications.
+    const brandUser = db.users.find((u) => u.id === dealOwnerUserId(db, collab));
     // Notify whoever did NOT propose.
     const recipient = byUserId === creatorUser?.id ? brandUser : creatorUser;
     if (recipient && camp) {
@@ -674,7 +681,10 @@ export function v2AgreeSettlement(collabId: string, byUserId: string): Collabora
     collab.updatedAt = Date.now();
 
     const creatorUser = db.users.find((u) => u.creatorId === collab.creatorId);
-    const brandUser = db.users.find((u) => u.brandId === collab.brandId);
+    // D2 — route to the deal's OWNER, not just whoever holds the brandId.
+    // Without this, reassignment would be cosmetic: the new owner would see
+    // the deal on their board and none of its notifications.
+    const brandUser = db.users.find((u) => u.id === dealOwnerUserId(db, collab));
     for (const u of [creatorUser, brandUser]) {
       if (!u) continue;
       db.notifications.push({

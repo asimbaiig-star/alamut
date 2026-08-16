@@ -525,3 +525,60 @@ settlement, and a middle option between "approve" and "dispute."
 **Deliberately not proposed:** capacity limits (C4), usage extension (E2),
 amendments (E3). All real, none blocking a beta, and each is a feature rather
 than a gap.
+
+---
+
+## SHIPPED — C4, D2, A3
+
+**C4 — a creator can cap concurrent work.** `Availability.maxConcurrentDeals`.
+ENFORCED, like `autoDeclineCategories` and unlike `minRate`: a cap is a rule
+the creator set about their own week, not a negotiating position to weigh
+against a good offer. The send is refused, and the offer modal's button is
+disabled with the same message, because both read the same function.
+
+Counts only deals with work genuinely in flight — confirmed, submitted,
+approved, live. Counting pitches would block a creator for merely having
+applied to things; counting paid deals would block them forever on their own
+history. One definition (`activeDealCount`) so the figure the creator sees and
+the figure the guard enforces cannot diverge.
+
+**D2 — a deal belongs to a person, not just a brand.**
+`Collaboration.ownerUserId` + `v2ReassignCollab`. Previously every
+notification went to whoever held the `brandId`, so when that person left,
+changed roles, or went on leave, the deal had no human attached and simply
+stopped moving. The demo's own seeded dispute says it out loud: *"this sat
+with someone who has left."*
+
+Either the current owner or someone with `team.manage` can reassign — a
+handover is housekeeping, and requiring a manager turns thirty seconds into a
+ticket. Assigning outside the team is refused: a stranger would otherwise
+start receiving the brand's private notifications.
+
+Deliberately a soft pointer, not a foreign key. When a teammate is removed,
+`dealOwnerUserId()` degrades to the brand's primary user; an FK would either
+block removing them (RESTRICT) or delete the collaboration (CASCADE), both
+worse than falling back. Notifications in the settlement, dispute and
+amendment paths now route through it — **older notification sites still go to
+the brand's primary user**, which is correct today because that is also the
+fallback, but is the next thing to sweep if ownership spreads.
+
+**A3 — a counter can propose more than a price.** `OfferRound.scope` and
+`OfferRound.deliverBy`, surfaced in the counter modal and on the stage banner.
+
+Negotiation was rate-only, so every non-price disagreement had to be smuggled
+through the number: a creator who thought the brief was two Reels rather than
+one countered higher and hoped the brand inferred why. `v2CounterOffer`'s own
+10× sanity bound described this in its comment — it calls them "legitimate
+scope-correction counters" — which is the model admitting scope was being
+argued through a field that cannot express it.
+
+Both fields are free text and optional, on purpose. At counter time the
+parties are still arguing about what the work IS; forcing that into structured
+deliverable rows before they agree would model the outcome rather than the
+conversation. Once accepted, the deliverables and the deadline are the
+structured record.
+
+**Absent means UNCHANGED**, and that is the rule worth pinning: a round that
+only moves the number must not wipe the scope agreed a round earlier, or every
+price nudge silently reopens what the work is. Resolution walks the transcript
+backwards per-term, and the banner and the tests use the same walk.

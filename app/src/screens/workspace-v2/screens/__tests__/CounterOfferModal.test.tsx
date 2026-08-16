@@ -155,7 +155,12 @@ describe('CounterOfferModal', () => {
     fireEvent.change(input, { target: { value: '600' } });
     const sendBtn = screen.getByRole('button', { name: /Send counter/i });
     fireEvent.click(sendBtn);
-    expect(v2CounterOffer).toHaveBeenCalledWith('off_42', 600, expect.any(String));
+    // A3 — counters now carry optional scope/timing alongside the rate.
+    // Untouched here, so both are null: a price-only counter must not
+    // overwrite whatever scope the previous round proposed.
+    expect(v2CounterOffer).toHaveBeenCalledWith(
+      'off_42', 600, expect.any(String), { scope: null, deliverBy: null },
+    );
     expect(onClose).toHaveBeenCalled();
   });
 
@@ -174,7 +179,9 @@ describe('CounterOfferModal', () => {
     fireEvent.change(input, { target: { value: '1500' } });
     const sendBtn = screen.getByRole('button', { name: /Send counter/i });
     fireEvent.click(sendBtn);
-    expect(v2CounterCounter).toHaveBeenCalledWith('off_99', 1500, expect.any(String));
+    expect(v2CounterCounter).toHaveBeenCalledWith(
+      'off_99', 1500, expect.any(String), { scope: null, deliverBy: null },
+    );
     expect(onClose).toHaveBeenCalled();
   });
 });

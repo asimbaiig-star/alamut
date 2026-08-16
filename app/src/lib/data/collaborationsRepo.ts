@@ -25,6 +25,7 @@ type Row = {
   cancellation_request: Collaboration['cancellationRequest'] | null;
   settlement_proposal: Collaboration['settlementProposal'] | null;
   amendments: Collaboration['amendments'];
+  owner_user_id: string | null;
   escrow_frozen: boolean;
   version: number;
   created_at: string;
@@ -34,7 +35,8 @@ type Row = {
 const COLUMNS =
   'id, campaign_id, creator_id, brand_id, stage, agreed_rate, ' +
   'accepted_offer_id, contract_id, cancelled_at, cancellation_reason, ' +
-  'history, cancellation_request, settlement_proposal, amendments, escrow_frozen, ' +
+  'history, cancellation_request, settlement_proposal, amendments, ' +
+  'owner_user_id, escrow_frozen, ' +
   'version, created_at, updated_at';
 
 export function toCollab(row: Row): Collaboration {
@@ -55,6 +57,7 @@ export function toCollab(row: Row): Collaboration {
     cancellationRequest: row.cancellation_request ?? null,
     settlementProposal: row.settlement_proposal ?? null,
     amendments: row.amendments ?? [],
+    ownerUserId: row.owner_user_id ?? null,
     escrowFrozen: row.escrow_frozen,
     version: row.version,
   };
@@ -76,6 +79,7 @@ function toRowFields(c: Collaboration): Record<string, unknown> {
     cancellation_request: c.cancellationRequest ?? null,
     settlement_proposal: c.settlementProposal ?? null,
     amendments: c.amendments ?? [],
+    owner_user_id: c.ownerUserId ?? null,
     escrow_frozen: c.escrowFrozen ?? false,
   };
 }

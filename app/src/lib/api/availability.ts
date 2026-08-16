@@ -18,6 +18,9 @@
 //   vacationMode           BLOCKS.  An explicit "I am not working right now",
 //                                   with the return date offered to the brand
 //                                   so they can come back.
+//   maxConcurrentDeals     BLOCKS.  A cap the creator set on their own
+//                                   capacity. Same character as auto-decline:
+//                                   a rule, not a preference to weigh.
 //   minRate                WARNS.   A floor is a NEGOTIATING position. Blocking
 //                                   would kill legitimate opening offers that
 //                                   get countered up, and the creator can
@@ -35,7 +38,28 @@
 // both the mutation guard and the UI read the same function so a disabled
 // button and a thrown error can never disagree about why.
 
-import type { Creator } from './types';
+import type { Collaboration, Creator, Database } from './types';
+
+/** Stages where the creator owes work or is owed money — a deal genuinely
+ *  in flight. `invited`/`pitched`/`negotiating` are not commitments yet, and
+ *  `paid`/`cancelled` are over. */
+const IN_FLIGHT: ReadonlySet<Collaboration['stage']> = new Set([
+  'confirmed', 'submitted', 'approved', 'live',
+] as const);
+
+/**
+ * How many deals this creator has actually running (WORKFLOW-GAPS C4).
+ *
+ * Kept here, next to the rule that consumes it, so "what counts as a live
+ * deal" has one definition. Every surface that shows a capacity figure and
+ * the guard that enforces it must agree, or the creator is told they have
+ * room while the send is refused.
+ */
+export function activeDealCount(db: Database, creatorId: string): number {
+  return db.collaborations.filter(
+    (c) => c.creatorId === creatorId && !c.cancelledAt && IN_FLIGHT.has(c.stage),
+  ).length;
+}
 
 export interface AvailabilityVerdict {
   /** Non-null = the send must not proceed. Message is shown to the BRAND. */
@@ -72,7 +96,7 @@ function whenBack(untilDate?: string): string {
  */
 export function availabilityVerdict(
   creator: Pick<Creator, 'name' | 'availability'> | undefined | null,
-  opts: { category?: string; rate?: number } = {},
+  opts: { category?: string; rate?: number; activeDeals?: number } = {},
 ): AvailabilityVerdict {
   const a = creator?.availability;
   if (!creator || !a) return { block: null, warn: null };
@@ -90,6 +114,21 @@ export function availabilityVerdict(
   if (a.vacationMode) {
     return {
       block: `${firstName(creator)} is away and not accepting briefs.${whenBack(a.untilDate)}`,
+      warn: null,
+    };
+  }
+
+  // C4 — a hard cap the creator set on their own capacity. Blocks for the
+  // same reason auto-decline does: it is an instruction, not a preference.
+  // `activeDeals` is passed in rather than counted here so this stays pure;
+  // callers use `activeDealCount` so the number cannot diverge.
+  if (typeof a.maxConcurrentDeals === 'number' && a.maxConcurrentDeals > 0
+      && typeof opts.activeDeals === 'number'
+      && opts.activeDeals >= a.maxConcurrentDeals) {
+    return {
+      block: `${firstName(creator)} caps concurrent work at ${a.maxConcurrentDeals} `
+        + `${a.maxConcurrentDeals === 1 ? 'deal' : 'deals'} and is at capacity. `
+        + `Worth asking when they next have room.`,
       warn: null,
     };
   }
@@ -123,7 +162,7 @@ export function availabilityVerdict(
 /** Convenience for mutation guards: the block message, or null. */
 export function availabilityBlock(
   creator: Pick<Creator, 'name' | 'availability'> | undefined | null,
-  opts: { category?: string; rate?: number } = {},
+  opts: { category?: string; rate?: number; activeDeals?: number } = {},
 ): string | null {
   return availabilityVerdict(creator, opts).block;
 }

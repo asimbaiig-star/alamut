@@ -22,7 +22,7 @@
 //   - Creator.pendingBalance · grows on accept, shrinks on release
 
 import { tx, useStore } from '@/lib/api/store';
-import { availabilityBlock } from '@/lib/api/availability';
+import { activeDealCount, availabilityBlock } from '@/lib/api/availability';
 import type {
   Application, Brand, Campaign, Database, Offer, OfferRound, Submission, Transaction, User,
 } from '@/lib/api/types';
@@ -595,7 +595,9 @@ export function v2SendOffer(
     // the mutation, so it holds for every caller rather than for whichever
     // screen remembered to check. `minRate` stays advisory by design; see
     // lib/api/availability.ts.
-    const availabilityBlocked = availabilityBlock(creator, { category: camp.category, rate });
+    const availabilityBlocked = availabilityBlock(creator, {
+      category: camp.category, rate, activeDeals: activeDealCount(db, creator.id),
+    });
     if (availabilityBlocked) throw new Error(availabilityBlocked);
 
     // IDEMPOTENCY / DUPE-OFFER GUARD — return the existing live offer
@@ -1629,7 +1631,14 @@ export const MAX_OFFER_ROUNDS = 4;
  * to `expired` and the new round is NOT appended. Application returns
  * to `submitted` so the brand can still re-engage with a fresh Offer.
  */
-export function v2CounterOffer(offerId: string, rate: number, message: string): Offer {
+/** A3 — what a counter proposes beyond the price. Both optional; absent
+ *  means "unchanged from the last round". */
+export interface CounterTerms {
+  scope?: string | null;
+  deliverBy?: string | null;
+}
+
+export function v2CounterOffer(offerId: string, rate: number, message: string, terms?: CounterTerms): Offer {
   // P62 — was `Offer | null`. Five silent failure paths swallowed
   // counter-invalid inputs without any signal to the caller.
   const result = tx((db) => {
@@ -1712,7 +1721,13 @@ export function v2CounterOffer(offerId: string, rate: number, message: string): 
     }
 
     const at = Date.now();
-    const newRound: OfferRound = { by: 'creator', at, rate, message };
+    const newRound: OfferRound = {
+      by: 'creator', at, rate, message,
+      // A3 — carried only when actually proposed, so a plain price counter
+      // does not litter the transcript with empty scope fields.
+      ...(terms?.scope ? { scope: terms.scope.trim() } : {}),
+      ...(terms?.deliverBy ? { deliverBy: terms.deliverBy } : {}),
+    };
     db.offers[idx] = {
       ...offer,
       // Mirror the latest round to top-level rate/message so legacy
@@ -1759,7 +1774,7 @@ export function v2CounterOffer(offerId: string, rate: number, message: string): 
  * Mirror of `v2CounterOffer` but pushes a `brand` round. Required
  * precondition: the latest round was a creator round. Same cap behavior.
  */
-export function v2CounterCounter(offerId: string, rate: number, message: string): Offer {
+export function v2CounterCounter(offerId: string, rate: number, message: string, terms?: CounterTerms): Offer {
   // P63 — symmetric to v2CounterOffer P62 refactor.
   const result = tx((db) => {
     // P5 §4.1 — brand-side counter-back; admin/ops only.
@@ -1828,7 +1843,11 @@ export function v2CounterCounter(offerId: string, rate: number, message: string)
     }
 
     const at = Date.now();
-    const newRound: OfferRound = { by: 'brand', at, rate, message };
+    const newRound: OfferRound = {
+      by: 'brand', at, rate, message,
+      ...(terms?.scope ? { scope: terms.scope.trim() } : {}),
+      ...(terms?.deliverBy ? { deliverBy: terms.deliverBy } : {}),
+    };
     db.offers[idx] = {
       ...offer,
       rate,
