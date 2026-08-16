@@ -310,7 +310,7 @@ export function KycTax({ onRoute, initialAction }: Props) {
     <>
       <Topbar
         title="KYC & Tax"
-        crumb={`${completed} of ${STEPS.length} steps complete · ${pct}% verified`}
+        crumb={`${completed} of ${STEPS.length} steps complete · ${pct}%`}
         actions={
           <button className="v2-btn v2-btn-outline" type="button" onClick={() => onRoute('creator-wallet')}>
             {Icon.wallet}<span>Back to wallet</span>
@@ -338,7 +338,11 @@ export function KycTax({ onRoute, initialAction }: Props) {
                 margin: 0,
                 color: 'var(--v2-ink)',
               }}>
-                {completed} of {STEPS.length} steps verified
+                {/* "verified" here counted the bank row, whose own pill now
+                    reads "On file" because nobody verifies it. A summary that
+                    contradicts the rows it summarises is the same overclaim
+                    one level up. */}
+                {completed} of {STEPS.length} steps complete
               </h2>
               <p className="v2-muted" style={{ margin: '6px 0 0', fontSize: 13.5, maxWidth: 540 }}>
                 {/* Three claims, none backed. "Instant withdrawals": no

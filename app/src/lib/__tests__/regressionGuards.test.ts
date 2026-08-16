@@ -496,6 +496,16 @@ describe('a step that self-approves does not claim a human reviews it', () => {
     expect(src).toMatch(/step\.verifiedLabel/);
   });
 
+  it('the progress summary does not claim more than its own rows', () => {
+    // "N of 5 steps verified" counted the bank row, whose pill reads "On
+    // file" precisely because nobody verifies it. A summary that
+    // contradicts the rows beneath it is the same overclaim one level up,
+    // and it is the version a reader sees first.
+    const src = code('screens/workspace-v2/screens/KycTax.tsx');
+    expect(src).not.toMatch(/steps verified/);
+    expect(src).toMatch(/steps complete/);
+  });
+
   it('no third-party verification vendor is named in user-visible copy', () => {
     // The earlier version of this same defect claimed "Powered by Persona"
     // — borrowing a real company's credibility for work nobody does.
