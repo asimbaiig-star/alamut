@@ -128,6 +128,7 @@ export const offerStatusTone = (s: OfferStatus | string | undefined): Tone =>
 
 export const SUBMISSION_STATUS_LABEL: Record<SubmissionStatus, string> = {
   in_review: 'In review',
+  rejected:  'Rejected',
   revisions: 'Revisions requested',
   approved:  'Approved',
 };
@@ -135,6 +136,7 @@ export const SUBMISSION_STATUS_LABEL: Record<SubmissionStatus, string> = {
 export const SUBMISSION_STATUS_TONE: Record<SubmissionStatus, Tone> = {
   in_review: 'info',  // passive: brand reviewing, no action needed
   revisions: 'warn',  // creator needs to act, but not a failure
+  rejected:  'bad',   // terminal for this deliverable — nobody is acting
   approved:  'good',
 };
 

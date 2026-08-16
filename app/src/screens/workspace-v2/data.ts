@@ -221,7 +221,10 @@ export interface V2Deliverable {
    *  `v2SubmitContent(...)` as the `deliverableId` argument. */
   deliverableId: string;
   label: string;        // "Instagram Reel · 60s"
-  status: 'pending' | 'in_review' | 'approved' | 'live' | 'revision';
+  /** Mirrors `SlotStatus` in collabSync. `rejected` = the brand declined this
+   *  deliverable outright rather than requesting more revisions; terminal for
+   *  the slot, and nobody is waiting on anybody. */
+  status: 'pending' | 'in_review' | 'approved' | 'live' | 'revision' | 'rejected';
   /** Human display string, e.g. "May 18". LOSSY — no year. Never parse it. */
   due: string;
   /**

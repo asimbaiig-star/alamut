@@ -743,6 +743,7 @@ function DeliverableRow({ deliverable, canSubmit, onUpload }: {
     approved: 'var(--v2-moss)',
     live: 'var(--v2-moss)',
     revision: 'var(--v2-gold)',
+    rejected: 'var(--v2-ink-3)',
   };
   const statusLabels: Record<V2Deliverable['status'], string> = {
     pending: 'Pending upload',
@@ -750,6 +751,7 @@ function DeliverableRow({ deliverable, canSubmit, onUpload }: {
     approved: 'Approved',
     live: 'Live',
     revision: 'Revision requested',
+    rejected: 'Declined',
   };
 
   return (

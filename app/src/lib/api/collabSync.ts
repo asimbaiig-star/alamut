@@ -42,6 +42,11 @@ function newCollabId(campaignId: string, creatorId: string): string {
  *  deliberately NOT part of this — escrow releases at approve-time in
  *  this model, so "money moved" says nothing about "post is up". */
 export function submissionIsLive(s: Submission): boolean {
+  // A reported takedown wins over the permalink. Liveness was previously
+  // inferred purely from the link existing, so a post that had been deleted
+  // still read as live — and the only way to stop it was to delete the
+  // record of what had been posted.
+  if (s.postDownAt) return false;
   return s.status === 'approved' && (
     !!s.permalink || (s.feedback ?? []).some((f) => f.text.startsWith('LIVE: '))
   );
@@ -63,7 +68,7 @@ export function deliverableIdForSubmission(s: Submission, db: Database): string 
   )?.id;
 }
 
-export type SlotStatus = 'pending' | 'in_review' | 'revision' | 'approved' | 'live';
+export type SlotStatus = 'pending' | 'in_review' | 'revision' | 'approved' | 'live' | 'rejected';
 
 export interface CollabSlot {
   deliverable: Deliverable;
@@ -107,6 +112,10 @@ export function computeSlotStatuses(
       status =
         latest.status === 'in_review' ? 'in_review' :
         latest.status === 'revisions' ? 'revision' :
+        // Terminal for this slot: the brand said no and stopped trying.
+        // Deliberately NOT 'pending' — the deliverable isn't waiting on the
+        // creator, it's closed unfulfilled.
+        latest.status === 'rejected' ? 'rejected' :
         submissionIsLive(latest) ? 'live' : 'approved';
     }
     return { deliverable: del, status, latestSubmission: latest };
@@ -176,7 +185,11 @@ export function computeCollabStage(
     if (slots.length > 0) {
       const statuses = slots.map((s) => s.status);
       const anyInReviewOrRevision = statuses.some((s) => s === 'in_review' || s === 'revision');
-      const allApproved = statuses.every((s) => s === 'approved' || s === 'live');
+      // A rejected slot is closed, so it must not hold the collab at
+      // `confirmed` forever waiting for work that is never coming. It counts
+      // as settled-for-rollup purposes; the money for it stays held until the
+      // parties settle or cancel (see WORKFLOW-GAPS F1).
+      const allApproved = statuses.every((s) => s === 'approved' || s === 'live' || s === 'rejected');
       const allLive = statuses.every((s) => s === 'live');
       const anyLive = statuses.some((s) => s === 'live');
       if (anyInReviewOrRevision) return 'submitted';

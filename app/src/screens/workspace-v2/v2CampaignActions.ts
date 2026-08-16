@@ -2091,6 +2091,128 @@ export function v2AcceptPitch(applicationId: string, rateOverride?: number): Off
   return accepted;
 }
 
+/**
+ * Decline a submitted deliverable outright — the middle option that was
+ * missing between "approve" and "open a dispute".
+ *
+ * The revision cap already told the brand to "Approve, reject, or open a
+ * dispute instead", and `reject` did not exist. So after three rounds their
+ * real choices were to approve work they didn't want, or escalate to a
+ * dispute — an adversarial move for what is often just "this isn't right and
+ * we're done trying".
+ *
+ * MOVES NO MONEY, deliberately. Escrow for the slot stays held: a one-sided
+ * refund on the brand's say-so is precisely what disputes exist to arbitrate,
+ * and the creator has done work. Settling the held amount is a separate,
+ * mutual step (WORKFLOW-GAPS F1, not yet built) or a dispute.
+ *
+ * The slot becomes terminal rather than returning to `pending` — the
+ * deliverable is closed unfulfilled, not waiting on the creator.
+ */
+export function v2RejectSubmission(submissionId: string, reason: string): Submission {
+  const result = tx((db) => {
+    // Same capability as requesting revisions — it is the same review
+    // decision, just a final one.
+    requireCapability(getActorUserId(), 'content.revise', db);
+
+    const idx = db.submissions.findIndex((s) => s.id === submissionId);
+    if (idx === -1) throw new Error("Couldn't find that submission — refresh and try again.");
+    const sub = db.submissions[idx];
+    if (sub.status === 'rejected') return sub; // idempotent
+    if (sub.status === 'approved') {
+      throw new Error('This deliverable was already approved — the payout has cleared. Raise a dispute instead.');
+    }
+    if (!reason.trim()) {
+      throw new Error('Add a reason — the creator has done work and deserves to know why it was declined.');
+    }
+
+    const brandUser = db.users.find((u) => u.id === getActorUserId());
+    db.submissions[idx] = {
+      ...sub,
+      status: 'rejected',
+      feedback: [...sub.feedback, {
+        from: brandUser?.id ?? 'brand',
+        text: reason.trim(),
+        at: nowIso(),
+      }],
+    };
+
+    const creatorUser = findUserByCreator(db, sub.creatorId);
+    const camp = db.campaigns.find((c) => c.id === sub.campaignId);
+    if (creatorUser && camp) {
+      db.notifications.push({
+        id: newId('n'),
+        userId: creatorUser.id,
+        text: `${camp.title}: the brand declined this deliverable — escrow stays held until you settle it between you`,
+        href: '/creator/collabs',
+        at: nowIso(),
+        read: false,
+      });
+    }
+
+    ensureCollabState(sub.campaignId, sub.creatorId, db, brandUser?.id ?? '', 'submission-rejected');
+    return db.submissions[idx];
+  });
+  return result;
+}
+
+/**
+ * The brand reports that a live post is no longer up.
+ *
+ * E1 asked for permalink RE-VERIFICATION, and automatic re-verification is
+ * not buildable here: there is no crawler, and the browser cannot fetch
+ * instagram.com to check (CSP, and it would be blocked anyway). Pretending to
+ * verify would be worse than not verifying — it is the same class of claim as
+ * the analytics that used to be invented at render time.
+ *
+ * So this is the honest version: a human reports it, the deliverable stops
+ * claiming to be live, and the creator is asked to restore it or explain.
+ * The permalink is kept rather than cleared, so the record of what was posted
+ * survives the takedown.
+ */
+export function v2ReportPostDown(submissionId: string, note: string): Submission {
+  return tx((db) => {
+    requireCapability(getActorUserId(), 'content.revise', db);
+
+    const idx = db.submissions.findIndex((s) => s.id === submissionId);
+    if (idx === -1) throw new Error("Couldn't find that submission — refresh and try again.");
+    const sub = db.submissions[idx];
+    if (!sub.permalink) throw new Error('This deliverable has no live link to report.');
+
+    const brandUser = db.users.find((u) => u.id === getActorUserId());
+    db.submissions[idx] = {
+      ...sub,
+      // Stays `approved` — the work was accepted and paid for; it simply is
+      // not live any more. The permalink is KEPT as the record of what was
+      // posted, and `postDownAt` carries the takedown, because inferring
+      // liveness from the link alone made those two facts mutually exclusive.
+      status: 'approved',
+      postDownAt: nowIso(),
+      feedback: [...sub.feedback, {
+        from: brandUser?.id ?? 'brand',
+        text: `POST DOWN: ${note.trim() || 'the linked post is no longer reachable'}`,
+        at: nowIso(),
+      }],
+    };
+
+    const creatorUser = findUserByCreator(db, sub.creatorId);
+    const camp = db.campaigns.find((c) => c.id === sub.campaignId);
+    if (creatorUser && camp) {
+      db.notifications.push({
+        id: newId('n'),
+        userId: creatorUser.id,
+        text: `${camp.title}: the brand reports your post is no longer live — restore it or let them know`,
+        href: '/creator/collabs',
+        at: nowIso(),
+        read: false,
+      });
+    }
+
+    ensureCollabState(sub.campaignId, sub.creatorId, db, brandUser?.id ?? '', 'post-reported-down');
+    return db.submissions[idx];
+  });
+}
+
 export function v2RejectApplication(applicationId: string): Application {
   const result = tx((db) => {
     // P5 §4.1 — brand-side application decision.

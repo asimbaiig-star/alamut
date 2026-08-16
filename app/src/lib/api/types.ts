@@ -972,7 +972,13 @@ export interface Offer {
   version?: number;
 }
 
-export type SubmissionStatus = 'in_review' | 'revisions' | 'approved';
+// 'rejected' exists because the brand had no middle option. After the
+// 3-revision cap their choices were approve work they didn't want, or open a
+// dispute — an adversarial move for what is often just "this isn't right and
+// we're done trying". Rejecting closes the deliverable unfulfilled; it
+// deliberately moves NO money, because a one-sided refund on the brand's say-so
+// is exactly what disputes exist to arbitrate.
+export type SubmissionStatus = 'in_review' | 'revisions' | 'approved' | 'rejected';
 
 export interface Submission {
   id: string;
@@ -1001,6 +1007,13 @@ export interface Submission {
    *  only — no stage change). MarkLiveModal pre-fills from this when
    *  set so the brand doesn't retype what the creator already pasted. */
   permalink?: string;
+  /** Set when the brand reports the live post is no longer reachable.
+   *
+   *  Liveness used to be INFERRED from `permalink` being present, which made
+   *  "the post is down" unrepresentable: clearing the link lost the record of
+   *  what was posted, and keeping it meant the deliverable still claimed to be
+   *  live. Recording the takedown separately lets both facts coexist. */
+  postDownAt?: string;
   /** P1c §1.1 — backfilled by migrator 3; eventually required (P2). */
   collaborationId?: string;
   /** P1d §1.5 — FK to the `Deliverable` row this submission fulfils.

@@ -266,6 +266,48 @@ testing.
 
 ---
 
+## E + F — PARTIALLY SHIPPED, and honest about the rest
+
+**F2 — the missing middle option, SHIPPED.** `SubmissionStatus` gained
+`rejected` and `v2RejectSubmission` exists. The revision cap already told the
+brand to "Approve, reject, or open a dispute instead" and `reject` did not
+exist, so after three rounds their real choices were to approve work they
+didn't want or escalate — adversarial, for what is often just "this isn't
+right and we're done trying".
+
+It **moves no money**, deliberately: escrow stays held. A one-sided refund on
+the brand's say-so is precisely what disputes exist to arbitrate, and the
+creator has done work. It demands a reason, because they deserve to know why.
+
+**E1 — permalink re-verification, SHIPPED as the honest version.** Automatic
+re-verification is NOT buildable here: there is no crawler, and the browser
+cannot fetch instagram.com to check. Claiming to verify would be the same
+class of lie as the analytics that used to be invented at render time. So a
+human reports it — `v2ReportPostDown` — the deliverable stops claiming to be
+live, and the creator is asked to restore it.
+
+Writing it surfaced a design flaw worth recording: `submissionIsLive` INFERRED
+liveness from `permalink` being present, which made "the post is down"
+unrepresentable — clearing the link lost the record of what was posted, and
+keeping it meant the deliverable still read as live. Liveness is now a
+recorded fact (`postDownAt`), so both can be true at once.
+
+**NOT BUILT, and each for a reason:**
+
+- **F1 (partial settlement).** A creator who delivers 3 of 4 slots and goes
+  quiet still leaves the fourth stuck. Closing it out means moving escrow that
+  both parties have a claim on, so it is a mutual settlement flow — a feature
+  with its own design, not a gap to patch. `rejected` slots no longer hold the
+  collab at `submitted`, which removes the *stuck-looking* half of the problem
+  without pretending to solve the money half.
+- **F3 (partial-fault disputes).** `v2ResolveDispute` already supports a split
+  release; what is missing is a way for the parties to PROPOSE one. That is
+  negotiation UI, not a fix.
+- **E2 / E3 (usage-rights extension, post-delivery amendments).** Both are
+  revenue-expansion features and both need commercial decisions first.
+
+### The original findings
+
 ## E. Content lifecycle after "live"
 
 **E1 — Nothing re-verifies a permalink.** A creator can post, get paid, and
