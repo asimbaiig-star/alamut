@@ -379,19 +379,22 @@ campaign ids Postgres actually returned; the two FK-bearing mirrors
 
 ## Still open — Asim's to run
 
-**030–035 are applied. `036` is new and NOT yet applied.**
+**All seven SQL migrations are applied (030–036 + the earlier set).**
 
-- **`036_deal_owner_and_capacity.sql` — TO RUN.** Adds
-  `collaborations.owner_user_id text` (WORKFLOW-GAPS D2) and a partial index.
-  One nullable column, no backfill, safe to re-run.
-
-  C4's creator capacity needs no column — it lives inside the existing
-  `creators.availability` jsonb. The migration says so explicitly so the
+- ~~`036_deal_owner_and_capacity.sql`~~ — **APPLIED 2026-08-16**, returning the
+  expected single row. Adds `collaborations.owner_user_id` (D2) and a partial
+  index. C4's creator cap needed no column — it lives in the existing
+  `creators.availability` jsonb, and the migration says so explicitly so the
   absence is not read later as an oversight.
 
-  NULL = the brand's primary user, which is every existing row, so behaviour
-  is unchanged until someone reassigns a deal.
-
+  Verified against production with RLS in force and **no rows modified**:
+  read `200`; a non-existent column `400 / 42703`; a zero-row PATCH of
+  `owner_user_id` `200` with 0 rows. The full **18-column SELECT that
+  `collaborationsRepo` now issues** also returns `200` with three rows and
+  `owner_user_id` present and null — which is the check that matters most
+  here, because that repo has now gained four columns across 033, 035 and 036
+  and any one of them missing would break every hydrate, not just its own
+  feature.
 
 - ~~`035_amendments.sql`~~ — **APPLIED 2026-08-16**, returning the expected
   three rows. Adds `collaborations.amendments`, `contracts.rights_snapshot`,
