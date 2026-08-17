@@ -16,6 +16,7 @@ import {
   v2AcceptOffer, v2WithdrawApplication, getApplicationFor, getActiveOfferFor,
   getLatestSubmissionFor, v2SetSubmissionPermalink, v2LeaveReview,
 } from '../v2CampaignActions';
+import { relativeTime } from '../v2Adapters';
 import { v2RaiseDispute } from '../v2DisputeActions';
 import { DisputePanel } from './DisputePanel';
 import { AmendmentPanel } from './AmendmentPanel';
@@ -272,6 +273,17 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
     (c) => c.campaignId === collab.campaignId && c.creatorId === collab.creatorId,
   );
   const cancelRequest = collabRow?.cancellationRequest ?? null;
+  // The real escrow_hold row for this pair, if one exists. Money events are
+  // read from the ledger — never inferred from a stage or a price.
+  const escrowFundedAt = (() => {
+    const creatorUserId = db.users.find((u) => u.creatorId === collab.creatorId)?.id;
+    const row = db.transactions.find(
+      (t) => t.campaignId === collab.campaignId
+        && t.kind === 'escrow_hold'
+        && t.counterpartyUserId === creatorUserId,
+    );
+    return row?.at ?? null;
+  })();
   // F3 — an open dispute suppresses the "raise a dispute" link and drives
   // the panel below it.
   const openDispute = collabRow
@@ -415,6 +427,9 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
                 stage={collab.stage}
                 pendingOffer={pendingOffer}
                 inviteMessage={inviteMessage}
+                wasInvited={(collabRow?.history ?? []).some(
+                  (h) => typeof h.reason === 'string' && h.reason.startsWith('brand-invite'),
+                )}
                 campaignBrand={camp.brand}
                 campaignName={camp.name}
                 campaignPlacement={camp.placement}
@@ -573,7 +588,12 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
 
             {/* Activity — last 7 days of brand/creator events. Quick
                 pulse-check so the creator sees what's been happening. */}
-            <CollabActivityCard collab={collab} brand={camp.brand} />
+            <CollabActivityCard
+              collabId={collabRow?.id ?? ''}
+              campaignId={collab.campaignId}
+              creatorId={collab.creatorId}
+              brand={camp.brand}
+            />
           </div>
 
           {/* Sidebar */}
@@ -585,6 +605,7 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
                 breakdown rows live above the milestone river. */}
             <PayoutTimelineCard
               collab={collab}
+              escrowFundedAt={escrowFundedAt}
               gross={collab.price}
               platformFee={platformFee}
               wht={wht}
@@ -1079,9 +1100,11 @@ function DeliverableProgressSummary({ deliverables }: { deliverables: V2Delivera
 // =====================================================================
 
 function PayoutTimelineCard({
-  collab, gross, platformFee, wht, net,
+  collab, escrowFundedAt, gross, platformFee, wht, net,
 }: {
   collab: V2Collab;
+  /** ISO date of the real `escrow_hold` row, or null when none exists. */
+  escrowFundedAt: string | null;
   gross: number;
   platformFee: number;
   wht: number;
@@ -1100,7 +1123,17 @@ function PayoutTimelineCard({
   // on the 'paid' stage, telling the creator money was still pending
   // after approval when it was already withdrawable.
   const milestones: Milestone[] = [
-    { id: 'escrow',   label: 'Escrow funded',   date: collab.appliedAt ?? 'On confirm', done: collab.price > 0 },
+    // `done: collab.price > 0` marked escrow FUNDED whenever a price
+    // existed — including on an `invited` collab whose only "price" is the
+    // rate the brand suggested. The creator was shown money locked up that
+    // nobody had moved, and the date shown was their application date. Money
+    // events come from the ledger, never from a stage or a price.
+    {
+      id: 'escrow',
+      label: 'Escrow funded',
+      date: escrowFundedAt ?? 'On offer accept',
+      done: !!escrowFundedAt,
+    },
     { id: 'submit',   label: 'Draft submitted', date: submittedAt ?? (submittedReached ? 'Recently' : 'Pending submit'), done: submittedReached },
     { id: 'approve',  label: 'Approved · funds released to wallet', date: approvedAt ?? (approvedReached ? 'Recently' : 'ETA on approve'), done: approvedReached },
     { id: 'closed',   label: 'Deal closed',     date: paidReached ? 'Complete' : 'On campaign close', done: paidReached },
@@ -1265,35 +1298,136 @@ function CollapsibleBrief({ brief }: { brief: string }) {
 }
 
 // =====================================================================
-// CollabActivityCard — synthesizes a 7-day event feed from the
+// CollabActivityCard — the real event feed for this collaboration.
 // collab's lifecycle: stage transitions, deliverable submits/approvals,
 // payout. Demo data — a real implementation would read from a
 // dedicated activity log table.
 // =====================================================================
 
 function CollabActivityCard({
-  collab, brand,
+  collabId, campaignId, creatorId, brand,
 }: {
-  collab: V2Collab;
+  collabId: string;
+  campaignId: string;
+  creatorId: string;
   brand: string;
 }) {
-  type Event = { when: string; who: string; what: string; icon: string; color: string };
+  const db = useStore((s) => s.db);
+
+  type Event = { at: number; who: string; what: string; icon: string; color: string };
   const events: Event[] = [];
 
-  // Build events backwards from current stage so the most recent is at top.
-  if (collab.stage === 'paid') {
-    events.push({ when: 'today', who: brand, what: 'released payout · funds in your wallet', icon: '₨', color: 'var(--v2-moss)' });
+  const row = db.collaborations.find((c) => c.id === collabId)
+    ?? db.collaborations.find((c) => c.campaignId === campaignId && c.creatorId === creatorId);
+  const creatorUserId = db.users.find((u) => u.creatorId === creatorId)?.id;
+
+  // Derived from the SIGNALS — applications, offers, submissions, ledger —
+  // not from `Collaboration.history`.
+  //
+  // History looked like the obvious source and is the wrong one here: for
+  // rows the P1c migrator derived, every entry carries the DERIVATION
+  // timestamp and an actor that is whoever ran the migration, so the feed
+  // read "Aesop sent a pitch · just now" on a collab whose stage is
+  // `invited` — a real record, rendered into a false sentence. Pitches are
+  // the creator's move and offers are the brand's; the signals say which
+  // happened, when, and by whom, without inference.
+  //
+  // History is used only for `invited`, which by definition has no signal
+  // behind it.
+
+  for (const h of row?.history ?? []) {
+    if (h.to !== 'invited') continue;
+    events.push({ at: h.at, who: brand, what: 'invited you to the campaign', icon: '✉', color: 'var(--v2-ink-3)' });
   }
-  if (['approved', 'live', 'paid'].includes(collab.stage)) {
-    events.push({ when: '2d ago', who: brand, what: 'approved your draft', icon: '✓', color: 'var(--v2-moss)' });
+
+  for (const a of db.applications) {
+    if (a.campaignId !== campaignId || a.creatorId !== creatorId) continue;
+    const at = +new Date(a.submittedAt);
+    if (Number.isFinite(at)) {
+      events.push({ at, who: 'You', what: 'sent a pitch', icon: '→', color: 'var(--v2-ink-3)' });
+    }
+    // Terminal outcomes matter as much as openings. Without these the feed
+    // showed a pitch and an offer with no ending, reading as live activity
+    // on a pair where the pitch had lapsed and the offer had expired.
+    const decided = a.decidedAt ? +new Date(a.decidedAt) : NaN;
+    if (Number.isFinite(decided)) {
+      if (a.status === 'withdrawn') {
+        // Subject-less: nobody DID this, it timed out. `who: ''` renders the
+        // sentence alone — "You pitch lapsed" was the first cut.
+        events.push({ at: decided, who: '', what: 'Your pitch lapsed with no reply', icon: '×', color: 'var(--v2-ink-3)' });
+      } else if (a.status === 'rejected') {
+        events.push({ at: decided, who: brand, what: 'passed on your pitch', icon: '×', color: 'var(--v2-ink-3)' });
+      }
+    }
   }
-  if (['submitted', 'approved', 'live', 'paid'].includes(collab.stage)) {
-    events.push({ when: '3d ago', who: 'You', what: 'submitted draft for review', icon: '→', color: 'var(--v2-ink-3)' });
+
+  for (const o of db.offers) {
+    if (o.campaignId !== campaignId || o.creatorId !== creatorId) continue;
+    // Every round, attributed to the side that actually sent it.
+    o.rounds?.forEach((rd, i) => {
+      if (!Number.isFinite(rd.at)) return;
+      const mine = rd.by === 'creator';
+      events.push({
+        at: rd.at,
+        who: mine ? 'You' : brand,
+        what: i === 0 && !mine
+          ? `sent an offer · ${fmtUSD(rd.rate)}`
+          : `countered at ${fmtUSD(rd.rate)}`,
+        icon: '↔',
+        color: 'var(--v2-ink-3)',
+      });
+    });
+    const responded = o.respondedAt ? +new Date(o.respondedAt) : NaN;
+    if (Number.isFinite(responded)) {
+      if (o.status === 'accepted') {
+        events.push({ at: responded, who: 'You', what: 'accepted the offer', icon: '✓', color: 'var(--v2-moss)' });
+      } else if (o.status === 'declined') {
+        events.push({ at: responded, who: 'You', what: 'declined the offer', icon: '×', color: 'var(--v2-ink-3)' });
+      } else if (o.status === 'withdrawn') {
+        events.push({ at: responded, who: brand, what: 'withdrew the offer', icon: '×', color: 'var(--v2-ink-3)' });
+      } else if (o.status === 'expired') {
+        events.push({ at: responded, who: '', what: 'The offer expired with no response', icon: '×', color: 'var(--v2-ink-3)' });
+      }
+    }
   }
-  if (collab.price > 0) {
-    events.push({ when: '5d ago', who: brand, what: `funded escrow · ${fmtUSD(collab.price)}`, icon: '$', color: 'var(--v2-ink)' });
+
+  // Money, from the ledger rather than from the stage or the price. An
+  // escrow line is only claimed when a row exists for it.
+  for (const t of db.transactions) {
+    if (t.campaignId !== campaignId) continue;
+    const at = +new Date(t.at);
+    if (!Number.isFinite(at)) continue;
+    if (t.kind === 'escrow_hold' && t.counterpartyUserId === creatorUserId) {
+      events.push({ at, who: brand, what: `funded escrow · ${fmtUSD(Math.abs(t.amount))}`, icon: '$', color: 'var(--v2-ink)' });
+    }
+    if (t.kind === 'payout' && t.userId === creatorUserId) {
+      events.push({ at, who: brand, what: `released ${fmtUSD(t.amount)} · gross, before fee and withholding`, icon: '$', color: 'var(--v2-moss)' });
+    }
+    if (t.kind === 'refund' && t.counterpartyUserId === creatorUserId) {
+      events.push({ at, who: brand, what: `refunded ${fmtUSD(t.amount)} to their wallet`, icon: '↩', color: 'var(--v2-ink-3)' });
+    }
   }
-  events.push({ when: '6d ago', who: 'You', what: 'accepted the offer', icon: '✓', color: 'var(--v2-moss)' });
+
+  // Submissions and brand feedback.
+  for (const sub of db.submissions) {
+    if (sub.campaignId !== campaignId || sub.creatorId !== creatorId) continue;
+    const at = +new Date(sub.submittedAt);
+    if (Number.isFinite(at)) {
+      events.push({ at, who: 'You', what: `submitted round ${sub.round} for review`, icon: '→', color: 'var(--v2-ink-3)' });
+    }
+    for (const f of sub.feedback ?? []) {
+      const fAt = +new Date(f.at);
+      if (!Number.isFinite(fAt)) continue;
+      events.push({ at: fAt, who: brand, what: 'left feedback on your draft', icon: '✎', color: 'var(--v2-ink-3)' });
+    }
+  }
+
+  events.sort((a, b) => b.at - a.at);
+
+  // Nothing invented means some collabs genuinely have no activity — a cold
+  // invite that nobody has answered has exactly one event, and a brand-new
+  // pair may have none. Say so rather than filling the card.
+  if (events.length === 0) return null;
 
   return (
     <section className="v2-card v2-card-pad-lg">
@@ -1309,31 +1443,28 @@ function CollabActivityCard({
         >
           Activity
         </h3>
-        <span className="v2-muted" style={{ fontSize: 11 }}>last 7 days</span>
+        {/* Was "last 7 days" — a window nothing filtered on. */}
+        <span className="v2-muted" style={{ fontSize: 11 }}>newest first</span>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {events.map((e, i) => (
-          <div key={i} className="v2-row" style={{ gap: 10, alignItems: 'flex-start' }}>
+        {events.slice(0, 8).map((e, i) => (
+          <div key={`${e.at}-${i}`} className="v2-row" style={{ gap: 10, alignItems: 'flex-start' }}>
             <div
               style={{
-                width: 22,
-                height: 22,
-                borderRadius: '50%',
-                background: 'var(--v2-bg)',
-                color: e.color,
-                display: 'grid',
-                placeItems: 'center',
-                fontSize: 11,
-                fontWeight: 700,
-                flexShrink: 0,
+                width: 22, height: 22, borderRadius: '50%',
+                background: 'var(--v2-bg)', color: e.color,
+                display: 'grid', placeItems: 'center',
+                fontSize: 11, fontWeight: 700, flexShrink: 0,
               }}
             >
               {e.icon}
             </div>
             <div style={{ flex: 1, fontSize: 13 }}>
-              <span style={{ fontWeight: 550 }}>{e.who}</span>{' '}
+              {e.who && <><span style={{ fontWeight: 550 }}>{e.who}</span>{' '}</>}
               <span style={{ color: 'var(--v2-ink-2)' }}>{e.what}</span>
-              <div className="v2-muted" style={{ fontSize: 11, marginTop: 1 }}>{e.when}</div>
+              <div className="v2-muted" style={{ fontSize: 11, marginTop: 1 }}>
+                {relativeTime(new Date(e.at).toISOString())}
+              </div>
             </div>
           </div>
         ))}

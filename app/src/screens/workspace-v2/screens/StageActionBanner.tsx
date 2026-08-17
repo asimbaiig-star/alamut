@@ -46,6 +46,14 @@ export interface StageActionBannerProps {
    *  can see why the brand reached out before deciding. Optional —
    *  the branch falls back to a generic prompt when absent. */
   inviteMessage?: string;
+  /** Whether an invitation actually happened, from collab history.
+   *
+   *  `computeCollabStage` falls back to `invited` when nothing is live — so a
+   *  pair that pitched and then had its offer expire lands here too. The
+   *  branch below used to greet them with "X invited you", inventing an
+   *  invitation that never occurred, under a banner promising "a proper offer
+   *  will follow" when one had already come and gone. */
+  wasInvited?: boolean;
   onAccept: () => void;
   onCounter: () => void;
   onUpload: () => void;
@@ -69,7 +77,7 @@ export interface StageActionBannerProps {
 export function StageActionBanner({
   stage, pendingOffer, campaignBrand, campaignName, campaignPlacement,
   myApplicationId, myApplicationStatus, latestSubmissionStatus, livePermalink,
-  activeOfferRate, latestRevisionNote, inviteMessage,
+  activeOfferRate, latestRevisionNote, inviteMessage, wasInvited,
   onAccept, onCounter, onUpload, onWithdraw, onMessageBrand,
   onLeaveReview, onAddLiveLink, myProposedRate,
   offerSentAt, applicationSubmittedAt, submissionSubmittedAt,
@@ -146,10 +154,16 @@ export function StageActionBanner({
     // because there's no offer to accept or counter against — the brand
     // sends a proper offer through the Inbox conversation (or directly
     // from the kanban after the creator engages).
-    title = `${campaignBrand} invited you to ${campaignName}`;
-    body = inviteMessage
-      ? `"${inviteMessage}" — ${campaignBrand} hasn't named a rate yet. Message them to align on scope and price, and a proper offer will follow.`
-      : `${campaignBrand} reached out about ${campaignPlacement}. Message them to align on scope and price, and a proper offer will follow.`;
+    if (wasInvited === false) {
+      // Reached `invited` by elimination, not by invitation.
+      title = 'Nothing live on this campaign right now';
+      body = `Your earlier round with ${campaignBrand} closed without a deal — the activity below has the dates. The brief is still open, so you can message them if you want to restart the conversation.`;
+    } else {
+      title = `${campaignBrand} invited you to ${campaignName}`;
+      body = inviteMessage
+        ? `"${inviteMessage}" — ${campaignBrand} hasn't named a rate yet. Message them to align on scope and price, and a proper offer will follow.`
+        : `${campaignBrand} reached out about ${campaignPlacement}. Message them to align on scope and price, and a proper offer will follow.`;
+    }
     actions = (
       <button className="v2-btn v2-btn-primary v2-btn-sm" type="button" onClick={onMessageBrand}>
         Message brand

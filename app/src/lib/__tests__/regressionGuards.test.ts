@@ -24,6 +24,10 @@
 //   8. A rule enforced in the mutation but not consulted by the UI that
 //      fires it, so the user gets a dead button or a surprise toast instead
 //      of the reason.
+//   9. Copy describing a process the code does not perform.
+//  10. Marketing selling a capability the product deleted.
+//  11. A past-tense event asserted from a stage or a price rather than read
+//      from the record of it happening.
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -609,5 +613,88 @@ describe('marketing copy does not outrun the product', () => {
   it('does not claim matching uses the brand\'s own customer data', () => {
     // matching.ts scores niche, engagement, geo, rate, history, category.
     expect(marketing()).not.toMatch(/overlap with your existing customers/i);
+  });
+});
+
+
+// ─────────────────────────────────────────────────────────────────────
+// CLASS 11 — "X happened" must be read from the record of X happening
+// ─────────────────────────────────────────────────────────────────────
+//
+// Asim spotted two panels on one screen contradicting each other: the stage
+// header said `Invited` while the Activity feed said "You accepted the
+// offer · 6d ago" and "Aesop funded escrow · $3.6K · 5d ago".
+//
+// Both feed lines were fabricated. "accepted the offer" was pushed
+// UNCONDITIONALLY for every collab at every stage, the escrow line was
+// gated on `collab.price > 0` — true on an invited collab whose only price
+// is the rate the brand suggested — and every timestamp was a hardcoded
+// string ('6d ago', '5d ago'). The card's header claimed "last 7 days" over
+// a window nothing filtered on.
+//
+// The same root cause sat in the payout river: `{ label: 'Escrow funded',
+// done: collab.price > 0 }`, showing a creator money locked up that nobody
+// had moved, dated to their application.
+//
+// `useRecentActivity` had been doing this correctly all along, off real
+// `h.at` / `t.at` timestamps — so this is the house pattern again: a
+// correct implementation exists and a drifted copy is the one on screen.
+//
+// The rule: a past-tense claim, and above all a MONEY claim, is read from
+// the row that records it. Stages and prices say what is true now, not what
+// happened.
+
+describe('past-tense claims come from records, not from stages', () => {
+  const collabDetail = () => code('screens/workspace-v2/screens/CollabDetail.tsx');
+
+  it('the activity feed carries no hardcoded relative timestamps', () => {
+    // '6d ago' and friends were literals. Real events know when they were.
+    expect(collabDetail()).not.toMatch(/'\d+d ago'/);
+    expect(collabDetail()).not.toMatch(/when: 'today'/);
+  });
+
+  it('and claims an acceptance only from an accepted offer', () => {
+    // The property, not the string. Banning "accepted the offer" outright
+    // failed on the correct implementation — this assertion did exactly
+    // that on its first run — because the honest version still says those
+    // words; it just says them inside a check for a real accepted offer
+    // with a real respondedAt.
+    const src = collabDetail();
+    const idx = src.indexOf("what: 'accepted the offer'");
+    expect(idx, 'the acceptance line vanished — check the feed still reports it').toBeGreaterThan(-1);
+    const preceding = src.slice(Math.max(0, idx - 400), idx);
+    expect(preceding, 'acceptance is not gated on an accepted offer')
+      .toMatch(/status === 'accepted'/);
+    expect(preceding, 'acceptance is not gated on a real respondedAt')
+      .toMatch(/respondedAt/);
+  });
+
+  it('escrow is never reported funded from a price alone', () => {
+    // `done: collab.price > 0` on an "Escrow funded" milestone, and
+    // `if (collab.price > 0)` before an escrow feed line, were the two
+    // instances. A price is an intention; escrow_hold is the event.
+    const src = collabDetail();
+    expect(src).not.toMatch(/done: collab\.price > 0/);
+    expect(src).not.toMatch(/if \(collab\.price > 0\)[\s\S]{0,200}funded escrow/);
+  });
+
+  it('the feed reads the ledger and the collab history', () => {
+    const src = collabDetail();
+    expect(src).toMatch(/kind === 'escrow_hold'/);
+    expect(src).toMatch(/row\?\.history/);
+    // And renders real times through the shared formatter.
+    expect(src).toMatch(/relativeTime\(/);
+  });
+
+  it('does not claim a time window it never filters on', () => {
+    expect(collabDetail()).not.toMatch(/last 7 days/);
+  });
+
+  it('the honest implementation it should have reused is still honest', () => {
+    // useRecentActivity was right all along; if it ever starts inventing
+    // times, the pattern this class exists to protect is gone.
+    const src = code('screens/workspace-v2/useRecentActivity.ts');
+    expect(src).not.toMatch(/'\d+d ago'/);
+    expect(src).toMatch(/\bat:\s*(new Date\()?[a-z]/i);
   });
 });

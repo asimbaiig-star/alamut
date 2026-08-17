@@ -300,7 +300,7 @@ export function campaignToV2(c: Campaign, db: Database): V2Campaign {
 // Thread + Messages → V2Conversation
 // =====================================================================
 
-function relativeTime(iso: string): string {
+export function relativeTime(iso: string): string {
   const t = new Date(iso).getTime();
   const now = Date.now();
   const m = Math.floor((now - t) / 60_000);
