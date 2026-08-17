@@ -24,8 +24,10 @@ import type {
   Review, AdminRole, User, Creator,
 } from './types';
 import { isDemoCreator } from '@/lib/utils/demoData';
+// Migration 11 refreshes the stored stage cache from the live derivation.
+import { computeCollabStage } from './collabSync';
 
-export const CURRENT_MIGRATION_VERSION = 10;
+export const CURRENT_MIGRATION_VERSION = 11;
 
 type Migrator = (db: Database) => void;
 
@@ -1009,6 +1011,43 @@ function migrateP7(db: Database): void {
   normalizeLedgerToGross(db);
 }
 
+/**
+ * Migration 11 — refresh the stored stage cache.
+ *
+ * `Collaboration.stage` is a CACHE of `computeCollabStage`. This module's own
+ * header says so: "source of truth for collab stage stays in applications +
+ * offers + submissions + transactions", and mutations call
+ * `ensureCollabState` to refresh it. When a writer skips that call the cache
+ * goes stale, and the UI — which derives — disagrees with the row.
+ *
+ * Two ways that had happened by the time this was written:
+ *
+ *   · `lapseSilentApplications` set an application to `withdrawn` without
+ *     recomputing, so a row said `pitched` while the derivation said
+ *     something else. Fixed at the source in scheduler.ts.
+ *   · The derivation's own rules have tightened several times since these
+ *     rows were first written — `expired` joining the dead set is the latest
+ *     — so caches written under older rules no longer match.
+ *
+ * Refreshing the cache is not a data rewrite: it makes the stored value equal
+ * what the source of truth already says. Deliberately does NOT append history
+ * entries, because nothing HAPPENED — the cache was simply behind, and
+ * inventing transitions to explain it would be the fabricated-event mistake
+ * (regressionGuards CLASS 11) in the audit trail itself.
+ *
+ * `collabLifecycle.test.ts` fails if any pair drifts again.
+ */
+function migrateStageCache(db: Database): void {
+  if (!db.collaborations) return;
+  for (let i = 0; i < db.collaborations.length; i++) {
+    const c = db.collaborations[i];
+    const derived = computeCollabStage(c.campaignId, c.creatorId, db);
+    if (derived !== c.stage) {
+      db.collaborations[i] = { ...c, stage: derived };
+    }
+  }
+}
+
 const migrations: Record<number, Migrator> = {
   1: migrateP1a,
   2: migrateP1b,
@@ -1020,6 +1059,7 @@ const migrations: Record<number, Migrator> = {
   8: migrateP5,
   9: migrateP6,
   10: migrateP7,
+  11: migrateStageCache,
 };
 
 /**

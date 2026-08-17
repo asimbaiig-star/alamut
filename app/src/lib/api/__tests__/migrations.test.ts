@@ -188,7 +188,9 @@ describe('runPendingMigrations — full chain v0 → v10', () => {
     runPendingMigrations(db);
 
     expect(db.migrationVersion).toBe(CURRENT_MIGRATION_VERSION);
-    expect(db.migrationVersion).toBe(10);
+    // Against the constant, not a literal: pinning `10` meant every version
+    // bump broke a test that was not about the new migrator.
+    expect(db.migrationVersion).toBe(CURRENT_MIGRATION_VERSION);
   });
 
   it('migrator 1 (P1a) — drops Campaign.acceptedCreators / shortlist', () => {
@@ -407,6 +409,8 @@ describe('runPendingMigrations — full chain v0 → v10', () => {
     // assert on the field migrator 9 changes for every creator instead.
     expect(db.creators[0].profileCompletion).toBeUndefined();
 
-    expect(db.migrationVersion).toBe(10);
+    // Against the constant, not a literal: pinning `10` meant every version
+    // bump broke a test that was not about the new migrator.
+    expect(db.migrationVersion).toBe(CURRENT_MIGRATION_VERSION);
   });
 });

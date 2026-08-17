@@ -27,6 +27,11 @@ import type {
   Database, Collaboration, CollabStage, CollabHistoryEntry, Offer, Application, Submission,
   Deliverable,
 } from './types';
+// Status classification lives in ONE place, exhaustively — see the note in
+// collabLifecycle.ts on how a missing `expired` became a fake invitation.
+import {
+  applicationIsDead, applicationIsLive, offerIsDead, offerIsLive,
+} from './collabLifecycle';
 
 function newCollabId(campaignId: string, creatorId: string): string {
   const idHash = (campaignId + ':' + creatorId)
@@ -181,9 +186,17 @@ export function computeCollabStage(
   // regardless of the submission history. Pre-fix those flows left the
   // pair stuck at 'pitched'/'invited' and the dead deal re-entered the
   // kanban funnel as a ghost row.
+  // Dead is dead, by every route. This used to spell the terminal sets out
+  // inline as `rejected|withdrawn` for applications and `declined|withdrawn`
+  // for offers — and `OfferStatus` also has `expired`. A pair whose pitch had
+  // lapsed and whose offer had expired therefore matched NO branch and fell
+  // through to `return 'invited'` at the bottom, which is a real stage whose
+  // banner tells the creator a brand reached out. `collabLifecycle` now
+  // classifies every status exhaustively, so adding a status is a compile
+  // error rather than a silent hole.
   const allDeclined =
-    apps.every((a) => a.status === 'rejected' || a.status === 'withdrawn') &&
-    offers.every((o) => o.status === 'declined' || o.status === 'withdrawn');
+    apps.every((a) => applicationIsDead(a.status)) &&
+    offers.every((o) => offerIsDead(o.status));
   if ((apps.length > 0 || offers.length > 0)
     && allDeclined && !acceptedOffer) return 'cancelled';
 
@@ -237,8 +250,34 @@ export function computeCollabStage(
     }
     return 'confirmed';
   }
-  if (offers.some((o) => o.status === 'pending' || o.status === 'countered')) return 'negotiating';
-  if (apps.some((a) => a.status === 'submitted' || a.status === 'shortlisted')) return 'pitched';
+  if (offers.some((o) => offerIsLive(o.status))) return 'negotiating';
+  if (apps.some((a) => applicationIsLive(a.status))) return 'pitched';
+
+  // An ACCEPTED application with no accepted offer.
+  //
+  // Worth spelling out, because it is the one way signals can exist and still
+  // reach the bottom of this function. Every status is classified live /
+  // accepted / dead, so: all-dead exits above as `cancelled`, a live offer is
+  // `negotiating`, a live application is `pitched`, and an accepted offer goes
+  // down the post-acceptance path. That leaves `Application.status ===
+  // 'accepted'` without a matching accepted offer — which A1's `v2AcceptPitch`
+  // should never produce, since it writes both in one transaction.
+  //
+  // If it happens anyway, the pair pitched and was told yes; the offer and the
+  // escrow are what is missing. `pitched` is the honest answer and leaves the
+  // ball with the brand. It previously fell through to `invited`, which told
+  // the creator a brand had reached out — and my first pass at this replaced
+  // that with `cancelled`, which would have been worse: a deal the brand had
+  // just accepted, reported dead.
+  if (apps.some((a) => a.status === 'accepted')) return 'pitched';
+
+  // Nothing has happened on this pair: no application, no offer. That is a
+  // cold invite, whether or not the history records the message.
+  //
+  // `invited` is a STAGE and not a fallback — but note the real fix for the
+  // fabricated-invitation bug was classifying `expired` as dead ABOVE, not
+  // anything here. Reaching this line now means there genuinely are no
+  // signals, which is what `invited` describes.
   return 'invited';
 }
 

@@ -31,6 +31,7 @@
 // partition on `min(triggerAt)` to bound the scan.
 
 import { tx, useStore } from './store';
+import { ensureCollabState } from './collabSync';
 import { applicationLapse, STALENESS } from './staleness';
 import type {
   Database, ScheduledNotification, ScheduledNotificationType,
@@ -402,6 +403,15 @@ export function lapseSilentApplications(db: Database, now: number = Date.now()):
 
     db.applications[i] = { ...app, status: 'withdrawn', decidedAt: nowIsoFromMs(now) };
     lapsed++;
+
+    // RECOMPUTE THE STAGE. This is the only status write in the codebase that
+    // did not, and it is exactly how stored and derived stage drifted apart:
+    // the pitch lapsed here, the row kept saying `pitched`, and the UI — which
+    // reads the derived stage — said something else on the same screen.
+    //
+    // `system` as the actor because no human did this; the history entry
+    // should not blame either party for a clock running out.
+    ensureCollabState(app.campaignId, app.creatorId, db, 'system', 'application-lapsed');
 
     // Tell the creator, and say WHY — a pitch that silently vanishes is
     // worse than one that stays open.
