@@ -957,9 +957,15 @@ export function RealVoices() {
   const heading = persona === 'brand'
     ? <>Creators who <span className="accent">stopped</span> sending DMs.</>
     : <>Brands who <span className="accent">stopped</span> using spreadsheets.</>;
+  // These are ILLUSTRATIVE, and until now nothing said so. The old sub
+  // read "backed by a closed deal you can see in the seed dataset" — an
+  // admission in developer language that no visitor parses as "invented",
+  // beside quotes attributed to named individuals at, until this commit,
+  // real companies. A fabricated endorsement is not an overclaim; it is a
+  // different category of problem, so it gets a label a reader cannot miss.
   const sub = persona === 'brand'
-    ? 'Four voices from the platform. Each backed by a closed deal you can see in the seed dataset.'
-    : 'Four voices from the brand side. Each backed by a closed campaign you can see in the seed dataset.';
+    ? 'Illustrative examples, written to show the shape of a deal on Alamut — not real customers. Each is tied to a demo campaign you can open.'
+    : 'Illustrative examples, written to show the shape of a campaign on Alamut — not real customers. Each is tied to a demo campaign you can open.';
   const { ref, visible, reduced } = useReveal();
 
   return (

@@ -2772,7 +2772,7 @@ const seededTestimonials: import('./types').Testimonial[] = [
     quote:
       "Posted the brief on Tuesday. Six pitches in by Thursday. Picked one, work shipped Sunday. Outperformed our last agency campaign and cost a third of it.",
     authorName: 'Maya Tanaka',
-    authorSubtitle: 'Marketing Lead, Le Creuset',
+    authorSubtitle: 'Marketing Lead, Copperline',
     authorPortrait: upx('https://images.unsplash.com/photo-1573496359142-b8d87734a5a2', 200, 200),
     campaignId: 'cmp_2',
   },
@@ -2815,7 +2815,7 @@ const seededTestimonials: import('./types').Testimonial[] = [
     quote:
       "We were paying our agency $18k a month for twelve posts. Alamut closed fourteen in the first month for under $9k. Same creator quality, none of the markup.",
     authorName: 'Daniel Rhee',
-    authorSubtitle: 'Marketing Director, Hay',
+    authorSubtitle: 'Marketing Director, Fold & Co.',
     authorPortrait: upx('https://images.unsplash.com/photo-1556157382-97eda2d62296', 200, 200),
     campaignId: 'cmp_1',
   },
@@ -2823,9 +2823,9 @@ const seededTestimonials: import('./types').Testimonial[] = [
     id: 'tm_10',
     shownTo: 'creator',
     quote:
-      "We screened two hundred creators in thirty minutes. Audience overlap, past brands, language, region — already sorted on every application. Past us would have spent a week on that.",
+      "We read thirty applications in half an hour. Niche, engagement, region and rate already scored on each one — and it tells you when it doesn't have enough to judge someone. Past us would have spent a week on that.",
     authorName: 'Sofia Martinez',
-    authorSubtitle: 'Brand Manager, Glossier',
+    authorSubtitle: 'Brand Manager, Halcyon Beauty',
     authorPortrait: upx('https://images.unsplash.com/photo-1601412436009-d964bd02edbc', 200, 200),
     campaignId: 'cmp_3',
   },
@@ -2833,9 +2833,9 @@ const seededTestimonials: import('./types').Testimonial[] = [
     id: 'tm_11',
     shownTo: 'creator',
     quote:
-      "First campaign we could actually measure end-to-end. 6.8× ROAS, attribution down to the click. Our previous agency couldn't tell us if we were 2× or 12×.",
+      "Every figure in the dashboard traces back to a row I can open. I know exactly what I spent and exactly what landed — which is more than our agency reports ever gave us.",
     authorName: 'James Holloway',
-    authorSubtitle: 'Head of Growth, Le Labo',
+    authorSubtitle: 'Head of Growth, Atelier Nine',
     authorPortrait: upx('https://images.unsplash.com/photo-1568602471122-7832951cc4c5', 200, 200),
     campaignId: 'cmp_2',
   },
@@ -2910,7 +2910,7 @@ const seededTestimonials: import('./types').Testimonial[] = [
     quote:
       "We needed Lahore + Karachi creators specifically. Filtered, shortlisted 8, offered 3, two accepted same day. No agency would have moved that fast on a regional brief.",
     authorName: 'Imran Sheikh',
-    authorSubtitle: 'Brand Manager, National Foods',
+    authorSubtitle: 'Brand Manager, Sabzi Foods',
     authorPortrait: upx('https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d', 200, 200),
     campaignId: 'cmp_3',
   },

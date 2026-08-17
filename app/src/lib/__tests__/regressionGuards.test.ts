@@ -586,6 +586,26 @@ describe('marketing copy does not outrun the product', () => {
     expect(src).not.toMatch(/ROAS/);
   });
 
+  it('NO FABRICATED QUOTE IS ATTRIBUTED TO A REAL COMPANY', () => {
+    // The landing wall carried invented quotes from invented people at
+    // Glossier, Hay, Le Labo, Le Creuset and National Foods, with stock
+    // portraits and no label. That is not an overclaim — it is a
+    // fabricated endorsement from companies that are not customers, and it
+    // was live on a public page.
+    const seed = code('lib/api/seed.ts');
+    const block = seed.slice(seed.indexOf('shownTo:'));
+    for (const real of ['Glossier', 'Le Labo', 'National Foods', ', Hay', 'Le Creuset']) {
+      expect(block, `testimonial attributed to ${real}`).not.toContain(real);
+    }
+  });
+
+  it('and the wall says plainly that the voices are illustrative', () => {
+    expect(read('screens/cover/scenes/LandingV2.tsx')).toMatch(/Illustrative examples/);
+    // "seed dataset" was the old admission — true, but in a register no
+    // visitor reads as "these are made up".
+    expect(code('screens/cover/scenes/LandingV2.tsx')).not.toMatch(/in the seed dataset/);
+  });
+
   it('does not claim matching uses the brand\'s own customer data', () => {
     // matching.ts scores niche, engagement, geo, rate, history, category.
     expect(marketing()).not.toMatch(/overlap with your existing customers/i);
