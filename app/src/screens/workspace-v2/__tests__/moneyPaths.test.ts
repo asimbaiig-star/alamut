@@ -16,7 +16,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useStore } from '@/lib/api/store';
 import { api } from '@/lib/api/client';
-import { v2ApproveContent } from '../v2CampaignActions';
+import { v2ApproveContent, v2MarkContentLive } from '../v2CampaignActions';
 import { v2RequestCollabCancel, v2AgreeCollabCancel } from '../v2CollabActions';
 import { splitGross } from '@/lib/api/money';
 import {
@@ -73,6 +73,34 @@ function seed(opts: { advances?: Advance[]; collabPatch?: Partial<Collaboration>
   useStore.getState().setSession({ userId: 'u_brand', issuedAt: new Date().toISOString() });
 }
 
+/**
+ * Approve, then have the creator post and the brand verify it.
+ *
+ * Escrow used to leave at APPROVE, so these tests called `v2ApproveContent`
+ * and asserted the money. It now leaves when the brand confirms the post is
+ * live, which is the product rule: the creator makes it live and only then
+ * is the deal payable. The assertions below are unchanged — the money is the
+ * same money; it moves one step later, and this helper walks the real
+ * sequence to get there.
+ *
+ * The permalink write stands in for the creator pasting their post URL,
+ * which `v2MarkContentLive` requires before it will do anything.
+ */
+function approveAndConfirmLive(submissionId: string): void {
+  v2ApproveContent(submissionId);
+  useStore.setState((s) => ({
+    ...s,
+    db: {
+      ...s.db,
+      submissions: s.db.submissions.map((sub) =>
+        sub.id === submissionId
+          ? { ...sub, permalink: `https://instagram.com/p/${submissionId}` }
+          : sub),
+    },
+  }));
+  v2MarkContentLive(submissionId);
+}
+
 describe('the legacy money surface is gone', () => {
   // A deleted function is only deleted until someone re-adds it "for
   // convenience". These assertions make that a failing test rather than a
@@ -92,11 +120,11 @@ describe('the legacy money surface is gone', () => {
   });
 });
 
-describe('v2ApproveContent — fee and withholding are always taken', () => {
+describe('approve then confirm-live — fee and withholding are always taken', () => {
   beforeEach(() => seed());
 
   it('credits the creator net, not gross', () => {
-    v2ApproveContent('sub_0');
+    approveAndConfirmLive('sub_0');
     const { net } = splitGross(RATE);
     const creator = useStore.getState().db.creators.find((c) => c.id === 'cr_1')!;
     expect(creator.walletBalance).toBe(net);
@@ -104,7 +132,7 @@ describe('v2ApproveContent — fee and withholding are always taken', () => {
   });
 
   it('records the payout at gross and deducts fee + withholding from it', () => {
-    v2ApproveContent('sub_0');
+    approveAndConfirmLive('sub_0');
     const txs = useStore.getState().db.transactions.filter((t) => t.userId === 'u_creator');
     const payout = txs.filter((t) => t.kind === 'payout').reduce((s, t) => s + t.amount, 0);
     const deducted = txs.filter((t) => t.kind === 'fee').reduce((s, t) => s + Math.abs(t.amount), 0);
@@ -113,7 +141,7 @@ describe('v2ApproveContent — fee and withholding are always taken', () => {
   });
 
   it('reconciles: the creator ledger sums to the wallet balance', () => {
-    v2ApproveContent('sub_0');
+    approveAndConfirmLive('sub_0');
     const db = useStore.getState().db;
     // The invariant the old net-payout convention could not satisfy — it
     // came up short by exactly fee + tax, because those rows described
@@ -124,16 +152,16 @@ describe('v2ApproveContent — fee and withholding are always taken', () => {
     expect(ledgerSum).toBe(db.creators.find((c) => c.id === 'cr_1')!.walletBalance);
   });
 
-  it('is idempotent — approving twice does not pay twice', () => {
-    v2ApproveContent('sub_0');
+  it('is idempotent — confirming live twice does not pay twice', () => {
+    approveAndConfirmLive('sub_0');
     const after1 = useStore.getState().db.creators.find((c) => c.id === 'cr_1')!.walletBalance;
-    try { v2ApproveContent('sub_0'); } catch { /* already-approved may throw; either is fine */ }
+    try { approveAndConfirmLive('sub_0'); } catch { /* already-approved may throw; either is fine */ }
     const after2 = useStore.getState().db.creators.find((c) => c.id === 'cr_1')!.walletBalance;
     expect(after2).toBe(after1);
   });
 });
 
-describe('v2ApproveContent — outstanding income advances are repaid', () => {
+describe('approve then confirm-live — outstanding income advances are repaid', () => {
   // This logic lived ONLY inside the legacy decideSubmission, so approving
   // through the campaign UI — the path the product actually uses — repaid
   // nothing and the advance stayed `active` forever.
@@ -145,7 +173,7 @@ describe('v2ApproveContent — outstanding income advances are repaid', () => {
 
   it('withholds the outstanding amount from the payout', () => {
     seed({ advances: [{ ...advance }] });
-    v2ApproveContent('sub_0');
+    approveAndConfirmLive('sub_0');
     const { net } = splitGross(RATE);
     const creator = useStore.getState().db.creators.find((c) => c.id === 'cr_1')!;
     expect(creator.walletBalance).toBe(net - 300);
@@ -153,7 +181,7 @@ describe('v2ApproveContent — outstanding income advances are repaid', () => {
 
   it('marks the advance repaid and still credits full lifetime earnings', () => {
     seed({ advances: [{ ...advance }] });
-    v2ApproveContent('sub_0');
+    approveAndConfirmLive('sub_0');
     const { net } = splitGross(RATE);
     const db = useStore.getState().db;
     expect(db.advances[0].status).toBe('repaid');
@@ -164,7 +192,7 @@ describe('v2ApproveContent — outstanding income advances are repaid', () => {
 
   it('records the repayment as its own ledger row', () => {
     seed({ advances: [{ ...advance }] });
-    v2ApproveContent('sub_0');
+    approveAndConfirmLive('sub_0');
     const db = useStore.getState().db;
     const repayment = db.transactions.find((t) => t.note === 'Income advance repayment');
     expect(repayment).toBeDefined();
@@ -180,7 +208,7 @@ describe('v2ApproveContent — outstanding income advances are repaid', () => {
 
   it('does nothing when the advance is already repaid', () => {
     seed({ advances: [{ ...advance, status: 'repaid', repaidAmount: 300 }] });
-    v2ApproveContent('sub_0');
+    approveAndConfirmLive('sub_0');
     const { net } = splitGross(RATE);
     expect(useStore.getState().db.creators.find((c) => c.id === 'cr_1')!.walletBalance).toBe(net);
   });
@@ -209,5 +237,67 @@ describe('mutual cancel respects an open dispute', () => {
   it('still allows a mutual cancel when no dispute is open', () => {
     seed({ collabPatch: { cancellationRequest: { by: 'u_creator', reason: 'scope', at: 1745000000000 } } });
     expect(() => v2AgreeCollabCancel('col_1', 'u_brand')).not.toThrow();
+  });
+});
+
+describe('APPROVAL MOVES NO MONEY — the post must go live first', () => {
+  // Asim's rule: "creator has to make the post live and then only can the
+  // brand check make it payable."
+  //
+  // Escrow used to leave at approve, which meant a creator was paid before
+  // anything was published, and the stage called `paid` sat two steps after
+  // the payment had already happened. These pin the sequence.
+  beforeEach(() => seed());
+
+  it('approving alone credits the creator nothing', () => {
+    v2ApproveContent('sub_0');
+    const db = useStore.getState().db;
+    const creator = db.creators.find((c) => c.id === 'cr_1')!;
+    expect(creator.walletBalance).toBe(0);
+    expect(creator.lifetimeEarnings).toBe(0);
+    // The money is genuinely still pending, and the hold says so.
+    expect(db.campaigns[0].escrowHeld).toBe(RATE);
+    expect(db.brands[0].escrowHeld).toBe(RATE);
+    expect(db.transactions.filter((t) => t.kind === 'payout')).toHaveLength(0);
+  });
+
+  it('but it does approve the work and open the dispute window', () => {
+    v2ApproveContent('sub_0');
+    const sub = useStore.getState().db.submissions.find((s) => s.id === 'sub_0')!;
+    expect(sub.status).toBe('approved');
+    expect(sub.disputeWindowClosesAt).toBeGreaterThan(Date.now());
+  });
+
+  it('the brand cannot confirm live until the creator has posted', () => {
+    v2ApproveContent('sub_0');
+    // No permalink yet — the creator has not published anything.
+    expect(() => v2MarkContentLive('sub_0')).toThrow(/paste the live URL first/i);
+    expect(useStore.getState().db.creators[0].walletBalance).toBe(0);
+  });
+
+  it('and the money moves on the brand confirming, not before', () => {
+    approveAndConfirmLive('sub_0');
+    const db = useStore.getState().db;
+    const { net } = splitGross(RATE);
+    expect(db.creators.find((c) => c.id === 'cr_1')!.walletBalance).toBe(net);
+    expect(db.campaigns[0].escrowHeld).toBe(0);
+    expect(db.transactions.filter((t) => t.kind === 'payout')).toHaveLength(1);
+  });
+
+  it('a frozen collab blocks the release even after approval', () => {
+    // The dispute freeze used to guard approve, because that is where the
+    // money was. It follows the money.
+    v2ApproveContent('sub_0');
+    useStore.setState((s) => ({
+      ...s,
+      db: {
+        ...s.db,
+        collaborations: s.db.collaborations.map((c) => ({ ...c, escrowFrozen: true })),
+        submissions: s.db.submissions.map((sub) =>
+          sub.id === 'sub_0' ? { ...sub, permalink: 'https://instagram.com/p/x' } : sub),
+      },
+    }));
+    expect(() => v2MarkContentLive('sub_0')).toThrow(/frozen/i);
+    expect(useStore.getState().db.creators[0].walletBalance).toBe(0);
   });
 });

@@ -1143,6 +1143,232 @@ export function v2SubmitContent(
 /** P2 §1.4 — 7-day post-approval dispute window. */
 const DISPUTE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
+/**
+ * Release one slot's escrow to the creator.
+ *
+ * WHEN THIS RUNS — and why it moved.
+ *
+ * Escrow used to leave at APPROVE. Asim's rule for the product is that the
+ * creator posts, the brand verifies the post, and only then is the deal
+ * payable — so approval now moves no money and this runs from
+ * `v2MarkContentLive`, which carries the brand-only `content.markLive`
+ * capability and refuses until the creator has pasted the permalink.
+ *
+ * The sequence is therefore: brand approves the work → creator posts and
+ * pastes the URL → brand verifies → money moves. Before this change the
+ * stage named `paid` sat two steps after the payment had already happened.
+ *
+ * ONE implementation, called from ONE place. The whole reason this codebase
+ * spent a phase on `money.ts` is that five copies of three money operations
+ * had drifted; a second release path would be that mistake again.
+ *
+ * Returns the gross released, so the caller can decide what to say.
+ */
+function releaseSlotEscrow(
+  db: Database,
+  sub: Submission,
+  camp: Campaign,
+  creator: Database['creators'][number],
+  brand: Database['brands'][number],
+): number {
+  // Resolved here rather than passed in, so the one caller cannot hand this
+  // function a rate from somewhere else. Releasing without a matching
+  // accepted offer would drain escrow against an arbitrary share of budget —
+  // the pre-fix fallback this guard replaced did exactly that.
+  const acceptedOffer = db.offers
+    .filter((o) => o.campaignId === sub.campaignId && o.creatorId === sub.creatorId && o.status === 'accepted')
+    .sort((a, b) => new Date(b.respondedAt ?? b.sentAt).getTime() - new Date(a.respondedAt ?? a.sentAt).getTime())[0];
+  if (!acceptedOffer) {
+    throw new Error("Can't release escrow — no accepted offer found for this creator on this campaign.");
+  }
+  const brandUser = findUserByBrand(db, brand.id);
+  const creatorUser = findUserByCreator(db, creator.id);
+  // F30 — PER-DELIVERABLE RELEASE.
+  //
+  // The accepted offer's rate covers the WHOLE collab (e.g. "$1,650 flat
+  // for 1 IG post + 1 Reel"), but this function runs once per approved
+  // submission and used to release `acceptedOffer.rate` every time. Its
+  // only idempotency guard was per-submission, so an N-deliverable
+  // collab paid the creator N× the agreed rate and drove campaign.spent
+  // to N× budget (a 4-slot collab released $6,600 against a $1,650
+  // offer). Now each slot releases only its share.
+  //
+  // Shares are integer-split with the remainder landing on the
+  // last-indexed slot, so the shares sum to EXACTLY the agreed rate
+  // regardless of slot count — no drift, no over- or under-payment.
+  const slots = db.deliverables
+    .filter((d) => d.campaignId === sub.campaignId)
+    .sort((a, b) => a.index - b.index);
+  const slotCount = slots.length;
+
+  // Guard against a second release for the same slot: a deliverable can
+  // collect multiple submissions across revision rounds, and approving
+  // round 2 after round 1 was already approved must not pay twice.
+  const thisDelId = deliverableIdForSubmission(sub, db);
+  // Guard keyed on RELEASE, not approval. Money now leaves at mark-live,
+  // so the question is whether another submission for this same slot has
+  // already been marked live in an earlier round — approving round 2 of a
+  // slot whose round 1 was already live-and-paid must not pay twice.
+  const slotAlreadyPaid = thisDelId
+    ? db.submissions.some(
+        (other) =>
+          other.id !== sub.id &&
+          other.campaignId === sub.campaignId &&
+          other.creatorId === sub.creatorId &&
+          deliverableIdForSubmission(other, db) === thisDelId &&
+          (other.feedback ?? []).some((f) => f.text.startsWith('LIVE: ')),
+      )
+    : false;
+
+  let gross: number;
+  if (slotAlreadyPaid) {
+    // Slot's money already left escrow on an earlier round — approve the
+    // submission but move no funds.
+    gross = 0;
+  } else if (slotCount <= 1) {
+    // Single deliverable, or a legacy campaign with no structured
+    // deliverable rows: the whole rate belongs to this approval.
+    gross = acceptedOffer.rate;
+  } else {
+    const slotIdx = thisDelId ? slots.findIndex((d) => d.id === thisDelId) : -1;
+    // Slot share + rounding-remainder rules live in money.ts so the
+    // contract snapshot can sum the identical function.
+    gross = slotGross(acceptedOffer.rate, slotCount, slotIdx);
+  }
+
+  const { fee, tax, net } = splitGross(gross);
+
+  // P2 §1.4 — set the 7-day dispute window expiry on approval. UI
+  // gates the "Raise dispute" CTA off this; a P4 ScheduledNotification
+  // will fire a closing-soon reminder.
+  // Update brand
+  db.brands = db.brands.map((b) =>
+    b.id === brand.id ? { ...b, escrowHeld: Math.max(0, b.escrowHeld - gross) } : b,
+  );
+
+  // Update campaign — P1b §1.2: stage doesn't auto-advance on approve.
+  // Per-collab 'approved' / 'live' / 'paid' lives on Collaboration (P1c).
+  db.campaigns = db.campaigns.map((c) =>
+    c.id === camp.id
+      ? {
+          ...c,
+          escrowHeld: Math.max(0, c.escrowHeld - gross),
+          spent: c.spent + gross,
+        }
+      : c,
+  );
+
+  // Update creator. An outstanding income advance is repaid out of this
+  // payout before it reaches the wallet: `lifetimeEarnings` still counts
+  // the full net (they earned it) and the pending hold clears in full,
+  // but only the remainder is spendable.
+  const advanceRepaid = applyAdvanceRepayment(db, creator.id, net);
+  const toWallet = net - advanceRepaid;
+  db.creators = db.creators.map((c) =>
+    c.id === creator.id
+      ? {
+          ...c,
+          pendingBalance: Math.max(0, c.pendingBalance - net),
+          walletBalance: c.walletBalance + toWallet,
+          lifetimeEarnings: c.lifetimeEarnings + net,
+        }
+      : c,
+  );
+
+  if (brandUser && creatorUser) {
+    const ts = nowIso();
+    // Brand-side: escrow_release (negative — leaving brand wallet)
+    db.transactions.push({
+      id: newId('tx'),
+      at: ts,
+      userId: brandUser.id,
+      kind: 'escrow_release',
+      amount: -gross,
+      status: 'cleared',
+      campaignId: camp.id,
+      counterpartyUserId: creatorUser.id,
+      note: `Released to ${creator.name} on post verification — ${camp.title}`,
+    });
+    // Creator-side: payout (positive — the GROSS the deal was worth).
+    //
+    // This row used to carry `net`, which made the two deduction rows
+    // below decorative: they described money already removed, so a
+    // creator's ledger summed to (balance − fee − tax) and never
+    // reconciled with the balance beside it. It also disagreed with the
+    // seed, which has always written payouts at gross, and with the
+    // brand's mirror row (`escrow_release: -gross`).
+    //
+    // Gross here + real negative deductions below means the creator's
+    // rows for a campaign sum to exactly what the wallet moved by. The
+    // visible consequence is that the wallet's "Lifetime earned" is now
+    // gross earnings rather than take-home; the deductions are itemised
+    // one row below it, and the tax statement wants gross anyway.
+    db.transactions.push({
+      id: newId('tx'),
+      at: ts,
+      userId: creatorUser.id,
+      kind: 'payout',
+      amount: gross,
+      status: 'cleared',
+      campaignId: camp.id,
+      counterpartyUserId: brandUser.id,
+      note: `Payout from ${brand.name} — ${camp.title}`,
+    });
+    // Creator-side: fee (negative — platform's cut)
+    db.transactions.push({
+      id: newId('tx'),
+      at: ts,
+      userId: creatorUser.id,
+      kind: 'fee',
+      amount: -fee,
+      status: 'cleared',
+      campaignId: camp.id,
+      note: `Platform fee (${Math.round(PLATFORM_FEE * 100)}%)`,
+    });
+    // Creator-side: tax (negative)
+    db.transactions.push({
+      id: newId('tx'),
+      at: ts,
+      userId: creatorUser.id,
+      kind: 'fee',
+      amount: -tax,
+      status: 'cleared',
+      campaignId: camp.id,
+      note: `Withholding tax (${Math.round(WHT * 100)}%)`,
+    });
+    // Creator-side: advance repayment (negative) — only when one was
+    // outstanding. Without this row the ledger wouldn't reconcile: the
+    // wallet would move by less than the payout row claims.
+    if (advanceRepaid > 0) {
+      db.transactions.push({
+        id: newId('tx'),
+        at: ts,
+        userId: creatorUser.id,
+        kind: 'fee',
+        amount: -advanceRepaid,
+        status: 'cleared',
+        campaignId: camp.id,
+        note: 'Income advance repayment',
+      });
+    }
+    // Notify creator
+    db.notifications.push({
+      id: newId('n'),
+      userId: creatorUser.id,
+      text: advanceRepaid > 0
+        ? `${brand.name} confirmed your post is live — $${toWallet.toLocaleString()} to your wallet ($${advanceRepaid.toLocaleString()} went to your advance)`
+        : `${brand.name} confirmed your post is live — $${net.toLocaleString()} released to your wallet`,
+      href: `/v2`,
+      at: nowIso(),
+      read: false,
+      meta: { submissionId: sub.id, campaignId: camp.id },
+    });
+  }
+
+
+  return gross;
+}
+
 export function v2ApproveContent(submissionId: string): Submission {
   // P62 — was `Submission | null` with 5 silent failure paths (3× return
   // null, 3× return the unchanged submission). The brand-side approve UX
@@ -1206,191 +1432,24 @@ export function v2ApproveContent(submissionId: string): Submission {
       // would drain escrow on an arbitrary share of the campaign budget.
       throw new Error("Can't release escrow — no accepted offer found for this creator on this campaign. Check the offer status before approving.");
     }
-    // F30 — PER-DELIVERABLE RELEASE.
+    // NO MONEY MOVES HERE.
     //
-    // The accepted offer's rate covers the WHOLE collab (e.g. "$1,650 flat
-    // for 1 IG post + 1 Reel"), but this function runs once per approved
-    // submission and used to release `acceptedOffer.rate` every time. Its
-    // only idempotency guard was per-submission, so an N-deliverable
-    // collab paid the creator N× the agreed rate and drove campaign.spent
-    // to N× budget (a 4-slot collab released $6,600 against a $1,650
-    // offer). Now each slot releases only its share.
+    // Approval says the work is acceptable. It does not say the post is up,
+    // and Asim's rule is that the creator has to make it live before the
+    // brand's check makes it payable. Escrow now leaves in
+    // `v2MarkContentLive` via `releaseSlotEscrow` — see the note there.
     //
-    // Shares are integer-split with the remainder landing on the
-    // last-indexed slot, so the shares sum to EXACTLY the agreed rate
-    // regardless of slot count — no drift, no over- or under-payment.
-    const slots = db.deliverables
-      .filter((d) => d.campaignId === sub.campaignId)
-      .sort((a, b) => a.index - b.index);
-    const slotCount = slots.length;
-
-    // Guard against a second release for the same slot: a deliverable can
-    // collect multiple submissions across revision rounds, and approving
-    // round 2 after round 1 was already approved must not pay twice.
-    const thisDelId = deliverableIdForSubmission(sub, db);
-    const slotAlreadyPaid = thisDelId
-      ? db.submissions.some(
-          (other) =>
-            other.id !== sub.id &&
-            other.status === 'approved' &&
-            other.campaignId === sub.campaignId &&
-            other.creatorId === sub.creatorId &&
-            deliverableIdForSubmission(other, db) === thisDelId,
-        )
-      : false;
-
-    let gross: number;
-    if (slotAlreadyPaid) {
-      // Slot's money already left escrow on an earlier round — approve the
-      // submission but move no funds.
-      gross = 0;
-    } else if (slotCount <= 1) {
-      // Single deliverable, or a legacy campaign with no structured
-      // deliverable rows: the whole rate belongs to this approval.
-      gross = acceptedOffer.rate;
-    } else {
-      const slotIdx = thisDelId ? slots.findIndex((d) => d.id === thisDelId) : -1;
-      // Slot share + rounding-remainder rules live in money.ts so the
-      // contract snapshot can sum the identical function.
-      gross = slotGross(acceptedOffer.rate, slotCount, slotIdx);
-    }
-
-    const { fee, tax, net } = splitGross(gross);
-
-    // P2 §1.4 — set the 7-day dispute window expiry on approval. UI
-    // gates the "Raise dispute" CTA off this; a P4 ScheduledNotification
-    // will fire a closing-soon reminder.
+    // What this function still does: flips the submission to `approved`,
+    // opens the 7-day dispute window, and recomputes the stage. The
+    // creator's `pendingBalance` is untouched, because the money genuinely
+    // is still pending at this point.
     db.submissions[subIdx] = {
       ...sub,
       status: 'approved',
       disputeWindowClosesAt: Date.now() + DISPUTE_WINDOW_MS,
     };
 
-    // Update brand
-    db.brands = db.brands.map((b) =>
-      b.id === brand.id ? { ...b, escrowHeld: Math.max(0, b.escrowHeld - gross) } : b,
-    );
-
-    // Update campaign — P1b §1.2: stage doesn't auto-advance on approve.
-    // Per-collab 'approved' / 'live' / 'paid' lives on Collaboration (P1c).
-    db.campaigns = db.campaigns.map((c) =>
-      c.id === camp.id
-        ? {
-            ...c,
-            escrowHeld: Math.max(0, c.escrowHeld - gross),
-            spent: c.spent + gross,
-          }
-        : c,
-    );
-
-    // Update creator. An outstanding income advance is repaid out of this
-    // payout before it reaches the wallet: `lifetimeEarnings` still counts
-    // the full net (they earned it) and the pending hold clears in full,
-    // but only the remainder is spendable.
-    const advanceRepaid = applyAdvanceRepayment(db, creator.id, net);
-    const toWallet = net - advanceRepaid;
-    db.creators = db.creators.map((c) =>
-      c.id === creator.id
-        ? {
-            ...c,
-            pendingBalance: Math.max(0, c.pendingBalance - net),
-            walletBalance: c.walletBalance + toWallet,
-            lifetimeEarnings: c.lifetimeEarnings + net,
-          }
-        : c,
-    );
-
     const brandUser = findUserByBrand(db, brand.id);
-    const creatorUser = findUserByCreator(db, creator.id);
-    if (brandUser && creatorUser) {
-      const ts = nowIso();
-      // Brand-side: escrow_release (negative — leaving brand wallet)
-      db.transactions.push({
-        id: newId('tx'),
-        at: ts,
-        userId: brandUser.id,
-        kind: 'escrow_release',
-        amount: -gross,
-        status: 'cleared',
-        campaignId: camp.id,
-        counterpartyUserId: creatorUser.id,
-        note: `Released to ${creator.name} — ${camp.title}`,
-      });
-      // Creator-side: payout (positive — the GROSS the deal was worth).
-      //
-      // This row used to carry `net`, which made the two deduction rows
-      // below decorative: they described money already removed, so a
-      // creator's ledger summed to (balance − fee − tax) and never
-      // reconciled with the balance beside it. It also disagreed with the
-      // seed, which has always written payouts at gross, and with the
-      // brand's mirror row (`escrow_release: -gross`).
-      //
-      // Gross here + real negative deductions below means the creator's
-      // rows for a campaign sum to exactly what the wallet moved by. The
-      // visible consequence is that the wallet's "Lifetime earned" is now
-      // gross earnings rather than take-home; the deductions are itemised
-      // one row below it, and the tax statement wants gross anyway.
-      db.transactions.push({
-        id: newId('tx'),
-        at: ts,
-        userId: creatorUser.id,
-        kind: 'payout',
-        amount: gross,
-        status: 'cleared',
-        campaignId: camp.id,
-        counterpartyUserId: brandUser.id,
-        note: `Payout from ${brand.name} — ${camp.title}`,
-      });
-      // Creator-side: fee (negative — platform's cut)
-      db.transactions.push({
-        id: newId('tx'),
-        at: ts,
-        userId: creatorUser.id,
-        kind: 'fee',
-        amount: -fee,
-        status: 'cleared',
-        campaignId: camp.id,
-        note: `Platform fee (${Math.round(PLATFORM_FEE * 100)}%)`,
-      });
-      // Creator-side: tax (negative)
-      db.transactions.push({
-        id: newId('tx'),
-        at: ts,
-        userId: creatorUser.id,
-        kind: 'fee',
-        amount: -tax,
-        status: 'cleared',
-        campaignId: camp.id,
-        note: `Withholding tax (${Math.round(WHT * 100)}%)`,
-      });
-      // Creator-side: advance repayment (negative) — only when one was
-      // outstanding. Without this row the ledger wouldn't reconcile: the
-      // wallet would move by less than the payout row claims.
-      if (advanceRepaid > 0) {
-        db.transactions.push({
-          id: newId('tx'),
-          at: ts,
-          userId: creatorUser.id,
-          kind: 'fee',
-          amount: -advanceRepaid,
-          status: 'cleared',
-          campaignId: camp.id,
-          note: 'Income advance repayment',
-        });
-      }
-      // Notify creator
-      db.notifications.push({
-        id: newId('n'),
-        userId: creatorUser.id,
-        text: advanceRepaid > 0
-          ? `${brand.name} approved your work — $${toWallet.toLocaleString()} to your wallet ($${advanceRepaid.toLocaleString()} went to your advance)`
-          : `${brand.name} approved your work — $${net.toLocaleString()} released`,
-        href: `/v2`,
-        at: nowIso(),
-        read: false,
-        meta: { submissionId: sub.id, campaignId: camp.id },
-      });
-    }
 
     // P1c §1.1 — approve also clears escrow → 'paid' (a payout transaction
     // was just pushed). computeCollabStage walks transactions and returns
@@ -2417,11 +2476,41 @@ export function v2MarkContentLive(submissionId: string): Submission {
 
     const creator = db.creators.find((c) => c.id === sub.creatorId);
     const creatorUser = creator ? findUserByCreator(db, creator.id) : null;
-    if (creatorUser && camp) {
+    const brand = camp ? db.brands.find((b) => b.id === camp.brandId) : undefined;
+
+    // THIS IS WHERE THE MONEY MOVES.
+    //
+    // The brand has now verified the post is up, which is the check Asim's
+    // rule turns on: the creator makes it live, and only then is the deal
+    // payable. `releaseSlotEscrow` is the single implementation — approval
+    // deliberately moves nothing.
+    //
+    // Guarded the same way approval is: a paused or closed campaign does not
+    // release escrow, and neither does a collab frozen by an open dispute.
+    // Both checks used to live on approve because that is where the money
+    // was; they follow the money here.
+    let released = 0;
+    if (camp && creator && brand) {
+      if (camp.stage !== 'live') {
+        throw new Error(`This campaign is ${camp.stage} — resume it before confirming posts live, or the payout can't be released.`);
+      }
+      const collabForFreeze = db.collaborations.find(
+        (c) => c.campaignId === sub.campaignId && c.creatorId === sub.creatorId,
+      );
+      if (collabForFreeze?.escrowFrozen) {
+        throw new Error("Escrow is frozen on this collab — there's an open dispute. Resolve or withdraw it before confirming the post live.");
+      }
+      released = releaseSlotEscrow(db, sub, camp, creator, brand);
+    }
+
+    // `releaseSlotEscrow` already notified the creator about the money when
+    // it moved. Only tell them the post is confirmed when nothing was
+    // released — otherwise they get two notifications for one event.
+    if (creatorUser && camp && released === 0) {
       db.notifications.push({
         id: newId('n'),
         userId: creatorUser.id,
-        text: `Your post for ${camp.title} is live`,
+        text: `Your post for ${camp.title} is confirmed live`,
         href: `/v2`,
         at: nowIso(),
         read: false,
@@ -2429,12 +2518,17 @@ export function v2MarkContentLive(submissionId: string): Submission {
       });
     }
 
-    // P1c §1.1 — permalink set on an approved submission → 'live'
-    // (or stays 'paid' if the payout already cleared on approve).
-    // Brand confirmed the post is up, so the brand-user is the actor.
+    // P1c §1.1 — an approved submission that is now verified live, with the
+    // payout cleared above, is `paid`. Brand confirmed it, so brand is actor.
     if (camp) {
       const brandUserForSync = findUserByBrand(db, camp.brandId);
-      ensureCollabState(camp.id, sub.creatorId, db, brandUserForSync?.id ?? '', 'marked-live');
+      const collabAfter = ensureCollabState(camp.id, sub.creatorId, db, brandUserForSync?.id ?? '', 'marked-live');
+      // P2 §1.3 — the payout has cleared, so the contract is fulfilled.
+      // This moved here with the money; on approve it fired before the
+      // creator had been paid.
+      if (collabAfter?.contractId && released > 0) {
+        markContractFulfilled(db, collabAfter.contractId);
+      }
     }
 
     return db.submissions[idx];
