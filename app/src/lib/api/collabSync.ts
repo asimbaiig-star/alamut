@@ -41,20 +41,38 @@ function newCollabId(campaignId: string, creatorId: string): string {
   return `col_${idHash}`;
 }
 
-/** True when an approved submission carries the post-publication signal:
- *  the creator-pasted `permalink` field, or the legacy `LIVE: <url>`
- *  feedback entry appended by v2MarkContentLive. Payout state is
- *  deliberately NOT part of this — escrow releases at approve-time in
- *  this model, so "money moved" says nothing about "post is up". */
+/**
+ * True when an approved submission has been VERIFIED live by the brand.
+ *
+ * The marker is the `LIVE: <url>` feedback entry that `v2MarkContentLive`
+ * appends — a brand-only action (`content.markLive`) that refuses until the
+ * creator has pasted their permalink.
+ *
+ * A BARE PERMALINK IS NOT ENOUGH, and used to be.
+ *
+ * `!!s.permalink` was accepted as proof of liveness, which meant the creator
+ * could advance the stage to `live` on their own by pasting a link — the one
+ * step in the flow that exists precisely so the brand can check. Two things
+ * followed from that:
+ *
+ *   · The claim was unverified. "Live" asserted that a post is up; nobody had
+ *     looked.
+ *   · `nextAction`'s `approved` resolver already had the correct branch for
+ *     "creator posted, brand owes a confirmation" — and it was UNREACHABLE,
+ *     because the stage left `approved` the instant the link appeared. This
+ *     restores a ball-in-court state that was written and never seen.
+ *
+ * Escrow now releases on that same brand confirmation, so this is also the
+ * gate on the money: a creator cannot pay themselves by pasting a URL.
+ */
 export function submissionIsLive(s: Submission): boolean {
-  // A reported takedown wins over the permalink. Liveness was previously
+  // A reported takedown wins over everything. Liveness was previously
   // inferred purely from the link existing, so a post that had been deleted
   // still read as live — and the only way to stop it was to delete the
   // record of what had been posted.
   if (s.postDownAt) return false;
-  return s.status === 'approved' && (
-    !!s.permalink || (s.feedback ?? []).some((f) => f.text.startsWith('LIVE: '))
-  );
+  return s.status === 'approved'
+    && (s.feedback ?? []).some((f) => f.text.startsWith('LIVE: '));
 }
 
 /** Resolve the Deliverable a submission belongs to. Same rule as the

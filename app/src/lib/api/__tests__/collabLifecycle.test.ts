@@ -327,8 +327,14 @@ describe('invited requires an invitation', () => {
     // Money moved at approval, but no post is up: this is `approved`.
     expect(computeCollabStage(camp.id, creator.id, db)).toBe('approved');
 
-    // The creator posts and the brand verifies → now it is paid.
+    // The creator posts (permalink) AND the brand verifies (LIVE: marker).
+    // The permalink alone is not enough — that is the creator's half.
     db.submissions[0] = { ...db.submissions[0], permalink: 'https://instagram.com/p/live' };
+    expect(computeCollabStage(camp.id, creator.id, db)).toBe('approved');
+    db.submissions[0] = {
+      ...db.submissions[0],
+      feedback: [{ from: 'system', text: 'LIVE: https://instagram.com/p/live', at: '2026-07-07T00:00:00Z' }],
+    };
     expect(computeCollabStage(camp.id, creator.id, db)).toBe('paid');
   });
 

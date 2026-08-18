@@ -126,7 +126,11 @@ describe('computeCollabStage — 9 stage rules', () => {
     expect(computeCollabStage('cmp_1', 'cr_1', db)).toBe('approved');
   });
 
-  it('returns "live" when approved submission has a permalink', () => {
+  it('a permalink ALONE is not live — the brand has not confirmed yet', () => {
+    // Changed deliberately. A bare permalink used to mean live, which let the
+    // creator advance past the one step that exists for the brand to check —
+    // and, now that escrow releases on that check, would have let them
+    // trigger their own payout by pasting a URL.
     const db = setupBaseDb({
       offers: [buildOffer({
         id: 'off_1', campaignId: 'cmp_1', creatorId: 'cr_1', status: 'accepted',
@@ -135,6 +139,21 @@ describe('computeCollabStage — 9 stage rules', () => {
         id: 'sub_1', campaignId: 'cmp_1', creatorId: 'cr_1',
         status: 'approved',
         permalink: 'https://instagram.com/p/abc123',
+      })],
+    });
+    expect(computeCollabStage('cmp_1', 'cr_1', db)).toBe('approved');
+  });
+
+  it('returns "live" once the brand has confirmed the post', () => {
+    const db = setupBaseDb({
+      offers: [buildOffer({
+        id: 'off_1', campaignId: 'cmp_1', creatorId: 'cr_1', status: 'accepted',
+      })],
+      submissions: [buildSubmission({
+        id: 'sub_1', campaignId: 'cmp_1', creatorId: 'cr_1',
+        status: 'approved',
+        permalink: 'https://instagram.com/p/abc123',
+        feedback: [{ from: 'system', text: 'LIVE: https://instagram.com/p/abc123', at: '2026-04-22T00:00:00Z' }],
       })],
     });
     expect(computeCollabStage('cmp_1', 'cr_1', db)).toBe('live');
@@ -174,6 +193,7 @@ describe('computeCollabStage — 9 stage rules', () => {
       submissions: [buildSubmission({
         id: 'sub_1', campaignId: 'cmp_1', creatorId: 'cr_1', status: 'approved',
         permalink: 'https://instagram.com/p/x',
+        feedback: [{ from: 'system', text: 'LIVE: https://instagram.com/p/x', at: '2026-04-22T00:00:00Z' }],
       })],
       transactions: [buildTransaction({
         id: 'tx_1',
@@ -235,6 +255,7 @@ describe('computeCollabStage — 9 stage rules', () => {
       submissions: [buildSubmission({
         id: 'sub_1', campaignId: 'cmp_1', creatorId: 'cr_1', status: 'approved',
         permalink: 'https://instagram.com/p/y',
+        feedback: [{ from: 'system', text: 'LIVE: https://instagram.com/p/y', at: '2026-04-22T00:00:00Z' }],
       })],
       transactions: [buildTransaction({
         id: 'tx_1',
@@ -347,11 +368,21 @@ describe('computeCollabStage — multi-deliverable rollup (P67)', () => {
     expect(computeCollabStage('cmp_1', 'cr_1', db)).toBe('approved');
   });
 
-  it('returns "live" only when EVERY slot is live', () => {
+  /** A post the creator published AND the brand confirmed. A bare permalink
+   *  is only the creator's half; `submissionIsLive` wants the brand's
+   *  `LIVE:` marker too. */
+  const confirmedLive = (id: string, deliverableId: string, url: string) =>
+    buildSubmission({
+      id, campaignId: 'cmp_1', creatorId: 'cr_1', status: 'approved', deliverableId,
+      permalink: url,
+      feedback: [{ from: 'system', text: `LIVE: ${url}`, at: '2026-04-22T00:00:00Z' }],
+    });
+
+  it('returns "live" only when EVERY slot is confirmed live', () => {
     const db = setup({
       submissions: [
-        buildSubmission({ id: 'sub_a', campaignId: 'cmp_1', creatorId: 'cr_1', status: 'approved', deliverableId: 'del_a', permalink: 'https://instagram.com/p/a' }),
-        buildSubmission({ id: 'sub_b', campaignId: 'cmp_1', creatorId: 'cr_1', status: 'approved', deliverableId: 'del_b', permalink: 'https://instagram.com/p/b' }),
+        confirmedLive('sub_a', 'del_a', 'https://instagram.com/p/a'),
+        confirmedLive('sub_b', 'del_b', 'https://instagram.com/p/b'),
       ],
     });
     expect(computeCollabStage('cmp_1', 'cr_1', db)).toBe('live');
@@ -360,8 +391,21 @@ describe('computeCollabStage — multi-deliverable rollup (P67)', () => {
   it('one slot live + one slot approved → stays "approved" (not all live)', () => {
     const db = setup({
       submissions: [
-        buildSubmission({ id: 'sub_a', campaignId: 'cmp_1', creatorId: 'cr_1', status: 'approved', deliverableId: 'del_a', permalink: 'https://instagram.com/p/a' }),
+        confirmedLive('sub_a', 'del_a', 'https://instagram.com/p/a'),
         buildSubmission({ id: 'sub_b', campaignId: 'cmp_1', creatorId: 'cr_1', status: 'approved', deliverableId: 'del_b' }),
+      ],
+    });
+    expect(computeCollabStage('cmp_1', 'cr_1', db)).toBe('approved');
+  });
+
+  it('a slot the creator posted but the brand has not confirmed is NOT live', () => {
+    // The creator's half only. This is the state that makes the brand's
+    // "Confirm the post is live" action reachable — before this change the
+    // stage skipped straight past it.
+    const db = setup({
+      submissions: [
+        buildSubmission({ id: 'sub_a', campaignId: 'cmp_1', creatorId: 'cr_1', status: 'approved', deliverableId: 'del_a', permalink: 'https://instagram.com/p/a' }),
+        buildSubmission({ id: 'sub_b', campaignId: 'cmp_1', creatorId: 'cr_1', status: 'approved', deliverableId: 'del_b', permalink: 'https://instagram.com/p/b' }),
       ],
     });
     expect(computeCollabStage('cmp_1', 'cr_1', db)).toBe('approved');

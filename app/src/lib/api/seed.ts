@@ -1292,6 +1292,15 @@ function genCampaign(
               text: 'Looks great — approving for live.',
               at: dayAgo(approvedAge),
             },
+            // The brand's verification. Without it the post reads as
+            // "approved, awaiting confirmation" — see submissionIsLive.
+            ...(stageIdx >= 6
+              ? [{
+                  from: 'system',
+                  text: `LIVE: https://www.instagram.com/p/D_g${idx}_${i}_${slot}/`,
+                  at: dayAgo(Math.max(0, approvedAge - 1)),
+                }]
+              : []),
           ],
           // Permalink only for stageIdx >= 6 (reporting, closed). For
           // posted (stageIdx === 5) the content is approved but not
@@ -1470,6 +1479,11 @@ STAGE_DISTRIBUTION.forEach(({ stage, internalProgress, count }) => {
   }
 });
 
+// A permalink alone no longer means live: `submissionIsLive` requires the
+// brand's `LIVE:` marker, which `v2MarkContentLive` appends. Seeded posts
+// that are meant to READ as verified carry it — otherwise the demo's `live`
+// and `paid` stages quietly become `approved`, which is exactly the drift
+// this seed exists to prevent.
 // ============ SHOWCASE — every collaboration stage, on purpose ============
 //
 // WHY THIS EXISTS
@@ -1580,7 +1594,13 @@ function showcaseSubmission(
     feedback: status === 'revisions'
       ? [{ from: 'u_hannah', text: 'Beautiful — but the product needs to read in the first three seconds. Can you recut the open?', at: dayAgo(Math.max(0, daysAgo - 1)) }]
       : status === 'approved'
-        ? [{ from: 'u_hannah', text: 'Approved — exactly the tone we wanted.', at: dayAgo(Math.max(0, daysAgo - 1)) }]
+        ? [
+            { from: 'u_hannah', text: 'Approved — exactly the tone we wanted.', at: dayAgo(Math.max(0, daysAgo - 1)) },
+            // Brand verification, only where the showcase wants `live`.
+            ...(permalink
+              ? [{ from: 'system', text: `LIVE: ${permalink}`, at: dayAgo(Math.max(0, daysAgo - 1)) }]
+              : []),
+          ]
         : [],
     permalink,
   });
@@ -1706,7 +1726,10 @@ const showcaseClosed: CampaignSeed = {
     files: [{ name: 'Final.mp4', url: upx(COVERS[6], 400, 400) }],
     notes: '[slot:0] Final cut.',
     status: 'approved', submittedAt: dayAgo(40),
-    feedback: [{ from: 'u_hannah', text: 'Approved — lovely work.', at: dayAgo(38) }],
+    feedback: [
+      { from: 'u_hannah', text: 'Approved — lovely work.', at: dayAgo(38) },
+      { from: 'system', text: 'LIVE: https://www.instagram.com/p/DShowcasePaid/', at: dayAgo(37) },
+    ],
     permalink: 'https://www.instagram.com/p/DShowcasePaid/',
   }],
   // The cleared payout `paid` requires. GROSS on the payout row with the two
@@ -1825,7 +1848,10 @@ function afterDeal(creatorId: string, daysAgo: number, subStatus: Submission['st
     id: `sub_after_${creatorId}`, campaignId: SHOWCASE_AFTER_ID, creatorId, round: 1,
     files: [{ name: 'Cut01.mp4', url: upx(COVERS[2], 400, 400) }],
     notes: '[slot:0] First cut.', status: subStatus, submittedAt: dayAgo(daysAgo),
-    feedback: [], ...(permalink ? { permalink } : {}),
+    feedback: permalink
+      ? [{ from: 'system', text: `LIVE: ${permalink}`, at: dayAgo(Math.max(0, daysAgo - 1)) }]
+      : [],
+    ...(permalink ? { permalink } : {}),
   });
 }
 
