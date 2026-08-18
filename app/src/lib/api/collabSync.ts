@@ -226,11 +226,23 @@ export function computeCollabStage(
       // parties settle or cancel (see WORKFLOW-GAPS F1).
       const allApproved = statuses.every((s) => s === 'approved' || s === 'live' || s === 'rejected');
       const allLive = statuses.every((s) => s === 'live');
-      const anyLive = statuses.some((s) => s === 'live');
       if (anyInReviewOrRevision) return 'submitted';
       if (allApproved) {
-        const campIsClosed = db.campaigns.find((c) => c.id === campaignId)?.stage === 'closed';
-        if (anyLive && hasPayout && campIsClosed) return 'paid';
+        // `paid` = the creator posted, the BRAND verified it, and the money
+        // has cleared.
+        //
+        // Asim's rule: "creator has to make the post live and then only can
+        // the brand check make it payable". `allLive` IS that check —
+        // `v2MarkContentLive` is a brand capability (`content.markLive`,
+        // admin/ops) and refuses until the creator has pasted the permalink.
+        // So the gate is already the one he described.
+        //
+        // What used to sit here as well was `campIsClosed`. Closing a campaign
+        // is unrelated brand admin — a creator whose post was verified and
+        // whose money had cleared still read as `live` until someone tidied up
+        // the campaign, which might never happen. It was also the reason the
+        // showcase needed a second closed campaign to display `paid` at all.
+        if (allLive && hasPayout) return 'paid';
         if (allLive) return 'live';
         return 'approved';
       }
@@ -242,8 +254,8 @@ export function computeCollabStage(
     const latestSub = subs.sort((a, b) => +new Date(b.submittedAt) - +new Date(a.submittedAt))[0];
     if (latestSub) {
       const isLive = submissionIsLive(latestSub);
-      const campIsClosed = db.campaigns.find((c) => c.id === campaignId)?.stage === 'closed';
-      if (latestSub.status === 'approved' && isLive && hasPayout && campIsClosed) return 'paid';
+      // Same rule as the slot rollup above — kept identical on purpose.
+      if (latestSub.status === 'approved' && isLive && hasPayout) return 'paid';
       if (latestSub.status === 'approved' && isLive) return 'live';
       if (latestSub.status === 'approved') return 'approved';
       if (latestSub.status === 'in_review' || latestSub.status === 'revisions') return 'submitted';

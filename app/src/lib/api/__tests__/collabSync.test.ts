@@ -154,13 +154,18 @@ describe('computeCollabStage — 9 stage rules', () => {
     expect(computeCollabStage('cmp_1', 'cr_1', db)).toBe('live');
   });
 
-  it('returns "paid" only when campaign is closed AND payout cleared AND submission is live', () => {
-    // Workflow audit: pre-fix `computeCollabStage` flipped to 'paid'
-    // the moment any cleared payout existed — which made the kanban
-    // skip past 'approved' AND past 'live' the instant the brand
-    // approved content. Correct behavior: 'paid' is terminal and
-    // requires (a) campaign closed, (b) payout cleared, AND
-    // (c) submission is live (permalink set or LIVE feedback).
+  it('returns "paid" when the payout has cleared AND the post is verified live', () => {
+    // Two rules, layered:
+    //
+    //  · pre-fix, `computeCollabStage` flipped to 'paid' the moment any
+    //    cleared payout existed, skipping 'approved' AND 'live' the instant
+    //    the brand approved. A payout alone is not a finished deal.
+    //  · it then over-corrected by ALSO requiring the campaign to be closed.
+    //    The gate Asim wants is the creator posting and the brand verifying
+    //    it — `v2MarkContentLive` — not unrelated campaign admin.
+    //
+    // This case satisfies both real conditions, and the closed campaign here
+    // is now incidental rather than load-bearing.
     const db = setupBaseDb({
       campaigns: [buildCampaign({ id: 'cmp_1', brandId: 'br_1', stage: 'closed' })],
       offers: [buildOffer({
@@ -208,11 +213,21 @@ describe('computeCollabStage — 9 stage rules', () => {
     expect(computeCollabStage('cmp_1', 'cr_1', db)).toBe('approved');
   });
 
-  it('returns "live" when submission has permalink + payout cleared but campaign still live', () => {
-    // Post is up + payout cleared but campaign hasn't been closed
-    // yet — stage is 'live', not 'paid'. The 'paid' transition is
-    // gated on campaign close so the kanban accurately reflects that
-    // the deal is still in flight.
+  it('returns "paid" when the post is verified live and the payout has cleared', () => {
+    // BEHAVIOUR CHANGED, deliberately. This test used to assert `live` here,
+    // because `paid` additionally required the CAMPAIGN to be closed.
+    //
+    // Asim's rule for the gate: "creator has to make the post live and then
+    // only can the brand check make it payable". That check is
+    // `v2MarkContentLive` — a brand capability that refuses until the creator
+    // has pasted the permalink. Closing the campaign is unrelated admin, and
+    // requiring it left creators whose post was verified and whose money had
+    // cleared sitting at `live` until someone tidied up a campaign, possibly
+    // never.
+    //
+    // Rewritten rather than deleted: the old assertion pinned a rule the
+    // product no longer has (regressionGuards CLASS 5 — a test can entrench
+    // a behaviour nobody chose).
     const db = setupBaseDb({
       offers: [buildOffer({
         id: 'off_1', campaignId: 'cmp_1', creatorId: 'cr_1', status: 'accepted',
@@ -231,7 +246,7 @@ describe('computeCollabStage — 9 stage rules', () => {
         status: 'cleared',
       })],
     });
-    expect(computeCollabStage('cmp_1', 'cr_1', db)).toBe('live');
+    expect(computeCollabStage('cmp_1', 'cr_1', db)).toBe('paid');
   });
 
   it('returns "cancelled" when ALL apps + offers are declined/withdrawn/rejected (no submissions)', () => {

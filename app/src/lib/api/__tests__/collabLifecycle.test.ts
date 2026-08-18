@@ -255,6 +255,96 @@ describe('invited requires an invitation', () => {
     expect(computeCollabStage(camp.id, creator.id, db)).toBe('pitched');
   });
 
+  it('PAID REQUIRES THE POST LIVE AND THE BRAND\'S CHECK', () => {
+    // Asim, verbatim: "creator has to make the post live and then only can
+    // the brand check make it payable."
+    //
+    // `allSlotsLive` IS that check. `v2MarkContentLive` carries the
+    // `content.markLive` capability, which only brand admin/ops hold, and it
+    // refuses until the creator has pasted the permalink. So reaching `live`
+    // already means the creator posted and the brand verified.
+    const base = {
+      hasInvite: false, hasLiveApplication: false, hasLiveOffer: false,
+      hasAcceptedOffer: true, hasAnySignal: true, allSignalsDead: false,
+      slotCount: 2, anySlotOpen: false, allSlotsSettled: true,
+      allSlotsLive: true, anySlotLive: true, payoutCleared: true,
+      campaignClosed: false, escrowFrozen: false, cancelledAt: null,
+    };
+    // Money cleared + every slot verified live → paid, campaign open or not.
+    expect(explainStage('paid', base).violations).toEqual([]);
+    expect(explainStage('paid', { ...base, campaignClosed: true }).violations).toEqual([]);
+
+    // Money cleared but the post is NOT verified live → not paid.
+    expect(explainStage('paid', { ...base, allSlotsLive: false }).violations)
+      .toContain('`paid` without every slot verified live by the brand');
+
+    // Verified live but the money has not cleared → not paid.
+    expect(explainStage('paid', { ...base, payoutCleared: false }).violations)
+      .toContain('`paid` without a cleared payout');
+
+    // ONE of three posts verified is not a finished deal.
+    expect(explainStage('paid', { ...base, allSlotsLive: false, anySlotLive: true }).violations)
+      .not.toEqual([]);
+  });
+
+  it('THE DERIVATION honours it too, not just the requirements table', () => {
+    // Mutation-testing caught this gap: replacing the rollup with
+    // `if (hasPayout) return \'paid\'` — skipping the live check entirely —
+    // left every test green, because the existing derivation tests all use
+    // the legacy no-deliverables path. This one drives the slot rollup.
+    const db = hydrated();
+    const camp = db.campaigns[0];
+    const creator = db.creators[0];
+    const creatorUser = db.users.find((u) => u.creatorId === creator.id)!;
+
+    db.applications = [];
+    db.collaborations = [];
+    db.offers = [{
+      id: 'off_p', campaignId: camp.id, creatorId: creator.id, rate: 1000,
+      message: '', status: 'accepted', sentAt: '2026-07-01T00:00:00Z',
+      respondedAt: '2026-07-02T00:00:00Z',
+      rounds: [{ by: 'brand', at: 1, rate: 1000, message: null }],
+      applicationId: null, source: 'cold-outreach',
+    }];
+    db.deliverables = [{
+      id: 'del_p', campaignId: camp.id, creatorId: null, index: 0,
+      platform: 'instagram', format: 'reel', quantity: 1,
+      dueOffsetDays: null, specs: null,
+    }];
+    // Approved, money cleared — but the creator has NOT posted, so the brand
+    // has nothing to verify.
+    db.submissions = [{
+      id: 'sub_p', campaignId: camp.id, creatorId: creator.id, round: 1,
+      files: [], notes: '', status: 'approved',
+      submittedAt: '2026-07-05T00:00:00Z', feedback: [], deliverableId: 'del_p',
+    }];
+    db.transactions = [{
+      id: 'tx_p', at: '2026-07-06T00:00:00Z', userId: creatorUser.id,
+      kind: 'payout', amount: 1000, status: 'cleared', campaignId: camp.id,
+      note: 'payout',
+    }];
+
+    // Money moved at approval, but no post is up: this is `approved`.
+    expect(computeCollabStage(camp.id, creator.id, db)).toBe('approved');
+
+    // The creator posts and the brand verifies → now it is paid.
+    db.submissions[0] = { ...db.submissions[0], permalink: 'https://instagram.com/p/live' };
+    expect(computeCollabStage(camp.id, creator.id, db)).toBe('paid');
+  });
+
+  it('and a closed campaign alone never makes a deal paid', () => {
+    // The old rule made closure necessary; it was never sufficient, and it is
+    // now not required either. Closing a campaign is admin, not payment.
+    const facts = {
+      hasInvite: false, hasLiveApplication: false, hasLiveOffer: false,
+      hasAcceptedOffer: true, hasAnySignal: true, allSignalsDead: false,
+      slotCount: 1, anySlotOpen: false, allSlotsSettled: true,
+      allSlotsLive: false, anySlotLive: false, payoutCleared: false,
+      campaignClosed: true, escrowFrozen: false, cancelledAt: null,
+    };
+    expect(explainStage('paid', facts).violations.length).toBeGreaterThan(0);
+  });
+
   it('every stage has a requirement function, so a tenth stage must declare one', () => {
     for (const s of ALL_STAGES) {
       expect(typeof STAGE_REQUIREMENTS[s], `${s} has no requirements`).toBe('function');

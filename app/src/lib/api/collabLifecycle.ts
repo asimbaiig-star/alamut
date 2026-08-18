@@ -296,8 +296,15 @@ export const STAGE_REQUIREMENTS: Record<
     const bad: string[] = [];
     if (!f.hasAcceptedOffer) bad.push('`paid` without an accepted offer');
     if (!f.payoutCleared) bad.push('`paid` without a cleared payout');
-    if (!f.anySlotLive) bad.push('`paid` without any slot live');
-    if (!f.campaignClosed) bad.push('`paid` while the campaign is still open');
+    // Asim's rule: the creator posts, and only then can the brand's check
+    // make it payable. `allSlotsLive` is that check — `v2MarkContentLive`
+    // is a brand capability and refuses without the creator's permalink.
+    // EVERY slot, not any: one verified post out of three is not a finished
+    // deal.
+    if (!f.allSlotsLive) bad.push('`paid` without every slot verified live by the brand');
+    // Campaign closure is deliberately NOT required. It is unrelated brand
+    // admin, and gating on it left creators whose posts were verified and
+    // whose money had cleared reading as `live` indefinitely.
     return bad;
   },
   cancelled: (f) => {
