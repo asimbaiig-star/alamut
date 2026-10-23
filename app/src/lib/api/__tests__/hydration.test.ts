@@ -12,6 +12,7 @@ const h = vi.hoisted(() => ({
   email: null as string | null,
   gates: [] as Gate[],
   calls: [] as string[],
+  rows: {} as Record<string, unknown[]>,
 }));
 
 vi.mock('@/lib/supabase', () => {
@@ -23,7 +24,7 @@ vi.mock('@/lib/supabase', () => {
         if (table === 'brands_public') {
           h.gates.push({ table, who, resolve: (rows) => res({ data: rows, error: null }) });
         } else {
-          res({ data: [], error: null });
+          res({ data: h.rows[table] ?? [], error: null });
         }
       });
       // Any chained filter (.select / .eq / .order / …) returns the builder;
@@ -57,6 +58,8 @@ vi.mock('@/lib/supabase', () => {
 });
 
 import { hydrateFromSupabase, getHydratedIdentity, useStore } from '@/lib/api/store';
+import { mayMirrorForCampaign, __resetRemoteRegistry } from '@/lib/data/remoteRegistry';
+import { hasFullAccessToCampaign } from '@/lib/data/campaignsRepo';
 
 const aesopRow = (name: string) => ({
   id: 'b_aesop', user_id: 'u_hannah', name, industry: 'Beauty', hq: 'Melbourne',
@@ -71,6 +74,7 @@ describe('hydrateFromSupabase', () => {
   beforeEach(() => {
     h.gates.length = 0;
     h.calls.length = 0;
+    h.rows = {};
   });
 
   it('a superseded run cannot overwrite the newer identity\'s data', async () => {
@@ -116,5 +120,33 @@ describe('hydrateFromSupabase', () => {
     // A value only the remote row carries, so this cannot pass on the seed.
     expect(aesop().name).toBe('Aesop — from Postgres'); // remote fields win…
     expect(aesop().offerTemplates).toEqual(before);    // …local-only ones survive
+  });
+
+  it('arms the write registry from BOTH campaign reads', async () => {
+    // After 039 the raw read returns only the caller's own campaigns and ones
+    // they are party to. A registry armed from that alone marks every other
+    // real campaign "not in Postgres" — and a creator's application to a
+    // brief she is not yet on is filtered out before it is ever sent.
+    __resetRemoteRegistry();
+    h.email = 'sarah@alamut.test';
+    h.rows = {
+      campaigns: [],                                        // not her campaign
+      campaigns_public: [{ id: 'cmp_1', brand_id: 'b_aesop', title: 'Spring', pitch: '', brief: '',
+        cover: '', budget: 18000, region: '', category: null, stage: 'live', deliverables_text: '',
+        deliverable_ids: [], deadline: '', posted_at: null, reach: null, engagement: null,
+        applications: [], offers: [], rights: null, kind: null, editors_pick: null, assets: [],
+        version: 99, created_at: '2026-01-01', updated_at: '2026-01-02' }],
+    };
+    const run = hydrateFromSupabase();
+    await vi.waitFor(() => expect(gateFor('sarah@alamut.test')).toBeDefined());
+    gateFor('sarah@alamut.test')!.resolve([]);
+    await run;
+
+    expect(mayMirrorForCampaign('cmp_1'), 'an application to cmp_1 would be dropped').toBe(true);
+    expect(hasFullAccessToCampaign('cmp_1')).toBe(false); // realtime: projection owns it
+    const c = useStore.getState().db.campaigns.find((x) => x.id === 'cmp_1')!;
+    expect(c.title).toBe('Spring');      // public fields from the projection…
+    expect(c.escrowHeld).toBe(5400);     // …private ones kept from the seed, not zeroed
+    expect(c.history.length).toBeGreaterThan(0);
   });
 });

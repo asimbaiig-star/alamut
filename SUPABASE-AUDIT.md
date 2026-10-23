@@ -6,12 +6,14 @@ which makes Postgres resolve the column at plan time without returning data;
 a deliberate bad-column probe returned `42703`, so the passes are real and not
 a uniformly-green endpoint.
 
-> **Status, 2026-10-23:** §1 and §2 are **fixed and applied** —
-> `app/supabase/migrations/037_read_authorization.sql`, verified against
-> production and against a real Postgres (see "Verified after applying" at the
-> end). CLASS 12 in `regressionGuards.test.ts` fails the build if any of it is
-> undone. §3 (dead public views), §4 (`campaigns` columns) and §5 (edge
-> functions) are still open.
+> **Status, 2026-10-23:**
+> - §1, §2 — **fixed and applied** (037), verified in production, on real
+>   Postgres, and signed in as both demo accounts.
+> - §3, §4 — **fixed, not yet applied**: 038 (run any time) and 039 (run only
+>   after the app that reads `campaigns_public` is deployed). See "038 and 039".
+> - §5 (edge functions) — still open.
+> - The signed-in check found a regression 037 caused and two older problems;
+>   see "What the signed-in check found".
 
 ## Verdict
 
@@ -361,3 +363,73 @@ deals, a creator sees theirs, the wallet still shows ledger rows, and the
 inbox still lists threads. Seeded rows whose `owner_email` matches nobody will
 stop arriving from Postgres and fall back to the local seed store, which looks
 identical in the UI — expected, not a regression.
+
+---
+
+## What the signed-in check found
+
+Signed in through the demo buttons on the live site, read-only, and checked
+every table through the app's own signed-in client — each row tested against
+the rule it should satisfy, rather than eyeballing screens. The UI cannot tell
+"037 returned your rows" from "037 returned nothing and the seed filled in",
+so screens alone prove nothing.
+
+**037 holds in production.** Both accounts: no policy errors (so no recursion
+under a real session), zero rows violating their rule, the shared deal visible
+to both sides, and Amir's offer, collaboration and thread invisible to Sarah.
+Every zero (messages, disputes, outreach) was confirmed as *empty, not
+blocked* by calling each predicate for the caller's own scope.
+
+**Regression, caused by 037 — fixed in `6966695`.** Hydration ran once, at page
+load. Signing in through the form never re-fetched, so a demo visitor kept the
+signed-out snapshot — empty since 037. Twelve seconds after the demo sign-in
+Sarah's own contract was missing and her home showed the seed balance
+($33,143) instead of her real $4,200, until a refresh.
+
+**Test suite reached production — fixed in `6966695`.** Vite loads `.env.local`
+in test mode, so every test ran with Supabase configured. All anonymous (no
+test signs in; the only anon write policy is `with check (false)`), so
+nothing was written. `vitest.config.ts` now pins the variables empty.
+
+**Still open, needs a decision:** signing out leaves the previous person's
+Postgres rows in the browser's local store. After Hannah signed out, her
+$1,050 offer to Amir, three collaborations and her thread with him were still
+in localStorage when Sarah signed in. Not rendered — the UI filters by viewer —
+but readable in devtools on a shared device. Purging on sign-out is the fix;
+the trade-off is that a single-device demo switching personas loses any
+browser-only state (generated `cmp_g*` campaigns are never mirrored).
+
+**Noted, harmless:** a 406 on boot — an optimistic-lock PATCH to
+`col_1m1pkvn` at `version=1` while Postgres holds `version=2`. The lock
+refusing a stale write; nothing written.
+
+## 038 and 039
+
+**038** — `creators_public`, `brands_public` and a new `campaigns_public`
+become trigger-synced tables. Not security-definer views: the advisor reports
+those as ERROR, and 028 already removed one. Each column was re-justified,
+because a live projection makes all of them public for the first time:
+`saved_briefs` and `saved_creators` are out (who a creator is eyeing, who a
+brand is shortlisting); `campaigns_public` carries no `spent`, `escrow_held`,
+`history`, `milestones`, `auto_shortlist`, and no drafts — unannounced
+campaigns were readable by anyone. Safe before or after the deploy.
+
+**039** — raw `campaigns` readable by the owning brand (drafts included) and
+creators with an application or offer on it. The participant check is a
+SECURITY DEFINER function in the unexposed `private` schema, because every
+obvious predicate recurses through 037's policies. Must wait for the deploy:
+under the old code it would arm the write registry from the caller's
+campaigns only and drop creators' applications silently. It refuses to run
+without 038.
+
+**Verified** by running both migrations verbatim on PostgreSQL 18.6 with
+Supabase's default grants simulated: 33 checks, then 7 mutations, all caught
+(including that `security definer` is load-bearing — without it the source
+write itself fails). App side: 16 mutations, all caught, including three cases
+of the write registry being armed from a read that might have failed.
+
+Also fixed on the way: brand and campaign hydration replaced rows whole, so
+fields Postgres has no column for were erased on every load — the brand's
+offer templates, and eleven campaign fields (`tracking`, `retainer`,
+`archivedAt`, …) for every visitor.
+

@@ -47,10 +47,12 @@ const COLUMNS =
   'saved_creators, social_platforms, version';
 
 // Public column set — no PII (no owner_email, no wallet/escrow figures).
+// saved_creators left out on purpose (038): who a brand is shortlisting is
+// theirs, and it was private only because the view was dead.
 const PUBLIC_COLUMNS =
   'id, user_id, name, industry, hq, website, about, logo_mark, logo_url, ' +
   'preferred_categories, preferred_regions, verified, ' +
-  'saved_creators, social_platforms, version';
+  'social_platforms, version';
 
 function toBrand(row: Row): Brand {
   return {

@@ -57,6 +57,39 @@ export function mountWorkflowRealtime(): void {
         }
       },
     )
+    // ─── campaigns_public (038) ───────────────────────────────────────
+    // After 039 the raw `campaigns` channel only reaches a campaign's own
+    // parties, so the marketplace would stop updating live for everyone
+    // else. The projection broadcasts to all; its rows carry no private
+    // fields, so they MERGE into the local copy rather than replace it.
+    // Rows this session reads in full are left to the raw channel — a
+    // projection event of the same version applied first would make the raw
+    // one look stale, and the owner would lose its spent / escrow update.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .on('postgres_changes' as any,
+      { event: '*', schema: 'public', table: 'campaigns_public' },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      async (payload: any) => {
+        try {
+          const id: string | undefined = payload.new?.id;
+          if (!id) return; // a DELETE — skipped, as for every workflow table
+          const repo = await import('@/lib/data/campaignsRepo');
+          if (repo.hasFullAccessToCampaign(id)) return;
+          const next = repo.toPublicCampaign(payload.new);
+          useStore.setState((s) => {
+            const existing = s.db.campaigns.find((c) => c.id === id);
+            if (existing && typeof existing.version === 'number'
+                && typeof next.version === 'number' && next.version <= existing.version) {
+              return {};
+            }
+            return { db: { ...s.db, campaigns: repo.mergeHydratedCampaigns(s.db.campaigns, [next], []) } };
+          });
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn('[realtimeWorkflow] campaigns_public overlay failed:', err);
+        }
+      },
+    )
     // ─── offers ───────────────────────────────────────────────────────
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .on('postgres_changes' as any,

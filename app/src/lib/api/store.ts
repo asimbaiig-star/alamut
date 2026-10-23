@@ -357,9 +357,10 @@ async function runHydration(isCurrent: () => boolean): Promise<void> {
       import('@/lib/data/sparkDraftsRepo'),
       import('@/lib/data/notificationsRepo'),
     ]);
-    const [brands, campaigns, applications, offers, creators, collaborations, submissions, deliverables, contracts, transactions, reviews, disputes, outreach, threads, messages, teamInvites, sparkDrafts, notifications] = await Promise.all([
+    const [brands, campaignsRead, publicCampaignsRead, applications, offers, creators, collaborations, submissions, deliverables, contracts, transactions, reviews, disputes, outreach, threads, messages, teamInvites, sparkDrafts, notifications] = await Promise.all([
       brandsMod.fetchAllBrandsFromSupabase(),
-      campaignsMod.fetchAllCampaignsFromSupabase(),
+      campaignsMod.readCampaignsInFull(),
+      campaignsMod.readPublicCampaigns(),
       applicationsMod.fetchAllApplicationsFromSupabase(),
       offersMod.fetchAllOffersFromSupabase(),
       creatorsMod.fetchAllCreatorsFromSupabase(),
@@ -379,6 +380,8 @@ async function runHydration(isCurrent: () => boolean): Promise<void> {
     ]);
     // Superseded while fetching — a newer identity's run owns the store.
     if (!isCurrent()) return;
+    const campaigns = campaignsRead.rows;
+    const publicCampaigns = publicCampaignsRead.rows;
     // Record which campaigns Postgres actually has. Several mirrored
     // tables carry an FK to `campaigns`, and the generated seed
     // campaigns (`cmp_g*`) exist only in the browser — writes attached
@@ -398,9 +401,19 @@ async function runHydration(isCurrent: () => boolean): Promise<void> {
     // Skipping the registry on an empty result costs only the old
     // behaviour: doomed writes get attempted and fail loudly. Noise is
     // recoverable. Lost money rows are not.
-    if (campaigns.length > 0) {
+    //
+    // Since 039 there are two reads: the raw table (own campaigns and ones
+    // you are party to — drafts only here) and the projection (every other
+    // published brief). Arming from either alone loses writes; arming from a
+    // read that failed is the original bug in new clothes. The decision,
+    // case by case, is campaignIdsForRegistry — only it may arm.
+    const registryIds = campaignsMod.campaignIdsForRegistry(campaignsRead, publicCampaignsRead);
+    if (registryIds) {
       const { recordRemoteCampaigns } = await import('@/lib/data/remoteRegistry');
-      recordRemoteCampaigns(campaigns.map((c) => c.id));
+      recordRemoteCampaigns(registryIds);
+    }
+    if (campaignsRead.status === 'ok') {
+      campaignsMod.recordFullAccessCampaigns(campaigns.map((c) => c.id));
     }
 
     // Phase 10 — mount the realtime chat subscription once initial
@@ -430,7 +443,7 @@ async function runHydration(isCurrent: () => boolean): Promise<void> {
       }
     })();
     if (
-      brands.length === 0 && campaigns.length === 0 &&
+      brands.length === 0 && campaigns.length === 0 && publicCampaigns.length === 0 &&
       applications.length === 0 && offers.length === 0 &&
       creators.length === 0 && collaborations.length === 0 &&
       submissions.length === 0 && deliverables.length === 0 &&
@@ -538,7 +551,9 @@ async function runHydration(isCurrent: () => boolean): Promise<void> {
           // them and a whole-row replace erased them on every hydrate —
           // the owner's offer templates were gone after each load.
           brands: overlayKeepingLocal(s.db.brands, brands),
-          campaigns: overlay(s.db.campaigns, campaigns),
+          // Raw rows win; projection rows fill in the rest without touching
+          // private fields; nothing is replaced whole. See the helper.
+          campaigns: campaignsMod.mergeHydratedCampaigns(s.db.campaigns, publicCampaigns, campaigns),
           applications: overlay(s.db.applications, applications),
           offers: overlay(s.db.offers, offers),
           creators: overlayCreators(s.db.creators, creators),

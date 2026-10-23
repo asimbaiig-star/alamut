@@ -52,6 +52,28 @@ const COLUMNS =
   'posted_at, reach, engagement, history, milestones, applications, offers, ' +
   'rights, auto_shortlist, kind, editors_pick, assets, version, created_at, updated_at';
 
+// Fields only a campaign's own parties may read. Migration 039 limits the
+// raw table to the brand that owns the campaign and creators with an
+// application or offer on it; everyone else reads `campaigns_public` (038),
+// which leaves these out. `spent` is the reason this list exists: on a
+// single-creator campaign it EQUALS that creator's fee.
+const PRIVATE_FIELDS = ['spent', 'escrowHeld', 'history', 'milestones', 'autoShortlist'] as const;
+export type PrivateCampaignField = (typeof PRIVATE_FIELDS)[number];
+export type PublicCampaign = Omit<Campaign, PrivateCampaignField>;
+
+/** What a campaign seen only through the projection starts with. Zeros, not
+ *  undefined: the landing page divides attributed revenue by `spent`, and
+ *  `undefined <= 0` is false, so an undefined there reaches the page as NaN. */
+export const PRIVATE_FIELD_DEFAULTS: Pick<Campaign, PrivateCampaignField> = {
+  spent: 0, escrowHeld: 0, history: [], milestones: [], autoShortlist: null,
+};
+
+const PUBLIC_COLUMNS =
+  'id, brand_id, title, pitch, brief, cover, budget, ' +
+  'region, category, stage, deliverables_text, deliverable_ids, deadline, ' +
+  'posted_at, reach, engagement, applications, offers, ' +
+  'rights, kind, editors_pick, assets, version, created_at, updated_at';
+
 export function toCampaign(row: Row): Campaign {
   return {
     id: row.id,
@@ -84,6 +106,62 @@ export function toCampaign(row: Row): Campaign {
     assets: row.assets ?? [],
     version: row.version,
   };
+}
+
+/** Map a `campaigns_public` row. The private fields are ABSENT — not
+ *  zeroed — so a merge keeps whatever the local copy already holds. */
+export function toPublicCampaign(row: Row): PublicCampaign {
+  const c: Partial<Campaign> = toCampaign(row);
+  for (const f of PRIVATE_FIELDS) delete c[f];
+  return c as PublicCampaign;
+}
+
+/** Overlay hydrated campaigns onto the local list.
+ *
+ *  `full` rows come from the raw table — the caller's own campaigns and ones
+ *  they are party to — and carry every column, so they win. `pub` rows come
+ *  from the projection and carry no private fields: a campaign already held
+ *  locally keeps its own values for those, and one seen for the first time
+ *  gets PRIVATE_FIELD_DEFAULTS.
+ *
+ *  Spread, never replace. Eleven Campaign fields (tracking, retainer, boosts,
+ *  archivedAt, …) have no column, so toCampaign never sets them and a
+ *  whole-row replace erased them on every load — for every visitor, since the
+ *  table was world-readable. */
+export function mergeHydratedCampaigns(
+  local: Campaign[],
+  pub: PublicCampaign[],
+  full: Campaign[],
+): Campaign[] {
+  if (pub.length === 0 && full.length === 0) return local;
+  const byId = new Map(local.map((c) => [c.id, c]));
+  const order = local.map((c) => c.id);
+  const put = (id: string, next: Campaign) => {
+    if (!byId.has(id)) order.push(id);
+    byId.set(id, next);
+  };
+  for (const p of pub) {
+    const cur = byId.get(p.id);
+    put(p.id, cur ? { ...cur, ...p } : { ...PRIVATE_FIELD_DEFAULTS, ...p });
+  }
+  for (const f of full) {
+    const cur = byId.get(f.id);
+    put(f.id, cur ? { ...cur, ...f } : f);
+  }
+  return order.map((id) => byId.get(id)!);
+}
+
+// Campaigns the last hydration read from the raw table. Realtime uses it to
+// let the raw channel, which carries every field, own those rows: a
+// projection event for the same version applied first would make the raw
+// event look stale, and the owner would lose its spent / escrow update.
+const fullAccess = new Set<string>();
+export function recordFullAccessCampaigns(ids: string[]): void {
+  fullAccess.clear();
+  for (const id of ids) fullAccess.add(id);
+}
+export function hasFullAccessToCampaign(id: string): boolean {
+  return fullAccess.has(id);
 }
 
 // Insert payload — full Campaign minus the columns the DB owns
@@ -209,18 +287,73 @@ export async function removeCampaignAssetFile(
   await sb.storage.from('campaign-assets').remove([path]);
 }
 
-/** Fetch every campaign visible to the current session. Public SELECT
- *  policy means anon + authenticated both see the full set. */
-export async function fetchAllCampaignsFromSupabase(): Promise<Campaign[]> {
-  if (!isSupabaseConfigured()) return [];
+/** A campaign read that says why it came back empty. The other repos
+ *  swallow errors into `[]`, which is fine for an overlay and fatal for the
+ *  write registry: there, "no campaigns" and "the read failed" must not look
+ *  alike (regressionGuards CLASS 1). `missing` = the table does not exist —
+ *  for `campaigns_public`, that means 038 has not been applied. */
+export type CampaignRead<T> = { rows: T[]; status: 'ok' | 'failed' | 'missing' };
+
+const isMissingRelation = (e: { code?: string }) => e.code === 'PGRST205' || e.code === '42P01';
+
+/** Every campaign this session may read IN FULL. Since migration 039 that is
+ *  the brand's own campaigns (drafts included) and ones the caller has an
+ *  application or offer on — anonymous callers get none. Everything else
+ *  comes through readPublicCampaigns. Before 039 this still returns every
+ *  row, which is why the two are merged rather than either trusted alone. */
+export async function readCampaignsInFull(): Promise<CampaignRead<Campaign>> {
+  if (!isSupabaseConfigured()) return { rows: [], status: 'failed' };
   const sb = getSupabase();
   const { data, error } = await sb.from('campaigns').select(COLUMNS);
   if (error) {
     // eslint-disable-next-line no-console
-    console.warn('[campaignsRepo] fetchAll failed:', error.message);
-    return [];
+    console.warn('[campaignsRepo] read in full failed:', error.message);
+    return { rows: [], status: 'failed' };
   }
-  return (data ?? []).map((r) => toCampaign(r as unknown as Row));
+  return { rows: (data ?? []).map((r) => toCampaign(r as unknown as Row)), status: 'ok' };
+}
+
+/** Rows only, errors swallowed — the shape the other repos share. */
+export async function fetchAllCampaignsFromSupabase(): Promise<Campaign[]> {
+  return (await readCampaignsInFull()).rows;
+}
+
+/** Every published campaign, public fields only (`campaigns_public`, 038).
+ *  `missing` before 038 is applied — and then the raw read still returns
+ *  every row, so nothing is lost. */
+export async function readPublicCampaigns(): Promise<CampaignRead<PublicCampaign>> {
+  if (!isSupabaseConfigured()) return { rows: [], status: 'failed' };
+  const sb = getSupabase();
+  const { data, error } = await sb.from('campaigns_public').select(PUBLIC_COLUMNS);
+  if (error) {
+    if (isMissingRelation(error)) return { rows: [], status: 'missing' };
+    // eslint-disable-next-line no-console
+    console.warn('[campaignsRepo] public read failed:', error.message);
+    return { rows: [], status: 'failed' };
+  }
+  return { rows: (data ?? []).map((r) => toPublicCampaign(r as unknown as Row)), status: 'ok' };
+}
+
+/** The campaign ids to arm the write registry with, or null to leave it
+ *  unarmed — which costs only noise: doomed writes are attempted and fail
+ *  loudly. Arming on a partial picture is what costs money: every write for
+ *  a campaign left out is filtered before it is sent, silently.
+ *
+ *    raw failed               → null. Unknown, and only raw has the drafts.
+ *    projection failed        → null. Every brief you are not party to
+ *                               would vanish, and with it your applications.
+ *    projection missing       → raw alone. That is before 038, when the raw
+ *                               table is still world-readable — the full set.
+ *    both ok                  → the union.
+ *    nothing in either        → null. Empty is indistinguishable from broken. */
+export function campaignIdsForRegistry(
+  full: CampaignRead<Campaign>,
+  pub: CampaignRead<PublicCampaign>,
+): string[] | null {
+  if (full.status !== 'ok' || pub.status === 'failed') return null;
+  const ids = new Set(full.rows.map((c) => c.id));
+  if (pub.status === 'ok') for (const c of pub.rows) ids.add(c.id);
+  return ids.size > 0 ? [...ids] : null;
 }
 
 /** Insert a brand-new campaign. RLS requires the auth user to own

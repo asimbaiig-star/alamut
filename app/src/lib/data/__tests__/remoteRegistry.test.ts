@@ -100,11 +100,15 @@ describe('both FK-bearing mirrors consult the guard', () => {
     expect(read('store.ts')).toContain('mayMirrorForCampaign(t.campaignId)');
   });
 
-  it('hydration populates the registry, and only on a non-empty fetch', () => {
+  it('hydration populates the registry, and only on a known-good read', () => {
+    // Since 039 two reads feed the registry (raw + campaigns_public). The
+    // decision — never on a failed or empty read — is campaignIdsForRegistry,
+    // pinned case by case in regressionGuards CLASS 1. Here: the store arms
+    // through it and only when it says so.
     const store = read('store.ts');
-    expect(store).toContain('recordRemoteCampaigns(campaigns.map((c) => c.id))');
+    expect(store).toContain('campaignIdsForRegistry(campaignsRead, publicCampaignsRead)');
     // The guard, not just the call. Without it a transient fetch failure
     // silently stops mirroring money.
-    expect(store).toContain('if (campaigns.length > 0) {');
+    expect(store).toMatch(/if \(registryIds\) \{\s*const \{ recordRemoteCampaigns \}[^\n]*\n\s*recordRemoteCampaigns\(registryIds\);/);
   });
 });

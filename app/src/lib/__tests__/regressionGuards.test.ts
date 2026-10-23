@@ -45,6 +45,7 @@ import {
 import { normalizeLedgerToGross } from '@/lib/api/migrations';
 import { splitGross, PLATFORM_FEE, WHT } from '@/lib/api/money';
 import { isSupabaseConfigured } from '@/lib/supabase';
+import { campaignIdsForRegistry } from '@/lib/data/campaignsRepo';
 import type { Transaction } from '@/lib/api/types';
 
 const SRC = join(__dirname, '..', '..');
@@ -75,7 +76,31 @@ describe('guards fail open when the input is indistinguishable from failure', ()
   });
 
   it('the caller guards too, so neither layer alone is load-bearing', () => {
-    expect(code('lib/api/store.ts')).toContain('if (campaigns.length > 0) {');
+    // Since 039 the store merges two campaign reads. The arming decision is
+    // one pure function, and the store may arm only through it.
+    const src = code('lib/api/store.ts');
+    expect(src).toContain('campaignIdsForRegistry(campaignsRead, publicCampaignsRead)');
+    expect(src).toMatch(/if \(registryIds\) \{\s*const \{ recordRemoteCampaigns \}/);
+    expect(src.match(/recordRemoteCampaigns\(/g), 'a second, unguarded arming call').toHaveLength(1);
+  });
+
+  it('the arming rule refuses every read that might have failed', () => {
+    // A union of two reads reintroduces this class through a PARTIAL
+    // failure: raw errors to [] while the projection succeeds, the registry
+    // arms with published briefs only, and the brand's drafts — which only
+    // the raw read carries — lose every write, silently.
+    const ok = <T,>(rows: T[]) => ({ rows, status: 'ok' as const });
+    const failed = { rows: [], status: 'failed' as const };
+    const missing = { rows: [], status: 'missing' as const };
+    const c = (id: string) => ({ id }) as never;
+    expect(campaignIdsForRegistry(failed, ok([c('cmp_pub')])), 'raw failed').toBeNull();
+    expect(campaignIdsForRegistry(ok([c('cmp_own')]), failed), 'projection failed').toBeNull();
+    expect(campaignIdsForRegistry(ok([]), ok([])), 'both empty').toBeNull();
+    expect(campaignIdsForRegistry(ok([c('cmp_all')]), missing), 'before 038').toEqual(['cmp_all']);
+    expect(campaignIdsForRegistry(ok([c('cmp_draft')]), ok([c('cmp_pub')])), 'union')
+      .toEqual(['cmp_draft', 'cmp_pub']);
+    expect(campaignIdsForRegistry(ok([]), ok([c('cmp_pub')])), 'a creator with no deals yet')
+      .toEqual(['cmp_pub']);
   });
 
   it('suppression happens only with positive evidence', () => {
@@ -746,10 +771,13 @@ describe('read authorization is scoped to the parties, not to the audience', () 
    *  Adding to this list should take an argument, which is the point of
    *  it being a list. */
   const PUBLIC_BY_INTENT = new Set([
-    // A marketplace visitor browses briefs before signing up. The policy
-    // is right; the column set is not (budget/spent/escrow_held are still
-    // exposed) and is tracked for the `campaigns_public` view.
-    'public.campaigns',
+    // Projections (038), each a deliberately reduced column set kept in sync
+    // by trigger. The raw tables behind them are owner- or party-only.
+    'public.creators_public',  // public profiles and the creator directory
+    'public.brands_public',    // brand headers on briefs, Discover
+    'public.campaigns_public', // the marketplace — published campaigns only
+    // Not here: `public.campaigns`. It was public until 039, which left
+    // `spent` (on a one-creator campaign, that creator's fee) on the open web.
   ]);
 
   type Policy = { table: string; name: string; roles: string; pred: string; file: string };
@@ -852,6 +880,10 @@ describe('read authorization is scoped to the parties, not to the audience', () 
       calls: [],
     },
     is_thread_participant:      { tables: ['public.threads'], calls: ['own_user_ids'] },
+    // 039. SECURITY DEFINER, so RLS does not apply inside it and recursion
+    // cannot pass through it — listed anyway so (c) and the completeness
+    // check below see everything a policy can reach.
+    is_campaign_participant:    { tables: ['public.applications', 'public.offers', 'public.creators'], calls: [] },
   };
 
   /** Every table a helper can reach, following calls. */
@@ -870,7 +902,7 @@ describe('read authorization is scoped to the parties, not to the audience', () 
   function helperBody(helper: string, sql: string): string | null {
     const defs = [...sql.matchAll(
       new RegExp(
-        `create\\s+or\\s+replace\\s+function\\s+public\\.${helper}[\\s\\S]*?\\$\\$([\\s\\S]*?)\\$\\$`,
+        `create\\s+or\\s+replace\\s+function\\s+(?:public|private)\\.${helper}[\\s\\S]*?\\$\\$([\\s\\S]*?)\\$\\$`,
         'gi',
       ),
     )];
@@ -956,6 +988,7 @@ describe('read authorization is scoped to the parties, not to the audience', () 
       'public.messages':       /is_thread_participant/,
       'public.disputes':       /is_participant_of_campaign/,
       'public.outreach':       /is_brand_owner|is_creator_owner/,
+      'public.campaigns':      /is_campaign_participant/,
     };
     for (const [table, pattern] of Object.entries(EXPECTED)) {
       const p = byTable.get(table);
@@ -963,8 +996,93 @@ describe('read authorization is scoped to the parties, not to the audience', () 
       expect(p!.pred, `${table} predicate does not gate on ${pattern}`).toMatch(pattern);
     }
   });
-});
 
+  // ── The public projections (038) ──────────────────────────────────────
+  // A live projection makes every column in it world-readable. 025's views
+  // were dead, so their columns were private by accident; these were each
+  // re-justified. A column added to a projection must be added here too.
+
+  /** Columns of the latest `create table … public.<t> as select … from`. */
+  function projectionColumns(t: string): string[] {
+    const defs = [...allSql().replace(/--[^\n]*/g, '').matchAll(
+      new RegExp(`create\\s+table\\s+(?:if\\s+not\\s+exists\\s+)?public\\.${t}\\s+as\\s+select([\\s\\S]*?)\\bfrom\\b`, 'gi'),
+    )];
+    expect(defs.length, `no projection definition for ${t}`).toBeGreaterThan(0);
+    return defs[defs.length - 1][1].split(',').map((c) => c.trim()).filter(Boolean);
+  }
+
+  const NEVER_PUBLIC: Record<string, string[]> = {
+    creators_public: ['owner_email', 'payout', 'wallet_balance', 'pending_balance',
+      'lifetime_earnings', 'tax_form', 'agreement_accepted_at', 'agreement_version', 'saved_briefs'],
+    brands_public: ['owner_email', 'wallet_balance', 'escrow_held', 'saved_creators'],
+    campaigns_public: ['spent', 'escrow_held', 'history', 'milestones', 'auto_shortlist'],
+  };
+
+  it('no projection carries a column that must stay private', () => {
+    for (const [t, deny] of Object.entries(NEVER_PUBLIC)) {
+      const cols = projectionColumns(t);
+      expect(cols.length, `${t} parsed to nothing`).toBeGreaterThan(5);
+      expect(cols.filter((c) => deny.includes(c)), `${t} exposes`).toEqual([]);
+    }
+  });
+
+  it('the app reads only columns its projection actually has', () => {
+    // One extra column and PostgREST answers 42703; the repo logs a warning
+    // and returns [], and every visitor silently gets seed data instead.
+    const repoCols = (rel: string, name: string) => {
+      const m = new RegExp(`const ${name}\\s*=([\\s\\S]*?);`).exec(code(rel));
+      expect(m, `${name} not found in ${rel}`).not.toBeNull();
+      return [...m![1].matchAll(/'([^']*)'/g)].map((x) => x[1]).join('')
+        .split(',').map((c) => c.trim()).filter(Boolean);
+    };
+    for (const [rel, t] of [
+      ['lib/data/creatorsRepo.ts', 'creators_public'],
+      ['lib/data/brandsRepo.ts', 'brands_public'],
+      ['lib/data/campaignsRepo.ts', 'campaigns_public'],
+    ] as const) {
+      const have = new Set(projectionColumns(t));
+      const missing = repoCols(rel, 'PUBLIC_COLUMNS').filter((c) => !have.has(c));
+      expect(missing, `${rel} selects columns ${t} does not have`).toEqual([]);
+    }
+  });
+
+  it('a projection is written by its trigger, never by a policy', () => {
+    // No write policy means a creator cannot set `verified = true` on their
+    // public row directly, whatever their raw row says.
+    const live = new Map<string, string>();
+    for (const file of readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql')).sort()) {
+      const sql = readFileSync(join(MIGRATIONS, file), 'utf8')
+        .replace(/\$\$[\s\S]*?\$\$/g, '$$BODY$$').replace(/--[^\n]*/g, '');
+      for (const m of sql.matchAll(/drop\s+policy\s+(?:if\s+exists\s+)?"?([\w ]+?)"?\s+on\s+(public\.\w+)\s*;/gi)) {
+        live.delete(`${m[2]}|${m[1]}`);
+      }
+      for (const m of sql.matchAll(/create\s+policy\s+"?([\w ]+?)"?\s+on\s+(public\.\w+)\s+for\s+(\w+)/gi)) {
+        live.set(`${m[2]}|${m[1]}`, m[3].toLowerCase());
+      }
+    }
+    const writes = [...live.entries()]
+      .filter(([k, cmd]) => /_public\|/.test(k) && cmd !== 'select')
+      .map(([k, cmd]) => `${k} (${cmd})`);
+    expect(writes).toEqual([]);
+  });
+
+  it('the sync function cannot be called from the API', () => {
+    const sql = allSql();
+    const def = /create\s+or\s+replace\s+function\s+private\.sync_projection\(\)([\s\S]*?)as\s+\$\$/i.exec(sql);
+    expect(def, 'sync_projection must live in the unexposed `private` schema').not.toBeNull();
+    expect(def![1]).toMatch(/security\s+definer/i);
+    expect(def![1]).toMatch(/set\s+search_path\s*=\s*''/i);
+    expect(sql).toMatch(/revoke\s+all\s+on\s+function\s+private\.sync_projection\(\)\s+from\s+public,\s*anon,\s*authenticated/i);
+  });
+
+  it('every entry on the public allowlist is actually public', () => {
+    // An allowlist only ever grows unless something checks it. A stale entry
+    // is a pre-approved exemption waiting for the next open policy.
+    const open = new Set(finalSelectPolicies()
+      .filter((p) => p.roles === 'PUBLIC' && isBareTrue(p.pred)).map((p) => p.table));
+    expect([...PUBLIC_BY_INTENT].filter((t) => !open.has(t))).toEqual([]);
+  });
+});
 
 // ─────────────────────────────────────────────────────────────────────
 // CLASS 13 — the suite never reaches a real database

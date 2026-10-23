@@ -79,7 +79,9 @@ const PUBLIC_COLUMNS =
   'city, country, languages, categories, work, past_clients, platforms, ' +
   'reach, engagement, rating, tier, response_hrs, rate_card, rate_cards, ' +
   'verified, kyc_verified_at, editors_pick, press_mentions, availability, ' +
-  'featured_review_ids, saved_briefs, version, created_at, updated_at';
+  // saved_briefs left out on purpose (038): which briefs a creator is
+  // eyeing is theirs, and it was private only because the view was dead.
+  'featured_review_ids, version, created_at, updated_at';
 
 function toCreator(row: Row): Creator {
   return {
