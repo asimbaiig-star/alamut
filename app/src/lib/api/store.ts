@@ -5,6 +5,7 @@ import { isDemoCreator } from '@/lib/utils/demoData';
 import { SEED } from './seed';
 import { runPendingMigrations, normalizeLedgerToGross, CURRENT_MIGRATION_VERSION } from './migrations';
 import { dedupeCollabRows } from './collabSync';
+import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
 
 interface StoreState {
   db: Database;
@@ -283,307 +284,371 @@ if (typeof window !== 'undefined') {
   });
 }
 
-// Phase 2/3 — Supabase boot hydration. When Supabase is configured we
-// fetch every migrated table once at startup and overlay returned
-// rows onto the local Zustand cache by id. Rows that don't exist in
-// Supabase yet (e.g. generated b_gb* brands, cmp_g* campaigns) keep
-// their seed values. Reads elsewhere in the app continue going
-// through `useStore` unchanged — they just see fresh data for
-// migrated rows. Phase 4+ adds offers, applications, etc. to the
-// same list.
-if (typeof window !== 'undefined') {
-  void (async () => {
-    try {
-      const [brandsMod, campaignsMod, applicationsMod, offersMod, creatorsMod, collabsMod, submissionsMod, deliverablesMod, contractsMod, transactionsMod, reviewsMod, disputesMod, outreachMod, threadsMod, messagesMod, teamInvitesMod, sparkDraftsMod, notificationsMod] = await Promise.all([
-        import('@/lib/data/brandsRepo'),
-        import('@/lib/data/campaignsRepo'),
-        import('@/lib/data/applicationsRepo'),
-        import('@/lib/data/offersRepo'),
-        import('@/lib/data/creatorsRepo'),
-        import('@/lib/data/collaborationsRepo'),
-        import('@/lib/data/submissionsRepo'),
-        import('@/lib/data/deliverablesRepo'),
-        import('@/lib/data/contractsRepo'),
-        import('@/lib/data/transactionsRepo'),
-        import('@/lib/data/reviewsRepo'),
-        import('@/lib/data/disputesRepo'),
-        import('@/lib/data/outreachRepo'),
-        import('@/lib/data/threadsRepo'),
-        import('@/lib/data/messagesRepo'),
-        import('@/lib/data/teamInvitesRepo'),
-        import('@/lib/data/sparkDraftsRepo'),
-        import('@/lib/data/notificationsRepo'),
-      ]);
-      const [brands, campaigns, applications, offers, creators, collaborations, submissions, deliverables, contracts, transactions, reviews, disputes, outreach, threads, messages, teamInvites, sparkDrafts, notifications] = await Promise.all([
-        brandsMod.fetchAllBrandsFromSupabase(),
-        campaignsMod.fetchAllCampaignsFromSupabase(),
-        applicationsMod.fetchAllApplicationsFromSupabase(),
-        offersMod.fetchAllOffersFromSupabase(),
-        creatorsMod.fetchAllCreatorsFromSupabase(),
-        collabsMod.fetchAllCollabsFromSupabase(),
-        submissionsMod.fetchAllSubmissionsFromSupabase(),
-        deliverablesMod.fetchAllDeliverablesFromSupabase(),
-        contractsMod.fetchAllContractsFromSupabase(),
-        transactionsMod.fetchAllTransactionsFromSupabase(),
-        reviewsMod.fetchAllReviewsFromSupabase(),
-        disputesMod.fetchAllDisputesFromSupabase(),
-        outreachMod.fetchAllOutreachFromSupabase(),
-        threadsMod.fetchAllThreadsFromSupabase(),
-        messagesMod.fetchAllMessagesFromSupabase(),
-        teamInvitesMod.fetchAllTeamInvitesFromSupabase(),
-        sparkDraftsMod.fetchAllSparkDraftsFromSupabase(),
-        notificationsMod.fetchAllNotificationsFromSupabase(),
-      ]);
-      // Record which campaigns Postgres actually has. Several mirrored
-      // tables carry an FK to `campaigns`, and the generated seed
-      // campaigns (`cmp_g*`) exist only in the browser — writes attached
-      // to them are rejected with 23503 and were being fired anyway.
-      // See lib/data/remoteRegistry.ts.
-      //
-      // GUARDED ON A NON-EMPTY RESULT, and that guard is the whole ball
-      // game. `fetchAllCampaignsFromSupabase` swallows every error — network
-      // blip, RLS change, timeout — and returns `[]` with a console.warn, so
-      // an empty array here is indistinguishable from a failed fetch. Arming
-      // the registry with it would mark "Postgres has zero campaigns" as
-      // fact, and every payout, fee, and collaboration write for the rest of
-      // the session would be filtered out BEFORE the try/catch — silently,
-      // with nothing logged. A brand approves content, the creator's wallet
-      // updates on screen, and the money never leaves the browser.
-      //
-      // Skipping the registry on an empty result costs only the old
-      // behaviour: doomed writes get attempted and fail loudly. Noise is
-      // recoverable. Lost money rows are not.
-      if (campaigns.length > 0) {
-        const { recordRemoteCampaigns } = await import('@/lib/data/remoteRegistry');
-        recordRemoteCampaigns(campaigns.map((c) => c.id));
-      }
+// Phase 2/3 — Supabase hydration. When Supabase is configured we
+// fetch every migrated table and overlay returned rows onto the local
+// Zustand cache by id. Rows that don't exist in Supabase yet (e.g.
+// generated b_gb* brands, cmp_g* campaigns) keep their seed values.
+// Reads elsewhere in the app continue going through `useStore`
+// unchanged — they just see fresh data for migrated rows.
+//
+// WHAT IT RETURNS DEPENDS ON WHO IS ASKING. Since migration 037 every
+// table is gated on the caller's relationship to the row, so a fetch is
+// a snapshot of one identity's view. This used to run exactly once, at
+// page load — so a visitor who signed in through the form (no reload)
+// kept the signed-OUT snapshot: an empty one, since 037. Verified live:
+// twelve seconds after the demo sign-in, Sarah's own contract was
+// absent and her home showed the seed balance ($33,143) instead of her
+// real one ($4,200) until a manual refresh. sessionSync now re-runs
+// this whenever the signed-in identity differs from the one the last
+// run was for.
+let hydratedFor: string | null | undefined;
+let hydrationGeneration = 0;
+let inFlight: { email: string | null; promise: Promise<void> } | null = null;
 
-      // Phase 10 — mount the realtime chat subscription once initial
-      // hydration is complete. The subscription itself is idempotent
-      // so calling it twice is safe.
-      void (async () => {
-        try {
-          const { mountChatRealtime } = await import('@/lib/realtimeChat');
-          mountChatRealtime();
-        } catch (err) {
-          // eslint-disable-next-line no-console
-          console.warn('[realtimeChat] mount skipped:', err);
-        }
-      })();
-      // Migration 022 — same pattern for the 6 workflow tables
-      // (campaigns / offers / applications / submissions /
-      // collaborations / disputes). Closes the read-side gap so a
-      // brand-side acceptance reaches the creator's open tab without
-      // a reload.
-      void (async () => {
-        try {
-          const { mountWorkflowRealtime } = await import('@/lib/api/realtimeWorkflow');
-          mountWorkflowRealtime();
-        } catch (err) {
-          // eslint-disable-next-line no-console
-          console.warn('[realtimeWorkflow] mount skipped:', err);
-        }
-      })();
-      if (
-        brands.length === 0 && campaigns.length === 0 &&
-        applications.length === 0 && offers.length === 0 &&
-        creators.length === 0 && collaborations.length === 0 &&
-        submissions.length === 0 && deliverables.length === 0 &&
-        contracts.length === 0 && transactions.length === 0 &&
-        reviews.length === 0 && disputes.length === 0 &&
-        outreach.length === 0 &&
-        threads.length === 0 && messages.length === 0 &&
-        notifications.length === 0
-      ) return;
-      useStore.setState((s) => {
-        // Overlay helper — same pattern for every table.
-        const overlay = <T extends { id: string }>(local: T[], remote: T[]): T[] => {
-          if (remote.length === 0) return local;
-          const byId = new Map(remote.map((r) => [r.id, r]));
-          const next = local.map((row) => byId.get(row.id) ?? row);
-          const localIds = new Set(local.map((row) => row.id));
-          for (const row of remote) if (!localIds.has(row.id)) next.push(row);
-          return next;
-        };
-        // Smart-merge overlay for creators: Supabase carries the core
-        // fields but NOT the demo-fixture extras (per-platform audience,
-        // storefront-pulse counters, recent-viewer names). When we
-        // overlay we'd otherwise blow those away on every boot. Pre-fix
-        // Sarah's seeded audience + storefront views disappeared the
-        // moment Supabase's hydration completed.
-        const overlayCreators = (local: typeof s.db.creators, remote: typeof creators) => {
-          if (remote.length === 0) return local;
-          const byId = new Map(remote.map((r) => [r.id, r]));
-          const next = local.map((row) => {
-            const r = byId.get(row.id);
-            if (!r) return row;
-            // Per-platform: keep the locally-seeded `audience` whenever
-            // the Supabase platform doesn't carry it.
-            const mergedPlatforms = r.platforms.map((rp, i) => {
-              const lp = row.platforms[i];
-              if (!lp) return rp;
-              if (rp.audience || !lp.audience) return rp;
-              if (rp.name !== lp.name) return rp;
-              return { ...rp, audience: lp.audience };
-            });
-            // Helper: keep local array when remote is empty/missing.
-            // Supabase rows for demo creators frequently have empty
-            // arrays for these "storefront content" fields because the
-            // seeded data was pushed to Postgres before these features
-            // existed. Without this guard the overlay blows away
-            // Sarah's portfolio + rate cards + pinned reviews + saved
-            // briefs on every page load.
-            const arr = <T,>(remoteVal: T[] | undefined, localVal: T[] | undefined): T[] | undefined =>
-              (remoteVal && remoteVal.length > 0) ? remoteVal : (localVal && localVal.length > 0 ? localVal : remoteVal);
-            return {
-              ...r,
-              verified: isDemoCreator(row) ? row.verified : r.verified,
-              kycVerifiedAt: isDemoCreator(row) ? (row.kycVerifiedAt ?? r.kycVerifiedAt) : r.kycVerifiedAt,
-              platforms: preferSeedVerification(mergedPlatforms, row.platforms, isDemoCreator(row)),
-              // Storefront content arrays — seed only.
-              work: arr(r.work, row.work) ?? [],
-              pressMentions: arr(r.pressMentions, row.pressMentions) ?? [],
-              featuredReviewIds: arr(r.featuredReviewIds, row.featuredReviewIds),
-              savedBriefs: arr(r.savedBriefs, row.savedBriefs),
-              rateCards: arr(r.rateCards, row.rateCards),
-              pastClients: arr(r.pastClients, row.pastClients) ?? [],
-              // Demo-only fields — keep local if remote is empty / undefined.
-              storefrontViewsLast30d: r.storefrontViewsLast30d ?? row.storefrontViewsLast30d,
-              storefrontViewsDeltaPct: r.storefrontViewsDeltaPct ?? row.storefrontViewsDeltaPct,
-              brandInquiriesThisWeek: r.brandInquiriesThisWeek ?? row.brandInquiriesThisWeek,
-              brandInquiriesDelta: r.brandInquiriesDelta ?? row.brandInquiriesDelta,
-              recentBrandViewerNames: r.recentBrandViewerNames ?? row.recentBrandViewerNames,
-              recentBrandViewerCount: r.recentBrandViewerCount ?? row.recentBrandViewerCount,
-              // KYC completion facts the `creators` table has no columns
-              // for yet. The spread above starts from the REMOTE row, so
-              // anything Postgres doesn't carry is dropped on every hydrate
-              // — a creator accepted the agreement, reloaded, and was asked
-              // to accept it again. Same for a submitted W-9/W-8BEN.
-              // Migration 032 adds the columns; until it is applied (and the
-              // repo widened to select them) these keep the local truth.
-              agreementAcceptedAt: r.agreementAcceptedAt ?? row.agreementAcceptedAt,
-              agreementVersion: r.agreementVersion ?? row.agreementVersion,
-              taxForm: r.taxForm ?? row.taxForm,
-            };
+/** The identity (lower-cased email, null = signed out) the most recent
+ *  hydration was started for. `undefined` until the first one starts. */
+export function getHydratedIdentity(): string | null | undefined {
+  return hydratedFor;
+}
+
+/** Fetch every table as the current session and overlay it. Safe to call
+ *  repeatedly: a call for an identity already being hydrated joins that
+ *  run, and a run superseded by a newer one discards its results rather
+ *  than overwrite fresher data — the signed-out boot fetch can finish
+ *  after the signed-in one. */
+export async function hydrateFromSupabase(): Promise<void> {
+  let email: string | null = null;
+  try {
+    if (isSupabaseConfigured()) {
+      const { data } = await getSupabase().auth.getSession();
+      email = data.session?.user?.email?.toLowerCase() ?? null;
+    }
+  } catch {
+    // Identity unknown — hydrate anyway; RLS decides what comes back.
+  }
+  if (inFlight && inFlight.email === email) return inFlight.promise;
+  const generation = ++hydrationGeneration;
+  hydratedFor = email;
+  const promise = runHydration(() => generation === hydrationGeneration)
+    .finally(() => { if (inFlight?.promise === promise) inFlight = null; });
+  inFlight = { email, promise };
+  return promise;
+}
+
+async function runHydration(isCurrent: () => boolean): Promise<void> {
+  try {
+    const [brandsMod, campaignsMod, applicationsMod, offersMod, creatorsMod, collabsMod, submissionsMod, deliverablesMod, contractsMod, transactionsMod, reviewsMod, disputesMod, outreachMod, threadsMod, messagesMod, teamInvitesMod, sparkDraftsMod, notificationsMod] = await Promise.all([
+      import('@/lib/data/brandsRepo'),
+      import('@/lib/data/campaignsRepo'),
+      import('@/lib/data/applicationsRepo'),
+      import('@/lib/data/offersRepo'),
+      import('@/lib/data/creatorsRepo'),
+      import('@/lib/data/collaborationsRepo'),
+      import('@/lib/data/submissionsRepo'),
+      import('@/lib/data/deliverablesRepo'),
+      import('@/lib/data/contractsRepo'),
+      import('@/lib/data/transactionsRepo'),
+      import('@/lib/data/reviewsRepo'),
+      import('@/lib/data/disputesRepo'),
+      import('@/lib/data/outreachRepo'),
+      import('@/lib/data/threadsRepo'),
+      import('@/lib/data/messagesRepo'),
+      import('@/lib/data/teamInvitesRepo'),
+      import('@/lib/data/sparkDraftsRepo'),
+      import('@/lib/data/notificationsRepo'),
+    ]);
+    const [brands, campaigns, applications, offers, creators, collaborations, submissions, deliverables, contracts, transactions, reviews, disputes, outreach, threads, messages, teamInvites, sparkDrafts, notifications] = await Promise.all([
+      brandsMod.fetchAllBrandsFromSupabase(),
+      campaignsMod.fetchAllCampaignsFromSupabase(),
+      applicationsMod.fetchAllApplicationsFromSupabase(),
+      offersMod.fetchAllOffersFromSupabase(),
+      creatorsMod.fetchAllCreatorsFromSupabase(),
+      collabsMod.fetchAllCollabsFromSupabase(),
+      submissionsMod.fetchAllSubmissionsFromSupabase(),
+      deliverablesMod.fetchAllDeliverablesFromSupabase(),
+      contractsMod.fetchAllContractsFromSupabase(),
+      transactionsMod.fetchAllTransactionsFromSupabase(),
+      reviewsMod.fetchAllReviewsFromSupabase(),
+      disputesMod.fetchAllDisputesFromSupabase(),
+      outreachMod.fetchAllOutreachFromSupabase(),
+      threadsMod.fetchAllThreadsFromSupabase(),
+      messagesMod.fetchAllMessagesFromSupabase(),
+      teamInvitesMod.fetchAllTeamInvitesFromSupabase(),
+      sparkDraftsMod.fetchAllSparkDraftsFromSupabase(),
+      notificationsMod.fetchAllNotificationsFromSupabase(),
+    ]);
+    // Superseded while fetching — a newer identity's run owns the store.
+    if (!isCurrent()) return;
+    // Record which campaigns Postgres actually has. Several mirrored
+    // tables carry an FK to `campaigns`, and the generated seed
+    // campaigns (`cmp_g*`) exist only in the browser — writes attached
+    // to them are rejected with 23503 and were being fired anyway.
+    // See lib/data/remoteRegistry.ts.
+    //
+    // GUARDED ON A NON-EMPTY RESULT, and that guard is the whole ball
+    // game. `fetchAllCampaignsFromSupabase` swallows every error — network
+    // blip, RLS change, timeout — and returns `[]` with a console.warn, so
+    // an empty array here is indistinguishable from a failed fetch. Arming
+    // the registry with it would mark "Postgres has zero campaigns" as
+    // fact, and every payout, fee, and collaboration write for the rest of
+    // the session would be filtered out BEFORE the try/catch — silently,
+    // with nothing logged. A brand approves content, the creator's wallet
+    // updates on screen, and the money never leaves the browser.
+    //
+    // Skipping the registry on an empty result costs only the old
+    // behaviour: doomed writes get attempted and fail loudly. Noise is
+    // recoverable. Lost money rows are not.
+    if (campaigns.length > 0) {
+      const { recordRemoteCampaigns } = await import('@/lib/data/remoteRegistry');
+      recordRemoteCampaigns(campaigns.map((c) => c.id));
+    }
+
+    // Phase 10 — mount the realtime chat subscription once initial
+    // hydration is complete. The subscription itself is idempotent
+    // so calling it twice is safe.
+    void (async () => {
+      try {
+        const { mountChatRealtime } = await import('@/lib/realtimeChat');
+        mountChatRealtime();
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[realtimeChat] mount skipped:', err);
+      }
+    })();
+    // Migration 022 — same pattern for the 6 workflow tables
+    // (campaigns / offers / applications / submissions /
+    // collaborations / disputes). Closes the read-side gap so a
+    // brand-side acceptance reaches the creator's open tab without
+    // a reload.
+    void (async () => {
+      try {
+        const { mountWorkflowRealtime } = await import('@/lib/api/realtimeWorkflow');
+        mountWorkflowRealtime();
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[realtimeWorkflow] mount skipped:', err);
+      }
+    })();
+    if (
+      brands.length === 0 && campaigns.length === 0 &&
+      applications.length === 0 && offers.length === 0 &&
+      creators.length === 0 && collaborations.length === 0 &&
+      submissions.length === 0 && deliverables.length === 0 &&
+      contracts.length === 0 && transactions.length === 0 &&
+      reviews.length === 0 && disputes.length === 0 &&
+      outreach.length === 0 &&
+      threads.length === 0 && messages.length === 0 &&
+      notifications.length === 0
+    ) return;
+    if (!isCurrent()) return;
+    useStore.setState((s) => {
+      // Overlay helper — same pattern for every table.
+      const overlay = <T extends { id: string }>(local: T[], remote: T[]): T[] => {
+        if (remote.length === 0) return local;
+        const byId = new Map(remote.map((r) => [r.id, r]));
+        const next = local.map((row) => byId.get(row.id) ?? row);
+        const localIds = new Set(local.map((row) => row.id));
+        for (const row of remote) if (!localIds.has(row.id)) next.push(row);
+        return next;
+      };
+      // Like `overlay`, but a remote row is spread OVER the local one, so
+      // fields the table has no column for survive. Remote keys always
+      // win, including explicit nulls and the public view's zeroed money.
+      const overlayKeepingLocal = <T extends { id: string }>(local: T[], remote: T[]): T[] => {
+        if (remote.length === 0) return local;
+        const byId = new Map(remote.map((r) => [r.id, r]));
+        const next = local.map((row) => {
+          const r = byId.get(row.id);
+          return r ? { ...row, ...r } : row;
+        });
+        const localIds = new Set(local.map((row) => row.id));
+        for (const row of remote) if (!localIds.has(row.id)) next.push(row);
+        return next;
+      };
+      // Smart-merge overlay for creators: Supabase carries the core
+      // fields but NOT the demo-fixture extras (per-platform audience,
+      // storefront-pulse counters, recent-viewer names). When we
+      // overlay we'd otherwise blow those away on every boot. Pre-fix
+      // Sarah's seeded audience + storefront views disappeared the
+      // moment Supabase's hydration completed.
+      const overlayCreators = (local: typeof s.db.creators, remote: typeof creators) => {
+        if (remote.length === 0) return local;
+        const byId = new Map(remote.map((r) => [r.id, r]));
+        const next = local.map((row) => {
+          const r = byId.get(row.id);
+          if (!r) return row;
+          // Per-platform: keep the locally-seeded `audience` whenever
+          // the Supabase platform doesn't carry it.
+          const mergedPlatforms = r.platforms.map((rp, i) => {
+            const lp = row.platforms[i];
+            if (!lp) return rp;
+            if (rp.audience || !lp.audience) return rp;
+            if (rp.name !== lp.name) return rp;
+            return { ...rp, audience: lp.audience };
           });
-          const localIds = new Set(local.map((row) => row.id));
-          for (const row of remote) if (!localIds.has(row.id)) next.push(row);
-          return next;
-        };
-        return {
+          // Helper: keep local array when remote is empty/missing.
+          // Supabase rows for demo creators frequently have empty
+          // arrays for these "storefront content" fields because the
+          // seeded data was pushed to Postgres before these features
+          // existed. Without this guard the overlay blows away
+          // Sarah's portfolio + rate cards + pinned reviews + saved
+          // briefs on every page load.
+          const arr = <T,>(remoteVal: T[] | undefined, localVal: T[] | undefined): T[] | undefined =>
+            (remoteVal && remoteVal.length > 0) ? remoteVal : (localVal && localVal.length > 0 ? localVal : remoteVal);
+          return {
+            ...r,
+            verified: isDemoCreator(row) ? row.verified : r.verified,
+            kycVerifiedAt: isDemoCreator(row) ? (row.kycVerifiedAt ?? r.kycVerifiedAt) : r.kycVerifiedAt,
+            platforms: preferSeedVerification(mergedPlatforms, row.platforms, isDemoCreator(row)),
+            // Storefront content arrays — seed only.
+            work: arr(r.work, row.work) ?? [],
+            pressMentions: arr(r.pressMentions, row.pressMentions) ?? [],
+            featuredReviewIds: arr(r.featuredReviewIds, row.featuredReviewIds),
+            savedBriefs: arr(r.savedBriefs, row.savedBriefs),
+            rateCards: arr(r.rateCards, row.rateCards),
+            pastClients: arr(r.pastClients, row.pastClients) ?? [],
+            // Demo-only fields — keep local if remote is empty / undefined.
+            storefrontViewsLast30d: r.storefrontViewsLast30d ?? row.storefrontViewsLast30d,
+            storefrontViewsDeltaPct: r.storefrontViewsDeltaPct ?? row.storefrontViewsDeltaPct,
+            brandInquiriesThisWeek: r.brandInquiriesThisWeek ?? row.brandInquiriesThisWeek,
+            brandInquiriesDelta: r.brandInquiriesDelta ?? row.brandInquiriesDelta,
+            recentBrandViewerNames: r.recentBrandViewerNames ?? row.recentBrandViewerNames,
+            recentBrandViewerCount: r.recentBrandViewerCount ?? row.recentBrandViewerCount,
+            // KYC completion facts the `creators` table has no columns
+            // for yet. The spread above starts from the REMOTE row, so
+            // anything Postgres doesn't carry is dropped on every hydrate
+            // — a creator accepted the agreement, reloaded, and was asked
+            // to accept it again. Same for a submitted W-9/W-8BEN.
+            // Migration 032 adds the columns; until it is applied (and the
+            // repo widened to select them) these keep the local truth.
+            agreementAcceptedAt: r.agreementAcceptedAt ?? row.agreementAcceptedAt,
+            agreementVersion: r.agreementVersion ?? row.agreementVersion,
+            taxForm: r.taxForm ?? row.taxForm,
+          };
+        });
+        const localIds = new Set(local.map((row) => row.id));
+        for (const row of remote) if (!localIds.has(row.id)) next.push(row);
+        return next;
+      };
+      return {
+        db: {
+          ...s.db,
+          // Merged, not replaced: `offerTemplates`, `preferredCreatorTier`
+          // and `monthlyBudgetBand` have no column, so toBrand never sets
+          // them and a whole-row replace erased them on every hydrate —
+          // the owner's offer templates were gone after each load.
+          brands: overlayKeepingLocal(s.db.brands, brands),
+          campaigns: overlay(s.db.campaigns, campaigns),
+          applications: overlay(s.db.applications, applications),
+          offers: overlay(s.db.offers, offers),
+          creators: overlayCreators(s.db.creators, creators),
+          // Collaborations are keyed by (campaignId, creatorId), NOT by id:
+          // the locally-materialized row and the Supabase row for the same
+          // pair carry different ids, so the generic id-based `overlay`
+          // appended the remote one and produced two rows for one pair.
+          // Verified live — 3 pairs duplicated, with the twin rows
+          // disagreeing about stage. `dedupeCollabRows` merges by pair
+          // (furthest stage wins, histories unioned) so nothing is lost and
+          // no duplicate survives the hydrate.
+          collaborations: dedupeCollabRows(
+            overlay(s.db.collaborations ?? [], collaborations),
+          ),
+          submissions: overlay(s.db.submissions, submissions),
+          deliverables: overlay(s.db.deliverables ?? [], deliverables),
+          contracts: overlay(s.db.contracts ?? [], contracts),
+          // Normalized AFTER the overlay, not before: rows mirrored to
+          // Supabase under the old net-payout convention come back net,
+          // and the local migrator can't reach them. The rewrite is
+          // idempotent, so a row that is already gross is untouched.
+          // Postgres still needs the companion SQL migration to be
+          // correct at rest — see supabase/migrations.
+          transactions: (() => {
+            const merged = overlay(s.db.transactions, transactions).map((t) => ({ ...t }));
+            normalizeLedgerToGross({ transactions: merged });
+            return merged;
+          })(),
+          reviews: overlay(s.db.reviews, reviews),
+          disputes: overlay(s.db.disputes, disputes),
+          outreach: overlay(s.db.outreach ?? [], outreach),
+          threads: overlay(s.db.threads, threads),
+          messages: overlay(s.db.messages, messages),
+          teamInvites: overlay(s.db.teamInvites ?? [], teamInvites),
+          sparkDrafts: overlay(s.db.sparkDrafts ?? [], sparkDrafts),
+          notifications: overlay(s.db.notifications, notifications),
+        },
+      };
+    });
+    // Phase 52 — owner-only PII overlay. The list fetches above pull
+    // from creators_public + brands_public (no payout / wallet). Now
+    // fetch the signed-in user's OWN row from the raw tables (RLS
+    // gates by owner_email) so their wallet + payout cards have real
+    // numbers. Failure leaves the public-view zeros.
+    await (async () => {
+      try {
+        const ownCreator = await creatorsMod.fetchOwnCreatorFromSupabase();
+        const ownBrand = await brandsMod.fetchOwnBrandFromSupabase();
+        if (!isCurrent() || (!ownCreator && !ownBrand)) return;
+        useStore.setState((s) => ({
           db: {
             ...s.db,
-            brands: overlay(s.db.brands, brands),
-            campaigns: overlay(s.db.campaigns, campaigns),
-            applications: overlay(s.db.applications, applications),
-            offers: overlay(s.db.offers, offers),
-            creators: overlayCreators(s.db.creators, creators),
-            // Collaborations are keyed by (campaignId, creatorId), NOT by id:
-            // the locally-materialized row and the Supabase row for the same
-            // pair carry different ids, so the generic id-based `overlay`
-            // appended the remote one and produced two rows for one pair.
-            // Verified live — 3 pairs duplicated, with the twin rows
-            // disagreeing about stage. `dedupeCollabRows` merges by pair
-            // (furthest stage wins, histories unioned) so nothing is lost and
-            // no duplicate survives the hydrate.
-            collaborations: dedupeCollabRows(
-              overlay(s.db.collaborations ?? [], collaborations),
-            ),
-            submissions: overlay(s.db.submissions, submissions),
-            deliverables: overlay(s.db.deliverables ?? [], deliverables),
-            contracts: overlay(s.db.contracts ?? [], contracts),
-            // Normalized AFTER the overlay, not before: rows mirrored to
-            // Supabase under the old net-payout convention come back net,
-            // and the local migrator can't reach them. The rewrite is
-            // idempotent, so a row that is already gross is untouched.
-            // Postgres still needs the companion SQL migration to be
-            // correct at rest — see supabase/migrations.
-            transactions: (() => {
-              const merged = overlay(s.db.transactions, transactions).map((t) => ({ ...t }));
-              normalizeLedgerToGross({ transactions: merged });
-              return merged;
-            })(),
-            reviews: overlay(s.db.reviews, reviews),
-            disputes: overlay(s.db.disputes, disputes),
-            outreach: overlay(s.db.outreach ?? [], outreach),
-            threads: overlay(s.db.threads, threads),
-            messages: overlay(s.db.messages, messages),
-            teamInvites: overlay(s.db.teamInvites ?? [], teamInvites),
-            sparkDrafts: overlay(s.db.sparkDrafts ?? [], sparkDrafts),
-            notifications: overlay(s.db.notifications, notifications),
+            // Same smart-merge as the bulk overlay above — keep the
+            // locally-seeded demo-fixture fields (per-platform
+            // audience + storefront-pulse counters + recent viewers)
+            // that Supabase doesn't carry.
+            creators: ownCreator
+              ? s.db.creators.map((c) => {
+                  if (c.id !== ownCreator.id) return c;
+                  const mergedPlatforms = ownCreator.platforms.map((rp, i) => {
+                    const lp = c.platforms[i];
+                    if (!lp) return rp;
+                    if (rp.audience || !lp.audience) return rp;
+                    if (rp.name !== lp.name) return rp;
+                    return { ...rp, audience: lp.audience };
+                  });
+                  // Same array-preserve helper as the bulk overlay
+                  // above — keep local storefront content when
+                  // Supabase row returns empty arrays.
+                  const arr = <T,>(remoteVal: T[] | undefined, localVal: T[] | undefined): T[] | undefined =>
+                    (remoteVal && remoteVal.length > 0) ? remoteVal : (localVal && localVal.length > 0 ? localVal : remoteVal);
+                  return {
+                    ...ownCreator,
+                    verified: isDemoCreator(c) ? c.verified : ownCreator.verified,
+                    kycVerifiedAt: isDemoCreator(c) ? (c.kycVerifiedAt ?? ownCreator.kycVerifiedAt) : ownCreator.kycVerifiedAt,
+                    platforms: preferSeedVerification(mergedPlatforms, c.platforms, isDemoCreator(c)),
+                    work: arr(ownCreator.work, c.work) ?? [],
+                    pressMentions: arr(ownCreator.pressMentions, c.pressMentions) ?? [],
+                    featuredReviewIds: arr(ownCreator.featuredReviewIds, c.featuredReviewIds),
+                    savedBriefs: arr(ownCreator.savedBriefs, c.savedBriefs),
+                    rateCards: arr(ownCreator.rateCards, c.rateCards),
+                    pastClients: arr(ownCreator.pastClients, c.pastClients) ?? [],
+                    storefrontViewsLast30d: ownCreator.storefrontViewsLast30d ?? c.storefrontViewsLast30d,
+                    storefrontViewsDeltaPct: ownCreator.storefrontViewsDeltaPct ?? c.storefrontViewsDeltaPct,
+                    brandInquiriesThisWeek: ownCreator.brandInquiriesThisWeek ?? c.brandInquiriesThisWeek,
+                    brandInquiriesDelta: ownCreator.brandInquiriesDelta ?? c.brandInquiriesDelta,
+                    recentBrandViewerNames: ownCreator.recentBrandViewerNames ?? c.recentBrandViewerNames,
+                    recentBrandViewerCount: ownCreator.recentBrandViewerCount ?? c.recentBrandViewerCount,
+                    // Same guard as the bulk overlay — see the note there.
+                    agreementAcceptedAt: ownCreator.agreementAcceptedAt ?? c.agreementAcceptedAt,
+                    agreementVersion: ownCreator.agreementVersion ?? c.agreementVersion,
+                    taxForm: ownCreator.taxForm ?? c.taxForm,
+                  };
+                })
+              : s.db.creators,
+            brands: ownBrand
+              ? s.db.brands.map((b) => b.id === ownBrand.id ? { ...b, ...ownBrand } : b)
+              : s.db.brands,
           },
-        };
-      });
-      // Phase 52 — owner-only PII overlay. The list fetches above pull
-      // from creators_public + brands_public (no payout / wallet). Now
-      // fetch the signed-in user's OWN row from the raw tables (RLS
-      // gates by owner_email) so their wallet + payout cards have real
-      // numbers. Fire-and-forget; failure leaves the public-view zeros.
-      void (async () => {
-        try {
-          const ownCreator = await creatorsMod.fetchOwnCreatorFromSupabase();
-          const ownBrand = await brandsMod.fetchOwnBrandFromSupabase();
-          if (!ownCreator && !ownBrand) return;
-          useStore.setState((s) => ({
-            db: {
-              ...s.db,
-              // Same smart-merge as the bulk overlay above — keep the
-              // locally-seeded demo-fixture fields (per-platform
-              // audience + storefront-pulse counters + recent viewers)
-              // that Supabase doesn't carry.
-              creators: ownCreator
-                ? s.db.creators.map((c) => {
-                    if (c.id !== ownCreator.id) return c;
-                    const mergedPlatforms = ownCreator.platforms.map((rp, i) => {
-                      const lp = c.platforms[i];
-                      if (!lp) return rp;
-                      if (rp.audience || !lp.audience) return rp;
-                      if (rp.name !== lp.name) return rp;
-                      return { ...rp, audience: lp.audience };
-                    });
-                    // Same array-preserve helper as the bulk overlay
-                    // above — keep local storefront content when
-                    // Supabase row returns empty arrays.
-                    const arr = <T,>(remoteVal: T[] | undefined, localVal: T[] | undefined): T[] | undefined =>
-                      (remoteVal && remoteVal.length > 0) ? remoteVal : (localVal && localVal.length > 0 ? localVal : remoteVal);
-                    return {
-                      ...ownCreator,
-                      verified: isDemoCreator(c) ? c.verified : ownCreator.verified,
-                      kycVerifiedAt: isDemoCreator(c) ? (c.kycVerifiedAt ?? ownCreator.kycVerifiedAt) : ownCreator.kycVerifiedAt,
-                      platforms: preferSeedVerification(mergedPlatforms, c.platforms, isDemoCreator(c)),
-                      work: arr(ownCreator.work, c.work) ?? [],
-                      pressMentions: arr(ownCreator.pressMentions, c.pressMentions) ?? [],
-                      featuredReviewIds: arr(ownCreator.featuredReviewIds, c.featuredReviewIds),
-                      savedBriefs: arr(ownCreator.savedBriefs, c.savedBriefs),
-                      rateCards: arr(ownCreator.rateCards, c.rateCards),
-                      pastClients: arr(ownCreator.pastClients, c.pastClients) ?? [],
-                      storefrontViewsLast30d: ownCreator.storefrontViewsLast30d ?? c.storefrontViewsLast30d,
-                      storefrontViewsDeltaPct: ownCreator.storefrontViewsDeltaPct ?? c.storefrontViewsDeltaPct,
-                      brandInquiriesThisWeek: ownCreator.brandInquiriesThisWeek ?? c.brandInquiriesThisWeek,
-                      brandInquiriesDelta: ownCreator.brandInquiriesDelta ?? c.brandInquiriesDelta,
-                      recentBrandViewerNames: ownCreator.recentBrandViewerNames ?? c.recentBrandViewerNames,
-                      recentBrandViewerCount: ownCreator.recentBrandViewerCount ?? c.recentBrandViewerCount,
-                      // Same guard as the bulk overlay — see the note there.
-                      agreementAcceptedAt: ownCreator.agreementAcceptedAt ?? c.agreementAcceptedAt,
-                      agreementVersion: ownCreator.agreementVersion ?? c.agreementVersion,
-                      taxForm: ownCreator.taxForm ?? c.taxForm,
-                    };
-                  })
-                : s.db.creators,
-              brands: ownBrand
-                ? s.db.brands.map((b) => b.id === ownBrand.id ? ownBrand : b)
-                : s.db.brands,
-            },
-          }));
-        } catch (err) {
-          // eslint-disable-next-line no-console
-          console.warn('[store] own-pii overlay skipped:', err);
-        }
-      })();
-    } catch (e) {
-      // Network down / Supabase outage — local store stays as-is.
-      // eslint-disable-next-line no-console
-      console.warn('[store] hydration skipped:', e);
-    }
-  })();
+        }));
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[store] own-pii overlay skipped:', err);
+      }
+    })();
+  } catch (e) {
+    // Network down / Supabase outage — local store stays as-is.
+    // eslint-disable-next-line no-console
+    console.warn('[store] hydration skipped:', e);
+  }
 }
+
+if (typeof window !== 'undefined') void hydrateFromSupabase();

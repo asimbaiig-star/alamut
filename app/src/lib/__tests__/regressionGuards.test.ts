@@ -31,6 +31,10 @@
 //  12. A row readable by anyone who can reach the endpoint, because every
 //      migration that set out to "tighten RLS" modelled a user PLANTING a
 //      row and none of them modelled a user READING one.
+//  13. A test suite that talked to production, because Vite loads
+//      `.env.local` in test mode and nothing said otherwise.
+//  14. Data fetched as one identity kept for the next: hydration ran once,
+//      at page load, so a visitor who signed in kept the signed-out view.
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -40,6 +44,7 @@ import {
 } from '@/lib/data/remoteRegistry';
 import { normalizeLedgerToGross } from '@/lib/api/migrations';
 import { splitGross, PLATFORM_FEE, WHT } from '@/lib/api/money';
+import { isSupabaseConfigured } from '@/lib/supabase';
 import type { Transaction } from '@/lib/api/types';
 
 const SRC = join(__dirname, '..', '..');
@@ -957,5 +962,67 @@ describe('read authorization is scoped to the parties, not to the audience', () 
       expect(p, `no SELECT policy for ${table}`).toBeDefined();
       expect(p!.pred, `${table} predicate does not gate on ${pattern}`).toMatch(pattern);
     }
+  });
+});
+
+
+// ─────────────────────────────────────────────────────────────────────
+// CLASS 13 — the suite never reaches a real database
+//
+// Found 2026-10-23, by accident: a mocked test got the real client through
+// one dynamic import and came back with someone else's identity. Vite loads
+// `.env.local` in test mode, so `isSupabaseConfigured()` had been true in
+// every test since the file existed — each jsdom test hydrated the store from
+// production on import. All of it anonymous (no test signs in; RLS refuses
+// every anon write), so nothing was mutated. One sign-in test away from it
+// not being.
+
+describe('tests are hermetic', () => {
+  it('Supabase is unconfigured in every test', () => {
+    expect(
+      isSupabaseConfigured(),
+      'a test can reach the real project — pin VITE_SUPABASE_* empty in vitest.config.ts',
+    ).toBe(false);
+  });
+
+  it('and the config says so on purpose, not by luck of the environment', () => {
+    const cfg = readFileSync(join(SRC, '..', 'vitest.config.ts'), 'utf8');
+    expect(cfg).toMatch(/VITE_SUPABASE_URL:\s*''/);
+    expect(cfg).toMatch(/VITE_SUPABASE_ANON_KEY:\s*''/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// CLASS 14 — a fetch made as one identity is not kept for another
+//
+// Since 037 every table answers according to who is asking, so the local
+// store is one identity's snapshot. Hydration ran once, at page load —
+// verified live: after the demo sign-in Sarah's own contract was absent and
+// her home showed the seed balance ($33,143) instead of her real $4,200
+// until a refresh. sessionSync.test.ts holds the behaviour; this holds the
+// shape, so the call cannot drift back behind the early return that hid it.
+
+describe('signing in re-fetches as the person who signed in', () => {
+  it('hydration is a callable function, not a one-shot at module load', () => {
+    expect(code('lib/api/store.ts')).toMatch(/export async function hydrateFromSupabase\(/);
+  });
+
+  it('sessionSync re-hydrates on SIGNED_IN before its early return', () => {
+    const src = code('lib/auth/sessionSync.ts');
+    const call = src.indexOf('hydrateFromSupabase()');
+    const early = src.indexOf('if (matchedLocal && localSession?.userId === matchedLocal.id) return;');
+    expect(call, 'sessionSync never re-hydrates').toBeGreaterThan(-1);
+    expect(early, 'early-return anchor moved — re-check this guard').toBeGreaterThan(-1);
+    expect(call, 'the re-fetch sits behind the early return every demo sign-in takes').toBeLessThan(early);
+  });
+
+  it('a superseded run cannot write the store', () => {
+    const src = code('lib/api/store.ts');
+    const body = src.slice(src.indexOf('async function runHydration('));
+    // Every write a run makes is preceded by a staleness check.
+    const writes = [...body.matchAll(/useStore\.setState\(/g)].length;
+    const checks = [...body.matchAll(/isCurrent\(\)/g)].length;
+    expect(writes).toBeGreaterThan(0);
+    expect(checks, 'a hydration write is not gated on isCurrent()').toBeGreaterThanOrEqual(writes);
   });
 });

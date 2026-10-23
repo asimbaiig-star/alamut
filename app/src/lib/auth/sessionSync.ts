@@ -19,7 +19,7 @@
 // module short-circuits — the local session remains source of truth
 // for the demo-only flow.
 
-import { useStore } from '@/lib/api/store';
+import { getHydratedIdentity, hydrateFromSupabase, useStore } from '@/lib/api/store';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
 
 let mounted = false;
@@ -67,6 +67,14 @@ export async function mountSessionSync(): Promise<void> {
       useStore.getState().setSession(null);
       return;
     }
+    // Every table is gated on who is asking (migration 037), so the store
+    // holds one identity's snapshot. Re-fetch when that identity changes.
+    // Deliberately BEFORE the early return below: the sign-in form sets
+    // the local session itself, so on the path every demo visitor takes,
+    // "the local session already matches" is true and nothing re-fetched.
+    if (event === 'SIGNED_IN' && needsRehydrate(session.user.email, getHydratedIdentity())) {
+      void hydrateFromSupabase();
+    }
     if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
       const localSession = useStore.getState().session;
       const db = useStore.getState().db;
@@ -79,6 +87,16 @@ export async function mountSessionSync(): Promise<void> {
       void resolveAndSetSession(session.user.email);
     }
   });
+}
+
+/** True when the store's snapshot was fetched as someone other than
+ *  `email`. A token refresh is the same person, so callers gate on
+ *  SIGNED_IN. */
+export function needsRehydrate(
+  email: string | undefined,
+  hydratedFor: string | null | undefined,
+): boolean {
+  return (email?.toLowerCase() ?? null) !== hydratedFor;
 }
 
 /** Look up the local User by email, falling back to a brands/creators

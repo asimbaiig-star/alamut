@@ -34,6 +34,19 @@ export default defineConfig({
       ['src/**/__tests__/**/*.test.tsx', 'jsdom'],
     ],
     setupFiles: ['./src/test-setup.ts'],
+    // The suite must never reach a real Supabase project. Vite loads
+    // `.env.local` in test mode too, so without this every test ran with
+    // `isSupabaseConfigured() === true` against PRODUCTION: each jsdom
+    // file hydrated the store from it on import, and any test reaching a
+    // repository issued real requests. All of them anonymous — no test
+    // signs in, and RLS refuses every anon write — so nothing was ever
+    // mutated, but a test result must not depend on a live database, and
+    // one sign-in test would have made them authenticated writes. Tests
+    // that need Supabase behaviour mock '@/lib/supabase' explicitly.
+    env: {
+      VITE_SUPABASE_URL: '',
+      VITE_SUPABASE_ANON_KEY: '',
+    },
     globals: false,
     pool: 'threads',
   },
