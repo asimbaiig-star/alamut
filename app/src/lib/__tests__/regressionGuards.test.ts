@@ -28,6 +28,9 @@
 //  10. Marketing selling a capability the product deleted.
 //  11. A past-tense event asserted from a stage or a price rather than read
 //      from the record of it happening.
+//  12. A row readable by anyone who can reach the endpoint, because every
+//      migration that set out to "tighten RLS" modelled a user PLANTING a
+//      row and none of them modelled a user READING one.
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -696,5 +699,263 @@ describe('past-tense claims come from records, not from stages', () => {
     const src = code('screens/workspace-v2/useRecentActivity.ts');
     expect(src).not.toMatch(/'\d+d ago'/);
     expect(src).toMatch(/\bat:\s*(new Date\()?[a-z]/i);
+  });
+});
+
+
+// ─────────────────────────────────────────────────────────────────────
+// CLASS 12 — a row is readable by the people it is about, not by anyone
+// who can reach the endpoint
+//
+// Found 2026-10-23 by pointing the publishable key at production. Eight
+// tables answered an anonymous curl with real rows — every deal's
+// agreed_rate, platform_fee, net_to_creator and withholding_tax among
+// them — and five more answered any signed-in account with every other
+// account's direct messages, ledger rows and disputes.
+//
+// The cause is a shape, not a typo. Three migrations named `tighten_rls`
+// (005, 019, 027) all tightened INSERT and WITH CHECK, because the threat
+// being modelled each time was a user PLANTING a row. 025 was the only
+// SELECT lockdown and it covered `creators` and `brands` alone. Read
+// authorization was never the subject of a migration, and no test had an
+// opinion about it, so thirteen tables kept the `using (true)` they were
+// born with for thirty-one migrations.
+//
+// Two distinct failures, so two guards:
+//
+//   (a) `using (true)` with no role clause — the `anon` role is included,
+//       and the publishable key is public by design. World-readable.
+//   (b) `to authenticated using (true)` — the gate is "do you have an
+//       account", not "is this row yours". Signup is open.
+//
+// A third guard protects the fix itself. The 005/019 helpers are
+// `security invoker`, so a policy on table T that calls a helper reading
+// T recurses. `is_participant_of_campaign` reads `applications` and
+// `offers`; using it to guard either is the mistake waiting to be made
+// the next time someone adds a deal table.
+
+describe('read authorization is scoped to the parties, not to the audience', () => {
+  const MIGRATIONS = join(SRC, '..', 'supabase', 'migrations');
+
+  /** Intentionally world-readable, each for a stated product reason.
+   *  Adding to this list should take an argument, which is the point of
+   *  it being a list. */
+  const PUBLIC_BY_INTENT = new Set([
+    // A marketplace visitor browses briefs before signing up. The policy
+    // is right; the column set is not (budget/spent/escrow_held are still
+    // exposed) and is tracked for the `campaigns_public` view.
+    'public.campaigns',
+  ]);
+
+  type Policy = { table: string; name: string; roles: string; pred: string; file: string };
+
+  /** Replay the migrations in order and return the SELECT policies left
+   *  standing — the same thing Postgres ends up with, which is the only
+   *  state worth asserting on. A policy dropped and recreated three
+   *  times should be judged on the last one. */
+  function finalSelectPolicies(): Policy[] {
+    const live = new Map<string, Policy>();
+    const files = readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql')).sort();
+    for (const file of files) {
+      const sql = readFileSync(join(MIGRATIONS, file), 'utf8')
+        // Function bodies are full of `select ... ;` and would be parsed as
+        // policy text. Drop them before anything else.
+        .replace(/\$\$[\s\S]*?\$\$/g, '$$BODY$$')
+        .replace(/--[^\n]*/g, '');
+
+      for (const m of sql.matchAll(
+        /drop\s+policy\s+(?:if\s+exists\s+)?"?([\w ]+?)"?\s+on\s+(public\.\w+)\s*;/gi,
+      )) {
+        live.delete(`${m[2]}|${m[1]}`);
+      }
+      for (const m of sql.matchAll(
+        /create\s+policy\s+"?([\w ]+?)"?\s+on\s+(public\.\w+)\s+for\s+select\b([\s\S]*?);/gi,
+      )) {
+        const [, name, table, body] = m;
+        const flat = body.replace(/\s+/g, ' ').trim();
+        const roleMatch = /\bto\s+([\w, ]+?)\s+(?:using|with)\b/i.exec(flat);
+        const predMatch = /\busing\s*\(([\s\S]*)\)\s*$/i.exec(flat);
+        live.set(`${table}|${name}`, {
+          table,
+          name,
+          roles: roleMatch ? roleMatch[1].trim() : 'PUBLIC',
+          pred: (predMatch ? predMatch[1] : flat).replace(/\s+/g, ' ').trim(),
+          file,
+        });
+      }
+    }
+    return [...live.values()];
+  }
+
+  const isBareTrue = (pred: string) => /^\(*\s*true\s*\)*$/i.test(pred);
+
+  it('parses the migrations at all — the guard is worthless if it finds nothing', () => {
+    // Every assertion below is a filter over this list. An empty list, or a
+    // list missing the tables this class is about, passes everything.
+    const policies = finalSelectPolicies();
+    expect(policies.length).toBeGreaterThan(10);
+    const tables = new Set(policies.map((p) => p.table));
+    for (const t of [
+      'public.contracts', 'public.offers', 'public.applications',
+      'public.collaborations', 'public.submissions', 'public.deliverables',
+      'public.reviews', 'public.transactions', 'public.messages',
+      'public.threads', 'public.disputes', 'public.outreach',
+    ]) {
+      expect(tables, `no SELECT policy parsed for ${t}`).toContain(t);
+    }
+  });
+
+  it('(a) nothing is world-readable except by declared intent', () => {
+    // The publishable key is in the public bundle. A SELECT policy with no
+    // role clause includes `anon`, so `using (true)` means "the internet".
+    const open = finalSelectPolicies()
+      .filter((p) => p.roles === 'PUBLIC' && isBareTrue(p.pred))
+      .filter((p) => !PUBLIC_BY_INTENT.has(p.table));
+    expect(
+      open.map((p) => `${p.table}.${p.name} (${p.file})`),
+      'world-readable with the publishable key — scope it, or add it to PUBLIC_BY_INTENT with a reason',
+    ).toEqual([]);
+  });
+
+  it('(b) an account is not a relationship', () => {
+    // `to authenticated using (true)` was how every DM and every ledger row
+    // on the platform became readable by anyone who could sign up.
+    const shared = finalSelectPolicies()
+      .filter((p) => /authenticated/.test(p.roles) && isBareTrue(p.pred));
+    expect(
+      shared.map((p) => `${p.table}.${p.name} (${p.file})`),
+      'readable by every signed-in user — gate on the relationship, not on having an account',
+    ).toEqual([]);
+  });
+
+  /** What each RLS helper touches: the tables its own body reads, and the
+   *  other helpers it calls. Recursion travels through calls, so (c) walks
+   *  the closure rather than this one level — `is_thread_participant` reads
+   *  `threads` directly but also `brands`/`creators` through own_user_ids(),
+   *  and a one-level map would miss a policy on either. */
+  const HELPERS: Record<string, { tables: string[]; calls: string[] }> = {
+    own_user_ids:               { tables: ['public.brands', 'public.creators'], calls: [] },
+    is_own_user_id:             { tables: [], calls: ['own_user_ids'] },
+    is_brand_owner:             { tables: ['public.brands'], calls: [] },
+    is_brand_owner_of_campaign: { tables: ['public.brands', 'public.campaigns'], calls: [] },
+    is_creator_owner:           { tables: ['public.creators'], calls: [] },
+    is_participant_of_campaign: {
+      tables: [
+        'public.campaigns', 'public.brands',
+        'public.applications', 'public.offers', 'public.creators',
+      ],
+      calls: [],
+    },
+    is_thread_participant:      { tables: ['public.threads'], calls: ['own_user_ids'] },
+  };
+
+  /** Every table a helper can reach, following calls. */
+  function reach(helper: string, seen = new Set<string>()): Set<string> {
+    const out = new Set<string>();
+    if (seen.has(helper)) return out;
+    seen.add(helper);
+    const h = HELPERS[helper];
+    if (!h) return out;
+    for (const t of h.tables) out.add(t);
+    for (const c of h.calls) for (const t of reach(c, seen)) out.add(t);
+    return out;
+  }
+
+  /** Last definition wins, same as Postgres. */
+  function helperBody(helper: string, sql: string): string | null {
+    const defs = [...sql.matchAll(
+      new RegExp(
+        `create\\s+or\\s+replace\\s+function\\s+public\\.${helper}[\\s\\S]*?\\$\\$([\\s\\S]*?)\\$\\$`,
+        'gi',
+      ),
+    )];
+    return defs.length ? defs[defs.length - 1][1] : null;
+  }
+
+  const allSql = () =>
+    readdirSync(MIGRATIONS)
+      .filter((f) => f.endsWith('.sql')).sort()
+      .map((f) => readFileSync(join(MIGRATIONS, f), 'utf8'))
+      .join('\n');
+
+  it('(c) a policy never routes through a helper that reads its own table', () => {
+    // The 005/019 helpers are `security invoker`, so the base tables' RLS
+    // applies inside them. `is_participant_of_campaign` reads applications
+    // and offers; guarding either with it recurses at query time, which
+    // surfaces as "infinite recursion detected in policy" — or, worse, as a
+    // silently empty result on a nullable path.
+    const bad: string[] = [];
+    for (const p of finalSelectPolicies()) {
+      for (const helper of Object.keys(HELPERS)) {
+        if (!new RegExp(`\\b${helper}\\b`).test(p.pred)) continue;
+        if (reach(helper).has(p.table)) {
+          bad.push(
+            `${p.table}.${p.name} calls ${helper}(), which reaches ${p.table}`,
+          );
+        }
+      }
+    }
+    expect(bad, bad.join('\n')).toEqual([]);
+  });
+
+  it('the helper map is complete, or (c) is decorative', () => {
+    // (c) is only as good as HELPERS. Two directions, both needed:
+    // everything declared must really be read, and everything read must be
+    // declared — an under-declared helper is exactly how a recursive policy
+    // would slip past (c) while the suite stayed green.
+    const sql = allSql();
+    for (const [helper, { tables, calls }] of Object.entries(HELPERS)) {
+      const body = helperBody(helper, sql);
+      expect(body, `${helper} has no definition in any migration`).not.toBeNull();
+
+      for (const t of tables) {
+        expect(body!, `HELPERS says ${helper} reads ${t}; its body does not`)
+          .toContain(t);
+      }
+      for (const c of calls) {
+        expect(body!, `HELPERS says ${helper} calls ${c}(); its body does not`)
+          .toContain(c);
+      }
+
+      // The other direction: nothing in the body is undeclared.
+      const referenced = new Set(
+        [...body!.matchAll(/\bpublic\.(\w+)/g)].map((m) => m[1]),
+      );
+      const declared = new Set([
+        ...tables.map((t) => t.replace('public.', '')),
+        ...calls,
+      ]);
+      const undeclared = [...referenced].filter((r) => !declared.has(r));
+      expect(
+        undeclared,
+        `${helper}() references public.${undeclared.join(', public.')} — add it to HELPERS, or (c) cannot see through it`,
+      ).toEqual([]);
+    }
+  });
+
+  it('the tables this class is about are gated on a real predicate', () => {
+    // Belt and braces: the two guards above are absence-of-badness. This one
+    // asserts the presence of the fix, so deleting 037 fails loudly rather
+    // than returning the tables to their original state unnoticed.
+    const byTable = new Map(finalSelectPolicies().map((p) => [p.table, p]));
+    const EXPECTED: Record<string, RegExp> = {
+      'public.applications':   /is_brand_owner_of_campaign|is_creator_owner/,
+      'public.offers':         /is_brand_owner_of_campaign|is_creator_owner/,
+      'public.collaborations': /is_brand_owner_of_campaign|is_creator_owner/,
+      'public.contracts':      /is_brand_owner_of_campaign|is_creator_owner/,
+      'public.submissions':    /is_brand_owner_of_campaign|is_creator_owner/,
+      'public.deliverables':   /is_participant_of_campaign/,
+      'public.reviews':        /hidden/,
+      'public.transactions':   /is_own_user_id|is_brand_owner_of_campaign/,
+      'public.threads':        /own_user_ids/,
+      'public.messages':       /is_thread_participant/,
+      'public.disputes':       /is_participant_of_campaign/,
+      'public.outreach':       /is_brand_owner|is_creator_owner/,
+    };
+    for (const [table, pattern] of Object.entries(EXPECTED)) {
+      const p = byTable.get(table);
+      expect(p, `no SELECT policy for ${table}`).toBeDefined();
+      expect(p!.pred, `${table} predicate does not gate on ${pattern}`).toMatch(pattern);
+    }
   });
 });
