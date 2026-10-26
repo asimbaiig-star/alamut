@@ -582,15 +582,47 @@ describe('a step that self-approves does not claim a human reviews it', () => {
 // This pins the specific claims to the specific capabilities.
 
 describe('marketing copy does not outrun the product', () => {
-  const marketing = () =>
-    ['screens/cover/scenes/LandingV2.tsx', 'screens/cover/Cover.tsx']
-      .map((f) => code(f)).join('\n');
+  // The public pages are src/landing, prerendered into index.html and
+  // for-brands/index.html, whose <head> carries the share text a link
+  // preview shows. Every check reads ALL of it: the old list of filenames
+  // skipped the live /for-brands page entirely, and a list can't see a file
+  // added after it was written.
+  const landingFiles = (): string[] => {
+    const out: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, e.name);
+        if (e.isDirectory()) { if (e.name !== '__tests__') walk(full); }
+        else if (/\.(ts|tsx)$/.test(e.name)) out.push(full.slice(SRC.length + 1));
+      }
+    };
+    walk(join(SRC, 'landing'));
+    return out;
+  };
+  const shells = () => ['index.html', 'for-brands/index.html']
+    .map((f) => readFileSync(join(SRC, '..', f), 'utf8').replace(/<!--[\s\S]*?-->/g, ''))
+    .join('\n');
+  const marketing = () => landingFiles().map(code).join('\n') + '\n' + shells();
+  /** What the pages CLAIM. A capability that isn't live may be named in a
+   *  page's "Not live yet" list — saying so plainly is what that list is
+   *  for — so its entries are cut before any claim check runs. */
+  const claims = () => marketing().replace(/<NotYet items=\{\[[\s\S]*?\]\} \/>/g, '');
+
+  it('reads both pages, and both still say what is not live', () => {
+    const files = landingFiles();
+    expect(files).toContain('landing/CreatorsPage.tsx');
+    expect(files).toContain('landing/BrandsPage.tsx');
+    for (const page of ['landing/CreatorsPage.tsx', 'landing/BrandsPage.tsx']) {
+      expect(code(page), `${page} lost its "Not live yet" list`).toMatch(/<NotYet items=\{\[/);
+    }
+    // The cut must actually cut — or every claim check below is checking a
+    // string that still contains the honest list and proves nothing.
+    expect(marketing()).toMatch(/Click tracking and revenue attribution/);
+    expect(claims()).not.toMatch(/Click tracking and revenue attribution/);
+  });
 
   it('does not promise attribution the dashboard does not do', () => {
-    const src = marketing();
-    expect(src).not.toMatch(/ROAS per UTM/i);
-    expect(src).not.toMatch(/attributed revenue/i);
-    expect(src).not.toMatch(/tracking link/i);
+    expect(claims()).not.toMatch(/ROAS|\bUTM\b|attribut(ed|ion)|tracking link|conversions?\b/i);
   });
 
   it('does not name a payout rail that does not exist', () => {
@@ -600,7 +632,7 @@ describe('marketing copy does not outrun the product', () => {
   });
 
   it('does not quote an average nobody measured', () => {
-    expect(marketing()).not.toMatch(/average \d+ days/i);
+    expect(claims()).not.toMatch(/average \d+ (days|hours)|on average|\bavg\b/i);
   });
 
   it('does not claim creators are screened before they can apply', () => {
@@ -610,17 +642,74 @@ describe('marketing copy does not outrun the product', () => {
     const apply = code('screens/workspace-v2/v2CampaignActions.ts');
     const fn = apply.slice(apply.indexOf('export function v2ApplyToCampaign'));
     expect(fn.slice(0, fn.indexOf('\n}'))).not.toMatch(/creator\.verified/);
-    expect(marketing()).not.toMatch(/reviewed before they can apply/i);
+    expect(claims()).not.toMatch(/reviewed before they can apply|vetted|hand-?picked/i);
   });
 
-  it('the case study quotes no figure derived from a feature we lack', () => {
-    // BrandLanding rendered a headline "5.2× ROAS" tile and pull-quote,
-    // computed from seeded `tracking[].revenueAttributed`. A multiple is
-    // the most quotable number on the page, which made it the most
-    // damaging one to invent.
-    const src = code('screens/cover/BrandLanding.tsx');
-    expect(src).not.toMatch(/revenueAttributed/);
-    expect(src).not.toMatch(/ROAS/);
+  it('does not sell AI', () => {
+    // Matching is a weighted score over self-reported fields and Spark is a
+    // rules engine. "AI" was the least real claim on the old pages and the
+    // one every competitor makes.
+    expect(claims()).not.toMatch(/\bAI\b|A\.I\.|artificial intelligence|machine learning|\bSpark\b|smart match|auto-?match/i);
+  });
+
+  it('states no fee or percentage the code does not supply', () => {
+    // "A flat 5%" sat on the old page against a PLATFORM_FEE of 0.10. Copy
+    // that restates a number drifts from it, so the landing never writes
+    // one: every percentage comes from facts.ts, which imports money.ts.
+    const copy = landingFiles().map(code).join('\n') + shells();
+    expect(copy).not.toMatch(/\d\s?%|\bper ?cent\b/i);
+    expect(copy).toMatch(/PLATFORM_FEE_LABEL/);
+  });
+
+  it('names no seed brand, and no real company as a customer', () => {
+    // The seed's brands are real companies (Aesop, Glossier, Le Creuset…)
+    // that are not customers. The old pages showed their logos and an
+    // "Aesop" case study.
+    const seed = code('lib/api/seed.ts');
+    const names = [...seed.matchAll(/name:\s*'([^']+)',\s*industry:/g)].map((m) => m[1]!);
+    expect(names.length, 'the seed brand pattern stopped matching — this check is blind').toBeGreaterThan(20);
+    const src = claims();
+    for (const n of names) {
+      const re = new RegExp(`\\b${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+      expect(src, `seed brand "${n}" on the landing`).not.toMatch(re);
+    }
+  });
+
+  it('carries no social proof it does not have', () => {
+    // No customers, quotes, press or volume figures until real ones exist.
+    expect(claims()).not.toMatch(/trusted by|as seen in|featured in|loved by|testimonial|case study|\bpress\b/i);
+    expect(claims()).not.toMatch(/\b\d[\d,.]*\s*k?\+?\s+(creators|brands|campaigns|deals|customers|users)\b/i);
+  });
+
+  it('does not put usage rights on the brief while briefs cannot carry them', () => {
+    // The v2 brief wizard sets no rights, and BriefDetail shows creators
+    // the same hardcoded clauses on every brief. Until a brand can set
+    // rights on a brief, the landing must not say they're on it.
+    if (briefCarriesRights()) return;
+    expect(claims()).not.toMatch(
+      /rights[^.'"]{0,40}\b(on|in) the brief|brief[^.'"]{0,30}\busage rights|rights (up front|attached)/i,
+    );
+  });
+
+  it('the landing bundle reaches nothing stateful', () => {
+    // Fast by construction, and honest by construction: the store and seed
+    // are where invented numbers live. Anything the landing imports from
+    // the app must itself import nothing, so nothing is reached transitively.
+    const allowedBare = new Set(['react', 'react-dom/client', 'react-dom/server']);
+    for (const f of landingFiles()) {
+      for (const m of read(f).matchAll(/^\s*(?:import|export)[^'"]*from\s+'([^']+)'/gm)) {
+        const spec = m[1]!;
+        if (spec.startsWith('./')) continue;
+        if (spec.startsWith('@/')) {
+          const rel = spec.slice(2);
+          const target = ['.ts', '.tsx'].map((x) => rel + x).find((x) => { try { read(x); return true; } catch { return false; } });
+          expect(target, `${f} imports ${spec}, which doesn't resolve`).toBeDefined();
+          expect(code(target!), `${f} imports ${spec}, which imports other modules`).not.toMatch(/^\s*import\s/m);
+          continue;
+        }
+        expect(allowedBare.has(spec), `${f} imports the package "${spec}"`).toBe(true);
+      }
+    }
   });
 
   it('NO FABRICATED QUOTE IS ATTRIBUTED TO A REAL COMPANY', () => {
@@ -636,16 +725,9 @@ describe('marketing copy does not outrun the product', () => {
     }
   });
 
-  it('and the wall says plainly that the voices are illustrative', () => {
-    expect(read('screens/cover/scenes/LandingV2.tsx')).toMatch(/Illustrative examples/);
-    // "seed dataset" was the old admission — true, but in a register no
-    // visitor reads as "these are made up".
-    expect(code('screens/cover/scenes/LandingV2.tsx')).not.toMatch(/in the seed dataset/);
-  });
-
   it('does not claim matching uses the brand\'s own customer data', () => {
     // matching.ts scores niche, engagement, geo, rate, history, category.
-    expect(marketing()).not.toMatch(/overlap with your existing customers/i);
+    expect(claims()).not.toMatch(/overlap with your (existing )?customers/i);
   });
 
   // ── Verification claims (found 2026-10-25) ────────────────────────────
@@ -661,9 +743,7 @@ describe('marketing copy does not outrun the product', () => {
   // the code that would make the claim true; ship that, and the claim is
   // allowed again without touching this file.
 
-  const allMarketing = () =>
-    ['screens/cover/scenes/LandingV2.tsx', 'screens/cover/Cover.tsx', 'screens/cover/BrandLanding.tsx']
-      .map((f) => code(f)).join('\n');
+  const allMarketing = claims;
   const appSource = () => {
     const out: string[] = [];
     const walk = (dir: string) => {
@@ -696,6 +776,10 @@ describe('marketing copy does not outrun the product', () => {
   const channelOwnershipCheckable = () =>
     /from '@\/lib\/oauth\/connectPlatform'/.test(screensSource())
     || /(?<!function )\bv2VerifyChannel\(/.test(screensSource());
+  /** A brand can set usage rights when it writes a brief. */
+  function briefCarriesRights() {
+    return /\brights\b/.test(code('screens/workspace-v2/screens/NewCampaignWizard.tsx'));
+  }
   /** An identity-document provider is integrated, not just mentioned. */
   const idDocumentCheckExists = () => /withpersona\.com|onfido\.com|sumsub\.com|veriff\.com/i.test(appSource());
   /** Posting a campaign is refused for an unverified brand. */
@@ -748,6 +832,7 @@ describe('marketing copy does not outrun the product', () => {
     expect(channelOwnershipCheckable(), 'a screen now confirms channel ownership — great; re-check the copy').toBe(false);
     expect(idDocumentCheckExists(), 'an ID provider is integrated — re-check the copy').toBe(false);
     expect(brandVerificationGatesPosting(), 'posting is gated on brand verification — re-check the copy').toBe(false);
+    expect(briefCarriesRights(), 'the brief wizard now sets usage rights — the landing may say so').toBe(false);
     // And the KYC identity step really does self-verify — the premise of all three.
     expect(code('screens/workspace-v2/screens/KycTax.tsx')).toMatch(/verified:\s*true/);
   });

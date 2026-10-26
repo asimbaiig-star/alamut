@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && vite build -c vite.landing.config.ts && vite build -c vite.landing.config.ts --ssr src/landing/entry-server.tsx && node scripts/prerender.mjs && node scripts/check-landing.mjs",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
@@ -19,7 +19,8 @@
     "sb:link": "supabase link --project-ref iddpnsnlmfhnxyhbhyvx",
     "sb:diff": "supabase migration list",
     "sb:push": "supabase db push",
-    "sb:lint": "supabase db lint --linked"
+    "sb:lint": "supabase db lint --linked",
+    "check:landing": "node scripts/check-landing.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.4",

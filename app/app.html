@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Alamut — Creator & Brand Workspace</title>
+
+    <!-- F35 — favicon. Inline SVG data URI so there's no binary asset to
+         keep in sync with the brand; #b55f40 is the resolved value of the
+         terracotta accent token (oklch(0.58 0.12 40)). -->
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23b55f40'/%3E%3Cpath d='M16 7.5 L23.5 24.5 H19.6 L16 15.6 L12.4 24.5 H8.5 Z' fill='%23FBF7EE'/%3E%3C/svg%3E"
+    />
+    <meta name="theme-color" content="#b55f40" />
+
+    <!-- F36 — description + social cards. These MUST live in the static
+         HTML: the app sets some tags client-side, but crawlers (Facebook,
+         LinkedIn, Slack, iMessage) don't run JS, so a shared link
+         previewed as a bare URL with no title or blurb. -->
+    <meta
+      name="description"
+      content="Alamut is a creator–brand marketplace: brands post briefs, creators apply and negotiate, content gets reviewed, and every deal is tracked end to end. Currently in public beta."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Alamut" />
+    <meta property="og:title" content="Alamut — the operating system for the creator economy" />
+    <meta
+      property="og:description"
+      content="Brands post briefs, creators apply and negotiate, content gets reviewed, and every deal is tracked end to end. Public beta — payments are simulated."
+    />
+    <meta property="og:url" content="https://alamut-six.vercel.app/" />
+    <!-- Preview card. Absolute URL is required — crawlers don't resolve
+         relative paths. The source SVG sits next to it in public/ and
+         references the real brand faces by their installed family names
+         ("Fraunces SemiBold" / "Switzer Medium"); see BACKEND_AUDIT_LOG.md
+         for the regeneration recipe, which needs those two fonts present
+         because sips can't use @font-face. -->
+    <meta property="og:image" content="https://alamut-six.vercel.app/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="Alamut — the operating system for the creator economy. Public beta."
+    />
+    <!-- Large card now that there's an image to fill it. -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://alamut-six.vercel.app/og-image.jpg" />
+    <meta name="twitter:title" content="Alamut — the operating system for the creator economy" />
+    <meta
+      name="twitter:description"
+      content="A creator–brand marketplace with briefs, negotiation, review and escrow-tracked deals. Public beta."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://api.fontshare.com" />
+    <link rel="preconnect" href="https://cdn.fontshare.com" crossorigin />
+    <!-- Display: Fraunces (editorial serif, opsz-aware) · Mono: JetBrains Mono -->
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=JetBrains+Mono:wght@400;500&display=swap"
+    />
+    <!-- Body: Switzer (Fontshare, editorial sans) — replaces Inter per frontend-design skill guidance -->
+    <link
+      rel="stylesheet"
+      href="https://api.fontshare.com/v2/css?f[]=switzer@200,300,400,500,600,700,800&display=swap"
+    />
+    <!-- v2 surface · Inter Tight for the Pakistan-first revamp -->
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;450;500;550;600;700&display=swap"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

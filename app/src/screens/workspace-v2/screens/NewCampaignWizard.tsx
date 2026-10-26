@@ -12,6 +12,7 @@ import type { LaunchCampaignInput } from '../v2CampaignActions';
 import { pushToast } from '@/lib/utils/toast';
 import { useStore } from '@/lib/api/store';
 import { parseNumberInput } from '@/lib/utils/format';
+import { PLATFORM_FORMATS } from '@/lib/api/marketplaceOptions';
 
 interface Props {
   onRoute: (r: string) => void;
@@ -58,43 +59,6 @@ interface Draft {
   deadline: string;
   invitedCreators: string[];
 }
-
-// Platform → list of supported formats. Labels are display strings that
-// `parseDeliverableSlotsFreeForm` + `inferPlatformLocal/inferFormatLocal`
-// can round-trip into structured Deliverable rows on launch.
-const PLATFORM_FORMATS: Array<{
-  value: string;
-  label: string;
-  formats: Array<{ value: string; label: string }>;
-}> = [
-  { value: 'instagram', label: 'Instagram', formats: [
-    { value: 'reel', label: 'Reel' },
-    { value: 'story', label: 'Story' },
-    { value: 'carousel', label: 'Carousel' },
-    { value: 'post', label: 'Static post' },
-  ]},
-  { value: 'tiktok', label: 'TikTok', formats: [
-    { value: 'video', label: 'Video' },
-    { value: 'live', label: 'Live' },
-  ]},
-  { value: 'youtube', label: 'YouTube', formats: [
-    { value: 'longform', label: 'Long-form' },
-    { value: 'short', label: 'Short' },
-    { value: 'live', label: 'Live' },
-  ]},
-  { value: 'linkedin', label: 'LinkedIn', formats: [
-    { value: 'post', label: 'Post' },
-    { value: 'article', label: 'Article' },
-    { value: 'newsletter', label: 'Newsletter' },
-  ]},
-  { value: 'x', label: 'X', formats: [
-    { value: 'post', label: 'Post' },
-    { value: 'thread', label: 'Thread' },
-  ]},
-  { value: 'substack', label: 'Substack', formats: [
-    { value: 'newsletter', label: 'Newsletter' },
-  ]},
-];
 
 function platformLabel(value: string): string {
   return PLATFORM_FORMATS.find((p) => p.value === value)?.label ?? value;

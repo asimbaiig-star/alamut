@@ -2,21 +2,19 @@
 //
 // Strategy: keep eagerly imported only the screens needed for first paint
 // in each role's default landing flow:
-//   - Cover (the public root) and the auth screens
+//   - the auth screens (the public landing pages are not part of the SPA;
+//     see LandingRedirect)
 //   - Today screens (the new role default landing — Phase 4)
 //   - AdminHome (admin default — Phase 8)
 // Everything else loads on demand. This shrinks the initial JS to a
 // fraction of what it was while keeping the first-render path eager so
 // users don't see a flash of "Loading…" the moment they sign in.
 
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { WorkspaceShell } from './components/layout/WorkspaceShell';
 import { ProtectedRoute } from './components/layout/ProtectedRoute';
 import { RedirectToV2 } from './screens/workspace-v2/RedirectToV2';
-// Phase 32: Cover lazy-loaded so the motion-library vendor chunk
-// (~60 KB gzip) doesn't ship with the initial bundle. Signed-in
-// users hitting any /<role>/today route bypass this entirely.
 import { SignUp } from './screens/auth/SignUp';
 import { SignIn } from './screens/auth/SignIn';
 import { AcceptInvite } from './screens/auth/AcceptInvite';
@@ -45,15 +43,6 @@ const AdminPayouts = lazy(() =>
 const AdminAudit = lazy(() =>
   import('./screens/admin/Audit').then((m) => ({ default: m.AdminAudit })));
 
-// Phase 32 — public landing page lazy-loaded so the motion animation
-// library (~60 KB gzip) ships only when someone actually hits /,
-// not on every initial app load.
-const Cover = lazy(() =>
-  import('./screens/cover/Cover').then((m) => ({ default: m.Cover })));
-// Phase 52b — brand-facing landing page (separate URL from creator
-// landing for focused narrative, ROI-forward tone, comparison matrix).
-const BrandLanding = lazy(() =>
-  import('./screens/cover/BrandLanding').then((m) => ({ default: m.BrandLanding })));
 // Phase 52d — engagement-rate / sponsorship-rate calculator tools.
 // SEO-bait public pages that double as utility — a creator pastes
 // their handle (or follower count + engagement %) and gets a fair
@@ -64,7 +53,7 @@ const RateCalculator = lazy(() =>
 const CreatorsDirectory = lazy(() =>
   import('./screens/tools/CreatorsDirectory').then((m) => ({ default: m.CreatorsDirectory })));
 // Phase A (launch-readiness) — Terms + Privacy. Real pages behind the
-// signup agreement checkbox; also linked from the Cover footer.
+// signup agreement checkbox; also linked from the landing footer.
 const TermsPage = lazy(() =>
   import('./screens/legal/LegalPage').then((m) => ({ default: m.TermsPage })));
 const PrivacyPage = lazy(() =>
@@ -91,6 +80,29 @@ function RouteFallback() {
   );
 }
 
+// `/` and `/for-brands` are the prerendered landing pages (src/landing),
+// served by the host as their own HTML files and never part of this bundle.
+// The SPA only sees those paths after a client-side navigation — a
+// <Link to="/"> — so it hands them back to the server with a real load.
+//
+// If the SPA itself was booted at that path, the server served app.html
+// for a landing URL (a routing misconfiguration). Reloading would loop, so
+// it says so instead.
+const BOOT_PATH = typeof window === 'undefined' ? '' : window.location.pathname;
+function LandingRedirect() {
+  const here = typeof window === 'undefined' ? '' : window.location.pathname;
+  const misrouted = here === BOOT_PATH;
+  useEffect(() => {
+    if (!misrouted) window.location.replace(window.location.href);
+  }, [misrouted]);
+  if (!misrouted) return <RouteFallback />;
+  return (
+    <div className="page" style={{ padding: 48, textAlign: 'center' }}>
+      <p>This page didn't load. <a href="/signin">Sign in</a> or <a href="/creators">browse creators</a>.</p>
+    </div>
+  );
+}
+
 // Wrapper that attaches the Suspense boundary at the route element level
 // so each lazy screen gets its own fallback (rather than one tree-wide).
 function lazyRoute(El: React.ComponentType) {
@@ -102,9 +114,8 @@ function lazyRoute(El: React.ComponentType) {
 }
 
 export const router = createBrowserRouter([
-  { path: '/', element: lazyRoute(Cover) },
-  // Phase 52b — brand-facing landing on its own URL.
-  { path: '/for-brands', element: lazyRoute(BrandLanding) },
+  { path: '/', element: <LandingRedirect /> },
+  { path: '/for-brands', element: <LandingRedirect /> },
   // Phase 52d — calculator tools. Single component, platform passed
   // via path param so we get clean SEO URLs for each.
   { path: '/tools/:platform-calculator', element: lazyRoute(RateCalculator) },

@@ -21,6 +21,11 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 const url = import.meta.env.VITE_SUPABASE_URL;
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+/** Where supabase-js persists the session. Exported so code that must know
+ *  "is someone signed in?" before the client exists (SignIn's `?demo=`, the
+ *  landing's nav) reads the same key. */
+export const SUPABASE_STORAGE_KEY = 'alamut.sb.auth';
+
 let _client: SupabaseClient | null = null;
 
 /** True when both env vars are set — i.e. the app should attempt real
@@ -43,7 +48,7 @@ export function getSupabase(): SupabaseClient {
     auth: {
       // Persist session in localStorage under a dedicated key so it
       // doesn't collide with Zustand's `alamut.v1`.
-      storageKey: 'alamut.sb.auth',
+      storageKey: SUPABASE_STORAGE_KEY,
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,

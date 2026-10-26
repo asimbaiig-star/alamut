@@ -4,14 +4,15 @@
 // swapped from `.auth-shell` legacy to airy primitives + a thin
 // `.auth-airy-*` page-specific layer.
 
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Logo } from '@/components/ui/Logo';
 import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
 import { TileHalo } from '@/components/layout/TileHalo';
 import { api, ApiError } from '@/lib/api/client';
 import { pushToast } from '@/lib/utils/toast';
+import { SUPABASE_STORAGE_KEY } from '@/lib/supabase';
 
 // Demo quick-pick visibility. ON by default so the public beta is walkable
 // without a signup; set VITE_HIDE_DEMO_LOGINS=true to hide it (Vercel env
@@ -19,6 +20,19 @@ import { pushToast } from '@/lib/utils/toast';
 const DEMO_LOGINS_ENABLED = import.meta.env.VITE_HIDE_DEMO_LOGINS !== 'true';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Email on the session supabase-js persisted, or null. Read from storage
+ *  rather than the store: on a cold load the store's session is restored
+ *  asynchronously, and `?demo=` has to decide on the first render. */
+function storedSessionEmail(): string | null {
+  try {
+    const raw = window.localStorage.getItem(SUPABASE_STORAGE_KEY);
+    const s = raw ? (JSON.parse(raw) as { user?: { email?: string } } | null) : null;
+    return s?.user?.email?.toLowerCase() ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export function SignIn() {
   const [mode, setMode] = useState<'password' | 'magic'>('password');
@@ -30,6 +44,9 @@ export function SignIn() {
   const [err, setErr] = useState<string | null>(null);
   const [magicToken, setMagicToken] = useState<string | null>(null);
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const demoRequested = useRef(false);
+  const [signedInElsewhere, setSignedInElsewhere] = useState(false);
 
   const validateEmail = (v: string) => {
     if (!v.trim()) return 'Email is required.';
@@ -156,6 +173,24 @@ export function SignIn() {
     await doSignIn(em, pw);
   };
 
+  // `/signin?demo=creator|brand` — the landing's "Try the live demo" — signs
+  // straight in, as if the button below had been pressed. Once: StrictMode
+  // runs effects twice, and a second sign-in would race the first.
+  //
+  // Never over someone's own session. Already in that demo account → just
+  // go to it; signed in as anyone else → stay here and say so, rather than
+  // silently swapping their account for a shared one.
+  useEffect(() => {
+    const which = params.get('demo');
+    if (!DEMO_LOGINS_ENABLED || demoRequested.current) return;
+    if (which !== 'creator' && which !== 'brand') return;
+    demoRequested.current = true;
+    const current = storedSessionEmail();
+    if (current === DEMO_ACCOUNTS[which].email) { navigate('/v2'); return; }
+    if (current) { setSignedInElsewhere(true); return; }
+    void useDemoAccount(which);
+  }, [params]); // once per ?demo= load — the ref above guards re-runs
+
   return (
     <div data-surface="landing-light" className="lp-light-root auth-airy auth-landing-light">
       <TileHalo />
@@ -199,6 +234,12 @@ export function SignIn() {
                   <div className="airy-eyebrow" style={{ marginBottom: 'var(--space-sm)' }}>
                     Explore the demo · one click
                   </div>
+                  {signedInElsewhere && (
+                    <p className="airy-meta" role="status" style={{ marginBottom: 'var(--space-sm)' }}>
+                      You're already signed in. Pick a demo account to switch to it,
+                      or <Link to="/v2">open your workspace</Link>.
+                    </p>
+                  )}
                   <div className="auth-airy-demo-grid">
                     <button
                       className="btn btn-sm btn-ghost"

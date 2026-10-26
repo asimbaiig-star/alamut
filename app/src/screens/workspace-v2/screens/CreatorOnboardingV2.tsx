@@ -19,6 +19,7 @@ import { v2UpdateCreatorIdentity, v2AddCreatorChannel } from '../v2CreatorAction
 import { pushToast } from '@/lib/utils/toast';
 import { parseNumberInput, listAnd } from '@/lib/utils/format';
 import { suggestRateBand } from '@/screens/tools/rateGuidance';
+import { CREATOR_CATEGORIES } from '@/lib/api/marketplaceOptions';
 
 interface Props {
   onRoute: (r: string) => void;
@@ -60,7 +61,7 @@ const PLATFORMS: { id: Platform; tagline: string }[] = [
   { id: 'newsletter', tagline: 'Newsletter subscribers convert 4× better than social.' },
 ];
 
-const CATEGORIES = ['Fashion', 'Beauty', 'Food', 'Tech', 'Travel', 'Fitness', 'Parenting', 'Finance', 'B2B'];
+const CATEGORIES = CREATOR_CATEGORIES;
 
 export function CreatorOnboardingV2({ onRoute }: Props) {
   const currentCreator = useV2CurrentCreator();
