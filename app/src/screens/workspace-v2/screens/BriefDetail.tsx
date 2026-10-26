@@ -7,11 +7,9 @@
 //      No decorative glow.
 //   2. Competition strip is an inline meta line below the hero (not a
 //      card) — viewing count, applicants, deadline, the creator's rank.
-//   3. Brief blocks split into Do / Don't side-by-side with clean
-//      circle/cross markers (no emoji clip icon on references).
-//   4. Spark-flagged clauses collapsed into one expandable summary row
-//      (review on demand) instead of a permanent section.
-//   5. Sidebar rows lose the emoji icons in favor of clean key/value.
+//   3. Brief content is only what the brand wrote: the brief text, the
+//      deliverables, and the campaign's usage rights when it has any.
+//   4. Sidebar rows lose the emoji icons in favor of clean key/value.
 
 import { useEffect, useMemo, useState } from 'react';
 import { fmtUSD, Icon, Topbar } from '../lib';
@@ -23,6 +21,7 @@ import { v2ApplyToCampaign } from '../v2CampaignActions';
 import { useStore } from '@/lib/api/store';
 import { pushToast } from '@/lib/utils/toast';
 import { parseNumberInput } from '@/lib/utils/format';
+import type { ContentRights } from '@/lib/api/types';
 import type { V2Campaign } from '../data';
 
 interface Props {
@@ -38,7 +37,6 @@ export function BriefDetail({ campaignId, onRoute }: Props) {
   const [pitch, setPitch] = useState('');
   const [price, setPrice] = useState<number>(() => meV2?.rate ?? 350);
   const [applied, setApplied] = useState(false);
-  const [showSparkClauses, setShowSparkClauses] = useState(false);
 
   // Existing-relationship detection — when the brand has already sent
   // this creator an offer (or the creator has applied), the apply
@@ -299,88 +297,39 @@ export function BriefDetail({ campaignId, onRoute }: Props) {
                 </div>
               </div>
 
-              <h3 style={{
-                fontFamily: 'var(--v2-font-display)',
-                fontSize: 18,
-                fontWeight: 500,
-                margin: '20px 0 8px',
-              }}>The brief</h3>
-              <p style={{ lineHeight: 1.6, color: 'var(--v2-ink-2)', margin: '0 0 20px' }}>
-                {campaign.brief}
+              <BriefHeading>The brief</BriefHeading>
+              {/* The full text. `campaign.brief` is the adapter's
+                  `pitch || brief`, and the wizard saves `pitch` as the
+                  brief's first 200 characters — so this page cut every
+                  long brief off mid-sentence, with no ellipsis, on the
+                  screen where a creator decides whether to apply. */}
+              <p style={{ lineHeight: 1.6, color: 'var(--v2-ink-2)', margin: '0 0 20px', whiteSpace: 'pre-line' }}>
+                {rawCampaign?.brief || campaign.brief}
               </p>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
-                <BriefBlock
-                  kind="do"
-                  title="Must do"
-                  items={[
-                    `Show product clearly within first 3 seconds`,
-                    `Use the campaign hashtag and tag the brand`,
-                    `Daily-life tone — no flashy hard cuts`,
-                    `Deliver: ${campaign.placement}`,
-                  ]}
-                />
-                <BriefBlock
-                  kind="dont"
-                  title="Don't"
-                  items={[
-                    'Mention competing brands in the same category',
-                    'Use AI-generated voiceover or stock footage',
-                    'Promote outside the agreed exclusivity window',
-                  ]}
-                />
-              </div>
+              {/* A "Must do" list, a "Don't" list and three "Spark flagged"
+                  clauses used to sit here — literal strings, identical on
+                  every brief: show the product in the first 3 seconds, no
+                  AI voiceover, a 2-week beauty exclusivity, 30-day paid-ad
+                  usage, "non-compliance voids escrow release". No brand
+                  wrote any of them, the wizard has no field for them, and
+                  nothing in Spark produced them. A creator pitching against
+                  terms the brand never set is worse than seeing no terms.
+                  Only the deliverables the brand typed and the rights the
+                  campaign actually carries are shown now. */}
+              <BriefHeading>Deliverables</BriefHeading>
+              <p style={{ lineHeight: 1.6, color: 'var(--v2-ink-2)', margin: '0 0 20px' }}>
+                {campaign.placement || 'The brand hasn’t listed deliverables on this brief.'}
+              </p>
 
-              {/* Spark-flagged clauses — single expandable row. */}
-              <div style={{ marginTop: 18, borderTop: '1px solid var(--v2-line)', paddingTop: 14 }}>
-                <button
-                  type="button"
-                  onClick={() => setShowSparkClauses((v) => !v)}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    padding: 0,
-                    cursor: 'pointer',
-                    width: '100%',
-                    textAlign: 'left',
-                    color: 'var(--v2-ink-2)',
-                  }}
-                >
-                  <div className="v2-row" style={{ gap: 8 }}>
-                    <span style={{ display: 'flex', color: 'var(--v2-accent)' }}>{Icon.spark}</span>
-                    <span style={{ fontWeight: 600, fontSize: 13.5 }}>
-                      Spark flagged 3 clauses to review
-                    </span>
-                    <span className="v2-spacer" />
-                    <span className="v2-muted" style={{ fontSize: 12 }}>
-                      {showSparkClauses ? '− Hide' : '+ Show'}
-                    </span>
-                  </div>
-                </button>
-                {showSparkClauses && (
-                  <ul style={{
-                    listStyle: 'none',
-                    padding: 0,
-                    margin: '12px 0 0',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 10,
-                  }}>
-                    <SparkClause
-                      kind="exclusivity"
-                      detail="2-week exclusivity in the beauty category — you can't post for competing brands during this window."
-                    />
-                    <SparkClause
-                      kind="usage"
-                      detail="Brand may repurpose your content as a paid ad on their handle for 30 days. Outside your handle, ad spend is not whitelisted."
-                    />
-                    <SparkClause
-                      kind="disclosure"
-                      detail="FTC-style #ad disclosure required in the first line of the caption. Non-compliance voids escrow release."
-                    />
-                  </ul>
-                )}
-              </div>
+              <BriefHeading>Usage rights</BriefHeading>
+              {rawCampaign?.rights ? (
+                <RightsList rights={rawCampaign.rights} />
+              ) : (
+                <p className="v2-muted" style={{ fontSize: 13.5, lineHeight: 1.55, margin: 0 }}>
+                  No usage rights or exclusivity set on this brief.
+                </p>
+              )}
             </section>
 
             {/* ─── Apply form ─────────────────────────────────────── */}
@@ -745,111 +694,51 @@ function MatchHero({
   );
 }
 
-function BriefBlock({
-  kind, title, items,
-}: {
-  kind: 'do' | 'dont';
-  title: string;
-  items: string[];
-}) {
-  const isDo = kind === 'do';
-  const accent = isDo ? 'var(--v2-moss)' : 'var(--v2-negative)';
-  const accentBg = isDo ? 'var(--v2-moss-soft)' : 'rgba(168, 65, 43, 0.10)';
+function BriefHeading({ children }: { children: string }) {
   return (
-    <div>
-      <div className="v2-row" style={{ gap: 8, marginBottom: 10 }}>
-        <span
-          aria-hidden="true"
-          style={{
-            width: 16,
-            height: 16,
-            borderRadius: 999,
-            background: accentBg,
-            color: accent,
-            display: 'grid',
-            placeItems: 'center',
-            fontSize: 10,
-            fontWeight: 700,
-          }}
-        >
-          {isDo ? '✓' : '×'}
-        </span>
-        <span style={{ fontSize: 13.5, fontWeight: 600, color: accent }}>
-          {title}
-        </span>
-      </div>
-      <ul style={{
-        listStyle: 'none',
-        padding: 0,
-        margin: 0,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 8,
-      }}>
-        {items.map((item) => (
-          <li key={item} style={{
-            fontSize: 13.5,
-            lineHeight: 1.5,
-            color: 'var(--v2-ink-2)',
-            paddingLeft: 22,
-            position: 'relative',
-          }}>
-            <span
-              aria-hidden="true"
-              style={{
-                position: 'absolute',
-                left: 4,
-                top: 6,
-                width: 8,
-                height: 8,
-                borderRadius: 999,
-                background: 'transparent',
-                border: `1.5px solid ${accent}`,
-              }}
-            />
-            {item}
-          </li>
-        ))}
-      </ul>
-    </div>
+    <h3 style={{
+      fontFamily: 'var(--v2-font-display)',
+      fontSize: 18,
+      fontWeight: 500,
+      margin: '20px 0 8px',
+    }}>{children}</h3>
   );
 }
 
 // ════════════════════════════════════════════════════════════════
-// Spark-flagged clause — single row inside the expandable section.
+// Usage rights — `Campaign.rights`, verbatim. Rendered only when the
+// campaign carries them; nothing here is inferred from the category.
 // ════════════════════════════════════════════════════════════════
-function SparkClause({
-  kind, detail,
-}: {
-  kind: 'exclusivity' | 'usage' | 'disclosure';
-  detail: string;
-}) {
-  const label =
-    kind === 'exclusivity' ? 'Exclusivity'
-      : kind === 'usage' ? 'Usage rights'
-        : 'Disclosure';
+
+// Records rather than inline ternaries, so a new window in the
+// `ContentRights` union is a compile error here instead of a blank cell.
+const EXCLUSIVITY_LABEL: Record<ContentRights['exclusivity'], string> = {
+  none: 'None',
+  '30d': '30 days',
+  '60d': '60 days',
+  '90d': '90 days',
+};
+
+const REPURPOSE_LABEL: Record<ContentRights['repurpose'], string> = {
+  none: 'Not allowed',
+  '90d': '90 days',
+  '180d': '180 days',
+  '365d': '12 months',
+  perpetual: 'Perpetual',
+};
+
+function RightsList({ rights }: { rights: ContentRights }) {
+  // `organicOnly` is not shown on its own row. It restates
+  // `!whitelistAds`, the seed sets the two independently (so they can
+  // contradict), and `whitelistAds` is the one the boost action enforces.
+  const allowed = (b: boolean) => (b ? 'Allowed' : 'Not allowed');
   return (
-    <li
-      className="v2-row"
-      style={{
-        gap: 12,
-        padding: 12,
-        background: 'var(--v2-bg)',
-        border: '1px solid var(--v2-line)',
-        borderRadius: 8,
-        alignItems: 'flex-start',
-      }}
-    >
-      <span
-        className="v2-pill v2-pill-accent"
-        style={{ fontSize: 10, marginTop: 2 }}
-      >
-        {label}
-      </span>
-      <span style={{ fontSize: 13, color: 'var(--v2-ink-2)', lineHeight: 1.5, flex: 1 }}>
-        {detail}
-      </span>
-    </li>
+    <div>
+      <KvRow k="Exclusivity (no competing brands)" v={EXCLUSIVITY_LABEL[rights.exclusivity]} />
+      <KvRow k="Paid ads on your handle" v={allowed(rights.whitelistAds)} />
+      <KvRow k="Brand re-use of your content" v={REPURPOSE_LABEL[rights.repurpose]} />
+      <KvRow k="Edits and remixes" v={allowed(rights.derivative)} />
+    </div>
   );
 }
 

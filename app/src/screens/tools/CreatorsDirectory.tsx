@@ -1,7 +1,8 @@
 // CreatorsDirectory · Phase 52e
 //
-// Public Top Creators directory at /creators. Lists every verified
-// creator from the seed with category / platform / region filters.
+// Public Top Creators directory at /creators. Lists creators who are
+// verified or past the Rising tier, with category / platform / region
+// filters.
 // Each card links to the public storefront (/c/:handle). SEO surface
 // for organic traffic from "best food creators in [region]" queries.
 
@@ -43,7 +44,7 @@ export function CreatorsDirectory() {
   // SEO meta
   useEffect(() => {
     const prevTitle = document.title;
-    document.title = 'Top creators on Alamut · Browse vetted creators by category';
+    document.title = 'Top creators on Alamut · Browse creators by category';
     return () => { document.title = prevTitle; };
   }, []);
 
@@ -82,12 +83,18 @@ export function CreatorsDirectory() {
 
         <main className="tools-main">
           <header className="tools-head">
-            <div className="cn-h-eyebrow">Directory · {allCreators.length} verified</div>
+            {/* Was "{N} verified" — but the list also admits unverified
+                creators past the Rising tier, and `verified` is the KYC
+                step a creator completes with one click. The lede below
+                said every creator "has been reviewed before they could
+                apply to a brief"; nothing gates applying, and nothing on
+                the platform vets a creator. */}
+            <div className="cn-h-eyebrow">Directory · {allCreators.length} creators</div>
             <h1 className="cn-h-display tools-h">
               Top creators <span className="accent">on Alamut</span>.
             </h1>
             <p className="cn-lede">
-              Every creator on the platform has been reviewed before they could apply to a brief. Filter by category, platform, or region — every profile links to a real storefront.
+              Filter by category, platform, or region. Every profile links to the creator's storefront.
             </p>
           </header>
 
@@ -234,7 +241,7 @@ export function CreatorsDirectory() {
         <footer className="cn-footer">
           <div className="cn-footer-bottom">
             <span><Logo size={14} tag="ALAMUT" /> · 2026</span>
-            <span className="cn-footer-bottom-meta">Public directory · vetted creators only</span>
+            <span className="cn-footer-bottom-meta">Public directory</span>
           </div>
         </footer>
       </div>
