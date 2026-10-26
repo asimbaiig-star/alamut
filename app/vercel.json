@@ -5,6 +5,14 @@
   "outputDirectory": "dist",
   "installCommand": "npm install",
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/for-brands", "destination": "/for-brands/index.html" },
+    { "source": "/for-brands/", "destination": "/for-brands/index.html" },
+    { "source": "/(.*)", "destination": "/app.html" }
+  ],
+  "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    }
   ]
 }

@@ -10,6 +10,7 @@ import { CreatorsPage } from '../CreatorsPage';
 import { BrandsPage } from '../BrandsPage';
 import { BriefBuilder, StorefrontBuilder } from '../tools';
 import { DEMO_HREF, PLATFORM_FORMATS, SIGNUP_HREF } from '../facts';
+import { CTA_ID } from '../events';
 
 // globals are off, so Testing Library can't register its own cleanup.
 afterEach(cleanup);
@@ -33,6 +34,8 @@ describe.each(pages)('the $name page', ({ El, h1, signup, demo }) => {
     const ids = [...container.querySelectorAll('[data-cta]')].map((a) => a.getAttribute('data-cta'));
     expect(ids.length).toBeGreaterThan(6);
     expect(new Set(ids).size).toBe(ids.length);
+    // …in the only shape landing_events accepts, or the click is refused.
+    for (const id of ids) expect(id).toMatch(CTA_ID);
   });
 
   it('has no dead links', () => {

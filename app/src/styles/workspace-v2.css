@@ -2779,7 +2779,7 @@ body:has([data-surface="v2"]) {
    `CampaignTile`. Letterhead band with brand colour + texture,
    title + match-score card, three-pillar data band, seat-map +
    applicant footer. v2-token mapping: --paper/--bg-1/--line/
-   --ink*/--accent/--moss/--gold/--r-md/--r-lg/--font-display.
+   --ink-1…3, --accent, --moss, --gold, --r-md, --r-lg, --font-display.
    ───────────────────────────────────────────────────────────── */
 [data-surface="v2"] .v2-campaign-tile {
   background: var(--v2-paper);
