@@ -16,8 +16,8 @@ import { CTA_ID } from '../events';
 afterEach(cleanup);
 
 const pages = [
-  { name: 'creators', El: CreatorsPage, h1: 'Get booked by brands — at your rates.', signup: SIGNUP_HREF.creator, demo: DEMO_HREF.creator },
-  { name: 'brands', El: BrandsPage, h1: 'Post a brief. Get pitches from creators who want it.', signup: SIGNUP_HREF.brand, demo: DEMO_HREF.brand },
+  { name: 'creators', El: CreatorsPage, h1: 'Get booked at your rates.', signup: SIGNUP_HREF.creator, demo: DEMO_HREF.creator },
+  { name: 'brands', El: BrandsPage, h1: 'Post a brief. Get pitches.', signup: SIGNUP_HREF.brand, demo: DEMO_HREF.brand },
 ];
 
 describe.each(pages)('the $name page', ({ El, h1, signup, demo }) => {
@@ -42,7 +42,8 @@ describe.each(pages)('the $name page', ({ El, h1, signup, demo }) => {
     const { container } = render(<El />);
     for (const a of container.querySelectorAll('a')) {
       const href = a.getAttribute('href') ?? '';
-      expect(href, a.textContent ?? '').toMatch(/^\/[a-z0-9/?=&.-]*$/i);
+      // Our own pages, or the photographer credit on Unsplash.
+      expect(href, a.textContent ?? '').toMatch(/^(\/[a-z0-9/?=&.-]*|https:\/\/unsplash\.com\/photos\/[\w-]+)$/i);
     }
   });
 
@@ -50,7 +51,7 @@ describe.each(pages)('the $name page', ({ El, h1, signup, demo }) => {
     // Escrow is the answer to "will I get paid", the third question a
     // visitor asks — not the headline.
     const { container } = render(<El />);
-    const hero = container.querySelector('.lx-hero-copy')!;
+    const hero = container.querySelector('.lx-hero')!;
     expect(hero.textContent).not.toMatch(/escrow/i);
     const sections = [...container.querySelectorAll('main > section')];
     const firstEscrow = sections.findIndex((s) => /escrow/i.test(s.querySelector('h2')?.parentElement?.textContent ?? ''));
