@@ -9,8 +9,8 @@ a uniformly-green endpoint.
 > **Status, 2026-10-23:**
 > - §1, §2 — **fixed and applied** (037), verified in production, on real
 >   Postgres, and signed in as both demo accounts.
-> - §3, §4 — **fixed, not yet applied**: 038 (run any time) and 039 (run only
->   after the app that reads `campaigns_public` is deployed). See "038 and 039".
+> - §3, §4 — **fixed and applied** (038, 039), verified anonymously and signed
+>   in as both demo accounts. See "038 and 039".
 > - §5 (edge functions) — still open.
 > - The signed-in check found a regression 037 caused and two older problems;
 >   see "What the signed-in check found".
@@ -441,4 +441,30 @@ Also fixed on the way: brand and campaign hydration replaced rows whole, so
 fields Postgres has no column for were erased on every load — the brand's
 offer templates, and eleven campaign fields (`tracking`, `retainer`,
 `archivedAt`, …) for every visitor.
+
+### Verified after applying (2026-10-25)
+
+Anonymous: raw `campaigns` 4 rows → **0**, money fields unreadable;
+`campaigns_public` still 4; `creators_public` 5 and `brands_public` 3 (both
+were 0); every private column absent (`42703`, with a present column as the
+control); no drafts public; `private.is_campaign_participant` not reachable
+over RPC.
+
+Signed in, through the demo buttons, read-only:
+
+| | Raw campaigns read in full | Policy errors | Registry armed with |
+|---|---|---|---|
+| Sarah (creator) | `cmp_1` — the one she has an application/offer on | none, 10 tables | all 4 real campaigns |
+| Hannah (brand) | `cmp_1`, `cmp_3` — Aesop's own; none of Le Creuset's | none, 12 tables | all 4 real campaigns |
+
+Every other count matched the 037 audit for both, so 039 broke nothing there.
+The registry row was checked by running the deployed `campaignIdsForRegistry`
+on the deployed app's own two reads: Sarah's raw read is `cmp_1` alone, and
+without the union her application to `cmp_2` would have been dropped before
+reaching Postgres.
+
+**Visible change to know about:** three test accounts are now public —
+Beta One Creator, Prod Launch Test, Testbrand Collective. Hidden from the
+public directory (verified creators only), but a signed-in brand's Discover
+shows unverified creators by default.
 
