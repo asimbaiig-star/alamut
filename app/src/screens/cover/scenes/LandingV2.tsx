@@ -803,13 +803,18 @@ interface WhyCard {
 
 const WHY_BRAND: WhyCard[] = [
   {
-    title: 'Verified before they get paid.',
-    // Was: "Every creator is reviewed before they can apply to a brief."
-    // Nothing gates applying — `v2ApplyToCampaign` has no verification
-    // check, and a brand-new account can apply the minute it signs up.
-    // What IS real: identity and channel ownership are verified before
-    // money can leave escrow.
-    body: 'Identity and channel ownership are confirmed before a creator can be paid, and every profile shows what has actually been verified rather than a badge you have to take on trust.',
+    title: 'Paid through escrow, not on trust.',
+    // Twice wrong before. First: "Every creator is reviewed before they can
+    // apply" — nothing gates applying. Then the fix for that claimed
+    // "identity and channel ownership are confirmed before a creator can be
+    // paid", which was also false: the KYC identity step marks a creator
+    // verified the moment they click it (no document check until a provider
+    // like Persona is integrated), nothing in the app can confirm channel
+    // ownership (oauth-callback is undeployed and no screen calls it), and
+    // releasing escrow checks neither. What IS enforced is the money:
+    // escrow is held when the offer is accepted (v2AcceptOffer) and
+    // released when the brand confirms the post live.
+    body: 'Your money is held in escrow the moment a creator accepts, and released when you confirm their post is live. Profiles say plainly what a creator entered themselves — automated identity and channel-ownership checks are not live yet.',
     Illust: VettedShield,
   },
   {
@@ -1109,7 +1114,7 @@ const FAQ_BRAND: FaqItem[] = [
   },
   {
     q: 'Are the creators actually vetted?',
-    a: 'Partly, and the profile tells you which parts. Channel ownership and identity are confirmed before a creator can be paid, and every storefront shows what has been verified rather than a single badge. Applying is open — screening happens at the money, not at the door. Audience-quality scoring is on the roadmap; we do not claim it today.',
+    a: 'Not yet, and we would rather say so. Applying is open, follower numbers are what creators enter, and identity and channel-ownership checks are not automated yet — they are on the roadmap with audience-quality scoring. What is enforced today is the money: it sits in escrow from the moment a creator accepts until you confirm the post is live, and a creator cannot withdraw it without completing the identity step and adding a bank account.',
   },
   {
     q: 'How does payment work?',

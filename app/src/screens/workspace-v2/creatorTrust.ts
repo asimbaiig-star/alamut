@@ -11,12 +11,19 @@
 //
 // THE APPROACH
 //
-// Score what is actually *checkable right now* — is their identity verified,
-// is a channel verified, is the profile complete enough to brief against —
-// and label it as exactly that. This is emphatically NOT a performance or
-// quality score, and the UI must never imply it is. It answers a narrower,
-// honest question: "has this person set themselves up to be hired, and have
-// we confirmed who they are?"
+// Score what is actually *checkable right now* — has the creator completed
+// their identity details, is the profile complete enough to brief against,
+// have they finished a collab — and label it as exactly that. This is
+// emphatically NOT a performance or quality score, and the UI must never
+// imply it is. It answers a narrower, honest question: "has this person set
+// themselves up to be hired?"
+//
+// `verifiedByUs` is for what Alamut itself records, and today that is only
+// completed collabs. The KYC identity step marks a creator verified the moment
+// they click it — no document check until a provider (Persona, Onfido) is
+// integrated — and nothing can confirm channel ownership until platform OAuth
+// (supabase/functions/oauth-callback) is live. Both used to be counted as
+// "verified by Alamut" on Discover. regressionGuards CLASS 10 holds this.
 //
 // It's deliberately dual-purpose: the same list a brand reads as evidence is
 // the checklist a creator reads as "what to do next", which is why each
@@ -59,23 +66,21 @@ export function computeTrustProfile(
   ).length;
 
   const channels = creator.platforms ?? [];
-  const hasVerifiedChannel = channels.some((p) => p.verified);
 
   const signals: TrustSignal[] = [
     {
       key: 'identity',
-      label: 'Identity verified',
-      todo: 'Verify your identity in KYC & Tax',
+      label: 'Identity details completed',
+      todo: 'Complete your identity details in KYC & Tax',
       met: !!creator.verified || !!creator.kycVerifiedAt,
-      verifiedByUs: true,
+      // Self-completed: the KYC step verifies nothing yet (see header).
+      verifiedByUs: false,
     },
-    {
-      key: 'channel-verified',
-      label: 'Channel ownership confirmed',
-      todo: 'Connect a platform to confirm you own the account',
-      met: hasVerifiedChannel,
-      verifiedByUs: true,
-    },
+    // No 'channel-verified' signal. Nothing in the app can confirm channel
+    // ownership, so a real creator could never meet it — its todo pointed
+    // them at a "connect" action no screen offers — while seeded creators met
+    // it from fixture data, as a check nobody ran. Restore it when
+    // oauth-callback is deployed and a screen calls connectPlatform.
     {
       key: 'channel',
       label: `${channels.length} channel${channels.length === 1 ? '' : 's'} listed`,

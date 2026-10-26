@@ -647,8 +647,111 @@ describe('marketing copy does not outrun the product', () => {
     // matching.ts scores niche, engagement, geo, rate, history, category.
     expect(marketing()).not.toMatch(/overlap with your existing customers/i);
   });
-});
 
+  // ── Verification claims (found 2026-10-25) ────────────────────────────
+  // The fix for "reviewed before applying" replaced it with "identity and
+  // channel ownership are confirmed before a creator can be paid" — written
+  // in the overclaim sweep itself, and false three ways: the KYC identity
+  // step marks a creator verified on click, nothing can confirm a channel
+  // (oauth-callback undeployed, no screen calls it), and releasing escrow
+  // checks neither. Beside it, "every brand is verified before they can post
+  // a brief" — nothing gates posting, and nothing verifies a brand.
+  //
+  // These are refused only WHILE the capability is missing. Each check names
+  // the code that would make the claim true; ship that, and the claim is
+  // allowed again without touching this file.
+
+  const allMarketing = () =>
+    ['screens/cover/scenes/LandingV2.tsx', 'screens/cover/Cover.tsx', 'screens/cover/BrandLanding.tsx']
+      .map((f) => code(f)).join('\n');
+  const appSource = () => {
+    const out: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, e.name);
+        if (e.isDirectory()) { if (e.name !== '__tests__' && e.name !== '__bench__') walk(full); }
+        else if (/\.(ts|tsx)$/.test(e.name)) out.push(code(full.slice(SRC.length + 1)));
+      }
+    };
+    walk(SRC);
+    return out.join('\n');
+  };
+  const screensSource = () => {
+    const out: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, e.name);
+        if (e.isDirectory()) { if (e.name !== '__tests__') walk(full); }
+        else if (/\.tsx?$/.test(e.name)) out.push(code(full.slice(SRC.length + 1)));
+      }
+    };
+    walk(join(SRC, 'screens'));
+    return out.join('\n');
+  };
+
+  /** A screen can actually confirm a creator owns a channel. A CALL, not the
+   *  definition: v2VerifyChannel is defined under src/screens, and matching
+   *  `v2VerifyChannel(` alone made this true and every check below vacuous —
+   *  caught by the probe test at the end of this block. */
+  const channelOwnershipCheckable = () =>
+    /from '@\/lib\/oauth\/connectPlatform'/.test(screensSource())
+    || /(?<!function )\bv2VerifyChannel\(/.test(screensSource());
+  /** An identity-document provider is integrated, not just mentioned. */
+  const idDocumentCheckExists = () => /withpersona\.com|onfido\.com|sumsub\.com|veriff\.com/i.test(appSource());
+  /** Posting a campaign is refused for an unverified brand. */
+  const brandVerificationGatesPosting = () => {
+    const wizard = code('screens/workspace-v2/screens/NewCampaignWizard.tsx');
+    const client = code('lib/api/client.ts');
+    const create = /async function createCampaign\([\s\S]*?\n}/.exec(client)?.[0] ?? '';
+    return /brand\??\.verified/.test(wizard + create);
+  };
+
+  it('does not claim channel ownership is confirmed while nothing can confirm it', () => {
+    if (channelOwnershipCheckable()) return;
+    expect(allMarketing()).not.toMatch(
+      /channel[- ]ownership[^.'"]{0,60}\b(is|are)\s+(confirmed|verified)|(confirm(ed|s)?|verif(y|ied|ies))[^.'"]{0,40}channel[- ]ownership/i,
+    );
+  });
+
+  it('does not claim identity is confirmed while the identity step checks nothing', () => {
+    if (idDocumentCheckExists()) return;
+    expect(allMarketing()).not.toMatch(
+      /identit(y|ies)[^.'"]{0,40}\b(is|are)\s+(confirmed|verified)|(confirmed|verified)[^.'"]{0,20}\bidentit|\bidentity verified/i,
+    );
+  });
+
+  it('does not claim brands are verified before they can post', () => {
+    if (brandVerificationGatesPosting()) return;
+    expect(allMarketing()).not.toMatch(/every brand[^.'"]{0,40}\bverified|\bbrands?\s+(are|is)\s+verified/i);
+  });
+
+  it('the trust panel credits Alamut only with what Alamut records', () => {
+    // Discover shows brands "N verified by Alamut". A self-service step must
+    // never be counted there, and a signal nothing can satisfy must not exist.
+    const trust = code('screens/workspace-v2/creatorTrust.ts');
+    const signal = (key: string) => {
+      const at = trust.indexOf(`key: '${key}'`);
+      return at < 0 ? null : trust.slice(at, trust.indexOf('verifiedByUs', at) + 30);
+    };
+    if (!idDocumentCheckExists()) {
+      expect(signal('identity'), 'identity signal missing').not.toBeNull();
+      expect(signal('identity')!, 'the self-clicked identity step is counted as verified by Alamut')
+        .toMatch(/verifiedByUs:\s*false/);
+    }
+    if (!channelOwnershipCheckable()) {
+      expect(signal('channel-verified'), 'a channel-ownership signal no creator can meet').toBeNull();
+    }
+  });
+
+  it('the capability probes see the code as it is today', () => {
+    // If a probe is wrong, every check above is decorative. Pin today's facts.
+    expect(channelOwnershipCheckable(), 'a screen now confirms channel ownership — great; re-check the copy').toBe(false);
+    expect(idDocumentCheckExists(), 'an ID provider is integrated — re-check the copy').toBe(false);
+    expect(brandVerificationGatesPosting(), 'posting is gated on brand verification — re-check the copy').toBe(false);
+    // And the KYC identity step really does self-verify — the premise of all three.
+    expect(code('screens/workspace-v2/screens/KycTax.tsx')).toMatch(/verified:\s*true/);
+  });
+});
 
 // ─────────────────────────────────────────────────────────────────────
 // CLASS 11 — "X happened" must be read from the record of X happening

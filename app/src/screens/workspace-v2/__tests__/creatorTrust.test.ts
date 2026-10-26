@@ -42,19 +42,28 @@ describe('computeTrustProfile', () => {
     expect(met).toContain('brief-ready');
     expect(met).toContain('rates');
     expect(met).toContain('channel');
-    // Listing a channel is a claim; ownership hasn't been confirmed.
-    expect(met).not.toContain('channel-verified');
+    // Listing a channel is a claim; nothing in the app can confirm ownership,
+    // so there is no ownership signal to meet at all.
+    expect(p.signals.map((s) => s.key)).not.toContain('channel-verified');
   });
 
   it('separates what we verified from what the creator asserts', () => {
-    const p = computeTrustProfile(bare({
-      verified: true,
+    // This test used to expect 2 — identity and channel ownership counted as
+    // "verified by Alamut". Neither is: the identity step verifies itself on
+    // click, and no screen can confirm a channel. Every self-service step,
+    // done in full, must earn exactly zero Alamut-verified signals.
+    const everythingSelfService = computeTrustProfile(bare({
+      verified: true, kycVerifiedAt: '2026-01-01',
       platforms: [{ name: 'Instagram', handle: '@x', followers: 1000, engagement: 4, verified: true }],
       bio: 'hi', categories: ['Food'],
+      rateCard: { post: '$300', reel: '', story: '', longform: '' },
+      work: ['a', 'b', 'c'],
     }), buildDb())!;
-    // identity + channel-verified are ours; brief-ready/channel are theirs.
-    expect(p.verifiedCount).toBe(2);
-    expect(p.met).toBeGreaterThan(p.verifiedCount);
+    expect(everythingSelfService.met).toBeGreaterThan(3);
+    expect(everythingSelfService.verifiedCount).toBe(0);
+    // What Alamut does record: a completed collab.
+    const withTrackRecord = computeTrustProfile(bare(), buildDb({ collaborations: [collab('paid')] }))!;
+    expect(withTrackRecord.verifiedCount).toBe(1);
   });
 
   it('requires three portfolio samples, not one', () => {
@@ -101,8 +110,20 @@ describe('trustSummary', () => {
   });
 
   it('credits Alamut-verified signals distinctly', () => {
-    const p = computeTrustProfile(bare({ verified: true, bio: 'hi', categories: ['Food'] }), buildDb());
+    // Built by hand: no real profile can reach this branch today (the only
+    // Alamut-recorded signal is a completed collab, which also means a track
+    // record, which silences the summary). It comes alive with a real
+    // document-check provider; the wording is what is pinned here.
+    const p = { signals: [], met: 3, total: 6, verifiedCount: 1, hasTrackRecord: false };
     expect(trustSummary(p)).toMatch(/verified by Alamut/);
+  });
+
+  it('never says "verified by Alamut" for a creator who only did self-service steps', () => {
+    const p = computeTrustProfile(bare({
+      verified: true, kycVerifiedAt: '2026-01-01', bio: 'hi', categories: ['Food'],
+      platforms: [{ name: 'Instagram', handle: '@x', followers: 1000, engagement: 4, verified: true }],
+    }), buildDb());
+    expect(trustSummary(p)).not.toMatch(/verified by Alamut/);
   });
 
   it('omits the verified clause when nothing is verified by us', () => {

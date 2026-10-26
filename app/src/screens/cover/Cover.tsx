@@ -303,7 +303,11 @@ function CreatorPillars({ reduced }: { reduced: boolean | null }) {
     {
       Illust: SafetyShield,
       title: 'Safety first.',
-      body: 'No shady DMs, no fake-brand affiliate scams, no "send me a free product first" requests. Every brand on Alamut is verified before they can post a brief, and your account stays under your control.',
+      // Was: "Every brand on Alamut is verified before they can post a
+      // brief." Nothing gates posting on brand.verified, and no flow in the
+      // app verifies a brand (Aesop and Le Creuset are verified in the seed
+      // only). The protection that IS real is escrow.
+      body: 'Every deal runs through escrow: the brand\'s money is held the moment you accept an offer, and released when they confirm your post is live. No chasing invoices, no "send me a free product first" — and your account stays under your control.',
     },
     {
       Illust: EverySize,
