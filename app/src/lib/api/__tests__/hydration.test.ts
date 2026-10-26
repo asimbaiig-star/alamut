@@ -149,4 +149,37 @@ describe('hydrateFromSupabase', () => {
     expect(c.escrowHeld).toBe(5400);     // …private ones kept from the seed, not zeroed
     expect(c.history.length).toBeGreaterThan(0);
   });
+
+  it('a different identity\'s snapshot is purged before the new one is laid over it', async () => {
+    useStore.setState((st) => ({
+      db: { ...st.db, offers: [...st.db.offers, { ...st.db.offers[0], id: 'off_hannahs', campaignId: 'cmp_g0' }] },
+      remote: { identity: 'hannah@aesop.test', ids: { offers: ['off_hannahs'] }, userIds: ['u_hannah'] },
+    }));
+    h.email = 'sarah@alamut.test';
+    h.rows = {};
+    const run = hydrateFromSupabase();
+    await vi.waitFor(() => expect(gateFor('sarah@alamut.test')).toBeDefined());
+    gateFor('sarah@alamut.test')!.resolve([aesopRow('Aesop')]);
+    await run;
+    const st = useStore.getState();
+    expect(st.db.offers.some((o) => o.id === 'off_hannahs'), 'Hannah\'s row survived Sarah\'s hydration').toBe(false);
+    expect(st.remote.identity).toBe('sarah@alamut.test');
+    expect(st.remote.ids.brands).toEqual(['b_aesop']); // the ledger now records Sarah's fetch
+  });
+
+  it('the same identity re-hydrating keeps its own rows and extends the ledger', async () => {
+    useStore.setState((st) => ({
+      db: { ...st.db, offers: [...st.db.offers, { ...st.db.offers[0], id: 'off_sarahs', campaignId: 'cmp_g0' }] },
+      remote: { identity: 'sarah@alamut.test', ids: { offers: ['off_sarahs'] }, userIds: ['u_sarah'] },
+    }));
+    h.email = 'sarah@alamut.test';
+    const run = hydrateFromSupabase();
+    await vi.waitFor(() => expect(gateFor('sarah@alamut.test')).toBeDefined());
+    gateFor('sarah@alamut.test')!.resolve([aesopRow('Aesop')]);
+    await run;
+    const st = useStore.getState();
+    expect(st.db.offers.some((o) => o.id === 'off_sarahs')).toBe(true);
+    expect(st.remote.ids.offers).toContain('off_sarahs');
+  });
 });
+

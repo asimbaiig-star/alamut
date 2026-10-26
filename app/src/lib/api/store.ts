@@ -6,6 +6,8 @@ import { SEED } from './seed';
 import { runPendingMigrations, normalizeLedgerToGross, CURRENT_MIGRATION_VERSION } from './migrations';
 import { dedupeCollabRows } from './collabSync';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
+import { knownRemoteCampaigns } from '@/lib/data/remoteRegistry';
+import { EMPTY_LEDGER, purgeIdentityData, type RemoteLedger, type MirroredTable } from './identityPurge';
 
 interface StoreState {
   db: Database;
@@ -13,6 +15,10 @@ interface StoreState {
   setDB: (db: Database | ((prev: Database) => Database)) => void;
   setSession: (s: Session | null) => void;
   resetAll: () => void;
+  /** Whose Postgres data `db` holds — see identityPurge.ts. */
+  remote: RemoteLedger;
+  /** Drop the previous identity's Postgres rows; keep browser-only state. */
+  purgePreviousIdentity: () => void;
 }
 
 const STORAGE_KEY = 'alamut.v1';
@@ -90,7 +96,13 @@ export const useStore = create<StoreState>()(
           db: typeof next === 'function' ? (next as (p: Database) => Database)(state.db) : next,
         })),
       setSession: (s) => set({ session: s }),
-      resetAll: () => set({ db: SEED, session: null }),
+      resetAll: () => set({ db: SEED, session: null, remote: EMPTY_LEDGER }),
+      remote: EMPTY_LEDGER,
+      purgePreviousIdentity: () =>
+        set((state) => ({
+          db: purgeIdentityData(state.db, state.remote, SEED, knownRemoteCampaigns()),
+          remote: { identity: null, ids: {}, userIds: [] },
+        })),
     }),
     {
       name: STORAGE_KEY,
@@ -329,13 +341,13 @@ export async function hydrateFromSupabase(): Promise<void> {
   if (inFlight && inFlight.email === email) return inFlight.promise;
   const generation = ++hydrationGeneration;
   hydratedFor = email;
-  const promise = runHydration(() => generation === hydrationGeneration)
+  const promise = runHydration(() => generation === hydrationGeneration, email)
     .finally(() => { if (inFlight?.promise === promise) inFlight = null; });
   inFlight = { email, promise };
   return promise;
 }
 
-async function runHydration(isCurrent: () => boolean): Promise<void> {
+async function runHydration(isCurrent: () => boolean, identity: string | null): Promise<void> {
   try {
     const [brandsMod, campaignsMod, applicationsMod, offersMod, creatorsMod, collabsMod, submissionsMod, deliverablesMod, contractsMod, transactionsMod, reviewsMod, disputesMod, outreachMod, threadsMod, messagesMod, teamInvitesMod, sparkDraftsMod, notificationsMod] = await Promise.all([
       import('@/lib/data/brandsRepo'),
@@ -454,7 +466,43 @@ async function runHydration(isCurrent: () => boolean): Promise<void> {
       notifications.length === 0
     ) return;
     if (!isCurrent()) return;
-    useStore.setState((s) => {
+    // Every id this run brought back, by table — what the ledger records, so
+    // a later identity change knows exactly what to purge.
+    const fetchedIds: Partial<Record<MirroredTable, string[]>> = {
+      brands: brands.map((r) => r.id),
+      creators: creators.map((r) => r.id),
+      campaigns: [...campaigns, ...publicCampaigns].map((r) => r.id),
+      applications: applications.map((r) => r.id),
+      offers: offers.map((r) => r.id),
+      submissions: submissions.map((r) => r.id),
+      collaborations: collaborations.map((r) => r.id),
+      deliverables: deliverables.map((r) => r.id),
+      contracts: contracts.map((r) => r.id),
+      transactions: transactions.map((r) => r.id),
+      reviews: reviews.map((r) => r.id),
+      disputes: disputes.map((r) => r.id),
+      outreach: outreach.map((r) => r.id),
+      threads: threads.map((r) => r.id),
+      messages: messages.map((r) => r.id),
+      notifications: notifications.map((r) => r.id),
+      teamInvites: teamInvites.map((r) => r.id),
+      sparkDrafts: sparkDrafts.map((r) => r.id),
+    };
+    useStore.setState((prev) => {
+      // The store holds another identity's snapshot (or one of unknown
+      // origin, persisted before the ledger existed): purge it in the SAME
+      // update as the overlay, so no frame renders the half-purged state.
+      const switched = prev.remote.identity !== identity;
+      const s = switched
+        ? { ...prev, db: purgeIdentityData(prev.db, prev.remote, SEED, knownRemoteCampaigns()) }
+        : prev;
+      const union = (a: string[] = [], b: string[] = []) => [...new Set([...a, ...b])];
+      const ids = switched
+        ? fetchedIds
+        : Object.fromEntries(Object.entries(fetchedIds).map(([t, v]) =>
+            [t, union(prev.remote.ids[t as MirroredTable], v)])) as Partial<Record<MirroredTable, string[]>>;
+      const uid = prev.session?.userId;
+      const userIds = union(switched ? [] : prev.remote.userIds, uid ? [uid] : []);
       // Overlay helper — same pattern for every table.
       const overlay = <T extends { id: string }>(local: T[], remote: T[]): T[] => {
         if (remote.length === 0) return local;
@@ -591,6 +639,7 @@ async function runHydration(isCurrent: () => boolean): Promise<void> {
           sparkDrafts: overlay(s.db.sparkDrafts ?? [], sparkDrafts),
           notifications: overlay(s.db.notifications, notifications),
         },
+        remote: { identity, ids, userIds },
       };
     });
     // Phase 52 — owner-only PII overlay. The list fetches above pull

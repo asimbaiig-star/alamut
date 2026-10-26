@@ -391,13 +391,22 @@ in test mode, so every test ran with Supabase configured. All anonymous (no
 test signs in; the only anon write policy is `with check (false)`), so
 nothing was written. `vitest.config.ts` now pins the variables empty.
 
-**Still open, needs a decision:** signing out leaves the previous person's
-Postgres rows in the browser's local store. After Hannah signed out, her
+**Fixed after a decision (purge only what came from Postgres):** signing out
+left the previous person's Postgres rows in the browser's local store. After Hannah signed out, her
 $1,050 offer to Amir, three collaborations and her thread with him were still
 in localStorage when Sarah signed in. Not rendered — the UI filters by viewer —
 but readable in devtools on a shared device. Purging on sign-out is the fix;
 the trade-off is that a single-device demo switching personas loses any
 browser-only state (generated `cmp_g*` campaigns are never mirrored).
+`identityPurge.ts` now drops, on sign-out and whenever a hydration finds
+another identity's snapshot: rows a hydration returned, rows on a campaign
+Postgres holds (created this session, not yet re-fetched), and that
+person's wallet rows and notifications. Seed rows go back to their seed
+version; generated-campaign demo work stays. Stores persisted before this
+shipped have no record of where their rows came from, so the write
+registry's campaign set identifies them. One side effect to know: switching
+demo accounts on one device no longer masks a write that failed to reach
+Postgres — the other persona sees only what was actually saved.
 
 **Noted, harmless:** a 406 on boot — an optimistic-lock PATCH to
 `col_1m1pkvn` at `version=1` while Postgres holds `version=2`. The lock

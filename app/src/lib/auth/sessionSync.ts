@@ -65,6 +65,10 @@ export async function mountSessionSync(): Promise<void> {
   sb.auth.onAuthStateChange((event, session) => {
     if (event === 'SIGNED_OUT' || !session) {
       useStore.getState().setSession(null);
+      // The persisted store still holds the person who just left — their
+      // offers, threads, ledger rows. Drop what came from Postgres; keep
+      // browser-only demo state. See identityPurge.ts.
+      useStore.getState().purgePreviousIdentity();
       return;
     }
     // Every table is gated on who is asking (migration 037), so the store

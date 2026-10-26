@@ -67,6 +67,13 @@ export function mayMirrorForCampaign(campaignId: string | null | undefined): boo
   return remoteCampaignIds.has(campaignId);
 }
 
+/** Every campaign id Postgres has been seen to hold this page session. The
+ *  sign-out purge uses it to tell a real campaign's rows from browser-only
+ *  demo state (generated `cmp_g*` campaigns are never in Postgres). */
+export function knownRemoteCampaigns(): string[] {
+  return [...remoteCampaignIds];
+}
+
 /** Test seam — resets the module between cases. */
 export function __resetRemoteRegistry(): void {
   remoteCampaignIds.clear();

@@ -57,6 +57,7 @@ vi.mock('@/lib/api/store', async (importOriginal) => {
 
 import { mountSessionSync, needsRehydrate } from '@/lib/auth/sessionSync';
 import { hydrateFromSupabase, useStore } from '@/lib/api/store';
+import { recordRemoteCampaigns } from '@/lib/data/remoteRegistry';
 
 const signIn = (email: string) => h.authCb!('SIGNED_IN', { user: { email } });
 
@@ -103,4 +104,37 @@ describe('signing in re-fetches as the person who signed in', () => {
     expect(needsRehydrate('sarah@alamut.test', null)).toBe(true);
     expect(needsRehydrate('sarah@alamut.test', undefined)).toBe(true);
   });
+
+  it('signing out removes the previous person\'s Postgres rows from the browser', () => {
+    // Found live: after Hannah signed out, her offer to Amir was still in
+    // localStorage when Sarah signed in on the same machine.
+    const st = useStore.getState();
+    st.setDB((db) => ({
+      ...db,
+      offers: [...db.offers, { ...db.offers[0], id: 'off_left_behind', campaignId: 'cmp_g0' }],
+    }));
+    useStore.setState({ remote: { identity: 'hannah@aesop.test', ids: { offers: ['off_left_behind'] }, userIds: ['u_hannah'] } });
+    h.authCb!('SIGNED_OUT', null);
+    expect(useStore.getState().db.offers.some((o) => o.id === 'off_left_behind')).toBe(false);
+    expect(useStore.getState().remote.identity).toBeNull();
+  });
+
+  it('…including from a store persisted before the ledger existed', () => {
+    // Every browser that visited before this shipped has a store with no
+    // record of where its rows came from. The write registry's campaign set
+    // is what identifies them: a row on a real campaign is someone's.
+    recordRemoteCampaigns(['cmp_1']);
+    useStore.getState().setDB((db) => ({
+      ...db,
+      offers: [...db.offers,
+        { ...db.offers[0], id: 'off_cached_long_ago', campaignId: 'cmp_1' },
+        { ...db.offers[0], id: 'off_demo_generated', campaignId: 'cmp_g0' }],
+    }));
+    useStore.setState({ remote: { identity: undefined, ids: {}, userIds: [] } });
+    h.authCb!('SIGNED_OUT', null);
+    const offers = useStore.getState().db.offers.map((o) => o.id);
+    expect(offers).not.toContain('off_cached_long_ago');
+    expect(offers).toContain('off_demo_generated');
+  });
 });
+
