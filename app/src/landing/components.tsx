@@ -14,7 +14,7 @@ export function Mark() {
   // The favicon's mark (index.html), so the tab and the page agree.
   return (
     <svg viewBox="0 0 32 32" aria-hidden="true">
-      <rect width="32" height="32" rx="7" fill="oklch(0.54 0.15 37)" />
+      <rect width="32" height="32" rx="7" fill="#d42a22" />
       <path d="M16 7.5 L23.5 24.5 H19.6 L16 15.6 L12.4 24.5 H8.5 Z" fill="#fff" />
     </svg>
   );
@@ -96,13 +96,13 @@ export function AudienceSwitch({ audience }: { audience: Audience }) {
 const WIDTHS = [480, 720, 960, 1280, 1600];
 
 /** A credited photograph, cropped to `ratio`. The hero one loads first. */
-export function Photo({ photo, ratio, sizes, priority, reveal = true }: {
-  photo: PhotoData; ratio: number; sizes: string; priority?: boolean; reveal?: boolean;
+export function Photo({ photo, ratio, sizes, priority, className }: {
+  photo: PhotoData; ratio: number; sizes: string; priority?: boolean; className?: string;
 }) {
   // React 18 passes a lowercase attribute through but has no typed prop for it.
   const fetchPriority = priority ? ({ fetchpriority: 'high' } as Record<string, string>) : {};
   return (
-    <figure className="lx-photo" data-reveal={reveal ? '' : undefined}>
+    <figure className={className ? `lx-photo ${className}` : 'lx-photo'}>
       <div className="lx-photo-frame" style={{ ['--ar' as string]: String(ratio) }}>
         <img
           src={photoUrl(photo.id, 1280, ratio)}
@@ -138,7 +138,7 @@ export function Faq({ items }: { items: { q: string; a: ReactNode }[] }) {
   return (
     <div className="lx-qa">
       {items.map((it) => (
-        <div key={it.q} data-reveal="">
+        <div key={it.q}>
           <h3 className="lx-h3">{it.q}</h3>
           <p>{it.a}</p>
         </div>

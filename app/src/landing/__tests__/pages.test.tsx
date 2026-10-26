@@ -8,23 +8,25 @@ import { renderToString } from 'react-dom/server';
 import { cleanup, render, screen, fireEvent, within } from '@testing-library/react';
 import { CreatorsPage } from '../CreatorsPage';
 import { BrandsPage } from '../BrandsPage';
-import { BriefBuilder, StorefrontBuilder } from '../tools';
+import { BriefBoard, BriefBuilder, CreatorBoard, StorefrontBuilder } from '../tools';
 import { DEMO_HREF, PLATFORM_FORMATS, SIGNUP_HREF } from '../facts';
 import { CTA_ID } from '../events';
+import { BRIEFS, CREATORS } from '../listings';
 
 // globals are off, so Testing Library can't register its own cleanup.
 afterEach(cleanup);
 
 const pages = [
-  { name: 'creators', El: CreatorsPage, h1: 'Get booked at your rates.', signup: SIGNUP_HREF.creator, demo: DEMO_HREF.creator },
-  { name: 'brands', El: BrandsPage, h1: 'Post a brief. Get pitches.', signup: SIGNUP_HREF.brand, demo: DEMO_HREF.brand },
+  { name: 'creators', El: CreatorsPage, h1: 'Find campaigns. Get found by brands.', signup: SIGNUP_HREF.creator, demo: DEMO_HREF.creator },
+  { name: 'brands', El: BrandsPage, h1: 'Find creators. Get pitched.', signup: SIGNUP_HREF.brand, demo: DEMO_HREF.brand },
 ];
 
 describe.each(pages)('the $name page', ({ El, h1, signup, demo }) => {
   it('prerenders its headline and hero CTAs without a browser', () => {
     // What a visitor sees before any JavaScript runs.
     const html = renderToString(<El />);
-    expect(html).toContain(`<h1 class="lx-h1" id="hero-title">${h1}</h1>`);
+    const heading = /<h1 class="lx-h1" id="hero-title">([\s\S]*?)<\/h1>/.exec(html)?.[1] ?? '';
+    expect(heading.replace(/<[^>]+>/g, '')).toBe(h1);
     expect(html).toContain(`href="${signup}" data-cta="hero-`);
     expect(html).toContain(`href="${demo}"`);
   });
@@ -96,5 +98,31 @@ describe('BriefBuilder', () => {
     expect([...format().options].map((o) => o.value)).toEqual(yt.formats.map((f) => f.value));
     expect(format().value).toBe(yt.formats[0]!.value);
     expect(screen.getByText(`2 × YouTube ${yt.formats[0]!.label}`)).toBeTruthy();
+  });
+});
+
+describe('the first-screen boards', () => {
+  it('filter briefs by category in place', () => {
+    render(<BriefBoard />);
+    fireEvent.click(screen.getByRole('button', { name: 'Food' }));
+    const titles = screen.getAllByRole('listitem').map((li) => li.querySelector('.lx-item-title')!.textContent);
+    expect(titles).toEqual(BRIEFS.filter((b) => b.category === 'Food').slice(0, 4).map((b) => b.title));
+    expect(screen.getByRole('button', { name: 'Food' }).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('filter creators by platform in place', () => {
+    render(<CreatorBoard />);
+    fireEvent.click(screen.getByRole('button', { name: 'YouTube' }));
+    const metas = screen.getAllByRole('listitem').map((li) => li.querySelector('.lx-item-meta')!.textContent);
+    expect(metas.length).toBe(CREATORS.filter((c) => c.platform === 'YouTube').length);
+    for (const m of metas) expect(m).toMatch(/^YouTube/);
+  });
+
+  it('say they are examples', () => {
+    render(<BriefBoard />);
+    expect(screen.getByText('Example briefs.')).toBeTruthy();
+    cleanup();
+    render(<CreatorBoard />);
+    expect(screen.getByText('Example storefronts.')).toBeTruthy();
   });
 });

@@ -11,6 +11,8 @@
 import { useId, useState } from 'react';
 import { brandEstimate, clampMoney, creatorEstimate, usd } from './estimate';
 import { CREATOR_CATEGORIES, PLATFORM_FEE_LABEL, PLATFORM_FORMATS, WHT_LABEL } from './facts';
+import { BRIEFS, BRIEF_FILTERS, CREATORS, CREATOR_FILTERS } from './listings';
+import { photoUrl } from './photos';
 
 const toMoney = (raw: string) => clampMoney(Number(raw.replace(/[^\d]/g, '')) || 0);
 const moneyText = (n: number) => (n === 0 ? '' : n.toLocaleString('en-US'));
@@ -61,6 +63,76 @@ function Stepper({ label, value, min, max, onChange, unit, small }: {
     <div className="lx-field" role="group" aria-labelledby={id}>
       <span id={id}>{label}</span>
       <div className="lx-stepper">{controls}</div>
+    </div>
+  );
+}
+
+// ── The first screen: a board of listings, filterable in place ──────────
+
+function Chips<T extends string>({ label, options, value, onChange }: {
+  label: string; options: readonly T[]; value: T; onChange: (v: T) => void;
+}) {
+  return (
+    <div className="lx-chips" role="group" aria-label={label}>
+      {options.map((o) => (
+        <button key={o} type="button" className="lx-chip" aria-pressed={o === value} onClick={() => onChange(o)}>{o}</button>
+      ))}
+    </div>
+  );
+}
+
+/** Creators' first screen: open briefs, the way BrowseBriefs lists them. */
+export function BriefBoard() {
+  const [cat, setCat] = useState<(typeof BRIEF_FILTERS)[number]>('All');
+  const shown = BRIEFS.filter((b) => cat === 'All' || b.category === cat).slice(0, 4);
+  return (
+    <div className="lx-board" aria-label="Example open briefs">
+      <Chips label="Filter briefs by category" options={BRIEF_FILTERS} value={cat} onChange={setCat} />
+      <ul className="lx-list" aria-live="polite">
+        {shown.map((b) => (
+          <li key={b.title} className="lx-item">
+            <div>
+              <div className="lx-item-title">{b.title}</div>
+              <div className="lx-item-meta">{b.category} · {b.deliverables}</div>
+            </div>
+            <div className="lx-item-price"><b>{usd(b.perCreator)}</b><span>per creator</span></div>
+          </li>
+        ))}
+      </ul>
+      <p className="lx-board-note">
+        <span className="lx-live">Example briefs.</span> In the app you search open briefs by brand, category or platform,
+        filter by budget, and save the ones you want.
+      </p>
+    </div>
+  );
+}
+
+/** Brands' first screen: creator storefronts, the way Discover lists them. */
+export function CreatorBoard() {
+  const [platform, setPlatform] = useState<(typeof CREATOR_FILTERS)[number]>('All');
+  const shown = CREATORS.filter((c) => platform === 'All' || c.platform === platform).slice(0, 4);
+  return (
+    <div className="lx-board" aria-label="Example creator storefronts">
+      <Chips label="Filter creators by platform" options={CREATOR_FILTERS} value={platform} onChange={setPlatform} />
+      <ul className="lx-list" aria-live="polite">
+        {shown.map((c) => (
+          <li key={c.niche} className="lx-item">
+            <div className="lx-item-main">
+              <span className="lx-thumb"><img src={photoUrl(c.photo.id, 160, 1)} width={56} height={56} alt="" loading="lazy" decoding="async" /></span>
+              <div>
+                <div className="lx-item-title">{c.niche}</div>
+                <div className="lx-item-meta">{c.platform} · {c.followers}</div>
+              </div>
+            </div>
+            <div className="lx-item-price"><b>{usd(c.rate)}</b><span>{c.per}</span></div>
+          </li>
+        ))}
+      </ul>
+      <p className="lx-board-note">
+        <span className="lx-live">Example storefronts.</span> In the app you filter creators by platform, category,
+        followers, city and price. Follower counts are what creators enter. Thumbnails by{' '}
+        {CREATORS.map((c) => c.photo.by).join(', ')} on Unsplash.
+      </p>
     </div>
   );
 }

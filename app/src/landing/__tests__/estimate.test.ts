@@ -14,6 +14,7 @@ import { STALENESS } from '@/lib/api/staleness';
 import * as facts from '../facts';
 import { brandEstimate, clampMoney, creatorEstimate, usd } from '../estimate';
 import { toHandle } from '../tools';
+import { BRIEFS, BRIEF_FILTERS, CREATORS, CREATOR_FILTERS } from '../listings';
 
 const SRC = join(__dirname, '..', '..');
 const read = (rel: string) => readFileSync(join(SRC, rel), 'utf8');
@@ -108,5 +109,26 @@ describe('input handling', () => {
     expect(toHandle('  Ana-María Ö! ')).toBe('anamara');
     expect(toHandle('dot.and_under')).toBe('dot.and_under');
     expect(toHandle('x'.repeat(40))).toHaveLength(24);
+  });
+});
+
+describe('the example boards only offer what the product has', () => {
+  it('brief categories are the product’s categories', () => {
+    for (const c of [...BRIEF_FILTERS.filter((f) => f !== 'All'), ...BRIEFS.map((b) => b.category)]) {
+      expect(options.CREATOR_CATEGORIES, c).toContain(c);
+    }
+  });
+
+  it('platforms and formats are the product’s', () => {
+    const labels = options.PLATFORM_FORMATS.map((p) => p.label);
+    for (const p of [...CREATOR_FILTERS.filter((f) => f !== 'All'), ...CREATORS.map((c) => c.platform)]) {
+      expect(labels, p).toContain(p);
+    }
+    for (const b of BRIEFS) {
+      const [, platform, format] = /^\d+ × (\S+) (.+)$/.exec(b.deliverables) ?? [];
+      const def = options.PLATFORM_FORMATS.find((p) => p.label === platform);
+      expect(def, b.deliverables).toBeDefined();
+      expect(def!.formats.map((f) => f.label), b.deliverables).toContain(format);
+    }
   });
 });

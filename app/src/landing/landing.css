@@ -1,14 +1,13 @@
 /* landing.css — the two public landing pages.
  *
- * Layout: a giant two-line headline across the page, then the work itself:
- * real photographs of creators and brands at work, and the one thing each
- * side writes on Alamut (a rate card, a brief) floating over them. Sections
- * change by field colour, never by rule or shadow, and no two neighbours
- * share a layout.
+ * Layout: the first screen is a listings board on a deep ink field: open
+ * briefs for creators, creator storefronts for brands, set big like a price
+ * board and filterable live. Below it the page alternates fields (white,
+ * stone, ink, record red) and no two neighbours share a layout.
  *
- * One family, Archivo: condensed and heavy for display and prices, normal
- * width for reading. Brick is the brand mark's colour and marks an action
- * you can take, or money that reaches someone.
+ * One family, Archivo: condensed and heavy for headlines and prices, normal
+ * width for reading. Record red, a camera's REC light, marks the action
+ * and one live detail; nothing else is coloured.
  *
  * Self-contained: scoped under `.lx`, so the app's global CSS never loads
  * for a visitor.
@@ -16,27 +15,29 @@
 
 .lx {
   --ground:  #ffffff;
-  --field:   oklch(0.956 0.006 255);
-  --field-2: oklch(0.918 0.008 255);
-  --ink:     oklch(0.18 0.022 265);
-  --ink-2:   oklch(0.40 0.016 265);
-  --ink-3:   oklch(0.53 0.012 265);
-  --night:   oklch(0.205 0.03 266);
-  --night-2: oklch(0.80 0.02 265);
-  --brick:   oklch(0.54 0.15 37);
-  --brick-dk: oklch(0.47 0.145 37);
-  --brick-lt: oklch(0.74 0.12 42);
+  --field:   oklch(0.955 0.003 90);
+  --field-2: oklch(0.905 0.004 90);
+  --ink:     oklch(0.17 0.018 275);
+  --ink-2:   oklch(0.40 0.012 275);
+  --ink-3:   oklch(0.53 0.01 275);
+  --night:   oklch(0.17 0.018 275);
+  --night-1: oklch(0.23 0.02 275);
+  --night-2: oklch(0.80 0.012 275);
+  --night-3: oklch(0.66 0.012 275);
+  --rec:     #d42a22;
+  --rec-dk:  #b8211a;
+  --rec-lt:  #ff5a4e;
 
   --type: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
   /* Five sizes do all the visible work. */
-  --t-xl: clamp(3.75rem, 0.9rem + 8vw, 8.5rem);
-  --t-l:  clamp(2.4rem, 1.2rem + 4.2vw, 5.25rem);
+  --t-xl: clamp(3.4rem, 0.6rem + 7.4vw, 7.25rem);
+  --t-l:  clamp(2.4rem, 1.2rem + 4vw, 5rem);
   --t-m:  1.5rem;
   --t-b:  1.0625rem;
   --t-s:  0.875rem;
 
   --gap-section: clamp(96px, 12vw, 200px);
-  --r: 10px;
+  --r: 14px;
 
   background: var(--ground);
   color: var(--ink);
@@ -50,7 +51,7 @@
 .lx :where(ul, ol) { padding: 0; list-style: none; }
 .lx a { color: inherit; text-decoration: none; }
 .lx img { display: block; max-width: 100%; height: auto; }
-.lx :focus-visible { outline: 2px solid var(--brick); outline-offset: 3px; border-radius: 4px; }
+.lx :focus-visible { outline: 2px solid var(--rec); outline-offset: 3px; border-radius: 4px; }
 .lx .tnum { font-variant-numeric: tabular-nums; }
 .lx-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
@@ -65,8 +66,8 @@
 
 /* ── Type ────────────────────────────────────────────────────────────── */
 .lx-h1, .lx-h2, .lx-display {
-  font-family: var(--type); font-stretch: 75%; font-weight: 800;
-  letter-spacing: -0.025em; text-wrap: balance;
+  font-family: var(--type); font-stretch: 70%; font-weight: 850;
+  letter-spacing: -0.02em; text-wrap: balance;
 }
 .lx-h1 { font-size: var(--t-xl); line-height: 0.86; }
 .lx-h2 { font-size: var(--t-l); line-height: 0.9; }
@@ -74,7 +75,7 @@
 .lx-lead { font-size: 1.25rem; line-height: 1.45; max-width: 30em; text-wrap: pretty; }
 .lx-text { max-width: 34em; text-wrap: pretty; }
 .lx-note { font-size: var(--t-s); color: var(--ink-3); text-wrap: pretty; }
-.lx-money-t { font-family: var(--type); font-stretch: 75%; font-weight: 800; font-size: var(--t-m); line-height: 1; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.lx-money-t { font-family: var(--type); font-stretch: 70%; font-weight: 800; font-size: var(--t-m); line-height: 1; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
 
 /* ── Nav: a plain bar ────────────────────────────────────────────────── */
 .lx-nav-inner { display: flex; align-items: center; gap: 24px; height: 72px; }
@@ -88,11 +89,11 @@
 .lx-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 10px;
   min-height: 56px; padding: 0 28px; border: 0; border-radius: var(--r);
-  background: var(--brick); color: #fff;
+  background: var(--rec); color: #fff;
   font: 650 1.0625rem/1 var(--type); white-space: nowrap; cursor: pointer;
   transition: background-color .15s, transform .12s;
 }
-.lx-btn:hover { background: var(--brick-dk); }
+.lx-btn:hover { background: var(--rec-dk); }
 .lx-btn:active { transform: translateY(1px) scale(0.99); }
 .lx-btn-sm { min-height: 44px; padding: 0 18px; font-size: 1rem; }
 .lx-btn-quiet {
@@ -119,24 +120,81 @@
 .lx-photo figcaption { font-size: var(--t-s); color: var(--ink-3); }
 .lx-photo figcaption a { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in oklch, currentColor 35%, transparent); }
 
-/* ── Hero ────────────────────────────────────────────────────────────── */
-.lx-hero { padding-block: clamp(24px, 4vw, 56px) clamp(72px, 9vw, 140px); }
-.lx-hero .lx-h1 { max-width: 14ch; margin-bottom: clamp(32px, 4vw, 56px); }
-.lx-stage { display: grid; gap: 40px; }
-.lx-stage-copy { display: grid; gap: 28px; align-content: start; }
+/* ── The top: nav and hero on one ink field ──────────────────────────── */
+.lx-top { background: var(--night); color: #fff; }
+.lx-top .lx-nav-link { color: var(--night-2); }
+.lx-top .lx-nav-link:hover { color: #fff; }
+.lx-hero { padding-block: clamp(24px, 4vw, 48px) clamp(64px, 8vw, 112px); }
+.lx-hero .lx-h1 { text-wrap: wrap; }
+/* One sentence per line, at every width. */
+.lx-hero .lx-h1 > span { display: block; }
+@media (max-width: 560px) { .lx-hero .lx-h1 { font-size: 10.4vw; } }
+.lx-hero-side { display: grid; gap: 22px; align-content: start; }
+.lx-hero-side .lx-lead { color: var(--night-2); }
+.lx-top .lx-btn-quiet { color: #fff; }
 .lx-switch { display: flex; gap: 20px; font-weight: 650; }
-.lx-switch a { color: var(--ink-3); transition: color .15s; }
-.lx-switch a:hover { color: var(--ink); }
-.lx-switch [aria-current] { color: var(--ink); text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 7px; text-decoration-color: var(--brick); }
+.lx-switch a { color: var(--night-3); transition: color .15s; }
+.lx-switch a:hover { color: #fff; }
+.lx-switch [aria-current] { color: #fff; text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 7px; text-decoration-color: var(--rec-lt); }
 .lx-small { font-size: var(--t-s); color: var(--ink-3); }
-.lx-stage-photo { position: relative; }
-.lx-stage-card { position: relative; z-index: 1; margin-top: -88px; margin-inline: 12px; }
-@media (min-width: 980px) {
-  .lx-stage { grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 0 24px; align-items: start; }
-  .lx-stage-copy { grid-column: 1 / 5; grid-row: 1; padding-right: 8px; }
-  .lx-stage-photo { grid-column: 5 / 10; grid-row: 1; }
-  .lx-stage-card { grid-column: 9 / 13; grid-row: 1; align-self: start; margin: clamp(80px, 9vw, 140px) 0 0; }
+.lx-top .lx-small, .lx-top .lx-photo figcaption { color: var(--night-3); }
+.lx-hero-body { display: grid; gap: 48px; margin-top: clamp(32px, 4vw, 56px); }
+.lx-reel .lx-photo-frame { border-radius: 22px; }
+.lx-reel { max-width: 260px; margin-top: 12px; }
+@media (min-width: 1024px) {
+  .lx-hero-body { grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 24px; align-items: start; }
+  .lx-board { grid-column: 1 / 9; grid-row: 1; }
+  .lx-hero-side { grid-column: 9 / 13; grid-row: 1; padding-left: 16px; }
 }
+@media (max-width: 1023px) { .lx-reel { display: none; } }
+
+/* The board: listings set like a price board, filterable in place. */
+.lx-board { display: grid; gap: 8px; }
+.lx-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.lx-chip {
+  height: 40px; padding: 0 16px; border: 0; border-radius: 999px; cursor: pointer;
+  background: var(--night-1); color: var(--night-2); font: 600 0.9375rem/1 var(--type);
+  transition: background-color .15s, color .15s;
+}
+.lx-chip:hover { color: #fff; }
+.lx-chip[aria-pressed="true"] { background: #fff; color: var(--ink); }
+.lx-list { display: grid; }
+.lx-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 4px 24px; padding: 16px 0; }
+.lx-item + .lx-item { box-shadow: 0 -1px 0 var(--night-1); }
+.lx-item-main { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.lx-thumb { width: 56px; height: 56px; flex: none; border-radius: 12px; overflow: hidden; background: var(--night-1); }
+.lx-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.lx-item-title { font-size: 1.375rem; font-weight: 650; line-height: 1.2; letter-spacing: -0.01em; }
+.lx-item-meta { color: var(--night-3); margin-top: 2px; }
+.lx-item-price { text-align: right; white-space: nowrap; }
+.lx-item-price b { display: block; font-family: var(--type); font-stretch: 70%; font-weight: 850; font-size: clamp(2.25rem, 1.4rem + 2.2vw, 3.75rem); line-height: 0.95; letter-spacing: -0.015em; font-variant-numeric: tabular-nums; }
+.lx-item-price span { color: var(--night-3); font-size: var(--t-s); }
+.lx-board-note { margin-top: 10px; font-size: var(--t-s); color: var(--night-3); max-width: 60em; }
+.lx-live { display: inline-flex; align-items: center; gap: 8px; }
+.lx-live::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--rec-lt); }
+@media (max-width: 560px) {
+  .lx-item { grid-template-columns: 1fr; }
+  .lx-item-price { text-align: left; }
+  .lx-thumb { width: 48px; height: 48px; }
+}
+
+/* ── Section 2: found / pitched, a builder over a photograph ─────────── */
+.lx-found { display: grid; gap: 40px; }
+.lx-found-copy { display: grid; gap: 24px; align-content: start; }
+.lx-found-stage { position: relative; }
+.lx-found-card { position: relative; z-index: 1; margin: -96px 12px 0; }
+@media (min-width: 1024px) {
+  .lx-found { grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 24px; align-items: start; }
+  .lx-found-copy { grid-column: 1 / 5; padding-top: 8px; }
+  .lx-found-stage { grid-column: 5 / 13; display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); column-gap: 24px; }
+  .lx-found-stage .lx-photo { grid-column: 1 / 7; grid-row: 1; }
+  .lx-found-card { grid-column: 5 / 9; grid-row: 1; margin: 120px 0 0; }
+}
+/* Brands: the brief and the pitches it brings, side by side. */
+.lx-pitched { display: grid; gap: 40px; align-items: start; }
+@media (min-width: 1024px) { .lx-pitched { grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); gap: 56px; } }
+.lx-pitched-col { display: grid; gap: 24px; align-content: start; min-width: 0; }
+.lx-pitched .lx-card { box-shadow: none; background: var(--field); }
 
 /* The builder floats over the photograph, so it is the one element on the
  * page with a shadow. */
@@ -149,7 +207,7 @@
 .lx-card-id { display: flex; align-items: center; gap: 14px; }
 .lx-avatar {
   width: 56px; height: 56px; flex: none; border-radius: 50%; display: grid; place-items: center;
-  background: var(--brick); color: #fff; font: 800 1.25rem/1 var(--type); font-stretch: 75%;
+  background: var(--rec); color: #fff; font: 800 1.25rem/1 var(--type); font-stretch: 70%;
 }
 .lx-avatar.empty { background: var(--field); color: var(--ink-3); font-weight: 400; font-size: 1.75rem; }
 .lx-card-who { flex: 1; min-width: 0; display: grid; gap: 4px; }
@@ -162,8 +220,8 @@
 }
 .lx-inline::placeholder { color: var(--ink-3); opacity: 1; }
 .lx-inline:hover { border-bottom-color: var(--ink-3); }
-.lx .lx-inline:focus-visible { outline: none; border-bottom: 1.5px solid var(--brick); }
-.lx-inline-name { font-family: var(--type); font-stretch: 75%; font-weight: 800; font-size: 1.875rem; line-height: 1.1; letter-spacing: -0.015em; }
+.lx .lx-inline:focus-visible { outline: none; border-bottom: 1.5px solid var(--rec); }
+.lx-inline-name { font-family: var(--type); font-stretch: 70%; font-weight: 800; font-size: 1.875rem; line-height: 1.1; letter-spacing: -0.015em; }
 .lx-at { flex: 1; min-width: 0; display: inline-flex; align-items: baseline; color: var(--ink-3); }
 .lx-select, select.lx-ctl {
   -webkit-appearance: none; appearance: none; cursor: pointer;
@@ -178,14 +236,15 @@
 .lx-rate-name { font-weight: 650; }
 .lx-leader { align-self: end; height: 0; margin-bottom: 0.4em; border-bottom: 2px dotted var(--field-2); }
 .lx-price { display: inline-flex; align-items: baseline; justify-self: end; }
-.lx-price b { font: 800 1.25rem/1 var(--type); font-stretch: 75%; color: var(--ink-3); }
+.lx-price b { font: 800 1.25rem/1 var(--type); font-stretch: 70%; color: var(--ink-3); }
 .lx-price input {
   width: 4.4ch; min-width: 0; padding: 0; border: 0; border-bottom: 1.5px dashed transparent; background: transparent; outline: none;
-  font: 800 var(--t-m)/1 var(--type); font-stretch: 75%; color: var(--ink); text-align: right; font-variant-numeric: tabular-nums;
+  font: 800 var(--t-m)/1 var(--type); font-stretch: 70%; color: var(--ink); text-align: right; font-variant-numeric: tabular-nums;
 }
 .lx-rate:hover .lx-price input { border-bottom-color: var(--field-2); }
-.lx .lx-price input:focus-visible { outline: none; border-bottom-color: var(--brick); }
-.lx-keep { grid-column: 1 / -1; justify-self: end; font-size: var(--t-s); color: var(--brick); font-variant-numeric: tabular-nums; }
+.lx .lx-price input:focus-visible { outline: none; border-bottom-color: var(--rec); }
+.lx-keep { grid-column: 1 / -1; justify-self: end; font-size: var(--t-s); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.lx-keep b { color: var(--ink); }
 .lx-card-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 14px; }
 .lx-url { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-s); color: var(--ink-3); }
 /* A preview of the button the other side sees. Ink, never brick, so it
@@ -209,7 +268,7 @@
 .lx-ctl:hover { background-color: var(--field-2); }
 select.lx-ctl { padding-right: 32px; background-position: right 12px center; }
 .lx-ctl-money { display: inline-flex; align-items: center; gap: 2px; width: 140px; }
-.lx-ctl-money:focus-within { outline: 2px solid var(--brick); outline-offset: 0; }
+.lx-ctl-money:focus-within { outline: 2px solid var(--rec); outline-offset: 0; }
 .lx-ctl-money b { font-weight: 650; color: var(--ink-3); }
 .lx-ctl-money input { width: 100%; min-width: 0; padding: 0; border: 0; background: transparent; outline: none; font: 650 1rem/1 var(--type); color: var(--ink); font-variant-numeric: tabular-nums; }
 .lx .lx-ctl-money input:focus-visible { outline: none; }
@@ -218,13 +277,13 @@ select.lx-ctl { padding-right: 32px; background-position: right 12px center; }
 .lx-stepper button:hover:not(:disabled) { color: var(--ink); background: var(--field-2); }
 .lx-stepper button:disabled { color: var(--field-2); cursor: default; }
 .lx-stepper output { min-width: 22px; text-align: center; font-weight: 650; font-variant-numeric: tabular-nums; }
-.lx-brief-title { font-family: var(--type); font-stretch: 75%; font-weight: 800; font-size: 1.875rem; line-height: 1.1; }
+.lx-brief-title { font-family: var(--type); font-stretch: 70%; font-weight: 800; font-size: 1.875rem; line-height: 1.1; }
 
 /* ── Sections ────────────────────────────────────────────────────────── */
 .lx-section { padding-block: var(--gap-section); }
 .lx-field-bg { background: var(--field); }
 .lx-head { display: grid; gap: 24px; margin-bottom: clamp(48px, 6vw, 88px); }
-.lx-head .lx-h2 { max-width: 14ch; }
+.lx-head .lx-h2 { max-width: 20ch; }
 .lx-after { margin-top: clamp(48px, 6vw, 80px); }
 
 /* Two ways in: two equal columns, picture first. */
@@ -241,7 +300,7 @@ select.lx-ctl { padding-right: 32px; background-position: right 12px center; }
 .lx-row b { color: var(--ink); font-weight: 650; text-align: right; font-variant-numeric: tabular-nums; }
 .lx-row .lx-money-t { color: var(--ink); }
 .lx-ui-title { font-weight: 700; color: var(--ink); }
-.lx-ok { font-weight: 650; color: var(--brick); }
+.lx-ok { font-weight: 700; color: var(--ink); }
 .lx-quote { color: var(--ink); }
 .lx-quote small { display: block; font-size: var(--t-s); color: var(--ink-3); }
 .lx-actions { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -262,11 +321,12 @@ select.lx-ctl { padding-right: 32px; background-position: right 12px center; }
 .lx-turn-who { font-size: var(--t-s); color: var(--ink-3); }
 .lx-turn-what { font-weight: 650; }
 .lx-turn .lx-money-t { grid-row: 1 / span 2; grid-column: 2; }
+.lx-field-bg .lx-turn { background: var(--ground); }
 .lx-turn .struck { color: var(--ink-3); text-decoration: line-through; text-decoration-thickness: 2px; }
 .lx-turn .lx-actions { grid-column: 1 / -1; margin-top: 6px; }
 .lx-annot-note h3 { font-size: var(--t-m); font-weight: 750; letter-spacing: -0.01em; line-height: 1.15; margin-bottom: 6px; }
 .lx-annot-note p { color: var(--ink-2); max-width: 30em; }
-.lx-stars { color: var(--brick); letter-spacing: 2px; }
+.lx-stars { color: var(--rec); letter-spacing: 2px; }
 
 /* Brands: picture and notes on one side, the pitch list on the other. */
 .lx-split { display: grid; gap: 56px; align-items: start; }
@@ -317,19 +377,19 @@ select.lx-ctl { padding-right: 32px; background-position: right 12px center; }
 .lx-field { display: grid; gap: 6px; min-width: 0; }
 .lx-field > span { font-size: var(--t-s); font-weight: 650; color: var(--ink-2); }
 .lx-money { display: flex; align-items: center; gap: 4px; height: 56px; padding: 0 14px; border-radius: 8px; background: var(--field); }
-.lx-money:focus-within { outline: 2px solid var(--brick); }
-.lx-money b { font: 800 1.375rem/1 var(--type); font-stretch: 75%; color: var(--ink-3); }
-.lx-money input { width: 100%; min-width: 0; border: 0; background: transparent; outline: none; font: 800 1.75rem/1 var(--type); font-stretch: 75%; color: var(--ink); font-variant-numeric: tabular-nums; }
+.lx-money:focus-within { outline: 2px solid var(--rec); }
+.lx-money b { font: 800 1.375rem/1 var(--type); font-stretch: 70%; color: var(--ink-3); }
+.lx-money input { width: 100%; min-width: 0; border: 0; background: transparent; outline: none; font: 800 1.75rem/1 var(--type); font-stretch: 70%; color: var(--ink); font-variant-numeric: tabular-nums; }
 .lx .lx-money input:focus-visible { outline: none; }
 .lx-inputs .lx-stepper { height: 56px; }
 .lx-lines { display: grid; padding: 4px 24px 12px; }
 .lx-line { display: grid; grid-template-columns: auto minmax(12px, 1fr) auto; align-items: baseline; gap: 10px; padding: 8px 0; color: var(--ink-2); }
 .lx-line .lx-leader { margin-bottom: 0.35em; }
 .lx-line b { font-weight: 650; color: var(--ink); font-variant-numeric: tabular-nums; }
-.lx-line.out b { color: var(--brick); }
+.lx-line.out b { color: var(--ink); }
 .lx-total { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 18px 24px 22px; background: var(--field); }
 .lx-total span { font-weight: 700; }
-.lx-total b { font: 800 2.5rem/1 var(--type); font-stretch: 75%; color: var(--brick); font-variant-numeric: tabular-nums; }
+.lx-total b { font: 850 2.75rem/1 var(--type); font-stretch: 70%; color: var(--ink); font-variant-numeric: tabular-nums; }
 
 /* ── Pricing ─────────────────────────────────────────────────────────── */
 .lx-pricing { display: grid; gap: 48px; align-items: start; }
@@ -338,7 +398,7 @@ select.lx-ctl { padding-right: 32px; background-position: right 12px center; }
 .lx-pricing .lx-lead { margin-bottom: 28px; }
 .lx-terms { display: grid; gap: 12px; max-width: 34em; }
 .lx-terms li { padding-left: 22px; position: relative; color: var(--ink-2); }
-.lx-terms li::before { content: ""; position: absolute; left: 0; top: 0.62em; width: 8px; height: 8px; border-radius: 50%; background: var(--brick); }
+.lx-terms li::before { content: ""; position: absolute; left: 0; top: 0.62em; width: 8px; height: 8px; border-radius: 50%; background: var(--rec); }
 .lx-notyet { display: grid; gap: 12px; padding: 24px; border-radius: var(--r); background: var(--field); }
 .lx-notyet ul { display: grid; gap: 10px; }
 .lx-notyet li { color: var(--ink-2); }
@@ -350,46 +410,46 @@ select.lx-ctl { padding-right: 32px; background-position: right 12px center; }
 .lx-qa p { color: var(--ink-2); max-width: 34em; }
 
 /* ── Final field ─────────────────────────────────────────────────────── */
-.lx-final { background: var(--brick); color: #fff; padding-block: clamp(96px, 11vw, 176px); }
+.lx-final { background: var(--rec); color: #fff; padding-block: clamp(96px, 11vw, 176px); }
 .lx-final-grid { display: grid; gap: 32px; align-items: end; }
 @media (min-width: 980px) { .lx-final-grid { grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr); gap: 64px; } }
 .lx-final .lx-h2 { max-width: 11ch; }
 .lx-final-copy { display: grid; gap: 28px; }
 .lx-final .lx-lead { color: oklch(0.96 0.03 45); }
-.lx-final .lx-btn { background: #fff; color: var(--brick-dk); }
+.lx-final .lx-btn { background: #fff; color: var(--rec-dk); }
 .lx-final .lx-btn:hover { background: oklch(0.95 0.025 45); }
 
 /* ── Footer: a designed close ────────────────────────────────────────── */
-.lx-foot { padding-block: 56px calc(24px + env(safe-area-inset-bottom, 0px)); }
-.lx-foot-top { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px 24px; color: var(--ink-2); }
+.lx-foot { background: var(--night); color: #fff; padding-block: 56px calc(24px + env(safe-area-inset-bottom, 0px)); }
+.lx-foot-top { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px 24px; color: var(--night-2); }
 .lx-foot nav { display: flex; flex-wrap: wrap; gap: 8px 24px; }
-.lx-foot a:hover { color: var(--ink); }
+.lx-foot a:hover { color: #fff; }
 .lx-wordmark {
   margin-top: clamp(32px, 5vw, 64px);
-  font-family: var(--type); font-stretch: 75%; font-weight: 800; letter-spacing: -0.04em;
-  font-size: clamp(5rem, 0.5rem + 24.5vw, 23rem); line-height: 0.78; color: var(--ink);
+  font-family: var(--type); font-stretch: 70%; font-weight: 800; letter-spacing: -0.04em;
+  font-size: clamp(5rem, 0.5rem + 24.5vw, 23rem); line-height: 0.78; color: #fff;
 }
 
 /* ── Motion ──────────────────────────────────────────────────────────────
- * One entrance on load, one slow settle on the hero picture, and sections
- * that rise as they arrive. The page is complete without any of it: `lx-anim`
- * and `lx-js` are added by script only in a visible tab. */
+ * One signature move: on load the board's listings arrive one after another,
+ * like a departures board settling, and the Reel frame eases into place.
+ * Nothing else animates in. `lx-anim` is added before first paint by the
+ * inline script in each page's <head>, only in a visible tab without
+ * reduced motion, so the page is complete without it. */
 @keyframes lx-rise { from { opacity: 0; transform: translateY(28px); } }
 @keyframes lx-settle { from { transform: scale(1.08); } }
-.lx-anim .lx-hero .lx-h1,
-.lx-anim .lx-stage-copy > *,
-.lx-anim .lx-stage-photo,
-.lx-anim .lx-stage-card { animation: lx-rise .8s cubic-bezier(.2, .7, .2, 1) both; }
-.lx-anim .lx-hero .lx-h1 { animation-delay: 0ms; }
-.lx-anim .lx-stage-copy > :nth-child(1) { animation-delay: 80ms; }
-.lx-anim .lx-stage-copy > :nth-child(2) { animation-delay: 150ms; }
-.lx-anim .lx-stage-copy > :nth-child(3) { animation-delay: 220ms; }
-.lx-anim .lx-stage-copy > :nth-child(4) { animation-delay: 290ms; }
-.lx-anim .lx-stage-photo { animation-delay: 160ms; }
-.lx-anim .lx-stage-photo img { animation: lx-settle 2.2s cubic-bezier(.2, .7, .2, 1) both; }
-.lx-anim .lx-stage-card { animation-delay: 380ms; }
-.lx-js [data-reveal] { transition: opacity .8s cubic-bezier(.2, .7, .2, 1), transform .8s cubic-bezier(.2, .7, .2, 1); }
-.lx-js [data-reveal]:not(.is-in) { opacity: 0; transform: translateY(32px); }
+.lx-anim .lx-hero .lx-h1 > span,
+.lx-anim .lx-hero-side,
+.lx-anim .lx-item,
+.lx-anim .lx-reel { animation: lx-rise .8s cubic-bezier(.16, 1, .3, 1) both; }
+.lx-anim .lx-hero .lx-h1 > span:nth-child(2) { animation-delay: 90ms; }
+.lx-anim .lx-hero-side { animation-delay: 160ms; }
+.lx-anim .lx-item:nth-child(1) { animation-delay: 220ms; }
+.lx-anim .lx-item:nth-child(2) { animation-delay: 280ms; }
+.lx-anim .lx-item:nth-child(3) { animation-delay: 340ms; }
+.lx-anim .lx-item:nth-child(4) { animation-delay: 400ms; }
+.lx-anim .lx-reel { animation-delay: 300ms; }
+.lx-anim .lx-reel img { animation: lx-settle 2.4s cubic-bezier(.16, 1, .3, 1) both; }
 
 /* ── Small screens: their own composition ────────────────────────────── */
 @media (max-width: 560px) {
@@ -407,5 +467,4 @@ select.lx-ctl { padding-right: 32px; background-position: right 12px center; }
 }
 @media (prefers-reduced-motion: reduce) {
   .lx *, .lx *::before, .lx *::after { animation: none !important; transition: none !important; }
-  .lx-js [data-reveal]:not(.is-in) { opacity: 1; transform: none; }
 }

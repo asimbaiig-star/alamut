@@ -6,7 +6,6 @@ import { createRoot, hydrateRoot } from 'react-dom/client';
 import { CreatorsPage } from './CreatorsPage';
 import { BrandsPage } from './BrandsPage';
 import { mountLandingEvents } from './events';
-import { mountReveals } from './motion';
 import './landing.css';
 
 const root = document.getElementById('lx-root')!;
@@ -17,4 +16,3 @@ if (root.firstElementChild) hydrateRoot(root, tree);
 else createRoot(root).render(tree);
 
 mountLandingEvents(page);
-mountReveals();
