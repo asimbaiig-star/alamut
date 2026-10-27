@@ -9,6 +9,7 @@ import { api, ApiError } from '@/lib/api/client';
 import { pushToast } from '@/lib/utils/toast';
 import { BrandMarkSvg } from '@/screens/workspace-v2/BrandMark';
 import { readBriefDraft, readStorefrontDraft } from '@/lib/landingDraft';
+import { BRAND_SETUP, CREATOR_SETUP } from '@/landing/facts';
 import '@/styles/auth-v2.css';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -180,7 +181,7 @@ export function SignUp() {
 
       <main className="auth-v2-main">
         <div className="auth-v2-grid">
-          <aside className="auth-v2-side">
+          <aside className={`auth-v2-side auth-v2-panel ${role === 'brand' || finishMode ? 'ink' : 'moss'}`}>
             <h1 className="auth-v2-h1">
               {finishMode
                 // Role-neutral: we can't know which one this account meant,
@@ -225,6 +226,9 @@ export function SignUp() {
                   ${kept.brief.perCreator.toLocaleString('en-US')} per creator. It’s waiting in New campaign after you sign up.
                 </p>
               </div>
+            )}
+            {!finishMode && (
+              <p className="auth-v2-next">After this: {role === 'brand' ? BRAND_SETUP : CREATOR_SETUP}.</p>
             )}
           </aside>
 

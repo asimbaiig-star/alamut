@@ -202,7 +202,7 @@ export function SignIn() {
 
       <main className="auth-v2-main">
         <div className="auth-v2-grid">
-          <aside className="auth-v2-side">
+          <aside className="auth-v2-side auth-v2-panel ink">
             <h1 className="auth-v2-h1">Welcome back.</h1>
             <p className="auth-v2-lede">Pick up your briefs, deals and wallet where you left them.</p>
 

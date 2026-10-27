@@ -16,18 +16,19 @@
 
 export const MARKET_SOURCE_LINE = 'Figures from a 2026 industry survey of nearly 900 marketers and creators.';
 
-export interface MarketFigure { figure: string; claim: string }
+/** A sentence with its figure inside it: before + figure + after. */
+export interface MarketFigure { before: string; figure: string; after: string }
 
 /** For creators: who brands hire, how small creators perform, where budgets go. */
 export const CREATOR_MARKET: MarketFigure[] = [
-  { figure: '54%', claim: 'of marketers work mainly with nano and micro creators, under 60K followers.' },
-  { figure: '6.29%', claim: 'average engagement for creators with 2.5K to 25K followers, the highest of any size.' },
-  { figure: '74%', claim: 'of marketers plan to increase their influencer budgets in 2026.' },
+  { before: '', figure: '54%', after: 'of marketers work mainly with creators under 60K followers.' },
+  { before: 'Creators with 2.5K to 25K followers average', figure: '6.29%', after: 'engagement, the highest of any size.' },
+  { before: 'And', figure: '74%', after: 'of marketers plan to increase their influencer budgets in 2026.' },
 ];
 
 /** For brands: budgets, how creator content performs, what a creator costs. */
 export const BRAND_MARKET: MarketFigure[] = [
-  { figure: '74%', claim: 'of marketers plan to increase their influencer budgets in 2026.' },
-  { figure: '69%', claim: 'of marketers say creator content performs better than brand-directed content.' },
-  { figure: '$1.3K', claim: 'average spend per creator, per campaign, in 2025.' },
+  { before: '', figure: '74%', after: 'of marketers plan to increase their influencer budgets in 2026.' },
+  { before: '', figure: '69%', after: 'of marketers say creator content performs better than brand-directed content.' },
+  { before: 'Brands spent an average of', figure: '$1.3K', after: 'per creator, per campaign, in 2025.' },
 ];

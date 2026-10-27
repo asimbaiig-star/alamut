@@ -173,9 +173,8 @@ export function MarketStrip({ title, figures }: { title: string; figures: Market
         <h2 className="lx-market-title" id="market-title">{title}</h2>
         <ul className="lx-market-list">
           {figures.map((f) => (
-            <li key={f.figure + f.claim}>
-              <span className="lx-money lx-market-figure">{f.figure}</span>
-              <span className="lx-market-claim">{f.claim}</span>
+            <li key={f.figure + f.after}>
+              {f.before && <>{f.before} </>}<b className="lx-market-figure">{f.figure}</b> {f.after}
             </li>
           ))}
         </ul>

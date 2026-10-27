@@ -36,6 +36,19 @@ function Window({ nav, active, crumb, title, children }: {
 const CREATOR_NAV = ['Home', 'My storefront', 'My collaborations', 'Browse campaigns', 'Inbox', 'Calendar', 'Wallet'];
 const BRAND_NAV = ['Home', 'Discover creators', 'My campaigns', 'Inbox', 'Calendar', 'Wallet', 'Brand profile'];
 
+/** A review's stars, drawn, as the portal draws ratings. */
+function Stars({ count }: { count: number }) {
+  return (
+    <span className="lx-stars" role="img" aria-label={`${count} out of 5 stars`}>
+      {Array.from({ length: 5 }, (_, i) => (
+        <svg key={i} viewBox="0 0 20 20" width="15" height="15" aria-hidden="true" className={i < count ? 'on' : undefined}>
+          <path d="M10 1.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8L10 14.9l-5.2 2.7 1-5.8L1.6 7.7l5.8-.8z" />
+        </svg>
+      ))}
+    </span>
+  );
+}
+
 /** Creators: one deal from offer to review. */
 export function CreatorDealWindow() {
   return (
@@ -65,7 +78,7 @@ export function CreatorDealWindow() {
       <div className="lx-card">
         <div className="lx-row">
           <span className="lx-row-who">After the deal</span>
-          <span className="lx-row-what"><span className="lx-stars" aria-label="Five stars">★★★★★</span> Review pinned to your storefront</span>
+          <span className="lx-row-what"><Stars count={5} /> Review pinned to your storefront</span>
         </div>
       </div>
     </Window>

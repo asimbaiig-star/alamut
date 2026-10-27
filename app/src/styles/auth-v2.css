@@ -42,12 +42,42 @@
 }
 .auth-v2-grid { display: grid; gap: 32px; align-items: start; }
 @media (min-width: 960px) { .auth-v2-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 440px); gap: 72px; } }
-.auth-v2-side { display: grid; gap: 22px; align-content: start; padding-top: 8px; }
+.auth-v2-side { display: grid; gap: 22px; align-content: start; }
 .auth-v2-h1 { font-family: var(--v2-font-display); font-weight: 500; font-variation-settings: "opsz" 144; font-size: clamp(2.5rem, 1.6rem + 2.8vw, 4rem); line-height: 1.02; letter-spacing: -0.02em; text-wrap: balance; }
 .auth-v2-lede { font-size: 1.0625rem; color: var(--v2-ink-2); max-width: 32em; text-wrap: pretty; }
 .auth-v2-points { display: grid; gap: 10px; }
 .auth-v2-points li { position: relative; padding-left: 20px; color: var(--v2-ink-2); }
 .auth-v2-points li::before { content: ""; position: absolute; left: 2px; top: 0.6em; width: 7px; height: 7px; border-radius: 50%; background: var(--v2-moss); }
+
+/* The landing's hero card, carried through: moss for creators, the dark
+ * Spark card for brands (and for sign-in), as the portal's home cards. It
+ * follows the role tab, so switching to "I'm a brand" turns it dark. */
+.auth-v2-panel {
+  position: relative; isolation: isolate; overflow: hidden; align-self: stretch;
+  padding: clamp(24px, 4vw, 44px); border-radius: var(--v2-r-xl); color: var(--v2-paper);
+}
+.auth-v2-panel.moss { background: linear-gradient(135deg, var(--v2-moss) 0%, var(--v2-moss-deep) 100%); }
+.auth-v2-panel.ink { background: linear-gradient(135deg, var(--v2-ink) 0%, var(--v2-ink-deep) 100%); }
+.auth-v2-panel::before {
+  content: ""; position: absolute; z-index: -1; top: -200px; right: -160px; width: 520px; height: 520px; border-radius: 50%;
+  background: radial-gradient(circle, var(--v2-accent) 0%, transparent 70%); opacity: .22; filter: blur(30px); pointer-events: none;
+}
+.auth-v2-panel.moss::before { opacity: .16; }
+.auth-v2-panel .auth-v2-lede, .auth-v2-panel .auth-v2-points li { color: color-mix(in srgb, var(--v2-paper) 82%, transparent); }
+.auth-v2-panel .auth-v2-points li::before { background: var(--v2-accent-2); }
+.auth-v2-panel :focus-visible:not(.auth-v2-card *) { outline-color: var(--v2-paper); }
+.auth-v2-panel .auth-v2-link:not(.auth-v2-card *) { color: var(--v2-paper); text-decoration-color: color-mix(in srgb, var(--v2-paper) 45%, transparent); }
+.auth-v2-next { font-size: 0.9375rem; color: color-mix(in srgb, var(--v2-paper) 74%, transparent); text-wrap: pretty; }
+/* On a phone the form comes first in importance: the intro repeats the page
+ * they came from, so it gives way. */
+@media (max-width: 560px) { .auth-v2-panel .auth-v2-lede { display: none; } }
+/* On desktop the setup line sits at the foot of the card. */
+@media (min-width: 960px) { .auth-v2-panel { display: flex; flex-direction: column; gap: 22px; } .auth-v2-panel .auth-v2-next { margin-top: auto; } }
+.auth-v2-panel .auth-v2-kept { background: color-mix(in srgb, var(--v2-paper) 10%, transparent); color: var(--v2-paper); }
+.auth-v2-panel .auth-v2-kept .auth-v2-label { font-size: 0.875rem; letter-spacing: 0; text-transform: none; color: color-mix(in srgb, var(--v2-paper) 74%, transparent); }
+.auth-v2-panel .auth-v2-kept p { color: color-mix(in srgb, var(--v2-paper) 86%, transparent); }
+.auth-v2-panel .auth-v2-kept b { color: var(--v2-paper); }
+.auth-v2-panel .auth-v2-demo { color: var(--v2-ink); }
 
 /* What the visitor built on the landing, named back on the way in. */
 .auth-v2-kept { margin-top: 22px; padding: 16px 18px; display: grid; gap: 6px; border-radius: var(--v2-r-lg); background: var(--v2-moss-soft); color: var(--v2-ink); }
