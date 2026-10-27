@@ -27,6 +27,25 @@
   --v2-gold:          #B8902F;
   --v2-plum:          #5A3B47;
 
+  /* The deep ends of the portal's hero gradients (ink → warm brown,
+     moss → deep moss), behind the home, wallet and Spark cards. */
+  --v2-ink-deep:      #2A2620;
+  --v2-moss-deep:     #1F3527;
+
+  /* Letterhead bands on campaign tiles (brandPalette.ts picks one per
+     brand), also used as colour fields on the landing. */
+  --v2-band-navy:      #2A3F6E;
+  --v2-band-cocoa:     #5C2A1E;
+  --v2-band-moss:      #1F3527;
+  --v2-band-brick:     #7A2B22;
+  --v2-band-aubergine: #3E2F4A;
+  --v2-band-ink:       #1C1A15;
+
+  /* Platform colours, as lib.tsx PLATFORM_META draws channel badges. */
+  --v2-platform-instagram: #E4405F;
+  --v2-platform-tiktok:    #000000;
+  --v2-platform-youtube:   #FF0000;
+
   /* Status */
   --v2-positive:  #2D6A4F;
   --v2-warning:   #B8902F;

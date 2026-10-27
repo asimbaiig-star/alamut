@@ -21,6 +21,7 @@ import type { V2Campaign, V2Creator } from '../data';
 import { RecentActivityCard } from './BrandHome';
 import { useRecentActivity } from '../useRecentActivity';
 import { buildSteps as buildKycSteps } from './KycTax';
+import { brandAccent } from '../brandPalette';
 // P6 §5.6 — compute on read instead of reading the (now-removed)
 // stored field.
 
@@ -1251,22 +1252,8 @@ function CreatorTip({ me, onRoute }: { me: V2Creator; onRoute: (r: string) => vo
 
 const SAVED_TILE_LIMIT = 4;
 
-// Same deterministic brand palette as the editorial CampaignTile so the
-// mini-thumbs match the bigger surfaces visually.
-const _SAVED_BRAND_PALETTE: { bg: string; ink: string }[] = [
-  { bg: '#2A3F6E', ink: '#FBF7EE' },
-  { bg: '#5C2A1E', ink: '#FBF7EE' },
-  { bg: '#1F3527', ink: '#FBF7EE' },
-  { bg: '#7A2B22', ink: '#FBF7EE' },
-  { bg: '#3E2F4A', ink: '#FBF7EE' },
-  { bg: '#1C1A15', ink: '#FBF7EE' },
-];
-function _savedBrandColour(name: string): { bg: string; ink: string } {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
-  return _SAVED_BRAND_PALETTE[Math.abs(h) % _SAVED_BRAND_PALETTE.length];
-}
-
+// The editorial CampaignTile's palette (../brandPalette.ts), so the
+// mini-thumbs match the bigger surfaces.
 function SavedForLater({ me, campaigns, onRoute }: {
   me: V2Creator;
   campaigns: V2Campaign[];
@@ -1329,7 +1316,7 @@ function SavedForLater({ me, campaigns, onRoute }: {
         }}
       >
         {visible.map((c) => {
-          const accent = _savedBrandColour(c.brand);
+          const accent = brandAccent(c.brand);
           const perCreator = Math.round(c.budget / Math.max(c.creators.length, 4));
           const daysLeft = Math.max(
             0,

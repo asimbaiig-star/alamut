@@ -9,6 +9,7 @@ import type { ReactNode } from 'react';
 import { Brand, Credits, PhotoImg } from './components';
 import { usd } from './estimate';
 import { APPLICATION_LAPSE_DAYS } from './facts';
+import { BRIEFS } from './listings';
 import { PHOTOS } from './photos';
 
 /** The workspace shell: the sidebar as the portal draws it, and one screen. */
@@ -38,7 +39,7 @@ const BRAND_NAV = ['Home', 'Discover creators', 'My campaigns', 'Inbox', 'Calend
 /** Creators: one deal from offer to review. */
 export function CreatorDealWindow() {
   return (
-    <Window nav={CREATOR_NAV} active="My collaborations" crumb="My collaborations · A skincare brand" title="Skincare launch">
+    <Window nav={CREATOR_NAV} active="My collaborations" crumb={`My collaborations · ${BRIEFS[0]!.brand}`} title="Skincare launch">
       <div className="lx-card">
         <div className="lx-row">
           <span className="lx-row-who">The brand offered</span>

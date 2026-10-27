@@ -20,6 +20,8 @@
   --t-hero: clamp(3rem, 1.6rem + 4.6vw, 6rem);
   --t-h2: clamp(2.125rem, 1.35rem + 2.4vw, 3.5rem);
   --t-lead: clamp(1.0625rem, 1rem + 0.35vw, 1.25rem);
+  /* Terracotta deepened a step, so paper text on it passes 4.5:1 (5.1). */
+  --accent-fill: color-mix(in srgb, var(--v2-accent) 85%, var(--v2-ink));
 
   background: var(--v2-bg);
   color: var(--v2-ink);
@@ -71,7 +73,8 @@
 .lx-brand-mark { width: 32px; height: 32px; border-radius: var(--v2-r-sm); display: grid; place-items: center; background: var(--v2-ink); color: var(--v2-paper); flex: none; }
 .lx-brand-name { font-family: var(--v2-font-display); font-size: 24px; font-weight: 500; letter-spacing: -0.02em; }
 .lx-nav-links { margin-left: auto; display: flex; align-items: center; gap: 22px; }
-.lx-nav-link { font-size: 0.9375rem; color: var(--v2-ink-2); white-space: nowrap; transition: color .12s; }
+.lx-nav-link { display: inline-flex; align-items: center; min-height: 44px; font-size: 0.9375rem; color: var(--v2-ink-2); white-space: nowrap; transition: color .12s; }
+.lx-nav-inner > a, .lx-foot-inner > a { display: inline-flex; align-items: center; min-height: 44px; }
 .lx-nav-link:hover { color: var(--v2-ink); }
 
 /* ── Buttons: the portal's pills, at landing size ────────────────────── */
@@ -94,7 +97,7 @@
 .lx-link:hover { text-decoration-color: var(--v2-ink); }
 
 /* ── Portal pieces ───────────────────────────────────────────────────── */
-.lx-card { background: var(--v2-paper); border: 1px solid var(--v2-line); border-radius: var(--v2-r-lg); box-shadow: var(--v2-shadow-sm); overflow: hidden; }
+.lx-card { color: var(--v2-ink); background: var(--v2-paper); border: 1px solid var(--v2-line); border-radius: var(--v2-r-lg); box-shadow: var(--v2-shadow-sm); overflow: hidden; }
 .lx-pill { justify-self: start; display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: var(--v2-r-pill); background: var(--v2-bg-2); color: var(--v2-ink-2); font-size: 12px; font-weight: 500; white-space: nowrap; }
 .lx-pill.accent { background: var(--v2-accent-soft); color: var(--v2-ink-2); }
 .lx-pill.moss { background: var(--v2-moss-soft); color: var(--v2-moss); }
@@ -108,12 +111,25 @@
 .lx-chip[aria-pressed="true"] { background: var(--v2-ink); border-color: var(--v2-ink); color: var(--v2-paper); }
 .lx-photo-grade { filter: saturate(.88) sepia(.06); }
 
-/* ── Hero ────────────────────────────────────────────────────────────── */
-.lx-hero { padding-block: clamp(32px, 5vw, 72px) var(--gap-section); }
+/* ── Hero: the portal's home card, at the size of a page ───────────────
+ * Creators open on the moss card (CreatorHome's earnings hero), brands on
+ * the dark card with the terracotta glow (BrandHome's Spark card): the first
+ * thing each side sees after signing up. The card bleeds out by its own
+ * padding, so what's inside lines up with the rest of the page. */
+.lx-hero { --panel-pad: clamp(24px, 5vw, 64px); padding-block: clamp(4px, 1vw, 12px) var(--gap-section); }
+.lx-hero > .lx-wrap { max-width: calc(var(--wrap) + 2 * var(--panel-pad)); }
+.lx-panel { position: relative; isolation: isolate; overflow: hidden; border-radius: var(--v2-r-xl); padding: var(--panel-pad); }
+.lx-panel.moss { background: linear-gradient(135deg, var(--v2-moss) 0%, var(--v2-moss-deep) 100%); }
+.lx-panel.ink { background: linear-gradient(135deg, var(--v2-ink) 0%, var(--v2-ink-deep) 100%); }
+.lx-panel::before {
+  content: ""; position: absolute; z-index: -1; top: -240px; right: -200px; width: 720px; height: 720px; border-radius: 50%;
+  background: radial-gradient(circle, var(--v2-accent) 0%, transparent 70%); opacity: .25; filter: blur(30px); pointer-events: none;
+}
+.lx-panel.moss::before { opacity: .18; }
 .lx-hero-top { display: grid; gap: 28px; align-items: end; }
 .lx-hero-side { display: grid; gap: 22px; }
 .lx-hero-small { font-size: 0.875rem; color: var(--v2-ink-3); }
-.lx-board { margin-top: clamp(44px, 5vw, 72px); display: grid; gap: 18px; }
+.lx-board { margin-top: clamp(40px, 5vw, 64px); display: grid; gap: 18px; }
 .lx-board-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; }
 .lx-board-title { font-family: var(--v2-font-display); font-size: 1.5rem; font-weight: 500; letter-spacing: -0.01em; }
 .lx-board-grid { display: grid; gap: 18px; }
@@ -123,10 +139,37 @@
   .lx-hero-top { grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr); gap: 56px; }
   .lx-hero-side { padding-bottom: 10px; }
 }
+.lx-panel .lx-card { border-color: transparent; box-shadow: 0 24px 48px -24px color-mix(in srgb, var(--v2-ink) 80%, transparent); }
+
+/* ── On a dark card or band: the portal's paper-on-ink treatment ───────
+ * Text that sits on the dark ground only; cards inside keep their own. */
+.lx-dark { color: var(--v2-paper); }
+.lx-dark :is(.lx-lead, .lx-facts3 p) { color: color-mix(in srgb, var(--v2-paper) 80%, transparent); }
+.lx-dark :is(.lx-hero-small, .lx-board-note, .lx-note):not(.lx-card *, .lx-window *) { color: color-mix(in srgb, var(--v2-paper) 74%, transparent); }
+.lx-dark .lx-btn { background: var(--v2-paper); color: var(--v2-ink); }
+.lx-dark .lx-btn:hover { background: var(--v2-bg-2); }
+/* The Spark card's Send button: terracotta, on the dark card only. */
+.lx-dark .lx-btn.accent { background: var(--accent-fill); color: var(--v2-paper); }
+.lx-dark .lx-btn.accent:hover { background: var(--v2-accent-2); color: var(--v2-ink); }
+.lx-dark .lx-btn-line { background: color-mix(in srgb, var(--v2-paper) 10%, transparent); color: var(--v2-paper); border-color: color-mix(in srgb, var(--v2-paper) 24%, transparent); }
+.lx-dark .lx-btn-line:hover { background: color-mix(in srgb, var(--v2-paper) 18%, transparent); }
+.lx-dark .lx-chip { background: color-mix(in srgb, var(--v2-paper) 8%, transparent); border-color: color-mix(in srgb, var(--v2-paper) 26%, transparent); color: var(--v2-paper); }
+.lx-dark .lx-chip:hover { border-color: color-mix(in srgb, var(--v2-paper) 60%, transparent); }
+.lx-dark .lx-chip[aria-pressed="true"] { background: var(--v2-paper); border-color: var(--v2-paper); color: var(--v2-ink); }
+.lx-dark .lx-link:not(.lx-card *) { color: var(--v2-paper); text-decoration-color: color-mix(in srgb, var(--v2-paper) 45%, transparent); }
+
+/* Cards lift on hover, as the portal's campaign tiles do. */
+.lx-tile, .lx-ccard { transition: transform .15s ease, box-shadow .15s ease; }
+.lx-tile:hover, .lx-ccard:hover { transform: translateY(-3px); box-shadow: var(--v2-shadow-lg); }
+
+/* A channel's platform colour, as the portal draws channel badges. */
+.lx-plat { display: inline-flex; align-items: center; gap: 7px; }
+.lx-plat::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--plat, var(--v2-ink-3)); flex: none; }
 
 /* Campaign tile, after BrowseBriefs' CampaignTile. */
 .lx-tile { display: flex; flex-direction: column; }
-.lx-tile-band { display: flex; align-items: center; gap: 10px; padding: 12px 16px; }
+.lx-tile-band { position: relative; display: flex; align-items: center; gap: 10px; padding: 13px 18px; overflow: hidden; }
+.lx-tile-band::after { content: ""; position: absolute; inset: 0; opacity: .1; background-image: repeating-linear-gradient(135deg, currentColor 0 1px, transparent 1px 7px); pointer-events: none; }
 .lx-tile-initial { width: 30px; height: 30px; border-radius: var(--v2-r-sm); display: grid; place-items: center; background: var(--v2-paper); color: var(--v2-ink); font-family: var(--v2-font-display); font-weight: 600; flex: none; }
 .lx-tile-brand { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
 .lx-tile-cat { margin-left: auto; font-size: 12px; font-weight: 500; opacity: .85; }
@@ -136,6 +179,7 @@
 .lx-tile-cols { display: grid; grid-template-columns: 1.1fr 1.2fr 0.8fr; margin-top: 14px; border-top: 1px solid var(--v2-line); }
 .lx-tile-cols > div { padding: 14px 18px; display: grid; gap: 6px; align-content: start; }
 .lx-tile-cols > div + div { border-left: 1px solid var(--v2-line); }
+.lx-tile-cols > div:first-child { background: linear-gradient(180deg, color-mix(in oklab, var(--v2-gold) 12%, transparent), transparent 90%); }
 .lx-tile-price { font-size: 1.75rem; line-height: 1; }
 .lx-tile-price small { font-size: 0.6em; color: var(--v2-ink-3); }
 .lx-tile-list { display: grid; gap: 2px; font-size: 0.875rem; color: var(--v2-ink-2); }
@@ -158,6 +202,15 @@
 /* ── Sections ────────────────────────────────────────────────────────── */
 .lx-section { padding-block: var(--gap-section); }
 .lx-field { background: var(--v2-bg-2); }
+.lx-field-peach { background: var(--v2-accent-soft); }
+.lx-field-sage { background: var(--v2-moss-soft); }
+/* On peach and sage, muted text needs the second ink to stay readable. */
+:is(.lx-field-peach, .lx-field-sage) .lx-note:not(.lx-card *) { color: var(--v2-ink-2); }
+:is(.lx-field-peach, .lx-field-sage) .lx-notyet { background: var(--v2-paper); }
+/* A section drawn as a campaign tile's letterhead: navy, with its texture. */
+.lx-band { position: relative; isolation: isolate; overflow: hidden; background: var(--v2-band-navy); }
+.lx-band::after { content: ""; position: absolute; z-index: -1; inset: 0; opacity: .05; background-image: repeating-linear-gradient(135deg, var(--v2-paper) 0 1px, transparent 1px 9px); pointer-events: none; }
+.lx-band .lx-window { border-color: transparent; box-shadow: 0 30px 60px -30px color-mix(in srgb, var(--v2-ink) 85%, transparent); }
 .lx-head { display: grid; gap: 18px; margin-bottom: clamp(40px, 5vw, 64px); max-width: 44rem; }
 .lx-after { margin-top: clamp(40px, 5vw, 56px); }
 
@@ -186,7 +239,7 @@
 .lx-money-input:focus-within { border-color: var(--v2-ink-3); box-shadow: 0 0 0 3px var(--v2-bg-2); }
 .lx-money-input b { font-family: var(--v2-font-display); font-weight: 500; font-size: 1.375rem; color: var(--v2-ink-2); }
 .lx-money-input input { flex: 1; width: 100%; min-width: 0; border: 0; background: transparent; outline: none; font-family: var(--v2-font-display); font-weight: 500; font-size: 1.75rem; color: var(--v2-ink); font-variant-numeric: tabular-nums; }
-.lx-preview-btn { display: inline-flex; align-items: center; gap: 8px; justify-self: start; min-height: 42px; padding: 0 18px; border-radius: var(--v2-r-pill); background: var(--v2-ink); color: var(--v2-paper); font-weight: 500; font-size: 0.9375rem; }
+.lx-preview-btn { display: inline-flex; align-items: center; gap: 8px; justify-self: start; min-height: 42px; padding: 0 18px; border-radius: var(--v2-r-pill); background: var(--accent-fill); color: var(--v2-paper); font-weight: 500; font-size: 0.9375rem; }
 
 /* Storefront: copy on one side, the storefront itself on the other. */
 .lx-found { display: grid; gap: 40px; align-items: start; }
@@ -222,7 +275,7 @@
 .lx-rate-keep b { color: var(--v2-ink-2); font-weight: 600; }
 
 /* The workspace window: the portal's shell, drawn small. */
-.lx-window { display: grid; grid-template-columns: 1fr; border-radius: var(--v2-r-xl); border: 1px solid var(--v2-line-2); background: var(--v2-bg); box-shadow: var(--v2-shadow-lg); overflow: hidden; }
+.lx-window { color: var(--v2-ink); display: grid; grid-template-columns: 1fr; border-radius: var(--v2-r-xl); border: 1px solid var(--v2-line-2); background: var(--v2-bg); box-shadow: var(--v2-shadow-lg); overflow: hidden; }
 @media (min-width: 900px) { .lx-window { grid-template-columns: 220px minmax(0, 1fr); } }
 .lx-window-side { display: none; background: var(--v2-paper); border-right: 1px solid var(--v2-line); padding: 18px 12px; gap: 2px; align-content: start; }
 @media (min-width: 900px) { .lx-window-side { display: grid; } }
@@ -274,7 +327,18 @@
 /* ── The wallet card: the portal's moss hero, as a calculator ────────── */
 /* minmax(0, 1fr): on a phone the card is as wide as the screen, never as
  * wide as its widest input. */
-.lx-wallet { border-radius: var(--v2-r-xl); background: var(--v2-moss); color: var(--v2-paper); overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr); }
+.lx-wallet {
+  position: relative; isolation: isolate; border-radius: var(--v2-r-xl); color: var(--v2-paper); overflow: hidden;
+  display: grid; grid-template-columns: minmax(0, 1fr);
+  background: linear-gradient(135deg, var(--v2-moss) 0%, var(--v2-moss-deep) 100%);
+}
+/* The brand wallet in the portal is the dark card with a terracotta edge. */
+.lx-wallet.ink { background: linear-gradient(135deg, var(--v2-ink) 0%, var(--v2-ink-deep) 60%, var(--v2-accent) 200%); }
+.lx-wallet::before {
+  content: ""; position: absolute; z-index: -1; top: -80px; right: -80px; width: 340px; height: 340px; border-radius: 50%;
+  background: radial-gradient(circle, var(--v2-moss-soft) 0%, transparent 60%); opacity: .25; pointer-events: none;
+}
+.lx-wallet.ink::before { background: radial-gradient(circle, var(--v2-accent) 0%, transparent 60%); opacity: .3; }
 @media (min-width: 960px) { .lx-wallet { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
 .lx-wallet-main { min-width: 0; padding: clamp(24px, 3.5vw, 40px); display: grid; gap: 20px; align-content: start; }
 .lx-wallet-side { padding: clamp(24px, 3.5vw, 40px); border-top: 1px solid color-mix(in srgb, var(--v2-paper) 18%, transparent); display: grid; gap: 4px; align-content: start; }
@@ -311,14 +375,16 @@
 .lx-qa p { color: var(--v2-ink-2); max-width: 34em; }
 
 /* ── Close ───────────────────────────────────────────────────────────── */
-.lx-final { background: var(--v2-ink); color: var(--v2-paper); padding-block: clamp(88px, 10vw, 144px); }
+.lx-final {
+  position: relative; isolation: isolate; overflow: hidden; padding-block: clamp(88px, 10vw, 144px);
+  background: linear-gradient(135deg, var(--v2-band-brick) 0%, var(--v2-band-cocoa) 100%);
+}
+.lx-final::before {
+  content: ""; position: absolute; z-index: -1; top: -200px; right: -120px; width: 560px; height: 560px; border-radius: 50%;
+  background: radial-gradient(circle, var(--v2-accent-2) 0%, transparent 70%); opacity: .35; filter: blur(30px); pointer-events: none;
+}
 .lx-final-grid { display: grid; gap: 28px; align-items: end; }
 @media (min-width: 960px) { .lx-final-grid { grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: 64px; } }
-.lx-final .lx-lead { color: color-mix(in srgb, var(--v2-paper) 76%, transparent); }
-.lx-final .lx-btn { background: var(--v2-paper); color: var(--v2-ink); }
-.lx-final .lx-btn:hover { background: var(--v2-bg-2); }
-.lx-final .lx-btn-line { background: transparent; color: var(--v2-paper); border-color: color-mix(in srgb, var(--v2-paper) 35%, transparent); }
-.lx-final .lx-btn-line:hover { background: color-mix(in srgb, var(--v2-paper) 10%, transparent); }
 .lx-foot { padding-block: 40px calc(32px + env(safe-area-inset-bottom, 0px)); }
 .lx-foot-inner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 18px 28px; }
 .lx-foot nav { display: flex; flex-wrap: wrap; gap: 8px 22px; color: var(--v2-ink-2); font-size: 0.9375rem; }
@@ -333,6 +399,8 @@
 
 /* ── Phones: their own composition ───────────────────────────────────── */
 @media (max-width: 560px) {
+  .lx-hero { --panel-pad: 22px; }
+  .lx-hero > .lx-wrap { padding-left: max(12px, env(safe-area-inset-left, 0px)); padding-right: max(12px, env(safe-area-inset-right, 0px)); }
   .lx-nav-links { gap: 14px; }
   .lx-nav-aud { display: none; }
   .lx-cta-row .lx-btn { flex: 1 1 100%; }

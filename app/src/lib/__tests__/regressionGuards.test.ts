@@ -734,6 +734,19 @@ describe('marketing copy does not outrun the product', () => {
       .not.toMatch(/--v2-(bg|paper|ink|accent|moss|line|font-display|font-sans|r-lg)\s*:/);
   });
 
+  it('every v2 token the landing and the letterheads read is defined once, in the token file', () => {
+    // A misspelt var() fails silently: the colour simply isn't painted. And a
+    // letterhead written as a hex would let the portal's bands and the
+    // landing's drift apart again.
+    const defined = new Set([...read('styles/v2-tokens.css').matchAll(/(--v2-[\w-]+)\s*:/g)].map((m) => m[1]!));
+    for (const f of ['landing/landing.css', 'styles/auth-v2.css', 'screens/workspace-v2/brandPalette.ts', 'landing/tools.tsx']) {
+      for (const [, name] of read(f).matchAll(/var\((--v2-[\w-]+)/g)) {
+        expect(defined.has(name!), `${f} reads ${name}, which v2-tokens.css doesn't define`).toBe(true);
+      }
+    }
+    expect(code('screens/workspace-v2/brandPalette.ts'), 'a letterhead colour written as a literal').not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+  });
+
   it('the landing loads only typefaces the portal loads', () => {
     const families = (html: string) => [...html.matchAll(/family=([A-Za-z+]+)/g)].map((m) => m[1]!.replace(/\+/g, ' '));
     const app = new Set(families(readFileSync(join(SRC, '..', 'app.html'), 'utf8')));

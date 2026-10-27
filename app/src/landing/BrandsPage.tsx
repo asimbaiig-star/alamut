@@ -20,22 +20,24 @@ export function BrandsPage() {
       <main>
         <section className="lx-hero" aria-labelledby="hero-title">
           <div className="lx-wrap">
-            <div className="lx-hero-top">
-              <h1 className="lx-h1" id="hero-title"><span>Find creators.</span> <span>Run the deal here.</span></h1>
-              <div className="lx-hero-side">
-                <p className="lx-lead">
-                  Browse storefronts with published rates, or post a brief and let creators pitch you. Brief to
-                  payout in one workspace.
-                </p>
-                <CtaRow primary={{ ...PRIMARY, id: 'hero-post' }} secondary={{ ...DEMO, id: 'hero-demo' }} />
-                <BetaLine prefix="No subscription or minimum spend." />
+            <div className="lx-panel lx-dark ink">
+              <div className="lx-hero-top">
+                <h1 className="lx-h1" id="hero-title"><span>Find creators.</span> <span>Run the deal here.</span></h1>
+                <div className="lx-hero-side">
+                  <p className="lx-lead">
+                    Browse storefronts with published rates, or post a brief and let creators pitch you. Brief to
+                    payout in one workspace.
+                  </p>
+                  <CtaRow accent primary={{ ...PRIMARY, id: 'hero-post' }} secondary={{ ...DEMO, id: 'hero-demo' }} />
+                  <BetaLine prefix="No subscription or minimum spend." />
+                </div>
               </div>
+              <CreatorBoard />
             </div>
-            <CreatorBoard />
           </div>
         </section>
 
-        <section className="lx-section lx-field" id="pitches" aria-labelledby="pitches-title">
+        <section className="lx-section lx-field-peach" id="pitches" aria-labelledby="pitches-title">
           <div className="lx-wrap">
             <div className="lx-head">
               <h2 className="lx-h2" id="pitches-title">Post a brief, get pitched.</h2>
@@ -54,7 +56,7 @@ export function BrandsPage() {
           </div>
         </section>
 
-        <section className="lx-section" id="workspace" aria-labelledby="workspace-title">
+        <section className="lx-section lx-band lx-dark" id="workspace" aria-labelledby="workspace-title">
           <div className="lx-wrap">
             <div className="lx-head">
               <h2 className="lx-h2" id="workspace-title">Every deal, in one workspace.</h2>
@@ -75,7 +77,7 @@ export function BrandsPage() {
           </div>
         </section>
 
-        <section className="lx-section lx-field" id="escrow" aria-labelledby="escrow-title">
+        <section className="lx-section" id="escrow" aria-labelledby="escrow-title">
           <div className="lx-wrap">
             <div className="lx-head">
               <h2 className="lx-h2" id="escrow-title">Pay for posts that go live.</h2>
@@ -90,7 +92,7 @@ export function BrandsPage() {
           </div>
         </section>
 
-        <section className="lx-section" id="pricing" aria-labelledby="pricing-title">
+        <section className="lx-section lx-field-sage" id="pricing" aria-labelledby="pricing-title">
           <div className="lx-wrap lx-pricing">
             <div>
               <h2 className="lx-h2" id="pricing-title">Free to post.</h2>
@@ -109,7 +111,7 @@ export function BrandsPage() {
           </div>
         </section>
 
-        <section className="lx-section lx-field" id="faq" aria-labelledby="faq-title">
+        <section className="lx-section" id="faq" aria-labelledby="faq-title">
           <div className="lx-wrap">
             <div className="lx-head"><h2 className="lx-h2" id="faq-title">Questions</h2></div>
             <Faq items={[
@@ -123,7 +125,7 @@ export function BrandsPage() {
           </div>
         </section>
 
-        <section className="lx-final" aria-labelledby="final-title">
+        <section className="lx-final lx-dark" aria-labelledby="final-title">
           <div className="lx-wrap lx-final-grid">
             <h2 className="lx-h2" id="final-title">Post your first brief.</h2>
             <div className="lx-hero-side">

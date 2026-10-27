@@ -23,22 +23,24 @@ export function CreatorsPage() {
       <main>
         <section className="lx-hero" aria-labelledby="hero-title">
           <div className="lx-wrap">
-            <div className="lx-hero-top">
-              <h1 className="lx-h1" id="hero-title"><span>Find brand deals.</span> <span>Run them here.</span></h1>
-              <div className="lx-hero-side">
-                <p className="lx-lead">
-                  Browse open briefs and pitch your own rate, or let brands find your storefront. Offers, revisions
-                  and payouts live in one workspace.
-                </p>
-                <CtaRow primary={{ ...PRIMARY, id: 'hero-signup' }} secondary={{ ...DEMO, id: 'hero-demo' }} />
-                <BetaLine prefix="Free to join, with no follower minimum." />
+            <div className="lx-panel lx-dark moss">
+              <div className="lx-hero-top">
+                <h1 className="lx-h1" id="hero-title"><span>Find brand deals.</span> <span>Run them here.</span></h1>
+                <div className="lx-hero-side">
+                  <p className="lx-lead">
+                    Browse open briefs and pitch your own rate, or let brands find your storefront. Offers, revisions
+                    and payouts live in one workspace.
+                  </p>
+                  <CtaRow primary={{ ...PRIMARY, id: 'hero-signup' }} secondary={{ ...DEMO, id: 'hero-demo' }} />
+                  <BetaLine prefix="Free to join, with no follower minimum." />
+                </div>
               </div>
+              <BriefBoard />
             </div>
-            <BriefBoard />
           </div>
         </section>
 
-        <section className="lx-section lx-field" id="pitch" aria-labelledby="pitch-title">
+        <section className="lx-section lx-field-peach" id="pitch" aria-labelledby="pitch-title">
           <div className="lx-wrap">
             <div className="lx-head">
               <h2 className="lx-h2" id="pitch-title">Pitch the briefs that fit.</h2>
@@ -65,7 +67,7 @@ export function CreatorsPage() {
           </div>
         </section>
 
-        <section className="lx-section lx-field" id="workspace" aria-labelledby="workspace-title">
+        <section className="lx-section lx-band lx-dark" id="workspace" aria-labelledby="workspace-title">
           <div className="lx-wrap">
             <div className="lx-head">
               <h2 className="lx-h2" id="workspace-title">Every deal, in one workspace.</h2>
@@ -98,7 +100,7 @@ export function CreatorsPage() {
           </div>
         </section>
 
-        <section className="lx-section lx-field" id="pricing" aria-labelledby="pricing-title">
+        <section className="lx-section lx-field-sage" id="pricing" aria-labelledby="pricing-title">
           <div className="lx-wrap lx-pricing">
             <div>
               <h2 className="lx-h2" id="pricing-title">Free to join.</h2>
@@ -131,7 +133,7 @@ export function CreatorsPage() {
           </div>
         </section>
 
-        <section className="lx-final" aria-labelledby="final-title">
+        <section className="lx-final lx-dark" aria-labelledby="final-title">
           <div className="lx-wrap lx-final-grid">
             <h2 className="lx-h2" id="final-title">Open your storefront.</h2>
             <div className="lx-hero-side">

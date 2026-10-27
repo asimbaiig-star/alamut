@@ -69,10 +69,12 @@ export function Nav({ audience }: { audience: Audience }) {
 
 export interface Cta { href: string; label: string; id: string }
 
-export function CtaRow({ primary, secondary }: { primary: Cta; secondary?: Cta }) {
+/** `accent` gives the primary the terracotta of the Spark card's Send button,
+ *  for the dark cards that button sits on. */
+export function CtaRow({ primary, secondary, accent }: { primary: Cta; secondary?: Cta; accent?: boolean }) {
   return (
     <div className="lx-cta-row">
-      <a className="lx-btn" href={primary.href} data-cta={primary.id}>{primary.label}</a>
+      <a className={accent ? 'lx-btn accent' : 'lx-btn'} href={primary.href} data-cta={primary.id}>{primary.label}</a>
       {secondary && <a className="lx-btn lx-btn-line" href={secondary.href} data-cta={secondary.id}>{secondary.label}</a>}
     </div>
   );

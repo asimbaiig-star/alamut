@@ -5,16 +5,28 @@
 // brandPalette.ts) and money from its maths (estimate.ts → money.ts): type a
 // rate and you see what the ledger would record.
 
-import { useId, useState } from 'react';
+import { useId, useState, type CSSProperties } from 'react';
 import { Credits, PhotoImg } from './components';
 import { brandEstimate, clampMoney, creatorEstimate, usd } from './estimate';
 import { brandAccent, CREATOR_CATEGORIES, PLATFORM_FEE_LABEL, PLATFORM_FORMATS, WHT_LABEL } from './facts';
-import { BRIEFS, BRIEF_FILTERS, CREATORS, CREATOR_FILTERS, type BriefListing } from './listings';
+import { BRIEFS, BRIEF_FILTERS, CREATORS, CREATOR_FILTERS, type BriefListing, type CreatorChannel } from './listings';
 import { PHOTOS } from './photos';
 
 const toMoney = (raw: string) => clampMoney(Number(raw.replace(/[^\d]/g, '')) || 0);
 const moneyText = (n: number) => (n === 0 ? '' : n.toLocaleString('en-US'));
 const keep = (rate: number) => usd(creatorEstimate(rate, 1).net);
+
+// The platform's colour for whatever names it ("2 × Instagram Reel", "TikTok"),
+// as the portal colours channel badges.
+const PLATFORM_COLOUR: Record<CreatorChannel['platform'], string> = {
+  Instagram: 'var(--v2-platform-instagram)',
+  TikTok: 'var(--v2-platform-tiktok)',
+  YouTube: 'var(--v2-platform-youtube)',
+};
+function platStyle(text: string): CSSProperties | undefined {
+  const p = (Object.keys(PLATFORM_COLOUR) as CreatorChannel['platform'][]).find((k) => text.includes(k));
+  return p ? ({ '--plat': PLATFORM_COLOUR[p] } as CSSProperties) : undefined;
+}
 
 function MoneyInput({ label, value, onChange, className = 'lx-field-label' }: {
   label: string; value: number; onChange: (n: number) => void; className?: string;
@@ -75,7 +87,7 @@ function CampaignTile({ brief }: { brief: BriefListing }) {
       </div>
       <div className="lx-tile-cols">
         <div><span className="lx-label">Per creator</span><span className="lx-money lx-tile-price">{usd(brief.perCreator)}</span></div>
-        <div><span className="lx-label">Deliverables</span><ul className="lx-tile-list">{brief.deliverables.map((d) => <li key={d}>{d}</li>)}</ul></div>
+        <div><span className="lx-label">Deliverables</span><ul className="lx-tile-list">{brief.deliverables.map((d) => <li key={d} className="lx-plat" style={platStyle(d)}>{d}</li>)}</ul></div>
         <div><span className="lx-label">Deadline</span><span className="lx-money lx-tile-price">{brief.deadlineDays}<small> d</small></span></div>
       </div>
       <div className="lx-tile-foot"><span>Example brief</span><span className="lx-pill">Open to pitches</span></div>
@@ -122,7 +134,7 @@ export function CreatorBoard() {
               <span className="lx-ccard-avatar" aria-hidden="true">{c.niche[0]}</span>
               <h3 className="lx-ccard-name">{c.niche}</h3>
               <div className="lx-ccard-channels">
-                {c.channels.map((ch) => <span key={ch.platform}>{ch.platform} <b>{ch.followers}</b></span>)}
+                {c.channels.map((ch) => <span key={ch.platform} className="lx-plat" style={platStyle(ch.platform)}>{ch.platform} <b>{ch.followers}</b></span>)}
                 <span className="lx-ccard-er">{c.engagement}% ER</span>
               </div>
               <span className="lx-pill">{c.category}</span>
@@ -341,7 +353,7 @@ export function HoldTool() {
   const perPost = e.perPost[0] ?? 0;
   const uneven = e.perPost.some((p) => p !== perPost);
   return (
-    <div className="lx-wallet" aria-label="What a brief holds and releases">
+    <div className="lx-wallet ink" aria-label="What a brief holds and releases">
       <div className="lx-wallet-main">
         <span className="lx-label">You pay in total</span>
         <div><span className="lx-money lx-wallet-big" aria-live="polite">{usd(e.held)}</span></div>

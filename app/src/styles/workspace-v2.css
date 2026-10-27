@@ -654,7 +654,7 @@ body:has([data-surface="v2"]) {
 
 /* Spark teaser card (dark gradient) */
 [data-surface="v2"] .v2-spark-card {
-  background: linear-gradient(135deg, var(--v2-ink) 0%, #2A2620 100%);
+  background: linear-gradient(135deg, var(--v2-ink) 0%, var(--v2-ink-deep) 100%);
   color: var(--v2-paper);
   border-color: transparent;
 }
@@ -1081,7 +1081,7 @@ body:has([data-surface="v2"]) {
    shape + chrome) but visually distinct so creators don't mistake the
    brand wallet's "spend" cues for their own "earn" cues. */
 [data-surface="v2"] .v2-wallet-hero.is-creator {
-  background: linear-gradient(135deg, var(--v2-moss) 0%, #1F3527 100%);
+  background: linear-gradient(135deg, var(--v2-moss) 0%, var(--v2-moss-deep) 100%);
 }
 [data-surface="v2"] .v2-wallet-hero.is-creator .v2-wallet-hero-glow {
   background: radial-gradient(circle, var(--v2-moss-soft) 0%, transparent 60%);
@@ -1094,7 +1094,7 @@ body:has([data-surface="v2"]) {
   margin-bottom: 24px;
   padding: 28px;
   border-radius: var(--v2-r-lg);
-  background: linear-gradient(135deg, var(--v2-ink) 0%, #2A2620 60%, var(--v2-accent) 200%);
+  background: linear-gradient(135deg, var(--v2-ink) 0%, var(--v2-ink-deep) 60%, var(--v2-accent) 200%);
   color: var(--v2-paper);
 }
 [data-surface="v2"] .v2-wallet-hero-glow {
@@ -2543,7 +2543,7 @@ body:has([data-surface="v2"]) {
 [data-surface="v2"] .v2-storefront-cta {
   margin-top: 14px;
   padding: 28px;
-  background: linear-gradient(135deg, var(--v2-ink) 0%, #2A2620 100%);
+  background: linear-gradient(135deg, var(--v2-ink) 0%, var(--v2-ink-deep) 100%);
   color: var(--v2-paper);
   border: 1px solid transparent;
   border-radius: var(--v2-r-lg);
