@@ -21,9 +21,8 @@
 import { useMemo, useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useReducedMotion } from 'motion/react';
-import { PersonaPalette } from '@/screens/cover/scenes/PersonaPalette';
 import { TopNav } from '@/screens/cover/scenes/TopNav';
-import { Logo } from '@/components/ui/Logo';
+import { PublicFooter } from '@/screens/public/PublicChrome';
 import { fmtMoneyFull } from '@/lib/utils/format';
 // P6 §5.4 — per-platform tuning (basePerThousand, engagement bounds,
 // methodology blurbs) lives in a dedicated constants file so the
@@ -109,8 +108,7 @@ export function RateCalculator() {
   const switchTo = (id: PlatformConfig['id']) => `/tools/${id}-calculator`;
 
   return (
-    <PersonaPalette>
-      <div data-surface="landing-light" className="lp-light-root tools-page">
+      <div data-surface="v2" className="pub-v2 tools-page">
         <TopNav />
 
         <main className="tools-main">
@@ -244,13 +242,7 @@ export function RateCalculator() {
           </section>
         </main>
 
-        <footer className="cn-footer">
-          <div className="cn-footer-bottom">
-            <span><Logo size={14} tag="ALAMUT" /> · 2026</span>
-            <span className="cn-footer-bottom-meta">Free tool · benchmarks only</span>
-          </div>
-        </footer>
+        <PublicFooter />
       </div>
-    </PersonaPalette>
   );
 }

@@ -7,12 +7,12 @@
 
 import { useMemo, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { PersonaPalette } from '@/screens/cover/scenes/PersonaPalette';
 import { TopNav } from '@/screens/cover/scenes/TopNav';
-import { Logo } from '@/components/ui/Logo';
+import { PublicFooter } from '@/screens/public/PublicChrome';
 import { useStore } from '@/lib/api/store';
 import { fmtCount, fmtMoneyFull } from '@/lib/utils/format';
 import type { Creator } from '@/lib/api/types';
+import { isDemoCreator } from '@/lib/utils/demoData';
 
 import '@/styles/cinematic.css';
 
@@ -76,8 +76,7 @@ export function CreatorsDirectory() {
   useEffect(() => { setPage(0); }, [category, platform, region]);
 
   return (
-    <PersonaPalette>
-      <div data-surface="landing-light" className="lp-light-root tools-page">
+      <div data-surface="v2" className="pub-v2 tools-page">
         <TopNav />
 
         <main className="tools-main">
@@ -157,7 +156,11 @@ export function CreatorsDirectory() {
                   decoding="async"
                 />
                 <div className="dir-card-body">
-                  <div className="dir-card-name">{c.name}</div>
+                  <div className="dir-card-name">
+                    {c.name}
+                    {/* As Discover marks them: a seeded demo account, not a real creator. */}
+                    {isDemoCreator(c) && <span className="dir-card-demo">Demo</span>}
+                  </div>
                   <div className="dir-card-handle mono-meta">{c.handle}</div>
                   <div className="dir-card-tagline">{c.tagline}</div>
                   <div className="dir-card-meta">
@@ -175,7 +178,9 @@ export function CreatorsDirectory() {
                       </span>
                     ))}
                   </div>
-                  {c.lifetimeEarnings > 0 && (
+                  {/* A demo account's earnings are seed data, so they aren't shown as
+                      money earned on Alamut. */}
+                  {!isDemoCreator(c) && c.lifetimeEarnings > 0 && (
                     <div className="dir-card-earnings mono-meta">
                       {fmtMoneyFull(c.lifetimeEarnings)} earned via Alamut
                     </div>
@@ -231,13 +236,7 @@ export function CreatorsDirectory() {
           </section>
         </main>
 
-        <footer className="cn-footer">
-          <div className="cn-footer-bottom">
-            <span><Logo size={14} tag="ALAMUT" /> · 2026</span>
-            <span className="cn-footer-bottom-meta">Public directory · vetted creators only</span>
-          </div>
-        </footer>
+        <PublicFooter />
       </div>
-    </PersonaPalette>
   );
 }

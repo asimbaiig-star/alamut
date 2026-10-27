@@ -876,6 +876,34 @@ describe('marketing copy does not outrun the product', () => {
     }
   });
 
+  it('the public pages around the landing sit on the v2 surface too', () => {
+    // Terms, Privacy, 404, the rate calculators and the directory are one
+    // click from the landing. They were the old site: a nav whose anchors
+    // (#why, #how, #voices, #pricing) pointed into a page that no longer has
+    // them, monospace labels, italic display type.
+    for (const f of ['screens/legal/LegalPage.tsx', 'screens/legal/NotFound.tsx', 'screens/tools/RateCalculator.tsx', 'screens/tools/CreatorsDirectory.tsx']) {
+      expect(code(f), `${f} left the v2 surface`).toMatch(/data-surface="v2" className="pub-v2/);
+      expect(code(f), `${f} is back on the old surface`).not.toMatch(/landing-light|PersonaPalette/);
+    }
+    expect(code('screens/cover/scenes/TopNav.tsx'), 'the old nav, with its dead anchors, is back').not.toMatch(/href="#(why|how|voices|pricing)"/);
+    expect(code('screens/public/PublicChrome.tsx')).toMatch(/BrandMarkSvg/);
+  });
+
+  it('each landing shares its own preview image, and the image exists', () => {
+    for (const [shell, img] of [['index.html', 'og-creators.jpg'], ['for-brands/index.html', 'og-brands.jpg']] as const) {
+      const html = readFileSync(join(SRC, '..', shell), 'utf8');
+      expect(html, `${shell} shares another page's image`).toContain(`property="og:image" content="https://alamut-six.vercel.app/${img}"`);
+      expect(html).toContain(`name="twitter:image" content="https://alamut-six.vercel.app/${img}"`);
+      expect(() => readFileSync(join(SRC, '..', 'public', img)), `public/${img} is missing`).not.toThrow();
+    }
+  });
+
+  it('the public directory doesn’t show a demo account’s seed earnings as real', () => {
+    const dir = code('screens/tools/CreatorsDirectory.tsx');
+    expect(dir).toMatch(/isDemoCreator\(c\) && <span className="dir-card-demo">Demo<\/span>/);
+    expect(dir, 'demo earnings are shown as money earned on Alamut').toMatch(/!isDemoCreator\(c\) && c\.lifetimeEarnings > 0/);
+  });
+
   it('sign-in and sign-up sit on the v2 surface, and every surface draws one mark', () => {
     for (const f of ['screens/auth/SignIn.tsx', 'screens/auth/SignUp.tsx']) {
       expect(code(f), f).toMatch(/data-surface="v2"/);

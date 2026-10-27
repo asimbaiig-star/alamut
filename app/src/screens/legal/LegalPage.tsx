@@ -6,13 +6,12 @@
 // stay in sync with what the app actually does. Contact address
 // matches the Cover footer (hello@alamut.co).
 //
-// Both pages share one layout so they stay visually consistent with
-// the airy auth surfaces.
+// Both pages share one layout, in the portal's language like the landing
+// and the auth screens (styles/public-v2.css).
 
 import { Link } from 'react-router-dom';
 import { useEffect } from 'react';
-import { Logo } from '@/components/ui/Logo';
-import { TileHalo } from '@/components/layout/TileHalo';
+import { PublicFooter, PublicNav } from '@/screens/public/PublicChrome';
 
 const LAST_UPDATED = '8 August 2026';
 const CONTACT = 'hello@alamut.co';
@@ -23,34 +22,20 @@ function LegalShell({ title, children }: { title: string; children: React.ReactN
     window.scrollTo(0, 0);
   }, [title]);
   return (
-    <div data-surface="landing-light" className="lp-light-root auth-airy auth-landing-light">
-      <TileHalo />
-      <header className="airy-topnav auth-landing-topnav">
-        <div className="airy-topnav-inner">
-          <Link to="/" aria-label="Alamut home" className="airy-topnav-logo">
-            <Logo size={20} tag="ALAMUT" />
-          </Link>
-          <div className="airy-topnav-actions">
-            <Link to="/signin" className="lp-topnav-signin">Sign in</Link>
-          </div>
-        </div>
-      </header>
-      <main className="airy-section" style={{ maxWidth: 720, margin: '0 auto', padding: 'var(--space-xl) var(--space-lg)' }}>
-        <div className="airy-stack-lg">
-          <div>
-            <div className="airy-eyebrow">Alamut · Beta</div>
-            <h1 className="airy-h-display">{title}</h1>
-            <p className="airy-meta">Last updated: {LAST_UPDATED}</p>
-          </div>
-          <div className="airy-stack" style={{ lineHeight: 1.65 }}>
-            {children}
-          </div>
-          <p className="airy-meta">
-            Questions? Email <a href={`mailto:${CONTACT}`}>{CONTACT}</a>. See also{' '}
-            <Link to="/terms">Terms of Service</Link> · <Link to="/privacy">Privacy Policy</Link>.
+    <div data-surface="v2" className="pub-v2">
+      <PublicNav />
+      <main className="pub-main">
+        <h1 className="pub-h1">{title}</h1>
+        <p className="pub-meta">Public beta. Last updated {LAST_UPDATED}.</p>
+        <div className="pub-prose">
+          {children}
+          <p>
+            Questions? Email <a href={`mailto:${CONTACT}`}>{CONTACT}</a>. See also the{' '}
+            <Link to="/terms">Terms of Service</Link> and the <Link to="/privacy">Privacy Policy</Link>.
           </p>
         </div>
       </main>
+      <PublicFooter />
     </div>
   );
 }
@@ -58,7 +43,7 @@ function LegalShell({ title, children }: { title: string; children: React.ReactN
 export function TermsPage() {
   return (
     <LegalShell title="Terms of Service">
-      <h2 className="airy-h-section">What Alamut is (and isn't) right now</h2>
+      <h2>What Alamut is (and isn't) right now</h2>
       <p>
         Alamut is a marketplace where brands and creators plan collaborations:
         brands post briefs, creators apply and negotiate, content gets
@@ -79,7 +64,7 @@ export function TermsPage() {
         product. Demo participants won't respond to real outreach.
       </p>
 
-      <h2 className="airy-h-section">Your account</h2>
+      <h2>Your account</h2>
       <p>
         You need an account to use the workspace. Keep your credentials to
         yourself and tell us if you think your account has been compromised.
@@ -89,7 +74,7 @@ export function TermsPage() {
         but treat the beta as a living system, not permanent storage.
       </p>
 
-      <h2 className="airy-h-section">Your content</h2>
+      <h2>Your content</h2>
       <p>
         Content you upload (portfolio work, drafts, submissions, messages)
         stays yours. You give Alamut permission to store and display it so
@@ -100,7 +85,7 @@ export function TermsPage() {
         terms.
       </p>
 
-      <h2 className="airy-h-section">Deals between brands and creators</h2>
+      <h2>Deals between brands and creators</h2>
       <p>
         Alamut provides the workspace where deals are negotiated and
         tracked, but the collaboration itself is between the brand and the
@@ -109,7 +94,7 @@ export function TermsPage() {
         outside Alamut and is your own arrangement.
       </p>
 
-      <h2 className="airy-h-section">No warranty · beta software</h2>
+      <h2>No warranty · beta software</h2>
       <p>
         Alamut is provided as-is, without warranties of any kind. Things
         will occasionally break, change, or disappear while we build. To the
@@ -117,7 +102,7 @@ export function TermsPage() {
         use of the beta.
       </p>
 
-      <h2 className="airy-h-section">Changes</h2>
+      <h2>Changes</h2>
       <p>
         We'll update these terms as the product grows — most importantly
         when real payments launch, which will come with substantially
@@ -132,7 +117,7 @@ export function TermsPage() {
 export function PrivacyPage() {
   return (
     <LegalShell title="Privacy Policy">
-      <h2 className="airy-h-section">What we collect</h2>
+      <h2>What we collect</h2>
       <p>
         When you create an account we collect your email address, your
         password (handled by our authentication provider — we never see or
@@ -146,7 +131,7 @@ export function PrivacyPage() {
         nothing to collect.
       </p>
 
-      <h2 className="airy-h-section">Where it lives</h2>
+      <h2>Where it lives</h2>
       <p>
         Account and profile data is stored with{' '}
         <a href="https://supabase.com" target="_blank" rel="noreferrer">Supabase</a>{' '}
@@ -156,7 +141,7 @@ export function PrivacyPage() {
         removes that local copy.
       </p>
 
-      <h2 className="airy-h-section">How we use it</h2>
+      <h2>How we use it</h2>
       <p>
         To run the product: showing your storefront to brands, matching
         briefs to creators, delivering messages and notifications, and
@@ -167,7 +152,7 @@ export function PrivacyPage() {
         renting your data to anyone.
       </p>
 
-      <h2 className="airy-h-section">What's visible to others</h2>
+      <h2>What's visible to others</h2>
       <p>
         Your creator storefront (name, handle, bio, rates, portfolio,
         reviews, and the audience figures you enter) is visible to signed-in
@@ -176,7 +161,7 @@ export function PrivacyPage() {
         address is never shown publicly.
       </p>
 
-      <h2 className="airy-h-section">Deletion & your choices</h2>
+      <h2>Deletion & your choices</h2>
       <p>
         Email <a href="mailto:hello@alamut.co">hello@alamut.co</a> from your
         account address and we'll delete your account and associated data.
@@ -184,7 +169,7 @@ export function PrivacyPage() {
         limited period before rolling off.
       </p>
 
-      <h2 className="airy-h-section">Changes</h2>
+      <h2>Changes</h2>
       <p>
         If our data practices change — especially when real payments launch,
         which will involve payment and identity providers — we'll update

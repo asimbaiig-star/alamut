@@ -10,8 +10,7 @@
 
 import { Link } from 'react-router-dom';
 import { useEffect } from 'react';
-import { Logo } from '@/components/ui/Logo';
-import { TileHalo } from '@/components/layout/TileHalo';
+import { PublicFooter, PublicNav } from '@/screens/public/PublicChrome';
 
 export function NotFound() {
   useEffect(() => {
@@ -19,39 +18,18 @@ export function NotFound() {
   }, []);
 
   return (
-    <div data-surface="landing-light" className="lp-light-root auth-airy auth-landing-light">
-      <TileHalo />
-      <header className="airy-topnav auth-landing-topnav">
-        <div className="airy-topnav-inner">
-          <Link to="/" aria-label="Alamut home" className="airy-topnav-logo">
-            <Logo size={20} tag="ALAMUT" />
-          </Link>
-          <div className="airy-topnav-actions">
-            <Link to="/signin" className="lp-topnav-signin">Sign in</Link>
-          </div>
-        </div>
-      </header>
-
-      <main className="airy-section auth-airy-main">
-        <div style={{ maxWidth: 560, margin: '0 auto', textAlign: 'center' }}>
-          <div className="airy-stack">
-            <div className="airy-eyebrow">404</div>
-            <h1 className="airy-h-display">This page doesn't exist.</h1>
-            <p className="airy-lede">
-              The link may be out of date, or the address might have a typo.
-            </p>
-            <div
-              style={{
-                display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap',
-                justifyContent: 'center', marginTop: 'var(--space-md)',
-              }}
-            >
-              <Link to="/" className="btn btn-solid">Go to the homepage</Link>
-              <Link to="/creators" className="btn btn-ghost">Browse creators</Link>
-            </div>
-          </div>
+    <div data-surface="v2" className="pub-v2">
+      <PublicNav />
+      <main className="pub-main">
+        <p className="pub-meta">Error 404</p>
+        <h1 className="pub-h1">This page doesn’t exist.</h1>
+        <p className="pub-lede">The link may be out of date, or the address might have a typo.</p>
+        <div className="pub-actions">
+          <a href="/" className="pub-btn">Go to the homepage</a>
+          <Link to="/creators" className="pub-btn line">Browse creators</Link>
         </div>
       </main>
+      <PublicFooter />
     </div>
   );
 }

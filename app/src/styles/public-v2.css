@@ -1,0 +1,126 @@
+/* public-v2.css — the app's public pages around the landing (Terms,
+ * Privacy, 404, the rate calculators, the creators directory), in the
+ * portal's language like the landing and the auth screens.
+ *
+ * The tool pages keep their old class names. Inside .pub-v2 the old
+ * --cn-* variables they read point at the v2 tokens, and what a variable
+ * can't reach (white fills, monospace uppercase labels, italic or heavy
+ * display type, the accent word) is set below. No colour of its own.
+ */
+
+@import './v2-tokens.css';
+
+[data-surface="v2"].pub-v2 {
+  --cn-bg: var(--v2-bg); --cn-bg-deep: var(--v2-bg-2);
+  --cn-ink: var(--v2-ink); --cn-ink-muted: var(--v2-ink-2); --cn-ink-quiet: var(--v2-ink-3); --cn-ink-faint: var(--v2-ink-3);
+  --cn-rule: var(--v2-line); --cn-rule-strong: var(--v2-line-2);
+  --cn-accent: var(--v2-accent); --cn-accent-soft: var(--v2-accent-soft);
+  --cn-serif: var(--v2-font-display); --cn-sans: var(--v2-font-sans); --cn-mono: var(--v2-font-sans);
+  --mono: var(--v2-font-sans); --ink-60: var(--v2-ink-3);
+  min-height: 100vh; display: flex; flex-direction: column;
+  background: var(--v2-bg); color: var(--v2-ink);
+  font: 400 1rem/1.55 var(--v2-font-sans); -webkit-font-smoothing: antialiased;
+}
+.pub-v2 *, .pub-nav *, .pub-foot * { box-sizing: border-box; }
+.pub-v2 :focus-visible, .pub-nav :focus-visible, .pub-foot :focus-visible { outline: 2px solid var(--v2-accent); outline-offset: 3px; border-radius: 6px; }
+.pub-v2 ::selection { background: var(--v2-accent-soft); color: var(--v2-ink); }
+.pub-v2 :is(input, textarea) { caret-color: var(--v2-accent); }
+
+/* ── Nav and footer: the landing's ───────────────────────────────────── */
+.pub-nav { position: sticky; top: 0; z-index: 30; background: var(--v2-bg); box-shadow: 0 1px 0 var(--v2-line); font-family: var(--v2-font-sans); }
+.pub-nav-inner, .pub-foot-inner {
+  width: 100%; max-width: 1200px; margin: 0 auto;
+  padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px));
+}
+.pub-nav-inner { height: 72px; display: flex; align-items: center; gap: 20px; }
+.pub-brand { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; color: var(--v2-ink); text-decoration: none; }
+.pub-brand-mark { width: 32px; height: 32px; border-radius: var(--v2-r-sm); display: grid; place-items: center; background: var(--v2-ink); flex: none; }
+.pub-brand-name { font-family: var(--v2-font-display); font-size: 22px; font-weight: 500; letter-spacing: -0.02em; }
+.pub-nav-links { margin-left: auto; display: flex; align-items: center; gap: 16px; }
+.pub-nav-link { display: inline-flex; align-items: center; min-height: 44px; padding-inline: 6px; font-size: 0.9375rem; color: var(--v2-ink-2); text-decoration: none; white-space: nowrap; }
+.pub-nav-link:hover { color: var(--v2-ink); }
+.pub-btn {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 20px;
+  border: 1px solid transparent; border-radius: var(--v2-r-pill); background: var(--v2-ink); color: var(--v2-paper);
+  font: 500 0.9375rem/1 var(--v2-font-sans); text-decoration: none; white-space: nowrap; cursor: pointer;
+}
+.pub-btn:hover { background: var(--v2-ink-2); }
+.pub-btn.line { background: var(--v2-paper); color: var(--v2-ink); border-color: var(--v2-line-2); }
+.pub-btn.line:hover { background: var(--v2-bg-2); }
+@media (max-width: 560px) { .pub-nav-aud { display: none; } .pub-nav-links { gap: 10px; } }
+
+.pub-foot { margin-top: auto; padding-block: 36px calc(28px + env(safe-area-inset-bottom, 0px)); box-shadow: 0 -1px 0 var(--v2-line); font-family: var(--v2-font-sans); background: var(--v2-bg); }
+.pub-foot-inner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px 28px; }
+.pub-foot nav { display: flex; flex-wrap: wrap; gap: 4px 20px; }
+.pub-foot nav a { display: inline-flex; align-items: center; min-height: 44px; padding-inline: 4px; font-size: 0.9375rem; color: var(--v2-ink-2); text-decoration: none; }
+.pub-foot nav a:hover { color: var(--v2-ink); }
+.pub-foot-note { width: 100%; margin: 0; font-size: 0.8125rem; color: var(--v2-ink-3); }
+
+/* ── Terms, Privacy, 404 ─────────────────────────────────────────────── */
+.pub-main {
+  flex: 1; width: 100%; max-width: 46rem; margin: 0 auto;
+  padding: clamp(40px, 6vw, 88px) max(20px, env(safe-area-inset-right, 0px)) clamp(56px, 7vw, 96px) max(20px, env(safe-area-inset-left, 0px));
+}
+.pub-h1 { margin: 0; font-family: var(--v2-font-display); font-weight: 500; font-variation-settings: "opsz" 144; font-size: clamp(2.5rem, 1.7rem + 2.8vw, 3.75rem); line-height: 1.04; letter-spacing: -0.02em; text-wrap: balance; }
+.pub-meta { margin: 14px 0 0; font-size: 0.9375rem; color: var(--v2-ink-3); }
+.pub-lede { margin: 18px 0 0; font-size: 1.125rem; line-height: 1.55; color: var(--v2-ink-2); max-width: 34em; text-wrap: pretty; }
+.pub-prose { margin-top: 36px; display: grid; gap: 16px; font-size: 1.0625rem; line-height: 1.7; color: var(--v2-ink-2); }
+.pub-prose :where(p, ul, ol) { margin: 0; }
+.pub-prose h2 { margin: 24px 0 0; font-family: var(--v2-font-display); font-weight: 500; font-style: normal; font-size: 1.5rem; line-height: 1.2; letter-spacing: -0.01em; color: var(--v2-ink); text-wrap: balance; }
+.pub-prose strong { color: var(--v2-ink); font-weight: 600; }
+.pub-prose ul { padding-left: 1.2em; display: grid; gap: 8px; }
+.pub-v2 :is(.pub-prose, .pub-meta, .pub-lede) a { color: var(--v2-ink); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; text-decoration-color: var(--v2-line-2); }
+.pub-v2 :is(.pub-prose, .pub-meta, .pub-lede) a:hover { text-decoration-color: var(--v2-ink); }
+.pub-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+
+/* ── The rate calculators and the directory, on the v2 tokens ────────── */
+/* The wrapper is a flex column, where margin: auto would shrink the page to
+ * its content; it takes the full width up to its maximum instead. */
+.pub-v2 .tools-main { width: 100%; max-width: 1200px; }
+.pub-v2 .cn-h-eyebrow { font-family: var(--v2-font-sans); font-size: 0.9375rem; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--v2-ink-2); }
+.pub-v2 .cn-h-eyebrow::before { content: none; }
+.pub-v2 .cn-h-display { font-family: var(--v2-font-display); font-weight: 500; font-style: normal; color: var(--v2-ink); }
+.pub-v2 .tools-h { font-size: clamp(2.5rem, 1.6rem + 3vw, 4.5rem) !important; line-height: 1.02 !important; letter-spacing: -0.02em !important; text-wrap: balance; }
+.pub-v2 .cn-h-display .accent, .pub-v2 .cn-h-section .accent { color: inherit; font-style: normal; display: inline; }
+.pub-v2 .cn-h-display .accent::after { content: none; }
+.pub-v2 .cn-lede { font-size: 1.125rem; line-height: 1.55; color: var(--v2-ink-2); max-width: 38em; }
+.pub-v2 .cn-h-section { font-family: var(--v2-font-display); font-weight: 500; font-style: normal; font-size: 1.75rem; letter-spacing: -0.01em; }
+.pub-v2 :is(.mono-meta, .airy-meta) { font-family: var(--v2-font-sans); font-size: 0.875rem; letter-spacing: 0; text-transform: none; color: var(--v2-ink-3); }
+.pub-v2 .tools-platform-tab { font-family: var(--v2-font-sans); font-size: 0.9375rem; letter-spacing: 0; text-transform: none; background: var(--v2-paper); color: var(--v2-ink-2); border-color: var(--v2-line-2); }
+.pub-v2 .tools-platform-tab:hover { border-color: var(--v2-ink-4); color: var(--v2-ink); }
+.pub-v2 .tools-platform-tab.is-on { background: var(--v2-ink); border-color: var(--v2-ink); color: var(--v2-paper); }
+.pub-v2 .field-label { font-family: var(--v2-font-sans); font-size: 0.9375rem; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--v2-ink-2); }
+.pub-v2 .field input, .pub-v2 .dir-filter select {
+  min-height: 48px; border: 1px solid var(--v2-line-2); border-radius: var(--v2-r-md); background: var(--v2-paper);
+  color: var(--v2-ink); font: 400 1rem/1.3 var(--v2-font-sans);
+}
+.pub-v2 .field-help { font-size: 0.875rem; color: var(--v2-ink-3); }
+/* The calculator card, and its answer in the portal's moss wallet card. */
+.pub-v2 .tools-calc-card, .pub-v2 .dir-filters, .pub-v2 .tools-cross-sell-card, .pub-v2 .dir-card {
+  background: var(--v2-paper); border: 1px solid var(--v2-line); box-shadow: var(--v2-shadow-sm);
+}
+.pub-v2 .tools-calc-card { border-radius: var(--v2-r-xl); }
+.pub-v2 .tools-calc-result { background: linear-gradient(135deg, var(--v2-moss) 0%, var(--v2-moss-deep) 100%); border: 0; border-radius: var(--v2-r-lg); color: var(--v2-paper); }
+.pub-v2 .tools-calc-result-v { font-family: var(--v2-font-display); font-weight: 500; color: var(--v2-paper); letter-spacing: -0.01em; }
+.pub-v2 .tools-calc-result-v-big { color: var(--v2-paper) !important; font-weight: 500 !important; }
+.pub-v2 .tools-calc-result :is(.mono-meta, .tools-calc-result-unit, .tools-calc-result-empty) { color: color-mix(in srgb, var(--v2-paper) 78%, transparent); }
+.pub-v2 .tools-calc-result-median-label { color: var(--v2-paper) !important; }
+.pub-v2 .tools-methodology { border-color: var(--v2-line); }
+.pub-v2 .tools-methodology-a { font-size: 1rem; color: var(--v2-ink-2); }
+.pub-v2 .tools-cross-sell-card { border-radius: var(--v2-r-lg); }
+.pub-v2 .tools-cross-sell-card:hover { transform: none; border-color: var(--v2-line-2); box-shadow: var(--v2-shadow-md); }
+.pub-v2 .tools-cross-sell-h { font-family: var(--v2-font-display); font-weight: 500; font-size: 1.25rem; letter-spacing: -0.01em; }
+.pub-v2 .dir-filters { border-radius: var(--v2-r-lg); }
+.pub-v2 .dir-card { border-radius: var(--v2-r-lg); overflow: hidden; }
+.pub-v2 .dir-card-name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-family: var(--v2-font-display); font-weight: 500; font-size: 1.25rem; letter-spacing: -0.01em; }
+.pub-v2 .dir-card-demo { padding: 2px 9px; border-radius: var(--v2-r-pill); background: var(--v2-bg-2); color: var(--v2-ink-2); font: 500 0.75rem/1.4 var(--v2-font-sans); letter-spacing: 0; }
+.pub-v2 .dir-card-platform-name { font-size: 0.875rem; }
+.pub-v2 .dir-card-earnings { border-top-style: solid; color: var(--v2-ink-2); }
+.pub-v2 :is(.cn-btn-solid, .cn-btn-ghost) {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 20px; border-radius: var(--v2-r-pill);
+  font: 500 0.9375rem/1 var(--v2-font-sans); letter-spacing: 0; text-transform: none; text-decoration: none;
+}
+.pub-v2 .cn-btn-solid { background: var(--v2-ink); color: var(--v2-paper); border: 1px solid var(--v2-ink); }
+.pub-v2 .cn-btn-solid:hover { background: var(--v2-ink-2); }
+.pub-v2 .cn-btn-ghost { background: var(--v2-paper); color: var(--v2-ink); border: 1px solid var(--v2-line-2); }
+.pub-v2 .cn-btn-ghost:hover { background: var(--v2-bg-2); }
