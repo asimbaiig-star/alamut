@@ -34,6 +34,7 @@ interface State {
   followers: string;       // string for input, parse to number
   engagement: string;
   city: string;
+  country: string;
   bio: string;
   category: string;
   reelRate: string;
@@ -67,6 +68,9 @@ const CATEGORIES = CREATOR_CATEGORIES;
 export function CreatorOnboardingV2({ onRoute }: Props) {
   const currentCreator = useV2CurrentCreator();
   const [submitting, setSubmitting] = useState(false);
+  // Sign-up asks for the country. Ask here only if it came through empty,
+  // decided once so the field doesn't vanish as it's typed into.
+  const [askCountry] = useState(() => !currentCreator?.country?.trim());
   const [step, setStep] = useState<StepId>('platform');
   const [s, setS] = useState<State>(() => {
     // A storefront the creator laid out on the landing and kept: its
@@ -88,7 +92,10 @@ export function CreatorOnboardingV2({ onRoute }: Props) {
       handle: fromLanding.handle,
       followers: '',
       engagement: '',
-      city: currentCreator?.city || 'Lahore',
+      // No default city: sign-up no longer asks for it, and a preset one
+      // would be wrong for most people.
+      city: currentCreator?.city ?? '',
+      country: currentCreator?.country ?? '',
       bio: currentCreator?.bio ?? '',
       category: fromLanding.category,
       reelRate: fromLanding.reelRate,
@@ -114,6 +121,7 @@ export function CreatorOnboardingV2({ onRoute }: Props) {
       v2UpdateCreatorIdentity(currentCreator.id, {
         handle: s.handle,
         city: s.city,
+        country: s.country,
         bio: s.bio,
         categories: s.category ? [s.category] : currentCreator.categories,
         rateCard: {
@@ -313,13 +321,29 @@ export function CreatorOnboardingV2({ onRoute }: Props) {
                     />
                   </Field>
                 </div>
-                <Field label="City">
-                  <select value={s.city} onChange={(e) => update({ city: e.target.value })}>
-                    {['Lahore', 'Karachi', 'Islamabad', 'Rawalpindi', 'Faisalabad', 'Other'].map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                </Field>
+                {askCountry ? (
+                  <div className="v2-onboarding-row-2">
+                    <Field label="Country" htmlFor="v2-onb-country">
+                      <input id="v2-onb-country" type="text" autoComplete="country-name" placeholder="Pakistan"
+                        value={s.country} onChange={(e) => update({ country: e.target.value })} />
+                    </Field>
+                    <Field label="City" htmlFor="v2-onb-city">
+                      <input id="v2-onb-city" type="text" autoComplete="address-level2" list="v2-onb-cities"
+                        value={s.city} onChange={(e) => update({ city: e.target.value })} />
+                    </Field>
+                  </div>
+                ) : (
+                  <Field label="City" sub={`In ${s.country}, from sign-up.`} htmlFor="v2-onb-city">
+                    <input id="v2-onb-city" type="text" autoComplete="address-level2" list="v2-onb-cities"
+                      value={s.city} onChange={(e) => update({ city: e.target.value })} />
+                  </Field>
+                )}
+                {/* Suggestions only: any city can be typed. */}
+                {/^\s*pakistan\s*$/i.test(s.country) && (
+                  <datalist id="v2-onb-cities">
+                    {['Lahore', 'Karachi', 'Islamabad', 'Rawalpindi', 'Faisalabad', 'Multan', 'Peshawar'].map((c) => <option key={c} value={c} />)}
+                  </datalist>
+                )}
                 <Field label="Primary category">
                   <div className="v2-onboarding-cats">
                     {CATEGORIES.map((c) => (
@@ -475,7 +499,7 @@ export function CreatorOnboardingV2({ onRoute }: Props) {
                 }}>
                   <div className="v2-eyebrow" style={{ marginBottom: 8 }}>Publishing summary</div>
                   <ul style={{ margin: 0, padding: 0, listStyle: 'none', fontSize: 13, lineHeight: 1.7 }}>
-                    <li><strong>@{s.handle || 'your-handle'}</strong> on {s.platform ? PLATFORM_META[s.platform].name : '—'} from {s.city}</li>
+                    <li><strong>@{s.handle || 'your-handle'}</strong> on {s.platform ? PLATFORM_META[s.platform].name : '—'}{(s.city || s.country) && ` from ${[s.city, s.country].filter(Boolean).join(', ')}`}</li>
                     <li>{s.followers ? fmtFollowers(parseInt(s.followers, 10)) : '—'} followers · {s.engagement || '—'}% engagement</li>
                     <li>{s.category || 'category not set'}</li>
                     <li>Reel {fmtUSD(parseInt(s.reelRate, 10) || 0)} · Stories {fmtUSD(parseInt(s.storyRate, 10) || 0)} · Combo {fmtUSD(parseInt(s.comboRate, 10) || 0)}</li>
@@ -513,7 +537,7 @@ export function CreatorOnboardingV2({ onRoute }: Props) {
                       @{s.handle || 'your-handle'}
                     </div>
                     <div className="v2-muted" style={{ fontSize: 11.5 }}>
-                      {s.city}{s.platform && ` · ${PLATFORM_META[s.platform].name}`}
+                      {[s.city, s.country].filter(Boolean).join(', ')}{s.platform && `${s.city || s.country ? ' · ' : ''}${PLATFORM_META[s.platform].name}`}
                     </div>
                   </div>
                 </div>

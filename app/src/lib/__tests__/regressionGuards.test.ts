@@ -663,6 +663,33 @@ describe('marketing copy does not outrun the product', () => {
     expect(copy).toMatch(/PLATFORM_FEE_LABEL/);
   });
 
+  it('the founder’s note goes live only once it’s written', () => {
+    // founder.ts starts as a draft full of [placeholders] for the founder to
+    // fill in. Shipping it half-written would put brackets on the page.
+    const f = code('landing/founder.ts');
+    const ready = /ready:\s*true/.test(f);
+    expect(/ready:\s*(true|false)/.test(f), 'the ready flag stopped matching').toBe(true);
+    if (ready) {
+      expect(f, 'the founder’s note still has a [placeholder]').not.toMatch(/'[^']*\[[^\]']+\][^']*'/);
+      const photo = /photo:\s*'([^']*)'/.exec(f)?.[1] ?? '';
+      if (photo) expect(() => readFileSync(join(SRC, '..', 'public', photo)), `${photo} isn't in app/public`).not.toThrow();
+    }
+  });
+
+  it('sign-up asks the country, onboarding asks the city, and neither asks twice', () => {
+    const signUp = code('screens/auth/SignUp.tsx');
+    expect(signUp, 'sign-up asks for a city again').not.toMatch(/signup-city|setCity\(/);
+    expect(signUp, 'sign-up stopped asking for the country').toMatch(/id="signup-country"/);
+    const onb = code('screens/workspace-v2/screens/CreatorOnboardingV2.tsx');
+    expect(onb, 'onboarding presets a city nobody chose').not.toMatch(/city:[^,\n]*\|\|\s*'[A-Z][a-z]+'/);
+    // The country field is behind askCountry, which is true only when the
+    // creator record has no country yet.
+    expect(onb).toMatch(/useState\(\(\) => !currentCreator\?\.country\?\.trim\(\)\)/);
+    const countryFields = onb.match(/id="v2-onb-country"/g) ?? [];
+    expect(countryFields.length).toBe(1);
+    expect(onb.slice(onb.indexOf('{askCountry ? ('), onb.indexOf('id="v2-onb-country"')), 'the country field is asked unconditionally').toMatch(/\{askCountry \? \(/);
+  });
+
   it('every market figure is the survey’s, credited, and never passed off as ours', () => {
     // The landing shows a few industry figures (market.ts). Each must be
     // found, as shown, in the source sentence recorded for it; the strip that

@@ -7,6 +7,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { BETA_LINE, SESSION_STORAGE_KEY, SIGNUP_HREF } from './facts';
 import { MARKET_SOURCE_LINE, type MarketFigure } from './market';
+import { FOUNDER } from './founder';
 import { photoUrl, type Photo as PhotoData } from './photos';
 import { BrandMarkSvg } from '@/screens/workspace-v2/BrandMark';
 
@@ -179,6 +180,28 @@ export function MarketStrip({ title, figures }: { title: string; figures: Market
           ))}
         </ul>
         <p className="lx-market-source">{MARKET_SOURCE_LINE}</p>
+      </div>
+    </section>
+  );
+}
+
+/** The founder's note (founder.ts). Renders nothing until it's marked ready. */
+export function FounderNote() {
+  if (!FOUNDER.ready) return null;
+  const initials = FOUNDER.name.split(/\s+/).filter((w) => /^\p{L}/u.test(w)).map((w) => w[0]).join('').slice(0, 2);
+  return (
+    <section className="lx-section lx-founder" aria-labelledby="founder-title">
+      <div className="lx-wrap lx-founder-grid">
+        <div className="lx-founder-who">
+          {FOUNDER.photo
+            ? <img className="lx-founder-photo" src={FOUNDER.photo} alt={FOUNDER.name} width={96} height={96} loading="lazy" decoding="async" />
+            : <span className="lx-founder-photo" aria-hidden="true">{initials}</span>}
+          <div><b>{FOUNDER.name}</b><span>{FOUNDER.role}, Alamut</span></div>
+        </div>
+        <div className="lx-founder-note">
+          <h2 className="lx-h2" id="founder-title">{FOUNDER.title}</h2>
+          {FOUNDER.paragraphs.map((p) => <p key={p}>{p}</p>)}
+        </div>
       </div>
     </section>
   );

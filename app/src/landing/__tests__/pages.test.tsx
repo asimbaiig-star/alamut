@@ -270,3 +270,15 @@ describe('the storefront and the rate helper', () => {
   });
 });
 
+describe('the founder’s note', () => {
+  it('stays off both pages while it’s a draft', async () => {
+    const { FOUNDER } = await import('../founder');
+    if (FOUNDER.ready) return;
+    for (const El of [CreatorsPage, BrandsPage]) {
+      const { container } = render(<El />);
+      expect(container.querySelector('.lx-founder')).toBeNull();
+      cleanup();
+    }
+  });
+});
+

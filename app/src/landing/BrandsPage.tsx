@@ -7,7 +7,7 @@
 // Not "AI": the least real part of the product and the claim every
 // competitor makes (LANDING-REVIEW.md §3).
 
-import { AudienceSwitch, BetaLine, CtaRow, Faq, Footer, MarketStrip, Nav, NotYet, StickyCta } from './components';
+import { AudienceSwitch, BetaLine, CtaRow, Faq, Footer, FounderNote, MarketStrip, Nav, NotYet, StickyCta } from './components';
 import { BRAND_MARKET } from './market';
 import { DEMO_HREF, PLATFORM_FEE_LABEL, SIGNUP_HREF } from './facts';
 import { BrandNeedsWindow, Compare, LAPSE_LINE, PitchInbox } from './productCards';
@@ -135,6 +135,8 @@ export function BrandsPage() {
             ]} />
           </div>
         </section>
+
+        <FounderNote />
 
         <section className="lx-final lx-dark" aria-labelledby="final-title">
           <div className="lx-wrap lx-final-grid">

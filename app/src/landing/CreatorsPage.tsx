@@ -10,7 +10,7 @@
 // the page they'd see, then keep it), the deal runs in one place, the money
 // is held before you work, and what it costs. One action throughout: Join free.
 
-import { AudienceSwitch, BetaLine, CtaRow, Faq, Footer, MarketStrip, Nav, NotYet, StickyCta } from './components';
+import { AudienceSwitch, BetaLine, CtaRow, Faq, Footer, FounderNote, MarketStrip, Nav, NotYet, StickyCta } from './components';
 import { CREATOR_MARKET } from './market';
 import { DEMO_HREF, PLATFORM_FEE_LABEL, SAMPLE_STOREFRONT_HREF, SIGNUP_HREF, WHT_LABEL } from './facts';
 import { Compare, CreatorDealWindow } from './productCards';
@@ -134,6 +134,8 @@ export function CreatorsPage() {
             ]} />
           </div>
         </section>
+
+        <FounderNote />
 
         <section className="lx-final lx-dark" aria-labelledby="final-title">
           <div className="lx-wrap lx-final-grid">

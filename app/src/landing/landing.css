@@ -495,6 +495,19 @@
 .lx-qa h3 { font-family: var(--v2-font-display); font-size: 1.375rem; font-weight: 500; letter-spacing: -0.01em; line-height: 1.2; margin-bottom: 8px; }
 .lx-qa p { color: var(--v2-ink-2); max-width: 34em; }
 
+/* ── The founder's note: a letter, not a feature ─────────────────────── */
+.lx-founder { background: var(--v2-paper); border-top: 1px solid var(--v2-line); }
+.lx-founder-grid { display: grid; gap: 28px; }
+@media (min-width: 900px) { .lx-founder-grid { grid-template-columns: 220px minmax(0, 40rem); gap: 64px; } }
+.lx-founder-who { display: flex; align-items: center; gap: 14px; align-self: start; }
+@media (min-width: 900px) { .lx-founder-who { flex-direction: column; align-items: flex-start; position: sticky; top: 108px; } }
+.lx-founder-photo { width: 96px; height: 96px; border-radius: 50%; object-fit: cover; display: grid; place-items: center; background: var(--v2-accent-soft); color: var(--v2-ink-2); font-family: var(--v2-font-display); font-size: 2rem; flex: none; }
+.lx-founder-who b { display: block; font-weight: 600; }
+.lx-founder-who span { color: var(--v2-ink-3); font-size: 0.9375rem; }
+.lx-founder-note { display: grid; gap: 18px; }
+.lx-founder-note .lx-h2 { margin-bottom: 6px; }
+.lx-founder-note p { font-size: 1.125rem; line-height: 1.65; color: var(--v2-ink-2); text-wrap: pretty; }
+
 /* ── Close ───────────────────────────────────────────────────────────── */
 .lx-final {
   position: relative; isolation: isolate; overflow: hidden; padding-block: clamp(88px, 10vw, 144px);

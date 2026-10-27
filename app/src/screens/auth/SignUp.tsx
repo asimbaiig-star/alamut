@@ -41,7 +41,6 @@ export function SignUp() {
   const [password, setPassword] = useState('');
   const [brandName, setBrandName] = useState('');
   const [industry, setIndustry] = useState('');
-  const [city, setCity] = useState('');
   const [country, setCountry] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -77,7 +76,8 @@ export function SignUp() {
           name: role === 'brand' ? (brandName || name) : name,
           brandName: role === 'brand' ? brandName : undefined,
           industry: role === 'brand' ? industry : undefined,
-          city: role === 'creator' ? city : undefined,
+          // City is asked once, in onboarding, beside the country given here.
+          city: undefined,
           country: role === 'creator' ? country : undefined,
         });
         pushToast(`Welcome, ${user.email}`, 'good');
@@ -92,7 +92,7 @@ export function SignUp() {
         name: role === 'brand' ? (brandName || name) : name,
         brandName: role === 'brand' ? brandName : undefined,
         industry: role === 'brand' ? industry : undefined,
-        city: role === 'creator' ? city : undefined,
+        city: undefined,
         country: role === 'creator' ? country : undefined,
       });
       if (result.status === 'needs_confirmation') {
@@ -263,15 +263,9 @@ export function SignUp() {
                     <label htmlFor="signup-name-creator" className="field-label">Your name</label>
                     <input id="signup-name-creator" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" required />
                   </div>
-                  <div className="form-grid">
-                    <div className="field">
-                      <label htmlFor="signup-city" className="field-label">City</label>
-                      <input id="signup-city" autoComplete="address-level2" value={city} onChange={(e) => setCity(e.target.value)} placeholder="Lahore" />
-                    </div>
-                    <div className="field">
-                      <label htmlFor="signup-country" className="field-label">Country</label>
-                      <input id="signup-country" autoComplete="country-name" value={country} onChange={(e) => setCountry(e.target.value)} placeholder="Pakistan" />
-                    </div>
+                  <div className="field">
+                    <label htmlFor="signup-country" className="field-label">Country</label>
+                    <input id="signup-country" autoComplete="country-name" value={country} onChange={(e) => setCountry(e.target.value)} placeholder="Pakistan" />
                   </div>
                 </>
               )}
