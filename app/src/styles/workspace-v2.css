@@ -13,50 +13,10 @@
      · PKR-native, Pakistan vocabulary
    ===================================================================== */
 
+/* Tokens live in their own file so the landing pages can share them. */
+@import './v2-tokens.css';
+
 [data-surface="v2"] {
-  /* Surfaces */
-  --v2-bg:        #F6F1E8;
-  --v2-bg-2:      #EFE8DA;
-  --v2-paper:     #FBF7EE;
-  --v2-ink:       #1C1A15;
-  --v2-ink-2:     #3A372E;
-  --v2-ink-3:     #6B6759;
-  --v2-ink-4:     #9C9685;
-  --v2-line:      #E4DCC8;
-  --v2-line-2:    #D7CCB1;
-
-  /* Accents */
-  --v2-accent:        #C5552B;
-  --v2-accent-2:      #E2784D;
-  --v2-accent-soft:   #F4D9C7;
-  --v2-moss:          #2D4A35;
-  --v2-moss-soft:     #C9D4C0;
-  --v2-gold:          #B8902F;
-  --v2-plum:          #5A3B47;
-
-  /* Status */
-  --v2-positive:  #2D6A4F;
-  --v2-warning:   #B8902F;
-  --v2-negative:  #A8412B;
-  --v2-info:      #3F5B7A;
-
-  /* Type */
-  --v2-font-display: "Fraunces", "Cormorant Garamond", Georgia, serif;
-  --v2-font-sans:    "Inter Tight", "Inter", system-ui, -apple-system, sans-serif;
-  --v2-font-mono:    "JetBrains Mono", ui-monospace, monospace;
-
-  /* Radii */
-  --v2-r-sm:   8px;
-  --v2-r-md:   12px;
-  --v2-r-lg:   18px;
-  --v2-r-xl:   24px;
-  --v2-r-pill: 999px;
-
-  /* Shadows */
-  --v2-shadow-sm: 0 1px 0 rgba(28, 26, 21, 0.04), 0 1px 2px rgba(28, 26, 21, 0.04);
-  --v2-shadow-md: 0 1px 0 rgba(28, 26, 21, 0.04), 0 4px 16px rgba(28, 26, 21, 0.06);
-  --v2-shadow-lg: 0 1px 0 rgba(28, 26, 21, 0.04), 0 12px 40px rgba(28, 26, 21, 0.10);
-
   /* Apply at the surface level so descendants inherit cleanly */
   background: var(--v2-bg);
   color: var(--v2-ink);

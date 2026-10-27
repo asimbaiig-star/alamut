@@ -1,73 +1,50 @@
-// tools.tsx — the interactive pieces of each page.
+// tools.tsx — the interactive pieces of each page, drawn as the portal's
+// own screens so the visitor meets the product before signing up.
 //
-// The hero of each page is a builder: type into it and it becomes the thing
-// the other side of the marketplace sees. A creator writes a rate card; a
-// brand writes a brief. Its options come from the product's own lists (facts.ts →
-// marketplaceOptions.ts), so it can't offer a format the product doesn't.
-//
-// Lower down, the payment tools run the product's money maths (estimate.ts →
-// money.ts): type a rate and you see what the ledger would actually record.
+// Options come from the product's lists (facts.ts → marketplaceOptions.ts,
+// brandPalette.ts) and money from its maths (estimate.ts → money.ts): type a
+// rate and you see what the ledger would record.
 
 import { useId, useState } from 'react';
+import { Credits, PhotoImg } from './components';
 import { brandEstimate, clampMoney, creatorEstimate, usd } from './estimate';
-import { CREATOR_CATEGORIES, PLATFORM_FEE_LABEL, PLATFORM_FORMATS, WHT_LABEL } from './facts';
-import { BRIEFS, BRIEF_FILTERS, CREATORS, CREATOR_FILTERS } from './listings';
-import { photoUrl } from './photos';
+import { brandAccent, CREATOR_CATEGORIES, PLATFORM_FEE_LABEL, PLATFORM_FORMATS, WHT_LABEL } from './facts';
+import { BRIEFS, BRIEF_FILTERS, CREATORS, CREATOR_FILTERS, type BriefListing } from './listings';
+import { PHOTOS } from './photos';
 
 const toMoney = (raw: string) => clampMoney(Number(raw.replace(/[^\d]/g, '')) || 0);
 const moneyText = (n: number) => (n === 0 ? '' : n.toLocaleString('en-US'));
+const keep = (rate: number) => usd(creatorEstimate(rate, 1).net);
 
-function MoneyInput({ label, value, onChange }: { label: string; value: number; onChange: (n: number) => void }) {
+function MoneyInput({ label, value, onChange, className = 'lx-field-label' }: {
+  label: string; value: number; onChange: (n: number) => void; className?: string;
+}) {
   const id = useId();
   return (
-    <label className="lx-field" htmlFor={id}>
+    <label className={className} htmlFor={id}>
       <span>{label}</span>
-      <div className="lx-money">
+      <span className="lx-money-input">
         <b aria-hidden="true">$</b>
-        <input
-          id={id}
-          type="text"
-          inputMode="numeric"
-          autoComplete="off"
-          value={value === 0 ? '' : String(value)}
-          placeholder="0"
-          onChange={(e) => onChange(toMoney(e.target.value))}
-          aria-describedby={`${id}-hint`}
-        />
-      </div>
-      <span id={`${id}-hint`} hidden>Whole US dollars</span>
+        <input id={id} type="text" inputMode="numeric" autoComplete="off" placeholder="0"
+          value={moneyText(value)} onChange={(e) => onChange(toMoney(e.target.value))} />
+      </span>
     </label>
   );
 }
 
-function Stepper({ label, value, min, max, onChange, unit, small }: {
-  label: string; value: number; min: number; max: number; onChange: (n: number) => void; unit: string; small?: boolean;
+function Stepper({ label, value, min, max, onChange, unit }: {
+  label: string; value: number; min: number; max: number; onChange: (n: number) => void; unit: string;
 }) {
   const id = useId();
-  const controls = (
-    <>
+  return (
+    <div className="lx-stepper" role="group" aria-labelledby={id}>
+      <span id={id} className="lx-sr">{label}</span>
       <button type="button" onClick={() => onChange(Math.max(min, value - 1))} disabled={value <= min} aria-label={`Fewer ${unit}`}>−</button>
       <output aria-live="polite">{value}</output>
       <button type="button" onClick={() => onChange(Math.min(max, value + 1))} disabled={value >= max} aria-label={`More ${unit}`}>+</button>
-    </>
-  );
-  if (small) {
-    return (
-      <div className="lx-stepper sm" role="group" aria-labelledby={id}>
-        <span id={id} className="lx-sr">{label}</span>
-        {controls}
-      </div>
-    );
-  }
-  return (
-    <div className="lx-field" role="group" aria-labelledby={id}>
-      <span id={id}>{label}</span>
-      <div className="lx-stepper">{controls}</div>
     </div>
   );
 }
-
-// ── The first screen: a board of listings, filterable in place ──────────
 
 function Chips<T extends string>({ label, options, value, onChange }: {
   label: string; options: readonly T[]; value: T; onChange: (v: T) => void;
@@ -81,63 +58,127 @@ function Chips<T extends string>({ label, options, value, onChange }: {
   );
 }
 
-/** Creators' first screen: open briefs, the way BrowseBriefs lists them. */
+// ── Creators' first screen: open briefs, as Browse campaigns shows them ──
+
+function CampaignTile({ brief }: { brief: BriefListing }) {
+  const band = brandAccent(brief.brand);
+  return (
+    <article className="lx-card lx-tile">
+      <div className="lx-tile-band" style={{ background: band.bg, color: band.ink }}>
+        <span className="lx-tile-initial" aria-hidden="true">{brief.title[0]}</span>
+        <span className="lx-tile-brand">{brief.brand}</span>
+        <span className="lx-tile-cat">{brief.category}</span>
+      </div>
+      <div className="lx-tile-body">
+        <h3 className="lx-tile-title">{brief.title}</h3>
+        <p className="lx-tile-blurb">{brief.blurb}</p>
+      </div>
+      <div className="lx-tile-cols">
+        <div><span className="lx-label">Per creator</span><span className="lx-money lx-tile-price">{usd(brief.perCreator)}</span></div>
+        <div><span className="lx-label">Deliverables</span><ul className="lx-tile-list">{brief.deliverables.map((d) => <li key={d}>{d}</li>)}</ul></div>
+        <div><span className="lx-label">Deadline</span><span className="lx-money lx-tile-price">{brief.deadlineDays}<small> d</small></span></div>
+      </div>
+      <div className="lx-tile-foot"><span>Example brief</span><span className="lx-pill">Open to pitches</span></div>
+    </article>
+  );
+}
+
 export function BriefBoard() {
   const [cat, setCat] = useState<(typeof BRIEF_FILTERS)[number]>('All');
-  const shown = BRIEFS.filter((b) => cat === 'All' || b.category === cat).slice(0, 4);
+  const shown = BRIEFS.filter((b) => cat === 'All' || b.category === cat).slice(0, 3);
   return (
     <div className="lx-board" aria-label="Example open briefs">
-      <Chips label="Filter briefs by category" options={BRIEF_FILTERS} value={cat} onChange={setCat} />
-      <ul className="lx-list" aria-live="polite">
-        {shown.map((b) => (
-          <li key={b.title} className="lx-item">
-            <div>
-              <div className="lx-item-title">{b.title}</div>
-              <div className="lx-item-meta">{b.category} · {b.deliverables}</div>
-            </div>
-            <div className="lx-item-price"><b>{usd(b.perCreator)}</b><span>per creator</span></div>
-          </li>
-        ))}
-      </ul>
+      <div className="lx-board-head">
+        <h2 className="lx-board-title">Open briefs</h2>
+        <Chips label="Filter briefs by category" options={BRIEF_FILTERS} value={cat} onChange={setCat} />
+      </div>
+      <div className="lx-board-grid" aria-live="polite">
+        {shown.map((b) => <CampaignTile key={b.title} brief={b} />)}
+      </div>
       <p className="lx-board-note">
-        <span className="lx-live">Example briefs.</span> In the app you search open briefs by brand, category or platform,
+        Example briefs, drawn as the app shows them. In the app you search open briefs by brand, category or platform,
         filter by budget, and save the ones you want.
       </p>
     </div>
   );
 }
 
-/** Brands' first screen: creator storefronts, the way Discover lists them. */
+// ── Brands' first screen: creator storefronts, as Discover shows them ───
+
 export function CreatorBoard() {
   const [platform, setPlatform] = useState<(typeof CREATOR_FILTERS)[number]>('All');
-  const shown = CREATORS.filter((c) => platform === 'All' || c.platform === platform).slice(0, 4);
+  const shown = CREATORS.filter((c) => platform === 'All' || c.channels.some((ch) => ch.platform === platform)).slice(0, 3);
   return (
     <div className="lx-board" aria-label="Example creator storefronts">
-      <Chips label="Filter creators by platform" options={CREATOR_FILTERS} value={platform} onChange={setPlatform} />
-      <ul className="lx-list" aria-live="polite">
+      <div className="lx-board-head">
+        <h2 className="lx-board-title">Creators</h2>
+        <Chips label="Filter creators by platform" options={CREATOR_FILTERS} value={platform} onChange={setPlatform} />
+      </div>
+      <div className="lx-board-grid" aria-live="polite">
         {shown.map((c) => (
-          <li key={c.niche} className="lx-item">
-            <div className="lx-item-main">
-              <span className="lx-thumb"><img src={photoUrl(c.photo.id, 160, 1)} width={56} height={56} alt="" loading="lazy" decoding="async" /></span>
-              <div>
-                <div className="lx-item-title">{c.niche}</div>
-                <div className="lx-item-meta">{c.platform} · {c.followers}</div>
+          <article key={c.niche} className="lx-card lx-ccard">
+            <div className="lx-ccard-cover"><PhotoImg photo={c.photo} width={400} ratio={400 / 96} sizes="(min-width: 1100px) 380px, (min-width: 760px) 50vw, 100vw" /></div>
+            <div className="lx-ccard-body">
+              <span className="lx-ccard-avatar" aria-hidden="true">{c.niche[0]}</span>
+              <h3 className="lx-ccard-name">{c.niche}</h3>
+              <div className="lx-ccard-channels">
+                {c.channels.map((ch) => <span key={ch.platform}>{ch.platform} <b>{ch.followers}</b></span>)}
+                <span className="lx-ccard-er">{c.engagement}% ER</span>
               </div>
+              <span className="lx-pill">{c.category}</span>
             </div>
-            <div className="lx-item-price"><b>{usd(c.rate)}</b><span>{c.per}</span></div>
-          </li>
+            <div className="lx-ccard-foot">
+              <span className="lx-note">Example storefront</span>
+              <span><span className="lx-label">From </span><span className="lx-money lx-ccard-from">{usd(c.from)}</span></span>
+            </div>
+          </article>
         ))}
-      </ul>
+      </div>
       <p className="lx-board-note">
-        <span className="lx-live">Example storefronts.</span> In the app you filter creators by platform, category,
-        followers, city and price. Follower counts are what creators enter. Thumbnails by{' '}
-        {CREATORS.map((c) => c.photo.by).join(', ')} on Unsplash.
+        Example storefronts, drawn as the app shows them. In the app you filter creators by platform, category,
+        followers, city and price. Follower counts are what creators enter. <Credits photos={CREATORS.map((c) => c.photo)} />
       </p>
     </div>
   );
 }
 
-// ── Creators' hero: the rate card a brand would see ──────────────────────
+// ── Creators: pitch a brief (BriefDetail's apply form) ──────────────────
+
+export function ApplyPreview() {
+  const brief = BRIEFS[0]!;
+  const [pitch, setPitch] = useState('Two Reels built around my morning routine, filmed at home in natural light.');
+  const [rate, setRate] = useState(1600);
+  const pitchId = useId();
+  return (
+    <div className="lx-pitch">
+      <article className="lx-card lx-pane" aria-label="Example brief">
+        <span className="lx-label">{brief.brand} · {brief.category}</span>
+        <h3 className="lx-pane-title">{brief.title}</h3>
+        <p className="lx-body">{brief.blurb}</p>
+        <div className="lx-kv">
+          <div><span>Deliverables</span><b>{brief.deliverables.join(', ')}</b></div>
+          <div><span>Target rate</span><b>{usd(brief.perCreator)} per creator</b></div>
+          <div><span>Deadline</span><b>{brief.deadlineDays} days</b></div>
+        </div>
+        <span className="lx-note">Example brief</span>
+      </article>
+      <form className="lx-card lx-pane" aria-label="Apply with a pitch" onSubmit={(e) => e.preventDefault()}>
+        <h3 className="lx-h3">Apply with a pitch</h3>
+        <label className="lx-field-label" htmlFor={pitchId}>
+          <span>Your pitch</span>
+          <textarea id={pitchId} className="lx-textarea" value={pitch} maxLength={400} onChange={(e) => setPitch(e.target.value)} />
+        </label>
+        <MoneyInput label="Your rate for the deal" value={rate} onChange={setRate} />
+        <p className="lx-note">
+          You keep <b className="tnum">{usd(creatorEstimate(rate, 1).net)}</b> after the {PLATFORM_FEE_LABEL} platform fee and {WHT_LABEL} withholding.
+        </p>
+        <span className="lx-preview-btn" aria-hidden="true">Send application</span>
+      </form>
+    </div>
+  );
+}
+
+// ── Creators: the storefront brands see ─────────────────────────────────
 
 /** What the product would accept as a handle, near enough for a preview. */
 export function toHandle(name: string): string {
@@ -149,11 +190,12 @@ function initials(name: string): string {
 }
 
 const PACKAGES = [
-  { key: 'reel', label: 'Reel' },
+  { key: 'reel', label: 'Instagram Reel' },
   { key: 'post', label: 'Feed post' },
   { key: 'story', label: 'Story' },
 ] as const;
 type PackageKey = (typeof PACKAGES)[number]['key'];
+const WORK = [PHOTOS.makeupTable, PHOTOS.kitchenShoot, PHOTOS.phoneOnTripod];
 
 export function StorefrontBuilder() {
   const [name, setName] = useState('');
@@ -165,55 +207,54 @@ export function StorefrontBuilder() {
   const first = name.trim().split(/\s+/)[0];
   return (
     <div className="lx-card" aria-label="Your storefront, as a brand sees it">
-      <div className="lx-card-top"><span>Your storefront</span><span>Type to edit</span></div>
-      <div className="lx-card-id">
-        <span className={name.trim() ? 'lx-avatar' : 'lx-avatar empty'} aria-hidden="true">{initials(name) || '+'}</span>
-        <div className="lx-card-who">
-          <input
-            className="lx-inline lx-inline-name" aria-label="Your name" placeholder="Your name"
-            value={name} maxLength={40} autoComplete="off" spellCheck={false}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <div className="lx-card-meta">
-            <span className="lx-at">@<input
-              className="lx-inline" aria-label="Your handle" placeholder="yourhandle"
-              value={shownHandle} maxLength={24} autoComplete="off" spellCheck={false}
-              onChange={(e) => setHandle(toHandle(e.target.value))}
-            /></span>
-            <select className="lx-inline lx-select" aria-label="Your niche" value={niche} onChange={(e) => setNiche(e.target.value)}>
-              {CREATOR_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
+      <div className="lx-sf-cover"><PhotoImg photo={PHOTOS.ringLight} width={720} ratio={720 / 132} sizes="(min-width: 1000px) 700px, 100vw" /></div>
+      <div className="lx-sf-head">
+        <span className="lx-sf-portrait" aria-hidden="true">{initials(name) || '+'}</span>
+        <input className="lx-sf-name" aria-label="Your name" placeholder="Your name" value={name} maxLength={40}
+          autoComplete="off" spellCheck={false} onChange={(e) => setName(e.target.value)} />
+        <div className="lx-sf-meta">
+          <span>@<input aria-label="Your handle" placeholder="yourhandle" value={shownHandle} maxLength={24}
+            autoComplete="off" spellCheck={false} onChange={(e) => setHandle(toHandle(e.target.value))} /></span>
+          <select aria-label="Your niche" value={niche} onChange={(e) => setNiche(e.target.value)}>
+            {CREATOR_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <span className="lx-pill accent">{niche}</span>
+        </div>
+        <span className="lx-preview-btn" aria-hidden="true">{first ? `Brief ${first} on Alamut` : 'Send a brief'} →</span>
+      </div>
+      <div className="lx-sf-section">
+        <span className="lx-label">Recent work</span>
+        <div className="lx-sf-work">
+          {WORK.map((p) => <figure key={p.id}><PhotoImg photo={p} width={240} ratio={1} sizes="200px" /></figure>)}
         </div>
       </div>
-      <div className="lx-rates">
-        {PACKAGES.map((p) => (
-          <label key={p.key} className="lx-rate">
-            <span className="lx-rate-name">{p.label}</span>
-            <span className="lx-leader" aria-hidden="true" />
-            <span className="lx-price">
-              <b aria-hidden="true">$</b>
-              <input
-                type="text" inputMode="numeric" autoComplete="off" placeholder="0"
-                aria-label={`${p.label} rate, US dollars`}
-                value={moneyText(rates[p.key])}
-                onChange={(e) => setRates((r) => ({ ...r, [p.key]: toMoney(e.target.value) }))}
-              />
-            </span>
-            <span className="lx-keep">you keep <b>{usd(creatorEstimate(rates[p.key], 1).net)}</b></span>
-          </label>
-        ))}
+      <div className="lx-sf-section">
+        <span className="lx-label">Packages and rates</span>
+        <div className="lx-rates">
+          {PACKAGES.map((p) => (
+            <label key={p.key} className="lx-rate">
+              <span className="lx-rate-name">{p.label}</span>
+              <span className="lx-rate-price">
+                <b aria-hidden="true">$</b>
+                <input type="text" inputMode="numeric" autoComplete="off" placeholder="0" aria-label={`${p.label} rate, US dollars`}
+                  value={moneyText(rates[p.key])} onChange={(e) => setRates((r) => ({ ...r, [p.key]: toMoney(e.target.value) }))} />
+              </span>
+              <span className="lx-rate-keep">you keep <b>{keep(rates[p.key])}</b></span>
+            </label>
+          ))}
+        </div>
       </div>
-      <div className="lx-card-foot">
-        <span className="lx-chip-btn" aria-hidden="true">{first ? `Brief ${first}` : 'Send a brief'} <span className="lx-arrow">→</span></span>
-        <span className="lx-url">/c/{shownHandle || 'yourhandle'}</span>
+      <div className="lx-sf-section">
+        <p className="lx-note">
+          <span className="tnum">/c/{shownHandle || 'yourhandle'}</span> · “You keep” is after the {PLATFORM_FEE_LABEL} platform
+          fee and {WHT_LABEL} withholding. <Credits photos={[PHOTOS.ringLight, ...WORK]} />
+        </p>
       </div>
-      <p className="lx-note">“You keep” is after the {PLATFORM_FEE_LABEL} platform fee and {WHT_LABEL} withholding.</p>
     </div>
   );
 }
 
-// ── Brands' hero: the brief a creator would see ──────────────────────────
+// ── Brands: write the brief (NewCampaignWizard's fields) ────────────────
 
 export function BriefBuilder() {
   const [title, setTitle] = useState('');
@@ -221,68 +262,45 @@ export function BriefBuilder() {
   const [format, setFormat] = useState('reel');
   const [count, setCount] = useState(2);
   const [rate, setRate] = useState(1500);
-  const rateId = useId();
   const p = PLATFORM_FORMATS.find((x) => x.value === platform) ?? PLATFORM_FORMATS[0]!;
   const f = p.formats.find((x) => x.value === format) ?? p.formats[0]!;
   return (
-    <div className="lx-card" aria-label="Your brief, as a creator sees it">
-      <div className="lx-card-top"><span>Your brief</span><span>Type to edit</span></div>
-      <input
-        className="lx-inline lx-brief-title" aria-label="Campaign name" placeholder="Name your campaign"
-        value={title} maxLength={60} autoComplete="off"
-        onChange={(e) => setTitle(e.target.value)}
-      />
-      <div className="lx-fields">
-        <div className="lx-field-row" role="group" aria-label="Deliverables">
-          <span className="lx-field-k">Deliverables</span>
-          <div className="lx-field-v">
-            <Stepper small label="How many" value={count} min={1} max={10} onChange={setCount} unit="deliverables" />
-            <select
-              className="lx-ctl" aria-label="Platform" value={platform}
-              onChange={(e) => {
-                const next = PLATFORM_FORMATS.find((x) => x.value === e.target.value) ?? PLATFORM_FORMATS[0]!;
-                setPlatform(next.value);
-                setFormat(next.formats[0]!.value);
-              }}
-            >
-              {PLATFORM_FORMATS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-            <select className="lx-ctl" aria-label="Format" value={f.value} onChange={(e) => setFormat(e.target.value)}>
-              {p.formats.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </div>
-        </div>
-        <div className="lx-field-row">
-          <label className="lx-field-k" htmlFor={rateId}>Target rate</label>
-          <div className="lx-field-v">
-            <span className="lx-ctl lx-ctl-money">
-              <b aria-hidden="true">$</b>
-              <input
-                id={rateId} type="text" inputMode="numeric" autoComplete="off" placeholder="0"
-                value={moneyText(rate)} onChange={(e) => setRate(toMoney(e.target.value))}
-              />
-            </span>
-            <span className="lx-unit">per creator</span>
-          </div>
+    <div className="lx-card lx-brief" aria-label="Your brief, as a creator sees it">
+      <span className="lx-label">New brief</span>
+      <input className="lx-brief-title" aria-label="Campaign name" placeholder="Name your campaign" value={title} maxLength={60}
+        autoComplete="off" onChange={(e) => setTitle(e.target.value)} />
+      <div className="lx-field-label" role="group" aria-label="Deliverables">
+        <span>Deliverables</span>
+        <div className="lx-controls">
+          <Stepper label="How many" value={count} min={1} max={10} onChange={setCount} unit="deliverables" />
+          <select className="lx-select" aria-label="Platform" value={platform}
+            onChange={(e) => {
+              const next = PLATFORM_FORMATS.find((x) => x.value === e.target.value) ?? PLATFORM_FORMATS[0]!;
+              setPlatform(next.value);
+              setFormat(next.formats[0]!.value);
+            }}>
+            {PLATFORM_FORMATS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          <select className="lx-select" aria-label="Format" value={f.value} onChange={(e) => setFormat(e.target.value)}>
+            {p.formats.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
         </div>
       </div>
-      <div className="lx-card-foot">
-        <span className="lx-chip-btn" aria-hidden="true">Apply with a pitch <span className="lx-arrow">→</span></span>
-        <span className="lx-url">{count} × {p.label} {f.label}</span>
+      <MoneyInput label="Target rate per creator" value={rate} onChange={setRate} />
+      <div className="lx-kv">
+        <div><span>Creators will see</span><b>{count} × {p.label} {f.label}</b></div>
       </div>
-      <p className="lx-note">Creators see this and pitch you with the rate they want.</p>
+      <span className="lx-preview-btn" aria-hidden="true">Publish brief</span>
     </div>
   );
 }
 
-// ── Payment: what the ledger would record ────────────────────────────────
+// ── Payment: the portal's moss wallet card, as a calculator ─────────────
 
-function Line({ label, value, out }: { label: string; value: string; out?: boolean }) {
+function WalletLine({ label, value }: { label: string; value: string }) {
   return (
-    <div className={out ? 'lx-line out' : 'lx-line'}>
-      <span>{label}</span>
-      <span className="lx-leader" aria-hidden="true" />
-      <b>{value}</b>
+    <div className="lx-wallet-line">
+      <span>{label}</span><span className="lx-leader" aria-hidden="true" /><b>{value}</b>
     </div>
   );
 }
@@ -292,21 +310,25 @@ export function PayoutTool() {
   const [posts, setPosts] = useState(2);
   const e = creatorEstimate(rate, posts);
   return (
-    <div className="lx-statement" aria-label="What you would receive">
-      <div className="lx-statement-top">Payout statement<span>Try your own numbers</span></div>
-      <div className="lx-inputs">
-        <MoneyInput label="Your rate for the deal" value={rate} onChange={setRate} />
-        <Stepper label="Posts" value={posts} min={1} max={10} onChange={setPosts} unit="posts" />
+    <div className="lx-wallet" aria-label="What you would receive">
+      <div className="lx-wallet-main">
+        <span className="lx-label">Reaches your wallet</span>
+        <div><span className="lx-money lx-wallet-big" aria-live="polite">{usd(e.net)}</span></div>
+        <p className="lx-wallet-sub">from a {usd(e.held)} deal over {posts} {posts === 1 ? 'post' : 'posts'}, held in escrow from the day the brand accepts.</p>
+        <div className="lx-wallet-inputs">
+          <MoneyInput className="lx-wallet-field" label="Your rate for the deal" value={rate} onChange={setRate} />
+          <div className="lx-wallet-field"><span>Posts</span><Stepper label="Posts" value={posts} min={1} max={10} onChange={setPosts} unit="posts" /></div>
+        </div>
       </div>
-      <div className="lx-lines">
-        <Line label="Held when the brand accepts" value={usd(e.held)} />
+      <div className="lx-wallet-side">
+        <span className="lx-label">Ledger</span>
+        <WalletLine label="Held when the brand accepts" value={usd(e.held)} />
         {e.releases.map((amt, i) => (
-          <Line key={i} out label={e.releases.length > 1 ? `Post ${i + 1} live, released` : 'Post live, released'} value={usd(amt)} />
+          <WalletLine key={i} label={e.releases.length > 1 ? `Post ${i + 1} live, released` : 'Post live, released'} value={usd(amt)} />
         ))}
-        <Line label={`Platform fee (${PLATFORM_FEE_LABEL})`} value={`−${usd(e.fee)}`} />
-        <Line label={`Withholding (${WHT_LABEL})`} value={`−${usd(e.tax)}`} />
+        <WalletLine label={`Platform fee (${PLATFORM_FEE_LABEL})`} value={`−${usd(e.fee)}`} />
+        <WalletLine label={`Withholding (${WHT_LABEL})`} value={`−${usd(e.tax)}`} />
       </div>
-      <div className="lx-total"><span>Reaches your wallet</span><b aria-live="polite">{usd(e.net)}</b></div>
     </div>
   );
 }
@@ -319,20 +341,24 @@ export function HoldTool() {
   const perPost = e.perPost[0] ?? 0;
   const uneven = e.perPost.some((p) => p !== perPost);
   return (
-    <div className="lx-statement" aria-label="What a brief holds and releases">
-      <div className="lx-statement-top">Campaign statement<span>Try your own numbers</span></div>
-      <div className="lx-inputs three">
-        <MoneyInput label="Rate per creator" value={rate} onChange={setRate} />
-        <Stepper label="Creators" value={creators} min={1} max={50} onChange={setCreators} unit="creators" />
-        <Stepper label="Posts each" value={posts} min={1} max={10} onChange={setPosts} unit="posts" />
+    <div className="lx-wallet" aria-label="What a brief holds and releases">
+      <div className="lx-wallet-main">
+        <span className="lx-label">You pay in total</span>
+        <div><span className="lx-money lx-wallet-big" aria-live="polite">{usd(e.held)}</span></div>
+        <p className="lx-wallet-sub">held in escrow as offers are accepted, and released post by post as you confirm each one is live.</p>
+        <div className="lx-wallet-inputs">
+          <MoneyInput className="lx-wallet-field" label="Rate per creator" value={rate} onChange={setRate} />
+          <div className="lx-wallet-field"><span>Creators</span><Stepper label="Creators" value={creators} min={1} max={50} onChange={setCreators} unit="creators" /></div>
+          <div className="lx-wallet-field"><span>Posts each</span><Stepper label="Posts each" value={posts} min={1} max={10} onChange={setPosts} unit="posts" /></div>
+        </div>
       </div>
-      <div className="lx-lines">
-        <Line label="Held as offers are accepted" value={usd(e.held)} />
-        <Line out label="Released per confirmed post" value={uneven ? `${usd(perPost)}–${usd(Math.max(...e.perPost))}` : usd(perPost)} />
-        <Line label="Platform fee charged to you" value={usd(e.brandFee)} />
-        <Line label="Each creator receives, after fees" value={usd(e.perCreatorNet)} />
+      <div className="lx-wallet-side">
+        <span className="lx-label">Ledger</span>
+        <WalletLine label="Held as offers are accepted" value={usd(e.held)} />
+        <WalletLine label="Released per confirmed post" value={uneven ? `${usd(perPost)}–${usd(Math.max(...e.perPost))}` : usd(perPost)} />
+        <WalletLine label="Platform fee charged to you" value={usd(e.brandFee)} />
+        <WalletLine label="Each creator receives, after fees" value={usd(e.perCreatorNet)} />
       </div>
-      <div className="lx-total"><span>You pay in total</span><b aria-live="polite">{usd(e.held)}</b></div>
     </div>
   );
 }

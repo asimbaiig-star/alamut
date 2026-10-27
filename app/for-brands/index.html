@@ -7,13 +7,13 @@
     <meta name="description" content="Browse creator storefronts with published rates, or post a brief and let creators pitch you. Then run the whole deal in one place. Free to post. Public beta, payments are simulated." />
     <link rel="canonical" href="https://alamut-six.vercel.app/for-brands" />
     <!-- F35 — favicon. Inline SVG data URI so there's no binary asset to
-         keep in sync with the brand; #d42a22 is the landing's record red
-         (src/landing/landing.css --rec). -->
+         keep in sync with the brand: the portal sidebar's mark, ink #1C1A15 on
+         paper #FBF7EE (styles/v2-tokens.css). -->
     <link
       rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23d42a22'/%3E%3Cpath d='M16 7.5 L23.5 24.5 H19.6 L16 15.6 L12.4 24.5 H8.5 Z' fill='%23ffffff'/%3E%3C/svg%3E"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231C1A15'/%3E%3Cpath d='M16 7.5 L23.5 24.5 H19.6 L16 15.6 L12.4 24.5 H8.5 Z' fill='%23FBF7EE'/%3E%3C/svg%3E"
     />
-    <meta name="theme-color" content="#14151c" />
+    <meta name="theme-color" content="#F6F1E8" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Alamut" />
     <meta property="og:title" content="Alamut for brands — find creators, get pitched" />
@@ -26,17 +26,17 @@
     <meta name="twitter:image" content="https://alamut-six.vercel.app/og-image.jpg" />
     <meta name="twitter:title" content="Alamut for brands — find creators, get pitched" />
     <meta name="twitter:description" content="The marketplace for creator deals, and the place you run them. Free to post. Public beta, payments are simulated." />
-    <!-- Landing type: one family, Archivo. Condensed and heavy for headlines
-         and prices, normal width for text. -->
+    <!-- Landing type: the portal's own faces (app.html), Fraunces for display
+         and money, Inter Tight for text. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preconnect" href="https://images.unsplash.com" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..100,400..900&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..600&family=Inter+Tight:wght@400;500;600&display=swap" />
     <!-- Hero entrance (landing.css, "Motion"): on only in a visible tab and
          without reduced motion, decided before first paint so nothing flashes. -->
     <script>if(document.visibilityState==='visible'&&!matchMedia('(prefers-reduced-motion: reduce)').matches)document.documentElement.classList.add('lx-anim')</script>
   </head>
-  <body style="margin:0;background:#14151c">
+  <body style="margin:0;background:#F6F1E8">
     <div id="lx-root" data-page="brands"><!--lx-ssr--></div>
     <script type="module" src="/src/landing/entry-client.tsx"></script>
   </body>

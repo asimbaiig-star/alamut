@@ -1,15 +1,14 @@
-// Sign up — Phase 50 airy refactor.
-// Form logic preserved (role tabs, conditional fields per role, validation,
-// post-signup role-routed navigation). Visual shell uses airy primitives.
+// Sign up — on the v2 surface, between the landing pages and the workspace,
+// so it uses their tokens, mark and components (styles/auth-v2.css).
+// Form logic unchanged: role tabs, conditional fields per role, validation,
+// email confirmation, post-signup navigation.
 
 import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Logo } from '@/components/ui/Logo';
-import { Button } from '@/components/ui/Button';
-import { Icon } from '@/components/ui/Icon';
-import { TileHalo } from '@/components/layout/TileHalo';
 import { api, ApiError } from '@/lib/api/client';
 import { pushToast } from '@/lib/utils/toast';
+import { BrandMarkSvg } from '@/screens/workspace-v2/BrandMark';
+import '@/styles/auth-v2.css';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -114,247 +113,199 @@ export function SignUp() {
   // real actions are "go check your inbox" or "resend".
   if (pendingEmail) {
     return (
-      <div data-surface="landing-light" className="lp-light-root auth-airy auth-landing-light">
-        <TileHalo />
-        <header className="airy-topnav auth-landing-topnav">
-          <div className="airy-topnav-inner">
-            <Link to="/" aria-label="Alamut home" className="airy-topnav-logo">
-              <Logo size={20} tag="ALAMUT" />
-            </Link>
-            <div className="airy-topnav-actions">
-              <Link to="/signin" className="lp-topnav-signin">Sign in</Link>
-            </div>
-          </div>
+      <div data-surface="v2" className="auth-v2">
+        <header className="auth-v2-nav">
+          <Link to="/" aria-label="Alamut home" className="auth-v2-brand">
+            <span className="auth-v2-mark"><BrandMarkSvg /></span><span>Alamut</span>
+          </Link>
+          <div className="auth-v2-nav-actions"><Link to="/signin" className="auth-v2-link">Sign in</Link></div>
         </header>
-        <main className="airy-section auth-airy-main">
-          <div className="airy-card" style={{ maxWidth: 520, margin: '0 auto', padding: 'var(--space-xl)' }}>
-            <div className="airy-stack">
-              <div className="airy-eyebrow">One more step</div>
-              <h1 className="airy-h-section">Confirm your email.</h1>
-              <p className="airy-lede">
-                We sent a confirmation link to <strong>{pendingEmail}</strong>.
-                Open it to activate your account, then sign in.
-              </p>
-              <p className="airy-meta">
-                Can't find it? Check spam. The link opens Alamut and finishes
-                setting up your profile.
-              </p>
-              {err && <div className="field-error" role="alert">{err}</div>}
-              <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap', alignItems: 'center' }}>
-                <Button onClick={() => navigate('/signin')} iconRight={<Icon.arrow s={14} />}>
-                  Go to sign in
-                </Button>
-                <Button
-                  variant="ghost"
-                  loading={busy}
-                  disabled={resent}
-                  onClick={async () => {
-                    setBusy(true); setErr(null);
-                    try {
-                      await api.auth.resendConfirmation(pendingEmail);
-                      setResent(true);
-                      pushToast('Confirmation email resent', 'good');
-                    } catch (e) {
-                      setErr(e instanceof ApiError ? e.message : 'Could not resend the email.');
-                    } finally {
-                      setBusy(false);
-                    }
-                  }}
-                >
-                  {resent ? 'Email resent' : 'Resend email'}
-                </Button>
-              </div>
+        <main className="auth-v2-main">
+          <section className="auth-v2-card auth-v2-form-card" style={{ maxWidth: 520, margin: '0 auto' }} aria-labelledby="confirm-title">
+            <span className="auth-v2-label">One more step</span>
+            <h1 className="auth-v2-h2" id="confirm-title">Confirm your email.</h1>
+            <p className="auth-v2-lede">
+              We sent a confirmation link to <strong>{pendingEmail}</strong>. Open it to activate your
+              account, then sign in.
+            </p>
+            <p className="auth-v2-muted">Can't find it? Check spam. The link opens Alamut and finishes setting up your profile.</p>
+            {err && <div className="field-error" role="alert">{err}</div>}
+            <div className="auth-v2-demo-grid">
+              <button type="button" className="auth-v2-btn" style={{ width: 'auto' }} onClick={() => navigate('/signin')}>Go to sign in</button>
+              <button
+                type="button"
+                className="auth-v2-btn line"
+                disabled={busy || resent}
+                aria-busy={busy || undefined}
+                onClick={async () => {
+                  setBusy(true); setErr(null);
+                  try {
+                    await api.auth.resendConfirmation(pendingEmail);
+                    setResent(true);
+                    pushToast('Confirmation email resent', 'good');
+                  } catch (e) {
+                    setErr(e instanceof ApiError ? e.message : 'Could not resend the email.');
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                {resent ? 'Email resent' : busy ? 'Sending…' : 'Resend email'}
+              </button>
             </div>
-          </div>
+          </section>
         </main>
       </div>
     );
   }
 
   return (
-    <div data-surface="landing-light" className="lp-light-root auth-airy auth-landing-light">
-      <TileHalo />
-
-      <header className="airy-topnav auth-landing-topnav">
-        <div className="airy-topnav-inner">
-          <Link to="/" aria-label="Alamut home" className="airy-topnav-logo">
-            <Logo size={20} tag="ALAMUT" />
-          </Link>
-          <div className="airy-topnav-actions">
-            <span className="airy-meta">Returning?</span>
-            <Link to="/signin" className="lp-topnav-signin">Sign in</Link>
-          </div>
+    <div data-surface="v2" className="auth-v2">
+      <header className="auth-v2-nav">
+        <Link to="/" aria-label="Alamut home" className="auth-v2-brand">
+          <span className="auth-v2-mark"><BrandMarkSvg /></span><span>Alamut</span>
+        </Link>
+        <div className="auth-v2-nav-actions">
+          <span className="auth-v2-muted">Returning?</span>
+          <Link to="/signin" className="auth-v2-link">Sign in</Link>
         </div>
       </header>
 
-      <main className="airy-section auth-airy-main">
-        <div className="auth-airy-grid">
-          {/* Side narrative — pitch + bullets, calmer than the dense version. */}
-          <aside className="auth-airy-side">
-            <div className="airy-stack-lg">
-              <div className="airy-eyebrow">
-                {finishMode ? 'Finish setting up' : role === 'creator' ? 'For creators' : 'For brands'}
-              </div>
-              <h1 className="airy-h-display auth-airy-h">
-                {finishMode
-                  // Role-neutral: we can't know which one this account meant,
-                  // so don't pitch them the wrong side (P-12).
-                  ? <>One step to <em>finish</em> your account.</>
-                  : role === 'creator'
-                  ? <>Build a body of <em>real work</em>.</>
-                  : <>Run campaigns end-to-end, <em>without</em> the markup.</>
-                }
-              </h1>
-              <p className="airy-lede">
-                {finishMode
-                  ? 'Your sign-in is confirmed — we just need to know whether you’re here as a creator or a brand, then a few details to set up your profile.'
-                  : role === 'creator'
-                  ? 'Apply to live briefs, manage drafts, and get paid through escrow — all from one console.'
-                  : 'Brief, shortlist, approve, and pay creators globally from a single wallet.'
-                }
-              </p>
-              <ul className="auth-airy-bullets">
-                <li><span className="auth-airy-bullets-num">01</span><span>Free to sign up. No card required.</span></li>
-                {/* Mode-agnostic: the project may or may not have email
-                    confirmation switched on, and signUp branches on whether
-                    Supabase returns a session. Don't promise a confirmation
-                    step the user may never see. */}
-                <li><span className="auth-airy-bullets-num">02</span><span>Your account works on any device — sign in from anywhere.</span></li>
-                <li><span className="auth-airy-bullets-num">03</span><span>Beta: payments are simulated, so no real money moves yet.</span></li>
-              </ul>
-            </div>
+      <main className="auth-v2-main">
+        <div className="auth-v2-grid">
+          <aside className="auth-v2-side">
+            <h1 className="auth-v2-h1">
+              {finishMode
+                // Role-neutral: we can't know which one this account meant,
+                // so don't pitch them the wrong side (P-12).
+                ? 'One step to finish your account.'
+                : role === 'creator'
+                ? 'Open your storefront.'
+                : 'Post your first brief.'}
+            </h1>
+            <p className="auth-v2-lede">
+              {finishMode
+                ? 'Your sign-in is confirmed. Tell us whether you’re here as a creator or a brand, then a few details to set up your profile.'
+                : role === 'creator'
+                ? 'Browse open briefs and pitch your own rate, or let brands find your storefront. Offers, revisions and payouts live in one workspace.'
+                : 'Browse storefronts with published rates, or post a brief and let creators pitch you. Brief to payout in one workspace.'}
+            </p>
+            <ul className="auth-v2-points">
+              <li>Free to sign up. No card required.</li>
+              {/* Mode-agnostic: the project may or may not have email
+                  confirmation switched on, and signUp branches on whether
+                  Supabase returns a session. Don't promise a confirmation
+                  step the user may never see. */}
+              <li>Your account works on any device.</li>
+              <li>Public beta. Payments are simulated, so no real money moves yet.</li>
+            </ul>
           </aside>
 
-          {/* Form card */}
-          <section className="auth-airy-form">
-            <div className="airy-card auth-airy-form-card">
-              <div className="airy-stack">
-                <div className="airy-eyebrow">Create account</div>
-                <h2 className="airy-h-section">Sign up as a {role}.</h2>
+          <section className="auth-v2-card auth-v2-form-card" aria-labelledby="signup-title">
+            <h2 className="auth-v2-h2" id="signup-title">{finishMode ? 'Finish setting up' : 'Create your account'}</h2>
 
-                <div className="auth-airy-tab" role="tablist" aria-label="Account type">
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={role === 'creator'}
-                    className={role === 'creator' ? 'is-on' : ''}
-                    onClick={() => setRole('creator')}
-                  >
-                    I&apos;m a creator
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={role === 'brand'}
-                    className={role === 'brand' ? 'is-on' : ''}
-                    onClick={() => setRole('brand')}
-                  >
-                    I&apos;m a brand
-                  </button>
-                </div>
-
-                <form className="auth-airy-fields" onSubmit={submit} noValidate aria-describedby={err ? 'signup-error' : undefined}>
-                  {role === 'brand' ? (
-                    <>
-                      <div className="field">
-                        <label htmlFor="signup-brandName" className="field-label">Brand name</label>
-                        <input id="signup-brandName" autoComplete="organization" value={brandName} onChange={(e) => setBrandName(e.target.value)} placeholder="Aesop" required />
-                      </div>
-                      <div className="field">
-                        <label htmlFor="signup-name-brand" className="field-label">Your name</label>
-                        <input id="signup-name-brand" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Hannah Lee" required />
-                      </div>
-                      <div className="field">
-                        <label htmlFor="signup-industry" className="field-label">Industry</label>
-                        <input id="signup-industry" value={industry} onChange={(e) => setIndustry(e.target.value)} placeholder="Beauty / Personal care" />
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="field">
-                        <label htmlFor="signup-name-creator" className="field-label">Your name</label>
-                        <input id="signup-name-creator" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Sarah Johnson" required />
-                      </div>
-                      <div className="form-grid">
-                        <div className="field">
-                          <label htmlFor="signup-city" className="field-label">City</label>
-                          <input id="signup-city" autoComplete="address-level2" value={city} onChange={(e) => setCity(e.target.value)} placeholder="Lahore" />
-                        </div>
-                        <div className="field">
-                          <label htmlFor="signup-country" className="field-label">Country</label>
-                          <input id="signup-country" autoComplete="country-name" value={country} onChange={(e) => setCountry(e.target.value)} placeholder="Pakistan" />
-                        </div>
-                      </div>
-                    </>
-                  )}
-
-                  <div className="field">
-                    <label htmlFor="signup-email" className="field-label">Email</label>
-                    <input
-                      id="signup-email"
-                      type="email"
-                      autoComplete="email"
-                      inputMode="email"
-                      value={email}
-                      onChange={(e) => { setEmail(e.target.value); if (emailErr) setEmailErr(null); }}
-                      onBlur={(e) => setEmailErr(validateEmail(e.target.value))}
-                      placeholder="you@example.com"
-                      required
-                      readOnly={finishMode}
-                      aria-invalid={!!emailErr || undefined}
-                      aria-describedby={emailErr ? 'signup-email-error' : undefined}
-                    />
-                    {emailErr && <span id="signup-email-error" className="field-error" role="alert">{emailErr}</span>}
-                  </div>
-
-                  {/* Finish-setup mode already has a credential + session
-                      — asking for a password again would be wrong. */}
-                  {!finishMode && (
-                    <div className="field">
-                      <label htmlFor="signup-password" className="field-label">Password</label>
-                      <input
-                        id="signup-password"
-                        type="password"
-                        autoComplete="new-password"
-                        value={password}
-                        onChange={(e) => { setPassword(e.target.value); if (passwordErr) setPasswordErr(null); }}
-                        onBlur={(e) => setPasswordErr(validatePassword(e.target.value))}
-                        placeholder="At least 6 characters"
-                        required
-                        minLength={6}
-                        aria-invalid={!!passwordErr || undefined}
-                        aria-describedby={passwordErr ? 'signup-password-error' : 'signup-password-help'}
-                      />
-                      {passwordErr ? (
-                        <span id="signup-password-error" className="field-error" role="alert">{passwordErr}</span>
-                      ) : (
-                        <span id="signup-password-help" className="field-help">At least 6 characters.</span>
-                      )}
-                    </div>
-                  )}
-
-                  {err && <div id="signup-error" className="field-error" role="alert">{err}</div>}
-
-                  <Button type="submit" loading={busy} iconRight={<Icon.arrow s={14} />}>
-                    {finishMode ? 'Finish setup' : 'Create account'}
-                  </Button>
-                </form>
-
-                <hr className="airy-divider" style={{ margin: 'var(--space-md) 0' }} />
-
-                <div className="auth-airy-foot">
-                  <span className="airy-meta">Already have an account?</span>
-                  <Link to="/signin" className="auth-airy-foot-link">Sign in →</Link>
-                </div>
-              </div>
+            <div className="auth-v2-tabs" role="tablist" aria-label="Account type">
+              <button type="button" role="tab" aria-selected={role === 'creator'} className={role === 'creator' ? 'is-on' : ''} onClick={() => setRole('creator')}>
+                I&apos;m a creator
+              </button>
+              <button type="button" role="tab" aria-selected={role === 'brand'} className={role === 'brand' ? 'is-on' : ''} onClick={() => setRole('brand')}>
+                I&apos;m a brand
+              </button>
             </div>
+
+            <form className="auth-v2-fields" onSubmit={submit} noValidate aria-describedby={err ? 'signup-error' : undefined}>
+              {role === 'brand' ? (
+                <>
+                  <div className="field">
+                    <label htmlFor="signup-brandName" className="field-label">Brand name</label>
+                    <input id="signup-brandName" autoComplete="organization" value={brandName} onChange={(e) => setBrandName(e.target.value)} placeholder="Your brand" required />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="signup-name-brand" className="field-label">Your name</label>
+                    <input id="signup-name-brand" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" required />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="signup-industry" className="field-label">Industry</label>
+                    <input id="signup-industry" value={industry} onChange={(e) => setIndustry(e.target.value)} placeholder="Beauty / Personal care" />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="field">
+                    <label htmlFor="signup-name-creator" className="field-label">Your name</label>
+                    <input id="signup-name-creator" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" required />
+                  </div>
+                  <div className="form-grid">
+                    <div className="field">
+                      <label htmlFor="signup-city" className="field-label">City</label>
+                      <input id="signup-city" autoComplete="address-level2" value={city} onChange={(e) => setCity(e.target.value)} placeholder="Lahore" />
+                    </div>
+                    <div className="field">
+                      <label htmlFor="signup-country" className="field-label">Country</label>
+                      <input id="signup-country" autoComplete="country-name" value={country} onChange={(e) => setCountry(e.target.value)} placeholder="Pakistan" />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <div className="field">
+                <label htmlFor="signup-email" className="field-label">Email</label>
+                <input
+                  id="signup-email"
+                  type="email"
+                  autoComplete="email"
+                  inputMode="email"
+                  value={email}
+                  onChange={(e) => { setEmail(e.target.value); if (emailErr) setEmailErr(null); }}
+                  onBlur={(e) => setEmailErr(validateEmail(e.target.value))}
+                  placeholder="you@example.com"
+                  required
+                  readOnly={finishMode}
+                  aria-invalid={!!emailErr || undefined}
+                  aria-describedby={emailErr ? 'signup-email-error' : undefined}
+                />
+                {emailErr && <span id="signup-email-error" className="field-error" role="alert">{emailErr}</span>}
+              </div>
+
+              {/* Finish-setup mode already has a credential + session
+                  — asking for a password again would be wrong. */}
+              {!finishMode && (
+                <div className="field">
+                  <label htmlFor="signup-password" className="field-label">Password</label>
+                  <input
+                    id="signup-password"
+                    type="password"
+                    autoComplete="new-password"
+                    value={password}
+                    onChange={(e) => { setPassword(e.target.value); if (passwordErr) setPasswordErr(null); }}
+                    onBlur={(e) => setPasswordErr(validatePassword(e.target.value))}
+                    placeholder="At least 6 characters"
+                    required
+                    minLength={6}
+                    aria-invalid={!!passwordErr || undefined}
+                    aria-describedby={passwordErr ? 'signup-password-error' : 'signup-password-help'}
+                  />
+                  {passwordErr ? (
+                    <span id="signup-password-error" className="field-error" role="alert">{passwordErr}</span>
+                  ) : (
+                    <span id="signup-password-help" className="field-help">At least 6 characters.</span>
+                  )}
+                </div>
+              )}
+
+              {err && <div id="signup-error" className="field-error" role="alert">{err}</div>}
+
+              <button type="submit" className="auth-v2-btn" disabled={busy} aria-busy={busy || undefined}>
+                {busy ? 'Working…' : finishMode ? 'Finish setup' : 'Create account'}
+              </button>
+            </form>
+
+            <p className="auth-v2-foot">Already have an account? <Link to="/signin" className="auth-v2-link">Sign in</Link></p>
           </section>
         </div>
       </main>
 
-      <footer className="auth-airy-page-foot">
-        <span className="airy-meta">© 2026 Alamut</span>
-      </footer>
+      <footer className="auth-v2-page-foot">© 2026 Alamut</footer>
     </div>
   );
 }

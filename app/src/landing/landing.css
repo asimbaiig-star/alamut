@@ -1,62 +1,46 @@
-/* landing.css — the two public landing pages.
+/* landing.css — the two public landing pages, in the portal's own language.
  *
- * Layout: the first screen is a listings board on a deep ink field: open
- * briefs for creators, creator storefronts for brands, set big like a price
- * board and filterable live. Below it the page alternates fields (white,
- * stone, ink, record red) and no two neighbours share a layout.
+ * Every colour, radius, shadow and typeface here is a token from
+ * ../styles/v2-tokens.css, the same file the workspace reads: the landing is
+ * the portal's front door, so it looks like the portal. This file defines
+ * layout and the landing's scale (bigger type, more space) and nothing else.
+ * No colour literals (pinned by regressionGuards CLASS 10).
  *
- * One family, Archivo: condensed and heavy for headlines and prices, normal
- * width for reading. Record red, a camera's REC light, marks the action
- * and one live detail; nothing else is coloured.
- *
- * Self-contained: scoped under `.lx`, so the app's global CSS never loads
- * for a visitor.
+ * Layout: each page argues in order (find, pitch or be found, run the deal,
+ * get paid, cost) and each argument is shown as the portal screen that does
+ * it: campaign tiles, the apply form, the storefront, the workspace, the
+ * wallet card. No two neighbouring sections share a composition.
  */
 
+@import '../styles/v2-tokens.css';
+
 .lx {
-  --ground:  #ffffff;
-  --field:   oklch(0.955 0.003 90);
-  --field-2: oklch(0.905 0.004 90);
-  --ink:     oklch(0.17 0.018 275);
-  --ink-2:   oklch(0.40 0.012 275);
-  --ink-3:   oklch(0.53 0.01 275);
-  --night:   oklch(0.17 0.018 275);
-  --night-1: oklch(0.23 0.02 275);
-  --night-2: oklch(0.80 0.012 275);
-  --night-3: oklch(0.66 0.012 275);
-  --rec:     #d42a22;
-  --rec-dk:  #b8211a;
-  --rec-lt:  #ff5a4e;
+  --wrap: 1200px;
+  --gap-section: clamp(88px, 11vw, 168px);
+  --t-hero: clamp(3rem, 1.6rem + 4.6vw, 6rem);
+  --t-h2: clamp(2.125rem, 1.35rem + 2.4vw, 3.5rem);
+  --t-lead: clamp(1.0625rem, 1rem + 0.35vw, 1.25rem);
 
-  --type: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
-  /* Five sizes do all the visible work. */
-  --t-xl: clamp(3.4rem, 0.6rem + 7.4vw, 7.25rem);
-  --t-l:  clamp(2.4rem, 1.2rem + 4vw, 5rem);
-  --t-m:  1.5rem;
-  --t-b:  1.0625rem;
-  --t-s:  0.875rem;
-
-  --gap-section: clamp(96px, 12vw, 200px);
-  --r: 14px;
-
-  background: var(--ground);
-  color: var(--ink);
-  font: 400 var(--t-b)/1.55 var(--type);
-  font-stretch: 100%;
+  background: var(--v2-bg);
+  color: var(--v2-ink);
+  font: 400 1.0625rem/1.55 var(--v2-font-sans);
+  font-feature-settings: "ss01", "cv11";
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 .lx *, .lx *::before, .lx *::after { box-sizing: border-box; }
-.lx :where(h1, h2, h3, p, ul, ol, dl, dd, figure) { margin: 0; }
+.lx :where(h1, h2, h3, p, ul, ol, dl, dd, figure, blockquote) { margin: 0; }
 .lx :where(ul, ol) { padding: 0; list-style: none; }
-.lx a { color: inherit; text-decoration: none; }
+/* Zero specificity, so a button's own colour always wins. */
+:where(.lx) :where(a) { color: inherit; text-decoration: none; }
 .lx img { display: block; max-width: 100%; height: auto; }
-.lx :focus-visible { outline: 2px solid var(--rec); outline-offset: 3px; border-radius: 4px; }
+.lx :focus-visible { outline: 2px solid var(--v2-accent); outline-offset: 3px; border-radius: 6px; }
+.lx ::selection { background: var(--v2-accent-soft); color: var(--v2-ink); }
 .lx .tnum { font-variant-numeric: tabular-nums; }
 .lx-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
 .lx-wrap {
-  width: 100%; max-width: 1240px; margin-inline: auto;
+  width: 100%; max-width: var(--wrap); margin-inline: auto;
   padding-left: max(20px, env(safe-area-inset-left, 0px));
   padding-right: max(20px, env(safe-area-inset-right, 0px));
 }
@@ -64,406 +48,300 @@
   .lx-wrap { padding-left: max(32px, env(safe-area-inset-left, 0px)); padding-right: max(32px, env(safe-area-inset-right, 0px)); }
 }
 
-/* ── Type ────────────────────────────────────────────────────────────── */
-.lx-h1, .lx-h2, .lx-display {
-  font-family: var(--type); font-stretch: 70%; font-weight: 850;
-  letter-spacing: -0.02em; text-wrap: balance;
+/* ── Type: Fraunces for display and money, Inter Tight for reading ────── */
+.lx-h1, .lx-h2, .lx-fr {
+  font-family: var(--v2-font-display); font-weight: 500;
+  font-variation-settings: "opsz" 144; letter-spacing: -0.02em; text-wrap: balance;
 }
-.lx-h1 { font-size: var(--t-xl); line-height: 0.86; }
-.lx-h2 { font-size: var(--t-l); line-height: 0.9; }
-.lx-h3 { font-size: var(--t-b); font-weight: 650; line-height: 1.35; }
-.lx-lead { font-size: 1.25rem; line-height: 1.45; max-width: 30em; text-wrap: pretty; }
-.lx-text { max-width: 34em; text-wrap: pretty; }
-.lx-note { font-size: var(--t-s); color: var(--ink-3); text-wrap: pretty; }
-.lx-money-t { font-family: var(--type); font-stretch: 70%; font-weight: 800; font-size: var(--t-m); line-height: 1; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.lx-h1 { font-size: var(--t-hero); line-height: 1; }
+.lx-h1 > span { display: block; }
+.lx-h2 { font-size: var(--t-h2); line-height: 1.04; }
+.lx-h3 { font-size: 1.125rem; font-weight: 600; line-height: 1.3; letter-spacing: -0.005em; }
+.lx-lead { font-size: var(--t-lead); line-height: 1.5; color: var(--v2-ink-2); max-width: 34em; text-wrap: pretty; }
+.lx-body { color: var(--v2-ink-2); max-width: 36em; text-wrap: pretty; }
+.lx-note { font-size: 0.875rem; color: var(--v2-ink-3); text-wrap: pretty; }
+/* The portal's small uppercase field label, used only where the portal
+ * itself labels a field. */
+.lx-label { font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--v2-ink-3); }
+.lx-money { font-family: var(--v2-font-display); font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
 
-/* ── Nav: a plain bar ────────────────────────────────────────────────── */
-.lx-nav-inner { display: flex; align-items: center; gap: 24px; height: 72px; }
-.lx-brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.125rem; letter-spacing: -0.01em; white-space: nowrap; }
-.lx-brand svg { width: 28px; height: 28px; flex: none; }
-.lx-nav-links { margin-left: auto; display: flex; align-items: center; gap: 28px; }
-.lx-nav-link { color: var(--ink-2); white-space: nowrap; transition: color .15s; }
-.lx-nav-link:hover { color: var(--ink); }
+/* ── The mark and nav, as in the portal's sidebar ────────────────────── */
+.lx-nav-inner { display: flex; align-items: center; gap: 24px; height: 76px; }
+.lx-brand { display: inline-flex; align-items: center; gap: 10px; }
+.lx-brand-mark { width: 32px; height: 32px; border-radius: var(--v2-r-sm); display: grid; place-items: center; background: var(--v2-ink); color: var(--v2-paper); flex: none; }
+.lx-brand-name { font-family: var(--v2-font-display); font-size: 24px; font-weight: 500; letter-spacing: -0.02em; }
+.lx-nav-links { margin-left: auto; display: flex; align-items: center; gap: 22px; }
+.lx-nav-link { font-size: 0.9375rem; color: var(--v2-ink-2); white-space: nowrap; transition: color .12s; }
+.lx-nav-link:hover { color: var(--v2-ink); }
 
-/* ── Buttons ─────────────────────────────────────────────────────────── */
+/* ── Buttons: the portal's pills, at landing size ────────────────────── */
 .lx-btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
-  min-height: 56px; padding: 0 28px; border: 0; border-radius: var(--r);
-  background: var(--rec); color: #fff;
-  font: 650 1.0625rem/1 var(--type); white-space: nowrap; cursor: pointer;
-  transition: background-color .15s, transform .12s;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 50px; padding: 0 24px; border-radius: var(--v2-r-pill); border: 1px solid transparent;
+  background: var(--v2-ink); color: var(--v2-paper);
+  font: 500 1rem/1 var(--v2-font-sans); white-space: nowrap; cursor: pointer;
+  transition: background-color .12s, border-color .12s, color .12s;
 }
-.lx-btn:hover { background: var(--rec-dk); }
-.lx-btn:active { transform: translateY(1px) scale(0.99); }
-.lx-btn-sm { min-height: 44px; padding: 0 18px; font-size: 1rem; }
-.lx-btn-quiet {
-  display: inline-flex; align-items: center; gap: 8px; min-height: 56px; padding: 0 4px;
-  font-weight: 650; white-space: nowrap;
-  text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 7px;
-  text-decoration-color: color-mix(in oklch, currentColor 30%, transparent);
-  transition: text-decoration-color .15s;
-}
-.lx-btn-quiet:hover { text-decoration-color: currentColor; }
-.lx-arrow { display: inline-block; transition: transform .15s; }
-.lx-btn:hover .lx-arrow, .lx-btn-quiet:hover .lx-arrow { transform: translateX(4px); }
-.lx-cta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px; }
+.lx-btn:hover { background: var(--v2-ink-2); }
+.lx-btn-sm { min-height: 44px; padding: 0 18px; font-size: 0.9375rem; }
+.lx-btn-line { background: var(--v2-paper); color: var(--v2-ink); border-color: var(--v2-line-2); }
+.lx-btn-line:hover { background: var(--v2-bg-2); }
+.lx-cta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .lx-link {
-  font-weight: 650; text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 5px;
-  text-decoration-color: color-mix(in oklch, currentColor 30%, transparent); white-space: nowrap;
+  font-weight: 500; color: var(--v2-ink); white-space: nowrap;
+  text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; text-decoration-color: var(--v2-line-2);
 }
-.lx-link:hover { text-decoration-color: currentColor; }
+.lx-link:hover { text-decoration-color: var(--v2-ink); }
 
-/* ── Photographs ─────────────────────────────────────────────────────── */
-.lx-photo { display: grid; gap: 10px; }
-.lx-photo-frame { overflow: hidden; background: var(--field); aspect-ratio: var(--ar, 3 / 2); }
-.lx-photo-frame img { width: 100%; height: 100%; object-fit: cover; }
-.lx-photo figcaption { font-size: var(--t-s); color: var(--ink-3); }
-.lx-photo figcaption a { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in oklch, currentColor 35%, transparent); }
-
-/* ── The top: nav and hero on one ink field ──────────────────────────── */
-.lx-top { background: var(--night); color: #fff; }
-.lx-top .lx-nav-link { color: var(--night-2); }
-.lx-top .lx-nav-link:hover { color: #fff; }
-.lx-hero { padding-block: clamp(24px, 4vw, 48px) clamp(64px, 8vw, 112px); }
-.lx-hero .lx-h1 { text-wrap: wrap; }
-/* One sentence per line, at every width. */
-.lx-hero .lx-h1 > span { display: block; }
-@media (max-width: 560px) { .lx-hero .lx-h1 { font-size: 10.4vw; } }
-.lx-hero-side { display: grid; gap: 22px; align-content: start; }
-.lx-hero-side .lx-lead { color: var(--night-2); }
-.lx-top .lx-btn-quiet { color: #fff; }
-.lx-switch { display: flex; gap: 20px; font-weight: 650; }
-.lx-switch a { color: var(--night-3); transition: color .15s; }
-.lx-switch a:hover { color: #fff; }
-.lx-switch [aria-current] { color: #fff; text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 7px; text-decoration-color: var(--rec-lt); }
-.lx-small { font-size: var(--t-s); color: var(--ink-3); }
-.lx-top .lx-small, .lx-top .lx-photo figcaption { color: var(--night-3); }
-.lx-hero-body { display: grid; gap: 48px; margin-top: clamp(32px, 4vw, 56px); }
-.lx-reel .lx-photo-frame { border-radius: 22px; }
-.lx-reel { max-width: 260px; margin-top: 12px; }
-@media (min-width: 1024px) {
-  .lx-hero-body { grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 24px; align-items: start; }
-  .lx-board { grid-column: 1 / 9; grid-row: 1; }
-  .lx-hero-side { grid-column: 9 / 13; grid-row: 1; padding-left: 16px; }
-}
-@media (max-width: 1023px) { .lx-reel { display: none; } }
-
-/* The board: listings set like a price board, filterable in place. */
-.lx-board { display: grid; gap: 8px; }
-.lx-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+/* ── Portal pieces ───────────────────────────────────────────────────── */
+.lx-card { background: var(--v2-paper); border: 1px solid var(--v2-line); border-radius: var(--v2-r-lg); box-shadow: var(--v2-shadow-sm); overflow: hidden; }
+.lx-pill { justify-self: start; display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: var(--v2-r-pill); background: var(--v2-bg-2); color: var(--v2-ink-2); font-size: 12px; font-weight: 500; white-space: nowrap; }
+.lx-pill.accent { background: var(--v2-accent-soft); color: var(--v2-ink-2); }
+.lx-pill.moss { background: var(--v2-moss-soft); color: var(--v2-moss); }
+.lx-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .lx-chip {
-  height: 40px; padding: 0 16px; border: 0; border-radius: 999px; cursor: pointer;
-  background: var(--night-1); color: var(--night-2); font: 600 0.9375rem/1 var(--type);
-  transition: background-color .15s, color .15s;
+  min-height: 44px; padding: 0 18px; border-radius: var(--v2-r-pill); border: 1px solid var(--v2-line-2);
+  background: var(--v2-paper); color: var(--v2-ink-2); font: 500 0.9375rem/1 var(--v2-font-sans); cursor: pointer;
+  transition: background-color .12s, color .12s, border-color .12s;
 }
-.lx-chip:hover { color: #fff; }
-.lx-chip[aria-pressed="true"] { background: #fff; color: var(--ink); }
-.lx-list { display: grid; }
-.lx-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 4px 24px; padding: 16px 0; }
-.lx-item + .lx-item { box-shadow: 0 -1px 0 var(--night-1); }
-.lx-item-main { display: flex; align-items: center; gap: 16px; min-width: 0; }
-.lx-thumb { width: 56px; height: 56px; flex: none; border-radius: 12px; overflow: hidden; background: var(--night-1); }
-.lx-thumb img { width: 100%; height: 100%; object-fit: cover; }
-.lx-item-title { font-size: 1.375rem; font-weight: 650; line-height: 1.2; letter-spacing: -0.01em; }
-.lx-item-meta { color: var(--night-3); margin-top: 2px; }
-.lx-item-price { text-align: right; white-space: nowrap; }
-.lx-item-price b { display: block; font-family: var(--type); font-stretch: 70%; font-weight: 850; font-size: clamp(2.25rem, 1.4rem + 2.2vw, 3.75rem); line-height: 0.95; letter-spacing: -0.015em; font-variant-numeric: tabular-nums; }
-.lx-item-price span { color: var(--night-3); font-size: var(--t-s); }
-.lx-board-note { margin-top: 10px; font-size: var(--t-s); color: var(--night-3); max-width: 60em; }
-.lx-live { display: inline-flex; align-items: center; gap: 8px; }
-.lx-live::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--rec-lt); }
-@media (max-width: 560px) {
-  .lx-item { grid-template-columns: 1fr; }
-  .lx-item-price { text-align: left; }
-  .lx-thumb { width: 48px; height: 48px; }
-}
+.lx-chip:hover { color: var(--v2-ink); border-color: var(--v2-ink-4); }
+.lx-chip[aria-pressed="true"] { background: var(--v2-ink); border-color: var(--v2-ink); color: var(--v2-paper); }
+.lx-photo-grade { filter: saturate(.88) sepia(.06); }
 
-/* ── Section 2: found / pitched, a builder over a photograph ─────────── */
-.lx-found { display: grid; gap: 40px; }
-.lx-found-copy { display: grid; gap: 24px; align-content: start; }
-.lx-found-stage { position: relative; }
-.lx-found-card { position: relative; z-index: 1; margin: -96px 12px 0; }
+/* ── Hero ────────────────────────────────────────────────────────────── */
+.lx-hero { padding-block: clamp(32px, 5vw, 72px) var(--gap-section); }
+.lx-hero-top { display: grid; gap: 28px; align-items: end; }
+.lx-hero-side { display: grid; gap: 22px; }
+.lx-hero-small { font-size: 0.875rem; color: var(--v2-ink-3); }
+.lx-board { margin-top: clamp(44px, 5vw, 72px); display: grid; gap: 18px; }
+.lx-board-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; }
+.lx-board-title { font-family: var(--v2-font-display); font-size: 1.5rem; font-weight: 500; letter-spacing: -0.01em; }
+.lx-board-grid { display: grid; gap: 18px; }
+@media (min-width: 760px) { .lx-board-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1100px) { .lx-board-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (min-width: 1024px) {
-  .lx-found { grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 24px; align-items: start; }
-  .lx-found-copy { grid-column: 1 / 5; padding-top: 8px; }
-  .lx-found-stage { grid-column: 5 / 13; display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); column-gap: 24px; }
-  .lx-found-stage .lx-photo { grid-column: 1 / 7; grid-row: 1; }
-  .lx-found-card { grid-column: 5 / 9; grid-row: 1; margin: 120px 0 0; }
-}
-/* Brands: the brief and the pitches it brings, side by side. */
-.lx-pitched { display: grid; gap: 40px; align-items: start; }
-@media (min-width: 1024px) { .lx-pitched { grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); gap: 56px; } }
-.lx-pitched-col { display: grid; gap: 24px; align-content: start; min-width: 0; }
-.lx-pitched .lx-card { box-shadow: none; background: var(--field); }
-
-/* The builder floats over the photograph, so it is the one element on the
- * page with a shadow. */
-.lx-card {
-  background: var(--ground); border-radius: var(--r); padding: 22px 22px 18px;
-  box-shadow: 0 2px 4px rgb(18 22 40 / 0.06), 0 24px 56px -20px rgb(18 22 40 / 0.36);
-  display: grid; gap: 18px;
-}
-.lx-card-top { display: flex; justify-content: space-between; gap: 12px; font-size: var(--t-s); color: var(--ink-3); }
-.lx-card-id { display: flex; align-items: center; gap: 14px; }
-.lx-avatar {
-  width: 56px; height: 56px; flex: none; border-radius: 50%; display: grid; place-items: center;
-  background: var(--rec); color: #fff; font: 800 1.25rem/1 var(--type); font-stretch: 70%;
-}
-.lx-avatar.empty { background: var(--field); color: var(--ink-3); font-weight: 400; font-size: 1.75rem; }
-.lx-card-who { flex: 1; min-width: 0; display: grid; gap: 4px; }
-.lx-card-meta { display: flex; align-items: baseline; gap: 10px; color: var(--ink-2); }
-
-/* Inputs that read as the thing they edit: text with a dashed underline. */
-.lx-inline {
-  width: 100%; min-width: 0; padding: 1px 0; border: 0; border-bottom: 1.5px dashed var(--field-2); border-radius: 0;
-  background: transparent; color: inherit; font: inherit; outline: none; transition: border-color .15s;
-}
-.lx-inline::placeholder { color: var(--ink-3); opacity: 1; }
-.lx-inline:hover { border-bottom-color: var(--ink-3); }
-.lx .lx-inline:focus-visible { outline: none; border-bottom: 1.5px solid var(--rec); }
-.lx-inline-name { font-family: var(--type); font-stretch: 70%; font-weight: 800; font-size: 1.875rem; line-height: 1.1; letter-spacing: -0.015em; }
-.lx-at { flex: 1; min-width: 0; display: inline-flex; align-items: baseline; color: var(--ink-3); }
-.lx-select, select.lx-ctl {
-  -webkit-appearance: none; appearance: none; cursor: pointer;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%23778' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat; background-size: 12px;
-}
-.lx-select { width: auto; padding-right: 18px; background-position: right center; }
-
-/* A price list: name, dotted leader, price. */
-.lx-rates { display: grid; gap: 4px; }
-.lx-rate { display: grid; grid-template-columns: auto minmax(16px, 1fr) auto; align-items: baseline; gap: 0 10px; padding: 6px 0; cursor: text; }
-.lx-rate-name { font-weight: 650; }
-.lx-leader { align-self: end; height: 0; margin-bottom: 0.4em; border-bottom: 2px dotted var(--field-2); }
-.lx-price { display: inline-flex; align-items: baseline; justify-self: end; }
-.lx-price b { font: 800 1.25rem/1 var(--type); font-stretch: 70%; color: var(--ink-3); }
-.lx-price input {
-  width: 4.4ch; min-width: 0; padding: 0; border: 0; border-bottom: 1.5px dashed transparent; background: transparent; outline: none;
-  font: 800 var(--t-m)/1 var(--type); font-stretch: 70%; color: var(--ink); text-align: right; font-variant-numeric: tabular-nums;
-}
-.lx-rate:hover .lx-price input { border-bottom-color: var(--field-2); }
-.lx .lx-price input:focus-visible { outline: none; border-bottom-color: var(--rec); }
-.lx-keep { grid-column: 1 / -1; justify-self: end; font-size: var(--t-s); color: var(--ink-3); font-variant-numeric: tabular-nums; }
-.lx-keep b { color: var(--ink); }
-.lx-card-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 14px; }
-.lx-url { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-s); color: var(--ink-3); }
-/* A preview of the button the other side sees. Ink, never brick, so it
- * can't be mistaken for one of this page's own calls to action. */
-.lx-chip-btn {
-  display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 16px;
-  border-radius: 8px; background: var(--ink); color: #fff; font-weight: 650; white-space: nowrap;
+  .lx-hero-top { grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr); gap: 56px; }
+  .lx-hero-side { padding-bottom: 10px; }
 }
 
-/* Brief builder */
-.lx-fields { display: grid; gap: 14px; }
-.lx-field-row { display: grid; gap: 8px; }
-.lx-field-k { font-size: var(--t-s); font-weight: 650; color: var(--ink-2); }
-.lx-field-v { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
-.lx-unit { color: var(--ink-2); }
-.lx-ctl {
-  height: 44px; padding: 0 12px; border: 0; border-radius: 8px;
-  background-color: var(--field); color: var(--ink); font: 500 1rem/1 var(--type);
-  transition: background-color .15s;
-}
-.lx-ctl:hover { background-color: var(--field-2); }
-select.lx-ctl { padding-right: 32px; background-position: right 12px center; }
-.lx-ctl-money { display: inline-flex; align-items: center; gap: 2px; width: 140px; }
-.lx-ctl-money:focus-within { outline: 2px solid var(--rec); outline-offset: 0; }
-.lx-ctl-money b { font-weight: 650; color: var(--ink-3); }
-.lx-ctl-money input { width: 100%; min-width: 0; padding: 0; border: 0; background: transparent; outline: none; font: 650 1rem/1 var(--type); color: var(--ink); font-variant-numeric: tabular-nums; }
-.lx .lx-ctl-money input:focus-visible { outline: none; }
-.lx-stepper { display: inline-flex; align-items: center; height: 44px; border-radius: 8px; background: var(--field); }
-.lx-stepper button { width: 38px; height: 100%; border: 0; background: transparent; cursor: pointer; font: 500 1.25rem/1 var(--type); color: var(--ink-2); border-radius: 8px; }
-.lx-stepper button:hover:not(:disabled) { color: var(--ink); background: var(--field-2); }
-.lx-stepper button:disabled { color: var(--field-2); cursor: default; }
-.lx-stepper output { min-width: 22px; text-align: center; font-weight: 650; font-variant-numeric: tabular-nums; }
-.lx-brief-title { font-family: var(--type); font-stretch: 70%; font-weight: 800; font-size: 1.875rem; line-height: 1.1; }
+/* Campaign tile, after BrowseBriefs' CampaignTile. */
+.lx-tile { display: flex; flex-direction: column; }
+.lx-tile-band { display: flex; align-items: center; gap: 10px; padding: 12px 16px; }
+.lx-tile-initial { width: 30px; height: 30px; border-radius: var(--v2-r-sm); display: grid; place-items: center; background: var(--v2-paper); color: var(--v2-ink); font-family: var(--v2-font-display); font-weight: 600; flex: none; }
+.lx-tile-brand { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+.lx-tile-cat { margin-left: auto; font-size: 12px; font-weight: 500; opacity: .85; }
+.lx-tile-body { padding: 18px 18px 6px; display: grid; gap: 4px; }
+.lx-tile-title { font-family: var(--v2-font-display); font-size: 1.625rem; font-weight: 500; letter-spacing: -0.015em; line-height: 1.1; }
+.lx-tile-blurb { color: var(--v2-ink-3); font-size: 0.9375rem; }
+.lx-tile-cols { display: grid; grid-template-columns: 1.1fr 1.2fr 0.8fr; margin-top: 14px; border-top: 1px solid var(--v2-line); }
+.lx-tile-cols > div { padding: 14px 18px; display: grid; gap: 6px; align-content: start; }
+.lx-tile-cols > div + div { border-left: 1px solid var(--v2-line); }
+.lx-tile-price { font-size: 1.75rem; line-height: 1; }
+.lx-tile-price small { font-size: 0.6em; color: var(--v2-ink-3); }
+.lx-tile-list { display: grid; gap: 2px; font-size: 0.875rem; color: var(--v2-ink-2); }
+.lx-tile-foot { margin-top: auto; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 18px; border-top: 1px solid var(--v2-line); font-size: 0.875rem; color: var(--v2-ink-3); }
+
+/* Creator card, after Discover's CreatorCard. */
+.lx-ccard { display: flex; flex-direction: column; }
+.lx-ccard-cover { height: 96px; overflow: hidden; background: var(--v2-bg-2); }
+.lx-ccard-cover img { width: 100%; height: 100%; object-fit: cover; }
+.lx-ccard-body { padding: 0 18px 16px; display: grid; gap: 10px; }
+.lx-ccard-avatar { position: relative; z-index: 1; width: 52px; height: 52px; margin-top: -26px; border-radius: 50%; border: 3px solid var(--v2-paper); background: var(--v2-accent-soft); color: var(--v2-ink-2); display: grid; place-items: center; font-family: var(--v2-font-display); font-weight: 600; font-size: 1.125rem; }
+.lx-ccard-name { font-family: var(--v2-font-display); font-size: 1.5rem; font-weight: 500; letter-spacing: -0.01em; line-height: 1.1; }
+.lx-ccard-channels { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 0.875rem; color: var(--v2-ink-2); }
+.lx-ccard-channels b { font-weight: 600; color: var(--v2-ink); }
+.lx-ccard-er { color: var(--v2-moss); font-weight: 600; }
+.lx-ccard-foot { margin-top: auto; display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; padding: 14px 18px; border-top: 1px solid var(--v2-line); }
+.lx-ccard-from { font-size: 1.625rem; color: var(--v2-accent); line-height: 1; }
+.lx-board-note { font-size: 0.875rem; color: var(--v2-ink-3); max-width: 70em; }
 
 /* ── Sections ────────────────────────────────────────────────────────── */
 .lx-section { padding-block: var(--gap-section); }
-.lx-field-bg { background: var(--field); }
-.lx-head { display: grid; gap: 24px; margin-bottom: clamp(48px, 6vw, 88px); }
-.lx-head .lx-h2 { max-width: 20ch; }
-.lx-after { margin-top: clamp(48px, 6vw, 80px); }
+.lx-field { background: var(--v2-bg-2); }
+.lx-head { display: grid; gap: 18px; margin-bottom: clamp(40px, 5vw, 64px); max-width: 44rem; }
+.lx-after { margin-top: clamp(40px, 5vw, 56px); }
 
-/* Two ways in: two equal columns, picture first. */
-.lx-pair { display: grid; gap: 64px 32px; }
-@media (min-width: 900px) { .lx-pair { grid-template-columns: 1fr 1fr; } }
-.lx-pair > article { display: grid; gap: 22px; align-content: start; }
-.lx-pair h3 { font-size: var(--t-m); font-weight: 750; letter-spacing: -0.01em; line-height: 1.15; }
+/* A text input with a large font has a wide intrinsic minimum; these grids
+ * take the card's width instead, or a phone screen clips them. */
+.lx-pane, .lx-brief, .lx-field-label, .lx-wallet-field { grid-template-columns: minmax(0, 1fr); }
 
-/* Small product states, drawn flat on a tone step. */
-.lx-ui { background: var(--ground); border-radius: var(--r); padding: 18px 20px; display: grid; gap: 10px; }
-.lx-field-bg .lx-ui, .lx-ui.on-field { background: var(--ground); }
-.lx-section:not(.lx-field-bg) .lx-ui { background: var(--field); }
-.lx-row { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; color: var(--ink-2); }
-.lx-row b { color: var(--ink); font-weight: 650; text-align: right; font-variant-numeric: tabular-nums; }
-.lx-row .lx-money-t { color: var(--ink); }
-.lx-ui-title { font-weight: 700; color: var(--ink); }
-.lx-ok { font-weight: 700; color: var(--ink); }
-.lx-quote { color: var(--ink); }
-.lx-quote small { display: block; font-size: var(--t-s); color: var(--ink-3); }
-.lx-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.lx-actions span { padding: 9px 14px; border-radius: 8px; background: var(--field-2); font-size: 0.9375rem; font-weight: 650; color: var(--ink); }
-.lx-field-bg .lx-actions span { background: var(--field); }
-/* Specific enough to win over the field-background variant above. */
-.lx .lx-actions .on { background: var(--ink); color: #fff; }
-
-/* Annotated deal: each step of the deal sits beside the note that explains it. */
-.lx-annot { display: grid; gap: 40px; }
-@media (min-width: 900px) { .lx-annot { gap: 14px; } }
-.lx-annot li { display: grid; gap: 14px 48px; }
-@media (min-width: 900px) { .lx-annot li { grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); align-items: center; } }
-.lx-turn { background: var(--field); border-radius: var(--r); padding: 20px 22px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 20px; align-items: center; }
-/* Text always takes the first column, so a step with no amount can't
- * fall into the amount's narrow one. */
-.lx-turn-who, .lx-turn-what { grid-column: 1; }
-.lx-turn-who { font-size: var(--t-s); color: var(--ink-3); }
-.lx-turn-what { font-weight: 650; }
-.lx-turn .lx-money-t { grid-row: 1 / span 2; grid-column: 2; }
-.lx-field-bg .lx-turn { background: var(--ground); }
-.lx-turn .struck { color: var(--ink-3); text-decoration: line-through; text-decoration-thickness: 2px; }
-.lx-turn .lx-actions { grid-column: 1 / -1; margin-top: 6px; }
-.lx-annot-note h3 { font-size: var(--t-m); font-weight: 750; letter-spacing: -0.01em; line-height: 1.15; margin-bottom: 6px; }
-.lx-annot-note p { color: var(--ink-2); max-width: 30em; }
-.lx-stars { color: var(--rec); letter-spacing: 2px; }
-
-/* Brands: picture and notes on one side, the pitch list on the other. */
-.lx-split { display: grid; gap: 56px; align-items: start; }
-@media (min-width: 980px) { .lx-split { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 64px; } }
-.lx-split-side { display: grid; gap: 40px; }
-.lx-pitches { display: grid; gap: 10px; background: var(--field); border-radius: var(--r); padding: 12px; }
-.lx-pitch { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 14px; align-items: start; padding: 16px; border-radius: 8px; background: var(--ground); }
-.lx-pitch-av { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--field); color: var(--ink-2); font-weight: 700; }
-.lx-pitch-who { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; font-weight: 650; }
-.lx-pitch p { margin-top: 4px; color: var(--ink); text-wrap: pretty; }
-.lx-pitch .lx-note { margin-top: 6px; }
-.lx-pitch-bar { padding: 8px 4px 4px; }
-.lx-points { display: grid; gap: 24px; }
-.lx-points h3 { margin-bottom: 4px; }
-.lx-points p { color: var(--ink-2); }
-@media (min-width: 600px) { .lx-points { grid-template-columns: 1fr 1fr; gap: 28px 32px; } }
-
-/* Brands: two pictures, then the deal's stages left to right. */
-.lx-photos-2 { display: grid; gap: 24px; margin-bottom: clamp(48px, 6vw, 80px); }
-@media (min-width: 760px) { .lx-photos-2 { grid-template-columns: 1fr 1fr; } }
-.lx-stages { display: grid; gap: 32px 24px; counter-reset: none; }
-@media (min-width: 760px) { .lx-stages { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (min-width: 1100px) { .lx-stages { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
-.lx-stage-t { font-size: var(--t-m); font-weight: 750; letter-spacing: -0.01em; line-height: 1.15; margin-bottom: 8px; }
-.lx-stages p, .lx-extras p { color: var(--ink-2); }
-.lx-extras { display: grid; gap: 28px 24px; margin-top: clamp(48px, 6vw, 72px); padding-top: 0; }
-@media (min-width: 760px) { .lx-extras { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-
-/* ── Night field: payment ────────────────────────────────────────────── */
-.lx-night { background: var(--night); color: #fff; }
-.lx-night .lx-note, .lx-night .lx-photo figcaption { color: var(--night-2); }
-.lx-pay { display: grid; gap: 48px; align-items: start; }
-.lx-pay-copy { display: grid; gap: 40px; }
-@media (min-width: 980px) {
-  .lx-pay { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 64px; }
-  .lx-pay-statement { position: sticky; top: 32px; }
+/* Pitch: the brief and the apply form, side by side, as on BriefDetail. */
+.lx-pitch { display: grid; gap: 18px; align-items: start; }
+@media (min-width: 900px) { .lx-pitch { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+.lx-pane { padding: 24px; display: grid; gap: 16px; }
+.lx-pane-title { font-family: var(--v2-font-display); font-size: 1.75rem; font-weight: 500; letter-spacing: -0.015em; line-height: 1.1; }
+.lx-kv { display: grid; gap: 10px; }
+.lx-kv > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 16px; align-items: baseline; color: var(--v2-ink-2); }
+.lx-kv b { color: var(--v2-ink); font-weight: 600; text-align: right; }
+.lx-field-label { display: grid; gap: 8px; }
+.lx-textarea::placeholder { color: var(--v2-ink-3); }
+.lx-input, .lx-textarea {
+  width: 100%; border: 1px solid var(--v2-line-2); border-radius: var(--v2-r-md); background: var(--v2-paper);
+  color: var(--v2-ink); font: 400 1rem/1.45 var(--v2-font-sans); padding: 12px 14px; outline: none;
+  transition: border-color .12s, box-shadow .12s;
 }
-.lx-steps { display: grid; gap: 22px; }
-.lx-steps h3 { font-size: var(--t-m); font-weight: 750; letter-spacing: -0.01em; line-height: 1.15; margin-bottom: 4px; }
-.lx-steps p { color: var(--night-2); max-width: 30em; }
+.lx-textarea { min-height: 112px; resize: vertical; }
+.lx-input:focus, .lx-textarea:focus { border-color: var(--v2-ink-3); box-shadow: 0 0 0 3px var(--v2-bg-2); }
+.lx-money-input { display: flex; align-items: center; gap: 4px; padding: 0 14px; height: 54px; border: 1px solid var(--v2-line-2); border-radius: var(--v2-r-md); background: var(--v2-paper); }
+.lx-money-input:focus-within { border-color: var(--v2-ink-3); box-shadow: 0 0 0 3px var(--v2-bg-2); }
+.lx-money-input b { font-family: var(--v2-font-display); font-weight: 500; font-size: 1.375rem; color: var(--v2-ink-2); }
+.lx-money-input input { flex: 1; width: 100%; min-width: 0; border: 0; background: transparent; outline: none; font-family: var(--v2-font-display); font-weight: 500; font-size: 1.75rem; color: var(--v2-ink); font-variant-numeric: tabular-nums; }
+.lx-preview-btn { display: inline-flex; align-items: center; gap: 8px; justify-self: start; min-height: 42px; padding: 0 18px; border-radius: var(--v2-r-pill); background: var(--v2-ink); color: var(--v2-paper); font-weight: 500; font-size: 0.9375rem; }
 
-/* Statement: a paper slip with a price list's leaders. */
-.lx-statement { background: var(--ground); color: var(--ink); border-radius: var(--r); overflow: hidden; }
-.lx-statement-top { padding: 20px 24px 0; font-weight: 700; display: flex; justify-content: space-between; gap: 12px; }
-.lx-statement-top span { font-weight: 400; font-size: var(--t-s); color: var(--ink-3); }
-.lx-inputs { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; padding: 16px 24px 20px; }
-.lx-inputs.three { grid-template-columns: minmax(0, 1fr) auto auto; }
-.lx-field { display: grid; gap: 6px; min-width: 0; }
-.lx-field > span { font-size: var(--t-s); font-weight: 650; color: var(--ink-2); }
-.lx-money { display: flex; align-items: center; gap: 4px; height: 56px; padding: 0 14px; border-radius: 8px; background: var(--field); }
-.lx-money:focus-within { outline: 2px solid var(--rec); }
-.lx-money b { font: 800 1.375rem/1 var(--type); font-stretch: 70%; color: var(--ink-3); }
-.lx-money input { width: 100%; min-width: 0; border: 0; background: transparent; outline: none; font: 800 1.75rem/1 var(--type); font-stretch: 70%; color: var(--ink); font-variant-numeric: tabular-nums; }
-.lx .lx-money input:focus-visible { outline: none; }
-.lx-inputs .lx-stepper { height: 56px; }
-.lx-lines { display: grid; padding: 4px 24px 12px; }
-.lx-line { display: grid; grid-template-columns: auto minmax(12px, 1fr) auto; align-items: baseline; gap: 10px; padding: 8px 0; color: var(--ink-2); }
-.lx-line .lx-leader { margin-bottom: 0.35em; }
-.lx-line b { font-weight: 650; color: var(--ink); font-variant-numeric: tabular-nums; }
-.lx-line.out b { color: var(--ink); }
-.lx-total { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 18px 24px 22px; background: var(--field); }
-.lx-total span { font-weight: 700; }
-.lx-total b { font: 850 2.75rem/1 var(--type); font-stretch: 70%; color: var(--ink); font-variant-numeric: tabular-nums; }
+/* Storefront: copy on one side, the storefront itself on the other. */
+.lx-found { display: grid; gap: 40px; align-items: start; }
+@media (min-width: 1000px) { .lx-found { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 64px; } .lx-found .lx-head { position: sticky; top: 32px; margin-bottom: 0; } }
+.lx-sf-cover { height: 132px; overflow: hidden; background: var(--v2-bg-2); }
+.lx-sf-cover img { width: 100%; height: 100%; object-fit: cover; }
+.lx-sf-head { padding: 0 24px 20px; display: grid; gap: 10px; }
+.lx-sf-portrait { position: relative; z-index: 1; width: 76px; height: 76px; margin-top: -38px; border-radius: 50%; border: 4px solid var(--v2-paper); background: var(--v2-accent-soft); color: var(--v2-ink-2); display: grid; place-items: center; font-family: var(--v2-font-display); font-weight: 600; font-size: 1.5rem; }
+.lx-sf-name {
+  width: 100%; min-height: 48px; border: 0; border-bottom: 1px dashed var(--v2-line-2); background: transparent; outline: none; padding: 2px 0;
+  font-family: var(--v2-font-display); font-weight: 500; font-size: 2rem; letter-spacing: -0.015em; color: var(--v2-ink);
+}
+.lx-sf-name::placeholder { color: var(--v2-ink-3); }
+.lx-sf-name:focus { border-bottom: 1px solid var(--v2-ink-3); }
+.lx-sf-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--v2-ink-3); font-size: 0.9375rem; }
+.lx-sf-meta input, .lx-sf-meta select { min-height: 44px; border: 0; border-bottom: 1px dashed var(--v2-line-2); background: transparent; color: var(--v2-ink-2); font: inherit; outline: none; padding: 0 0 1px; }
+.lx-sf-meta input { width: 11ch; }
+.lx-sf-meta input:focus, .lx-sf-meta select:focus { border-bottom: 1px solid var(--v2-ink-3); }
+.lx-sf-section { padding: 18px 24px; border-top: 1px solid var(--v2-line); display: grid; gap: 12px; }
+.lx-sf-work { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.lx-sf-work figure { aspect-ratio: 1; border-radius: var(--v2-r-md); overflow: hidden; background: var(--v2-bg-2); }
+.lx-sf-work img { width: 100%; height: 100%; object-fit: cover; }
+.lx-rates { display: grid; gap: 10px; }
+@media (min-width: 560px) { .lx-rates { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.lx-rate { display: grid; gap: 6px; padding: 14px 16px; border: 1px solid var(--v2-line); border-radius: var(--v2-r-md); background: var(--v2-bg); cursor: text; }
+.lx-rate:focus-within { border-color: var(--v2-accent); }
+.lx-rate-name { font-weight: 600; font-size: 0.9375rem; }
+.lx-rate-price { display: flex; align-items: baseline; gap: 1px; }
+.lx-rate-price b, .lx-rate-price input { font-family: var(--v2-font-display); font-weight: 500; color: var(--v2-accent); font-variant-numeric: tabular-nums; }
+.lx-rate-price b { font-size: 1.5rem; }
+.lx-rate-price input { width: 100%; min-width: 0; border: 0; background: transparent; outline: none; font-size: 1.75rem; padding: 0; }
+.lx-rate-keep { font-size: 0.8125rem; color: var(--v2-ink-3); font-variant-numeric: tabular-nums; }
+.lx-rate-keep b { color: var(--v2-ink-2); font-weight: 600; }
+
+/* The workspace window: the portal's shell, drawn small. */
+.lx-window { display: grid; grid-template-columns: 1fr; border-radius: var(--v2-r-xl); border: 1px solid var(--v2-line-2); background: var(--v2-bg); box-shadow: var(--v2-shadow-lg); overflow: hidden; }
+@media (min-width: 900px) { .lx-window { grid-template-columns: 220px minmax(0, 1fr); } }
+.lx-window-side { display: none; background: var(--v2-paper); border-right: 1px solid var(--v2-line); padding: 18px 12px; gap: 2px; align-content: start; }
+@media (min-width: 900px) { .lx-window-side { display: grid; } }
+.lx-window-side .lx-brand { padding: 2px 6px 14px; }
+.lx-window-side .lx-brand-name { font-size: 20px; }
+.lx-window-nav { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--v2-r-sm); font-size: 0.875rem; color: var(--v2-ink-2); }
+.lx-window-nav.on { background: var(--v2-bg-2); color: var(--v2-ink); font-weight: 500; }
+.lx-window-main { padding: 20px; display: grid; gap: 14px; align-content: start; }
+@media (min-width: 900px) { .lx-window-main { padding: 26px 28px; } }
+.lx-window-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.lx-window-crumb { font-size: 0.8125rem; color: var(--v2-ink-3); }
+.lx-window-title { font-family: var(--v2-font-display); font-size: 1.625rem; font-weight: 500; letter-spacing: -0.015em; }
+.lx-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 16px; align-items: center; padding: 14px 16px; }
+.lx-row-who { font-size: 0.8125rem; color: var(--v2-ink-3); }
+.lx-row-what { font-weight: 600; }
+.lx-row-amt { grid-row: 1 / span 2; grid-column: 2; font-size: 1.5rem; }
+.lx-row-amt.struck { color: var(--v2-ink-3); text-decoration: line-through; text-decoration-thickness: 1px; }
+.lx-row-amt.accent { color: var(--v2-accent); }
+.lx-row-actions { grid-column: 1 / -1; display: flex; gap: 8px; margin-top: 8px; }
+.lx-mini-btn { display: inline-flex; align-items: center; min-height: 34px; padding: 0 14px; border-radius: var(--v2-r-pill); border: 1px solid var(--v2-line-2); background: var(--v2-paper); font-size: 0.8125rem; font-weight: 500; }
+.lx-mini-btn.dark { background: var(--v2-ink); border-color: var(--v2-ink); color: var(--v2-paper); }
+.lx-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--v2-accent); flex: none; }
+.lx-stars { color: var(--v2-ink-2); letter-spacing: 2px; }
+.lx-facts3 { display: grid; gap: 28px; margin-top: clamp(40px, 5vw, 56px); }
+@media (min-width: 760px) { .lx-facts3 { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px; } }
+.lx-facts3 p { color: var(--v2-ink-2); margin-top: 6px; }
+
+/* Brands: the brief and the pitches it brings. */
+.lx-brief { padding: 24px; display: grid; gap: 18px; }
+.lx-brief-title { width: 100%; min-height: 48px; border: 0; border-bottom: 1px dashed var(--v2-line-2); background: transparent; outline: none; padding: 2px 0; font-family: var(--v2-font-display); font-weight: 500; font-size: 1.75rem; color: var(--v2-ink); }
+.lx-brief-title::placeholder { color: var(--v2-ink-3); }
+.lx-brief-title:focus { border-bottom: 1px solid var(--v2-ink-3); }
+.lx-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.lx-select { -webkit-appearance: none; appearance: none; height: 46px; padding: 0 34px 0 14px; border: 1px solid var(--v2-line-2); border-radius: var(--v2-r-pill); background: var(--v2-paper) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%236B6759' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 14px center / 12px; color: var(--v2-ink); font: 500 0.9375rem/1 var(--v2-font-sans); cursor: pointer; }
+.lx-stepper { display: inline-flex; align-items: center; height: 46px; border: 1px solid var(--v2-line-2); border-radius: var(--v2-r-pill); background: var(--v2-paper); }
+.lx-stepper button { width: 44px; height: 100%; border: 0; border-radius: var(--v2-r-pill); background: transparent; color: var(--v2-ink-2); font: 500 1.125rem/1 var(--v2-font-sans); cursor: pointer; }
+.lx-stepper button:hover:not(:disabled) { background: var(--v2-bg-2); color: var(--v2-ink); }
+.lx-stepper button:disabled { color: var(--v2-line-2); cursor: default; }
+.lx-stepper output { min-width: 22px; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
+.lx-pitches .lx-row + .lx-row { border-top: 1px solid var(--v2-line); }
+.lx-pitch-av { width: 44px; height: 44px; border-radius: var(--v2-r-sm); overflow: hidden; background: var(--v2-bg-2); }
+.lx-pitch-av img { width: 100%; height: 100%; object-fit: cover; }
+.lx-pitch-row { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 4px 14px; align-items: start; padding: 16px 18px; }
+.lx-pitch-row + .lx-pitch-row { border-top: 1px solid var(--v2-line); }
+.lx-pitch-row .lx-row-amt { grid-column: 3; grid-row: 1; }
+.lx-pitch-row p { color: var(--v2-ink-2); font-size: 0.9375rem; margin-top: 2px; }
+.lx-pitch-bar { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 18px; border-top: 1px solid var(--v2-line); background: var(--v2-bg); }
+
+/* ── The wallet card: the portal's moss hero, as a calculator ────────── */
+/* minmax(0, 1fr): on a phone the card is as wide as the screen, never as
+ * wide as its widest input. */
+.lx-wallet { border-radius: var(--v2-r-xl); background: var(--v2-moss); color: var(--v2-paper); overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 960px) { .lx-wallet { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+.lx-wallet-main { min-width: 0; padding: clamp(24px, 3.5vw, 40px); display: grid; gap: 20px; align-content: start; }
+.lx-wallet-side { padding: clamp(24px, 3.5vw, 40px); border-top: 1px solid color-mix(in srgb, var(--v2-paper) 18%, transparent); display: grid; gap: 4px; align-content: start; }
+@media (min-width: 960px) { .lx-wallet-side { border-top: 0; border-left: 1px solid color-mix(in srgb, var(--v2-paper) 18%, transparent); } }
+.lx-wallet .lx-label { color: color-mix(in srgb, var(--v2-paper) 70%, transparent); }
+.lx-wallet-big { font-size: clamp(3rem, 2rem + 3vw, 4.5rem); line-height: 1; }
+.lx-wallet-sub { color: color-mix(in srgb, var(--v2-paper) 78%, transparent); }
+.lx-wallet-inputs { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+.lx-wallet-field { display: grid; gap: 8px; min-width: 0; }
+.lx-wallet-field > span { font-size: 0.875rem; color: color-mix(in srgb, var(--v2-paper) 78%, transparent); }
+.lx-wallet .lx-money-input { background: var(--v2-paper); border-color: transparent; width: 220px; }
+.lx-wallet .lx-stepper { height: 54px; border-color: transparent; color: var(--v2-ink); }
+.lx-wallet-line { display: grid; grid-template-columns: auto minmax(12px, 1fr) auto; align-items: baseline; gap: 10px; padding: 9px 0; color: color-mix(in srgb, var(--v2-paper) 82%, transparent); }
+.lx-wallet-line .lx-leader { align-self: end; height: 0; margin-bottom: 0.38em; border-bottom: 1px dotted color-mix(in srgb, var(--v2-paper) 30%, transparent); }
+.lx-wallet-line b { font-weight: 600; color: var(--v2-paper); font-variant-numeric: tabular-nums; }
+.lx-wallet-steps { display: grid; gap: 28px; margin-top: clamp(40px, 5vw, 56px); }
+@media (min-width: 760px) { .lx-wallet-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px; } }
+.lx-wallet-steps p { color: var(--v2-ink-2); margin-top: 6px; }
 
 /* ── Pricing ─────────────────────────────────────────────────────────── */
-.lx-pricing { display: grid; gap: 48px; align-items: start; }
-@media (min-width: 980px) { .lx-pricing { grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr); gap: 80px; } }
-.lx-pricing .lx-h2 { margin-bottom: 28px; }
-.lx-pricing .lx-lead { margin-bottom: 28px; }
-.lx-terms { display: grid; gap: 12px; max-width: 34em; }
-.lx-terms li { padding-left: 22px; position: relative; color: var(--ink-2); }
-.lx-terms li::before { content: ""; position: absolute; left: 0; top: 0.62em; width: 8px; height: 8px; border-radius: 50%; background: var(--rec); }
-.lx-notyet { display: grid; gap: 12px; padding: 24px; border-radius: var(--r); background: var(--field); }
+.lx-pricing { display: grid; gap: 40px; align-items: start; }
+@media (min-width: 960px) { .lx-pricing { grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr); gap: 72px; } }
+.lx-terms { display: grid; gap: 12px; margin-top: 24px; max-width: 36em; }
+.lx-terms li { position: relative; padding-left: 22px; color: var(--v2-ink-2); }
+.lx-terms li::before { content: ""; position: absolute; left: 2px; top: 0.6em; width: 7px; height: 7px; border-radius: 50%; background: var(--v2-moss); }
+.lx-notyet { padding: 24px; border-radius: var(--v2-r-lg); background: var(--v2-bg-2); display: grid; gap: 12px; }
 .lx-notyet ul { display: grid; gap: 10px; }
-.lx-notyet li { color: var(--ink-2); }
+.lx-notyet li { color: var(--v2-ink-2); }
 
-/* ── Questions: every answer open, in two columns ────────────────────── */
-.lx-qa { display: grid; gap: 40px 56px; }
+/* ── Questions: every answer open ────────────────────────────────────── */
+.lx-qa { display: grid; gap: 36px 56px; }
 @media (min-width: 900px) { .lx-qa { grid-template-columns: 1fr 1fr; } }
-.lx-qa h3 { font-size: 1.1875rem; margin-bottom: 8px; }
-.lx-qa p { color: var(--ink-2); max-width: 34em; }
+.lx-qa h3 { font-family: var(--v2-font-display); font-size: 1.375rem; font-weight: 500; letter-spacing: -0.01em; line-height: 1.2; margin-bottom: 8px; }
+.lx-qa p { color: var(--v2-ink-2); max-width: 34em; }
 
-/* ── Final field ─────────────────────────────────────────────────────── */
-.lx-final { background: var(--rec); color: #fff; padding-block: clamp(96px, 11vw, 176px); }
-.lx-final-grid { display: grid; gap: 32px; align-items: end; }
-@media (min-width: 980px) { .lx-final-grid { grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr); gap: 64px; } }
-.lx-final .lx-h2 { max-width: 11ch; }
-.lx-final-copy { display: grid; gap: 28px; }
-.lx-final .lx-lead { color: oklch(0.96 0.03 45); }
-.lx-final .lx-btn { background: #fff; color: var(--rec-dk); }
-.lx-final .lx-btn:hover { background: oklch(0.95 0.025 45); }
+/* ── Close ───────────────────────────────────────────────────────────── */
+.lx-final { background: var(--v2-ink); color: var(--v2-paper); padding-block: clamp(88px, 10vw, 144px); }
+.lx-final-grid { display: grid; gap: 28px; align-items: end; }
+@media (min-width: 960px) { .lx-final-grid { grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: 64px; } }
+.lx-final .lx-lead { color: color-mix(in srgb, var(--v2-paper) 76%, transparent); }
+.lx-final .lx-btn { background: var(--v2-paper); color: var(--v2-ink); }
+.lx-final .lx-btn:hover { background: var(--v2-bg-2); }
+.lx-final .lx-btn-line { background: transparent; color: var(--v2-paper); border-color: color-mix(in srgb, var(--v2-paper) 35%, transparent); }
+.lx-final .lx-btn-line:hover { background: color-mix(in srgb, var(--v2-paper) 10%, transparent); }
+.lx-foot { padding-block: 40px calc(32px + env(safe-area-inset-bottom, 0px)); }
+.lx-foot-inner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 18px 28px; }
+.lx-foot nav { display: flex; flex-wrap: wrap; gap: 8px 22px; color: var(--v2-ink-2); font-size: 0.9375rem; }
+.lx-foot nav a:hover { color: var(--v2-ink); }
+.lx-foot-note { width: 100%; font-size: 0.8125rem; color: var(--v2-ink-3); }
 
-/* ── Footer: a designed close ────────────────────────────────────────── */
-.lx-foot { background: var(--night); color: #fff; padding-block: 56px calc(24px + env(safe-area-inset-bottom, 0px)); }
-.lx-foot-top { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px 24px; color: var(--night-2); }
-.lx-foot nav { display: flex; flex-wrap: wrap; gap: 8px 24px; }
-.lx-foot a:hover { color: #fff; }
-.lx-wordmark {
-  margin-top: clamp(32px, 5vw, 64px);
-  font-family: var(--type); font-stretch: 70%; font-weight: 800; letter-spacing: -0.04em;
-  font-size: clamp(5rem, 0.5rem + 24.5vw, 23rem); line-height: 0.78; color: #fff;
-}
+/* ── Motion: the hero's listings settle in, as the portal's lists do ─── */
+@keyframes lx-settle-in { from { opacity: 0; transform: translateY(14px); } }
+.lx-anim .lx-board-grid > * { animation: lx-settle-in .6s cubic-bezier(.16, 1, .3, 1) both; }
+.lx-anim .lx-board-grid > :nth-child(2) { animation-delay: 70ms; }
+.lx-anim .lx-board-grid > :nth-child(3) { animation-delay: 140ms; }
 
-/* ── Motion ──────────────────────────────────────────────────────────────
- * One signature move: on load the board's listings arrive one after another,
- * like a departures board settling, and the Reel frame eases into place.
- * Nothing else animates in. `lx-anim` is added before first paint by the
- * inline script in each page's <head>, only in a visible tab without
- * reduced motion, so the page is complete without it. */
-@keyframes lx-rise { from { opacity: 0; transform: translateY(28px); } }
-@keyframes lx-settle { from { transform: scale(1.08); } }
-.lx-anim .lx-hero .lx-h1 > span,
-.lx-anim .lx-hero-side,
-.lx-anim .lx-item,
-.lx-anim .lx-reel { animation: lx-rise .8s cubic-bezier(.16, 1, .3, 1) both; }
-.lx-anim .lx-hero .lx-h1 > span:nth-child(2) { animation-delay: 90ms; }
-.lx-anim .lx-hero-side { animation-delay: 160ms; }
-.lx-anim .lx-item:nth-child(1) { animation-delay: 220ms; }
-.lx-anim .lx-item:nth-child(2) { animation-delay: 280ms; }
-.lx-anim .lx-item:nth-child(3) { animation-delay: 340ms; }
-.lx-anim .lx-item:nth-child(4) { animation-delay: 400ms; }
-.lx-anim .lx-reel { animation-delay: 300ms; }
-.lx-anim .lx-reel img { animation: lx-settle 2.4s cubic-bezier(.16, 1, .3, 1) both; }
-
-/* ── Small screens: their own composition ────────────────────────────── */
+/* ── Phones: their own composition ───────────────────────────────────── */
 @media (max-width: 560px) {
-  .lx-nav-links { gap: 16px; }
+  .lx-nav-links { gap: 14px; }
   .lx-nav-aud { display: none; }
-  .lx-cta-row .lx-btn { width: 100%; }
-  .lx-card { padding: 18px 16px 14px; }
-  .lx-inline-name, .lx-brief-title { font-size: 1.625rem; }
-  .lx-inputs, .lx-inputs.three { grid-template-columns: 1fr 1fr; padding-inline: 16px; }
-  .lx-inputs .lx-field:first-child { grid-column: 1 / -1; }
-  .lx-lines, .lx-statement-top { padding-inline: 16px; }
-  .lx-total { padding-inline: 16px; }
-  .lx-pitch { grid-template-columns: minmax(0, 1fr) auto; }
-  .lx-pitch-av { display: none; }
+  .lx-cta-row .lx-btn { flex: 1 1 100%; }
+  .lx-tile-cols { grid-template-columns: 1fr 1fr; }
+  .lx-tile-cols > div:nth-child(3) { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--v2-line); }
+  .lx-pane, .lx-brief { padding: 18px; }
+  .lx-sf-head, .lx-sf-section { padding-inline: 18px; }
+  .lx-wallet .lx-money-input { width: 100%; }
+  .lx-wallet-inputs { display: grid; grid-template-columns: 1fr auto; }
 }
 @media (prefers-reduced-motion: reduce) {
   .lx *, .lx *::before, .lx *::after { animation: none !important; transition: none !important; }

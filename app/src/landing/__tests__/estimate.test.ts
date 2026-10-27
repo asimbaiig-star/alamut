@@ -113,22 +113,26 @@ describe('input handling', () => {
 });
 
 describe('the example boards only offer what the product has', () => {
-  it('brief categories are the product’s categories', () => {
-    for (const c of [...BRIEF_FILTERS.filter((f) => f !== 'All'), ...BRIEFS.map((b) => b.category)]) {
+  it('brief and creator categories are the product’s categories', () => {
+    for (const c of [...BRIEF_FILTERS.filter((f) => f !== 'All'), ...BRIEFS.map((b) => b.category), ...CREATORS.map((c) => c.category)]) {
       expect(options.CREATOR_CATEGORIES, c).toContain(c);
     }
   });
 
   it('platforms and formats are the product’s', () => {
     const labels = options.PLATFORM_FORMATS.map((p) => p.label);
-    for (const p of [...CREATOR_FILTERS.filter((f) => f !== 'All'), ...CREATORS.map((c) => c.platform)]) {
+    for (const p of [...CREATOR_FILTERS.filter((f) => f !== 'All'), ...CREATORS.flatMap((c) => c.channels.map((ch) => ch.platform))]) {
       expect(labels, p).toContain(p);
     }
-    for (const b of BRIEFS) {
-      const [, platform, format] = /^\d+ × (\S+) (.+)$/.exec(b.deliverables) ?? [];
+    for (const d of BRIEFS.flatMap((b) => b.deliverables)) {
+      const [, platform, format] = /^\d+ × (\S+) (.+)$/.exec(d) ?? [];
       const def = options.PLATFORM_FORMATS.find((p) => p.label === platform);
-      expect(def, b.deliverables).toBeDefined();
-      expect(def!.formats.map((f) => f.label), b.deliverables).toContain(format);
+      expect(def, d).toBeDefined();
+      expect(def!.formats.map((f) => f.label), d).toContain(format);
     }
+  });
+
+  it('describes brands, never names one', () => {
+    for (const b of BRIEFS) expect(b.brand, b.brand).toMatch(/^An? /);
   });
 });

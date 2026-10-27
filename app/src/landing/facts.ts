@@ -13,13 +13,14 @@
 export { PLATFORM_FEE, WHT, PLATFORM_FEE_LABEL, WHT_LABEL, splitAcrossSlots, slotGross } from '@/lib/api/money';
 export { STALENESS } from '@/lib/api/staleness';
 export { PLATFORM_FORMATS, CREATOR_CATEGORIES } from '@/lib/api/marketplaceOptions';
+export { BRAND_PALETTE, brandAccent } from '@/screens/workspace-v2/brandPalette';
 import { STALENESS } from '@/lib/api/staleness';
 
 /** Unanswered applications close this many days after they're sent. */
 export const APPLICATION_LAPSE_DAYS = STALENESS.applicationLapseDays;
 
 /** Shown wherever money is mentioned. True until real payment rails exist. */
-export const BETA_LINE = 'Public beta · payments are simulated';
+export const BETA_LINE = 'Public beta. Payments are simulated';
 
 /** The demo accounts SignIn.tsx already offers, reachable in one click. */
 export const DEMO_HREF = {

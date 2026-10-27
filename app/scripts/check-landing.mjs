@@ -21,7 +21,7 @@ const fail = (msg) => { failed = true; console.error(`check-landing: FAIL ${msg}
 for (const file of ['index.html', 'for-brands/index.html']) {
   const html = fs.readFileSync(path.join(dist, file), 'utf8');
   if (html.includes('<!--lx-ssr-->')) fail(`${file} was never prerendered`);
-  if (!/<div id="lx-root"[^>]*><div class="lx">/.test(html)) fail(`${file} has no prerendered page in #lx-root`);
+  if (!/<div id="lx-root"[^>]*><div class="lx" data-surface="v2">/.test(html)) fail(`${file} has no prerendered page in #lx-root, on the v2 surface`);
   if (!/<h1[\s>]/.test(html)) fail(`${file} has no <h1> in its HTML`);
   if (/assets\/(vendor|index)-[\w-]+\.js/.test(html)) fail(`${file} references the app bundle`);
 

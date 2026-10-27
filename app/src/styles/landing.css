@@ -326,9 +326,6 @@
    Editorial split: side panel becomes an atmospheric tinted panel, form
    sits in a real raised tile. Both sit on the body atmospheric mesh.
    ===================================================================== */
-.auth-shell {
-  background: transparent;
-}
 /* Soft warm gradient orb top-left of the auth side panel */
 .auth-tile {
   background: var(--tile-surface);
@@ -388,10 +385,6 @@
 /* DD shared */
 
 /* Brief stage — brand POV */
-@keyframes dd-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--ink) 30%, transparent); }
-  50%      { box-shadow: 0 0 0 8px color-mix(in oklab, var(--ink) 0%, transparent); }
-}
 
 /* Discover stage — creator POV */
 
@@ -470,16 +463,8 @@
 /* Pulsing ring around the vault — emphasizes "money is held safe" */
 
 /* Arrows (track + flowing dots) */
-@keyframes money-flow-dot {
-  0%   { left: 0;    opacity: 0; transform: translate(0, -50%) scale(0.6); }
-  10%  { opacity: 1; transform: translate(0, -50%) scale(1); }
-  90%  { opacity: 1; transform: translate(0, -50%) scale(1); }
-  100% { left: 100%; opacity: 0; transform: translate(-100%, -50%) scale(0.6); }
-}
 
 /* Captions row */
-@media (max-width: 800px) {
-}
 
 /* ---- Comparison strip (Alamut vs alternative) ---- */
 
@@ -584,180 +569,19 @@
   justify-content: center;
 }
 
-.auth-airy-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
-  gap: clamp(40px, 6vw, 96px);
-  align-items: center;
-  width: 100%;
-  max-width: var(--max-w-content);
-  margin: 0 auto;
-}
-@media (max-width: 880px) {
-  .auth-airy-grid { grid-template-columns: 1fr; gap: var(--space-xl); }
-}
-
 /* Side narrative */
-.auth-airy-side {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  min-width: 0;
-}
-.auth-airy-h {
-  /* Slightly tighter than the default airy display — auth lives below
-     a topnav and inside a constrained column. */
-  font-size: clamp(40px, 5vw, 72px);
-  letter-spacing: -0.022em;
-}
-.auth-airy-h em { color: var(--accent); font-style: italic; }
-
-.auth-airy-bullets {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-sm);
-}
-.auth-airy-bullets li {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-md);
-  font-family: var(--sans);
-  font-size: 14.5px;
-  color: var(--ink-80);
-  line-height: 1.55;
-}
-.auth-airy-bullets-num {
-  flex: 0 0 auto;
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--accent);
-  font-variant-numeric: tabular-nums;
-  min-width: 22px;
-}
-
-.auth-airy-demo-card {
-  /* Quieter than the form card — same surface but less pad and a
-     softer border so it doesn't compete. */
-  padding: var(--space-md);
-}
-.auth-airy-demo-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: var(--space-xs);
-  margin-bottom: var(--space-sm);
-}
-.auth-airy-demo-help {
-  font-family: var(--sans);
-  font-size: 12px;
-  color: var(--ink-60);
-  letter-spacing: 0;
-  text-transform: none;
-  margin: 0;
-  line-height: 1.5;
-}
-.auth-airy-demo-help strong { color: var(--ink); font-weight: 500; }
 
 /* Form card */
-.auth-airy-form {
-  min-width: 0;
-}
-.auth-airy-form-card {
-  /* Slightly more pad than default airy-card — forms need breathing room. */
-  padding: clamp(32px, 3.6vw, 48px);
-  max-width: 480px;
-  margin: 0;
-}
-@media (max-width: 880px) {
-  .auth-airy-form-card { margin: 0 auto; }
-}
 
 /* Tab switcher (password / magic OR creator / brand) */
-.auth-airy-tab {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  background: var(--paper-2);
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-sm);
-  padding: 3px;
-  gap: 2px;
-}
-.auth-airy-tab button {
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.10em;
-  text-transform: uppercase;
-  padding: 9px 10px;
-  border-radius: 3px;
-  color: var(--ink-60);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-.auth-airy-tab button.is-on {
-  background: var(--ink);
-  color: var(--paper);
-}
-.auth-airy-tab button:hover:not(.is-on) {
-  color: var(--ink);
-}
 
 /* Form fields layout */
-.auth-airy-fields {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-md);
-}
 
 /* Magic-link demo card */
-.auth-airy-magic-card {
-  padding: var(--space-md);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-sm);
-}
-.auth-airy-magic-token {
-  display: block;
-  background: var(--paper-2);
-  padding: 10px 12px;
-  font-family: var(--mono);
-  font-size: 11px;
-  word-break: break-all;
-  border-radius: var(--radius-sm);
-  color: var(--ink-80);
-  border: 1px solid var(--rule);
-}
 
 /* Footer row inside form card */
-.auth-airy-foot {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-sm);
-}
-.auth-airy-foot-link {
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--ink);
-  text-decoration: none;
-  transition: color 140ms ease;
-}
-.auth-airy-foot-link:hover { color: var(--accent); }
 
 /* Page-level footer (copyright row at the very bottom) */
-.auth-airy-page-foot {
-  text-align: center;
-  padding: var(--space-lg) var(--section-px);
-  border-top: 1px solid var(--rule);
-}
 
 /* =============================================================
    ===== Phase 52 · Landing-light surface mode =====
@@ -1985,33 +1809,6 @@ body:has([data-surface="landing-light"]) {
   padding: clamp(40px, 6vw, 80px) clamp(20px, 4vw, 56px);
   flex: 1;
 }
-[data-surface="landing-light"] .auth-airy-grid {
-  max-width: 1080px;
-  margin: 0 auto;
-  display: grid;
-  grid-template-columns: 1fr 1.05fr;
-  gap: clamp(40px, 6vw, 80px);
-  align-items: start;
-}
-@media (max-width: 880px) {
-  [data-surface="landing-light"] .auth-airy-grid { grid-template-columns: 1fr; }
-}
-[data-surface="landing-light"] .auth-airy-side {
-  padding-top: 8px;
-}
-[data-surface="landing-light"] .auth-airy-h {
-  font-family: var(--cn-sans);
-  font-size: clamp(36px, 4vw, 56px);
-  font-weight: 800;
-  line-height: 1.05;
-  letter-spacing: -0.030em;
-  color: var(--cn-ink);
-  margin: 0 0 16px;
-}
-[data-surface="landing-light"] .auth-airy-h em {
-  font-style: normal;
-  color: var(--cn-accent);
-}
 [data-surface="landing-light"] .airy-lede {
   color: var(--cn-ink-muted);
   font-size: 17px;
@@ -2024,9 +1821,6 @@ body:has([data-surface="landing-light"]) {
   border-radius: 22px;
   padding: clamp(24px, 3vw, 36px);
   box-shadow: var(--shadow-2);
-}
-[data-surface="landing-light"] .auth-airy-form-card {
-  padding: clamp(28px, 3.4vw, 44px);
 }
 [data-surface="landing-light"] .airy-eyebrow {
   font-family: var(--cn-mono);
@@ -2043,36 +1837,6 @@ body:has([data-surface="landing-light"]) {
   letter-spacing: -0.020em;
   color: var(--cn-ink);
   margin: 8px 0 12px;
-}
-[data-surface="landing-light"] .auth-airy-tab {
-  display: inline-flex;
-  background: color-mix(in oklab, var(--cn-bg-deep) 80%, var(--cn-bg));
-  border-radius: 999px;
-  padding: 4px;
-  margin: 4px 0 16px;
-}
-[data-surface="landing-light"] .auth-airy-tab button {
-  background: transparent;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 999px;
-  font-family: var(--cn-sans);
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--cn-ink-muted);
-  cursor: pointer;
-  transition: background var(--motion-fast, 140ms) var(--ease-state, cubic-bezier(0.4, 0, 0.2, 1)),
-              color var(--motion-fast, 140ms) var(--ease-state, cubic-bezier(0.4, 0, 0.2, 1));
-}
-[data-surface="landing-light"] .auth-airy-tab button.is-on {
-  background: oklch(1 0 0);
-  color: var(--cn-ink);
-  box-shadow: 0 1px 2px -1px oklch(0.20 0.012 270 / 0.16);
-}
-[data-surface="landing-light"] .auth-airy-fields {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
 }
 [data-surface="landing-light"] .field {
   display: flex;
@@ -2105,74 +1869,6 @@ body:has([data-surface="landing-light"]) {
   font-family: var(--cn-mono);
   font-size: 12px;
   color: oklch(0.55 0.18 28);
-}
-[data-surface="landing-light"] .auth-airy-demo-card {
-  margin-top: 20px;
-}
-[data-surface="landing-light"] .auth-airy-demo-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-}
-[data-surface="landing-light"] .auth-airy-demo-grid .btn {
-  padding: 10px;
-  font-family: var(--cn-sans);
-  font-size: 14px;
-  font-weight: 600;
-  background: oklch(1 0 0);
-  border: 1px solid var(--cn-rule);
-  border-radius: 10px;
-  color: var(--cn-ink);
-  cursor: pointer;
-  transition: background var(--motion-fast, 140ms) var(--ease-state, cubic-bezier(0.4, 0, 0.2, 1));
-}
-[data-surface="landing-light"] .auth-airy-demo-grid .btn:hover {
-  background: color-mix(in oklab, var(--cn-accent) 8%, oklch(1 0 0));
-  border-color: var(--cn-accent);
-}
-[data-surface="landing-light"] .auth-airy-demo-help {
-  margin-top: 10px;
-  font-size: 12px;
-  color: var(--cn-ink-muted);
-}
-[data-surface="landing-light"] .airy-divider {
-  border: none;
-  border-top: 1px solid var(--cn-rule);
-}
-[data-surface="landing-light"] .auth-airy-foot {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 14px;
-}
-[data-surface="landing-light"] .auth-airy-foot-link {
-  color: var(--cn-accent);
-  font-weight: 600;
-  text-decoration: none;
-}
-[data-surface="landing-light"] .auth-airy-foot-link:hover { text-decoration: underline; }
-[data-surface="landing-light"] .auth-airy-page-foot {
-  padding: 24px clamp(20px, 4vw, 56px);
-  text-align: center;
-  border-top: 1px solid color-mix(in oklab, var(--cn-rule) 50%, transparent);
-}
-[data-surface="landing-light"] .auth-airy-magic-card {
-  background: color-mix(in oklab, var(--cn-bg-deep) 80%, var(--cn-bg));
-  border-radius: 14px;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-[data-surface="landing-light"] .auth-airy-magic-token {
-  font-family: var(--cn-mono);
-  font-size: 12px;
-  background: oklch(1 0 0);
-  border: 1px solid var(--cn-rule);
-  padding: 8px 10px;
-  border-radius: 6px;
-  word-break: break-all;
-  color: var(--cn-ink);
 }
 
 /* TileHalo decoration is OK as-is; it sits behind the content. */

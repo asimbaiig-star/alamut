@@ -1,0 +1,101 @@
+/* auth-v2.css — sign-in and sign-up, on the v2 surface.
+ *
+ * Between the landing pages and the workspace, so they use the same tokens
+ * (v2-tokens.css), the same mark and the same components: paper cards,
+ * pill buttons, the persona toggle, Fraunces headings. Layout only here;
+ * no colour of its own.
+ */
+
+@import './v2-tokens.css';
+
+[data-surface="v2"].auth-v2 {
+  min-height: 100vh;
+  background: var(--v2-bg);
+  color: var(--v2-ink);
+  font: 400 15px/1.5 var(--v2-font-sans);
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
+  display: flex;
+  flex-direction: column;
+}
+.auth-v2 *, .auth-v2 *::before, .auth-v2 *::after { box-sizing: border-box; }
+.auth-v2 :where(h1, h2, p, ul) { margin: 0; }
+.auth-v2 :where(ul) { padding: 0; list-style: none; }
+.auth-v2 :focus-visible { outline: 2px solid var(--v2-accent); outline-offset: 3px; border-radius: 6px; }
+
+.auth-v2-nav {
+  display: flex; align-items: center; gap: 20px; height: 72px;
+  width: 100%; max-width: 1120px; margin: 0 auto;
+  padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px));
+}
+.auth-v2-brand { display: inline-flex; align-items: center; gap: 10px; color: var(--v2-ink); text-decoration: none; }
+.auth-v2-mark { width: 32px; height: 32px; border-radius: var(--v2-r-sm); display: grid; place-items: center; background: var(--v2-ink); flex: none; }
+.auth-v2-brand > span:last-child { font-family: var(--v2-font-display); font-size: 22px; font-weight: 500; letter-spacing: -0.02em; }
+.auth-v2-nav-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: 14px; }
+.auth-v2-muted { color: var(--v2-ink-3); }
+.auth-v2-link { color: var(--v2-ink); font-weight: 500; text-decoration: underline; text-underline-offset: 4px; text-decoration-color: var(--v2-line-2); }
+.auth-v2-link:hover { text-decoration-color: var(--v2-ink); }
+
+.auth-v2-main {
+  flex: 1; width: 100%; max-width: 1120px; margin: 0 auto;
+  padding: clamp(24px, 5vw, 64px) max(20px, env(safe-area-inset-right, 0px)) 48px max(20px, env(safe-area-inset-left, 0px));
+}
+.auth-v2-grid { display: grid; gap: 32px; align-items: start; }
+@media (min-width: 960px) { .auth-v2-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 440px); gap: 72px; } }
+.auth-v2-side { display: grid; gap: 22px; align-content: start; padding-top: 8px; }
+.auth-v2-h1 { font-family: var(--v2-font-display); font-weight: 500; font-variation-settings: "opsz" 144; font-size: clamp(2.5rem, 1.6rem + 2.8vw, 4rem); line-height: 1.02; letter-spacing: -0.02em; text-wrap: balance; }
+.auth-v2-lede { font-size: 1.0625rem; color: var(--v2-ink-2); max-width: 32em; text-wrap: pretty; }
+.auth-v2-points { display: grid; gap: 10px; }
+.auth-v2-points li { position: relative; padding-left: 20px; color: var(--v2-ink-2); }
+.auth-v2-points li::before { content: ""; position: absolute; left: 2px; top: 0.6em; width: 7px; height: 7px; border-radius: 50%; background: var(--v2-moss); }
+
+.auth-v2-card { background: var(--v2-paper); border: 1px solid var(--v2-line); border-radius: var(--v2-r-lg); box-shadow: var(--v2-shadow-sm); }
+.auth-v2-form-card { padding: 28px; display: grid; gap: 18px; }
+.auth-v2-h2 { font-family: var(--v2-font-display); font-weight: 500; font-size: 1.625rem; letter-spacing: -0.015em; line-height: 1.15; }
+.auth-v2-label { font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--v2-ink-3); }
+
+/* The persona toggle, as in the workspace sidebar. */
+.auth-v2-tabs { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; border-radius: var(--v2-r-md); background: var(--v2-bg-2); }
+.auth-v2-tabs button { min-height: 40px; border: 0; border-radius: calc(var(--v2-r-md) - 3px); background: transparent; color: var(--v2-ink-3); font: 500 14px/1 var(--v2-font-sans); cursor: pointer; }
+.auth-v2-tabs button.is-on { background: var(--v2-paper); color: var(--v2-ink); box-shadow: var(--v2-shadow-sm); }
+
+.auth-v2-fields { display: grid; gap: 14px; }
+.auth-v2 .field { display: grid; gap: 6px; }
+/* components.css styles .field-label as mono capitals for the old portal;
+ * reset every property it sets. */
+.auth-v2 .field-label { font-family: var(--v2-font-sans); font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--v2-ink-2); }
+.auth-v2 .field input {
+  width: 100%; min-height: 46px; padding: 0 14px; border: 1px solid var(--v2-line-2); border-radius: var(--v2-r-md);
+  background: var(--v2-paper); color: var(--v2-ink); font: 400 16px/1.2 var(--v2-font-sans); outline: none;
+  transition: border-color .12s, box-shadow .12s;
+}
+.auth-v2 .field input::placeholder { color: var(--v2-ink-3); }
+.auth-v2 .field input:focus { border-color: var(--v2-ink-3); box-shadow: 0 0 0 3px var(--v2-bg-2); }
+.auth-v2 .field input[aria-invalid="true"] { border-color: var(--v2-negative); }
+.auth-v2 .field input[readonly] { background: var(--v2-bg); color: var(--v2-ink-3); }
+.auth-v2 .field-error { font-size: 13px; color: var(--v2-negative); }
+.auth-v2 .field-help { margin-top: 0; font-size: 13px; color: var(--v2-ink-3); }
+.auth-v2 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+.auth-v2-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
+  min-height: 48px; padding: 0 20px; border: 1px solid transparent; border-radius: var(--v2-r-pill);
+  background: var(--v2-ink); color: var(--v2-paper); font: 500 15px/1 var(--v2-font-sans); cursor: pointer;
+  transition: background-color .12s;
+}
+.auth-v2-btn:hover:not(:disabled) { background: var(--v2-ink-2); }
+.auth-v2-btn:disabled { opacity: .6; cursor: progress; }
+.auth-v2-btn.line { width: auto; background: var(--v2-paper); color: var(--v2-ink); border-color: var(--v2-line-2); }
+.auth-v2-btn.line:hover:not(:disabled) { background: var(--v2-bg-2); }
+.auth-v2-foot { font-size: 14px; color: var(--v2-ink-3); padding-top: 14px; border-top: 1px solid var(--v2-line); }
+
+.auth-v2-demo { padding: 22px; display: grid; gap: 12px; max-width: 520px; }
+.auth-v2-demo-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.auth-v2-magic { padding: 16px; display: grid; gap: 10px; background: var(--v2-bg); }
+.auth-v2-magic code { font-size: 12px; word-break: break-all; color: var(--v2-ink-2); }
+.auth-v2-page-foot { padding: 20px; text-align: center; font-size: 13px; color: var(--v2-ink-3); }
+
+@media (max-width: 560px) {
+  .auth-v2-form-card { padding: 20px; }
+  .auth-v2 .form-grid { grid-template-columns: 1fr; }
+}

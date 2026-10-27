@@ -712,6 +712,51 @@ describe('marketing copy does not outrun the product', () => {
     }
   });
 
+  // ── In sync with the portal (2026-10-26) ─────────────────────────────
+  // The landing is the portal's front door: two earlier landings each
+  // invented their own look, and keeping them would have meant redesigning
+  // the workspace to match. So the landing, sign-in and sign-up read the
+  // workspace's own tokens, typefaces and mark, and define none of their own.
+
+  it('the landing is drawn in the portal’s tokens, not its own', () => {
+    const css = read('landing/landing.css').replace(/\/\*[\s\S]*?\*\//g, '').replace(/url\("data:[^"]*"\)/g, '');
+    expect(css).toMatch(/@import '\.\.\/styles\/v2-tokens\.css';/);
+    expect(css, 'a colour literal in landing.css').not.toMatch(/#[0-9a-fA-F]{3,8}\b|\b(rgba?|hsla?|oklch|oklab|lab|lch)\(/);
+    for (const page of ['landing/CreatorsPage.tsx', 'landing/BrandsPage.tsx']) {
+      expect(code(page), page).toMatch(/<div className="lx" data-surface="v2">/);
+    }
+  });
+
+  it('the workspace reads the same token file, and only that one', () => {
+    const ws = read('styles/workspace-v2.css');
+    expect(ws).toMatch(/@import '\.\/v2-tokens\.css';/);
+    expect(ws.replace(/\/\*[\s\S]*?\*\//g, ''), 'workspace-v2.css defines its own palette again')
+      .not.toMatch(/--v2-(bg|paper|ink|accent|moss|line|font-display|font-sans|r-lg)\s*:/);
+  });
+
+  it('the landing loads only typefaces the portal loads', () => {
+    const families = (html: string) => [...html.matchAll(/family=([A-Za-z+]+)/g)].map((m) => m[1]!.replace(/\+/g, ' '));
+    const app = new Set(families(readFileSync(join(SRC, '..', 'app.html'), 'utf8')));
+    for (const shell of ['index.html', 'for-brands/index.html']) {
+      const f = families(readFileSync(join(SRC, '..', shell), 'utf8'));
+      expect(f.length, shell).toBeGreaterThan(0);
+      for (const fam of f) expect(app.has(fam), `${shell} loads ${fam}, which the app doesn't`).toBe(true);
+    }
+  });
+
+  it('sign-in and sign-up sit on the v2 surface, and every surface draws one mark', () => {
+    for (const f of ['screens/auth/SignIn.tsx', 'screens/auth/SignUp.tsx']) {
+      expect(code(f), f).toMatch(/data-surface="v2"/);
+      expect(code(f), f).toMatch(/import '@\/styles\/auth-v2\.css';/);
+      expect(code(f), `${f} still uses the old airy shell`).not.toMatch(/data-surface="landing-light"/);
+    }
+    const markPath = 'M16 4 L28 26 L22 26 L16 14 L10 26 L4 26 Z';
+    for (const f of ['screens/workspace-v2/Workspace.tsx', 'landing/components.tsx', 'screens/auth/SignIn.tsx', 'screens/auth/SignUp.tsx']) {
+      expect(code(f), f).toMatch(/BrandMarkSvg/);
+      expect(code(f), `${f} draws its own copy of the mark`).not.toContain(markPath);
+    }
+  });
+
   it('NO FABRICATED QUOTE IS ATTRIBUTED TO A REAL COMPANY', () => {
     // The landing wall carried invented quotes from invented people at
     // Glossier, Hay, Le Labo, Le Creuset and National Foods, with stock

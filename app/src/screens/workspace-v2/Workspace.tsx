@@ -31,6 +31,7 @@ import { Avatar } from '@/components/ui/Avatar';
 // behind the Suspense boundary in the outlet above.
 import { BrandHome } from './screens/BrandHome';
 import { CreatorHome } from './screens/CreatorHome';
+import { BrandMarkSvg } from './BrandMark';
 
 // LAZY: one-click-away or once-per-account surfaces, biggest first.
 const CampaignDetail = lazy(() => import('./screens/CampaignDetail').then((m) => ({ default: m.CampaignDetail })));
@@ -344,7 +345,7 @@ export function WorkspaceV2() {
         <div className="v2-shell">
           <aside className="v2-sidebar" aria-busy="true">
             <div className="v2-brand" style={{ pointerEvents: 'none' }}>
-              <div className="v2-brand-mark"><svg viewBox="0 0 32 32" width="20" height="20"><path d="M16 4 L28 26 L22 26 L16 14 L10 26 L4 26 Z" fill="var(--v2-paper)" /><circle cx="16" cy="22" r="2" fill="var(--v2-accent)" /></svg></div>
+              <div className="v2-brand-mark"><BrandMarkSvg /></div>
               <div className="v2-brand-name">Alamut</div>
             </div>
             <nav className="v2-nav" aria-hidden="true">
@@ -660,10 +661,7 @@ function Sidebar({ persona, route, onRoute, isMobileOpen }: SidebarProps) {
     >
       <button className="v2-brand" type="button" aria-label="Alamut — go to your workspace" onClick={() => onRoute(persona === 'creator' ? 'creator-home' : 'home')}>
         <div className="v2-brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 32 32" width="20" height="20">
-            <path d="M16 4 L28 26 L22 26 L16 14 L10 26 L4 26 Z" fill="var(--v2-paper)" />
-            <circle cx="16" cy="22" r="2" fill="var(--v2-accent)" />
-          </svg>
+          <BrandMarkSvg />
         </div>
         <div className="v2-brand-name">Alamut</div>
       </button>

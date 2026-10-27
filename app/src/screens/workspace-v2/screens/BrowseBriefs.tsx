@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon, Topbar } from '../lib';
 import { type V2Campaign } from '../data';
 import { useV2AllCampaigns, useV2CurrentCreator, v2ToggleSavedBrief } from '../v2Hooks';
+import { brandAccent } from '../brandPalette';
 import { matchCreatorToCampaign } from '../matching';
 import { useStore } from '@/lib/api/store';
 import type { Creator } from '@/lib/api/types';
@@ -852,23 +853,8 @@ function ToggleChip({ label, active, onChange, disabled }: {
 //   - applicantAvatars → first three creators on the campaign roster.
 //   - fitReasons → keyed off the campaign's category.
 
-// Brand colour palette — deterministic per-brand letterhead. Same six
-// values as the design's brandAccent() helper; the hash picks one and
-// stays consistent for that brand across the surface.
-const BRAND_PALETTE: { bg: string; ink: string }[] = [
-  { bg: '#2A3F6E', ink: '#FBF7EE' }, // navy
-  { bg: '#5C2A1E', ink: '#FBF7EE' }, // cocoa
-  { bg: '#1F3527', ink: '#FBF7EE' }, // moss
-  { bg: '#7A2B22', ink: '#FBF7EE' }, // brick
-  { bg: '#3E2F4A', ink: '#FBF7EE' }, // aubergine
-  { bg: '#1C1A15', ink: '#FBF7EE' }, // ink
-];
-function brandAccent(name: string): { bg: string; ink: string } {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
-  return BRAND_PALETTE[Math.abs(h) % BRAND_PALETTE.length];
-}
-
+// Brand colour palette — deterministic per-brand letterhead, in
+// ../brandPalette.ts so the public landing's example tiles use the same six.
 // PKR amount formatter — lakh/crore notation per the design philosophy
 // (Pakistan-first product). The data layer carries USD-shaped numbers,
 // so we apply a notional USD→PKR factor at display time. 1 USD ≈ 280

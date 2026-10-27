@@ -1,18 +1,15 @@
-// Sign in — Phase 50 airy refactor.
-// All form logic preserved (password / magic-link modes, demo-account
-// fillers, validation, post-auth role-routed navigation). Visual shell
-// swapped from `.auth-shell` legacy to airy primitives + a thin
-// `.auth-airy-*` page-specific layer.
+// Sign in — on the v2 surface, between the landing pages and the workspace,
+// so it uses their tokens, mark and components (styles/auth-v2.css).
+// Form logic unchanged: password and magic-link modes, demo accounts and
+// `?demo=`, validation, post-auth navigation.
 
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Logo } from '@/components/ui/Logo';
-import { Button } from '@/components/ui/Button';
-import { Icon } from '@/components/ui/Icon';
-import { TileHalo } from '@/components/layout/TileHalo';
 import { api, ApiError } from '@/lib/api/client';
 import { pushToast } from '@/lib/utils/toast';
 import { SUPABASE_STORAGE_KEY } from '@/lib/supabase';
+import { BrandMarkSvg } from '@/screens/workspace-v2/BrandMark';
+import '@/styles/auth-v2.css';
 
 // Demo quick-pick visibility. ON by default so the public beta is walkable
 // without a signup; set VITE_HIDE_DEMO_LOGINS=true to hide it (Vercel env
@@ -192,207 +189,156 @@ export function SignIn() {
   }, [params]); // once per ?demo= load — the ref above guards re-runs
 
   return (
-    <div data-surface="landing-light" className="lp-light-root auth-airy auth-landing-light">
-      <TileHalo />
-
-      <header className="airy-topnav auth-landing-topnav">
-        <div className="airy-topnav-inner">
-          <Link to="/" aria-label="Alamut home" className="airy-topnav-logo">
-            <Logo size={20} tag="ALAMUT" />
-          </Link>
-          <div className="airy-topnav-actions">
-            <span className="airy-meta">New here?</span>
-            <Link to="/signup" className="lp-topnav-signin">Create account</Link>
-          </div>
+    <div data-surface="v2" className="auth-v2">
+      <header className="auth-v2-nav">
+        <Link to="/" aria-label="Alamut home" className="auth-v2-brand">
+          <span className="auth-v2-mark"><BrandMarkSvg /></span><span>Alamut</span>
+        </Link>
+        <div className="auth-v2-nav-actions">
+          <span className="auth-v2-muted">New here?</span>
+          <Link to="/signup" className="auth-v2-link">Create account</Link>
         </div>
       </header>
 
-      <main className="airy-section auth-airy-main">
-        <div className="auth-airy-grid">
-          {/* Side narrative — calmer welcome copy + demo-account quick picks. */}
-          <aside className="auth-airy-side">
-            <div className="airy-stack-lg">
-              <div className="airy-eyebrow">Sign in</div>
-              <h1 className="airy-h-display auth-airy-h">
-                Welcome <em>back</em>.
-              </h1>
-              <p className="airy-lede">
-                Pick up wherever you left off.
-              </p>
+      <main className="auth-v2-main">
+        <div className="auth-v2-grid">
+          <aside className="auth-v2-side">
+            <h1 className="auth-v2-h1">Welcome back.</h1>
+            <p className="auth-v2-lede">Pick up your briefs, deals and wallet where you left them.</p>
 
-              {/* Demo quick-pick. B4 originally gated this to local dev,
-                  because on a public URL it hands any visitor the seeded
-                  accounts — whose state is SHARED, so one visitor's edits
-                  are the next visitor's starting point.
-                  
-                  That's now a deliberate product decision: the whole point
-                  of the public beta is that people can walk the product
-                  without signing up. Kept switchable without a code change
-                  — set VITE_HIDE_DEMO_LOGINS=true in Vercel to hide it. */}
-              {DEMO_LOGINS_ENABLED && (
-                <div className="airy-card auth-airy-demo-card">
-                  <div className="airy-eyebrow" style={{ marginBottom: 'var(--space-sm)' }}>
-                    Explore the demo · one click
-                  </div>
-                  {signedInElsewhere && (
-                    <p className="airy-meta" role="status" style={{ marginBottom: 'var(--space-sm)' }}>
-                      You're already signed in. Pick a demo account to switch to it,
-                      or <Link to="/v2">open your workspace</Link>.
-                    </p>
-                  )}
-                  <div className="auth-airy-demo-grid">
-                    <button
-                      className="btn btn-sm btn-ghost"
-                      type="button"
-                      disabled={busy}
-                      onClick={() => useDemoAccount('creator')}
-                    >
-                      {DEMO_ACCOUNTS.creator.label}
-                    </button>
-                    <button
-                      className="btn btn-sm btn-ghost"
-                      type="button"
-                      disabled={busy}
-                      onClick={() => useDemoAccount('brand')}
-                    >
-                      {DEMO_ACCOUNTS.brand.label}
-                    </button>
-                  </div>
-                  <p className="airy-meta auth-airy-demo-help">
-                    Signs you straight in to a fully-populated demo account. It's
-                    sample data shared by everyone exploring — poke at anything.
+            {/* Demo quick-pick. B4 originally gated this to local dev,
+                because on a public URL it hands any visitor the seeded
+                accounts — whose state is SHARED, so one visitor's edits
+                are the next visitor's starting point.
+
+                That's now a deliberate product decision: the whole point
+                of the public beta is that people can walk the product
+                without signing up. Kept switchable without a code change
+                — set VITE_HIDE_DEMO_LOGINS=true in Vercel to hide it. */}
+            {DEMO_LOGINS_ENABLED && (
+              <div className="auth-v2-card auth-v2-demo">
+                <span className="auth-v2-label">Explore the demo</span>
+                {signedInElsewhere && (
+                  <p className="auth-v2-muted" role="status">
+                    You're already signed in. Pick a demo account to switch to it,
+                    or <Link to="/v2" className="auth-v2-link">open your workspace</Link>.
                   </p>
+                )}
+                <div className="auth-v2-demo-grid">
+                  <button className="auth-v2-btn line" type="button" disabled={busy} onClick={() => useDemoAccount('creator')}>
+                    {DEMO_ACCOUNTS.creator.label}
+                  </button>
+                  <button className="auth-v2-btn line" type="button" disabled={busy} onClick={() => useDemoAccount('brand')}>
+                    {DEMO_ACCOUNTS.brand.label}
+                  </button>
                 </div>
-              )}
-            </div>
+                <p className="auth-v2-muted">
+                  One click signs you in to a full demo account. Its sample data is shared by everyone
+                  exploring, so change anything you like.
+                </p>
+              </div>
+            )}
           </aside>
 
-          {/* Form card */}
-          <section className="auth-airy-form">
-            <div className="airy-card auth-airy-form-card">
-              <div className="airy-stack">
-                <div className="airy-eyebrow">Method</div>
-                <h2 className="airy-h-section">
-                  {mode === 'password' ? 'Use your password.' : 'Get a magic link.'}
-                </h2>
+          <section className="auth-v2-card auth-v2-form-card" aria-labelledby="signin-title">
+            <h2 className="auth-v2-h2" id="signin-title">Sign in</h2>
 
-                <div className="auth-airy-tab" role="tablist" aria-label="Sign-in method">
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={mode === 'password'}
-                    className={mode === 'password' ? 'is-on' : ''}
-                    onClick={() => setMode('password')}
-                  >
-                    Password
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={mode === 'magic'}
-                    className={mode === 'magic' ? 'is-on' : ''}
-                    onClick={() => setMode('magic')}
-                  >
-                    Magic link
-                  </button>
-                </div>
-
-                {mode === 'password' ? (
-                  <form className="auth-airy-fields" onSubmit={submitPassword} noValidate aria-describedby={err ? 'signin-error' : undefined}>
-                    <div className="field">
-                      <label htmlFor="signin-email" className="field-label">Email</label>
-                      <input
-                        id="signin-email"
-                        type="email"
-                        autoComplete="email"
-                        inputMode="email"
-                        autoCapitalize="none"
-                        autoCorrect="off"
-                        spellCheck={false}
-                        value={email}
-                        onChange={(e) => { setEmail(e.target.value); if (emailErr) setEmailErr(null); if (err) setErr(null); }}
-                        onBlur={(e) => setEmailErr(validateEmail(e.target.value))}
-                        placeholder="you@example.com"
-                        required
-                        aria-invalid={!!emailErr || !!err || undefined}
-                        aria-describedby={emailErr ? 'signin-email-error' : undefined}
-                      />
-                      {emailErr && <span id="signin-email-error" className="field-error" role="alert">{emailErr}</span>}
-                    </div>
-                    <div className="field">
-                      <label htmlFor="signin-password" className="field-label">Password</label>
-                      <input
-                        id="signin-password"
-                        type="password"
-                        autoComplete="current-password"
-                        value={password}
-                        onChange={(e) => { setPassword(e.target.value); if (passwordErr) setPasswordErr(null); if (err) setErr(null); }}
-                        required
-                        aria-invalid={!!passwordErr || !!err || undefined}
-                        aria-describedby={passwordErr ? 'signin-password-error' : undefined}
-                      />
-                      {passwordErr && <span id="signin-password-error" className="field-error" role="alert">{passwordErr}</span>}
-                    </div>
-                    {err && <div id="signin-error" className="field-error" role="alert">{err}</div>}
-                    <Button type="submit" loading={busy} iconRight={<Icon.arrow s={14} />}>Sign in</Button>
-                  </form>
-                ) : (
-                  <form className="auth-airy-fields" onSubmit={sendMagic} noValidate aria-describedby={err ? 'magic-error' : undefined}>
-                    <div className="field">
-                      <label htmlFor="magic-email" className="field-label">Email</label>
-                      <input
-                        id="magic-email"
-                        type="email"
-                        autoComplete="email"
-                        inputMode="email"
-                        autoCapitalize="none"
-                        autoCorrect="off"
-                        spellCheck={false}
-                        value={email}
-                        onChange={(e) => { setEmail(e.target.value); if (emailErr) setEmailErr(null); if (err) setErr(null); }}
-                        onBlur={(e) => setEmailErr(validateEmail(e.target.value))}
-                        placeholder="you@example.com"
-                        required
-                        aria-invalid={!!emailErr || !!err || undefined}
-                        aria-describedby={emailErr ? 'magic-email-error' : undefined}
-                      />
-                      {emailErr && <span id="magic-email-error" className="field-error" role="alert">{emailErr}</span>}
-                    </div>
-                    {err && <div id="magic-error" className="field-error" role="alert">{err}</div>}
-                    {!magicToken ? (
-                      <Button type="submit" loading={busy} icon={<Icon.mail s={14} />}>Send magic link</Button>
-                    ) : (
-                      <div className="airy-card auth-airy-magic-card">
-                        <div className="airy-eyebrow">Magic link issued</div>
-                        <p className="airy-lede" style={{ fontSize: 13 }}>
-                          Real backend would email this. In demo mode, click below to verify.
-                        </p>
-                        <code className="auth-airy-magic-token">
-                          {magicToken}
-                        </code>
-                        <Button onClick={verifyMagic} loading={busy} iconRight={<Icon.arrow s={14} />}>
-                          Verify and sign in
-                        </Button>
-                      </div>
-                    )}
-                  </form>
-                )}
-
-                <hr className="airy-divider" style={{ margin: 'var(--space-md) 0' }} />
-
-                <div className="auth-airy-foot">
-                  <span className="airy-meta">New to Alamut?</span>
-                  <Link to="/signup" className="auth-airy-foot-link">Create account →</Link>
-                </div>
-              </div>
+            <div className="auth-v2-tabs" role="tablist" aria-label="Sign-in method">
+              <button type="button" role="tab" aria-selected={mode === 'password'} className={mode === 'password' ? 'is-on' : ''} onClick={() => setMode('password')}>
+                Password
+              </button>
+              <button type="button" role="tab" aria-selected={mode === 'magic'} className={mode === 'magic' ? 'is-on' : ''} onClick={() => setMode('magic')}>
+                Magic link
+              </button>
             </div>
+
+            {mode === 'password' ? (
+              <form className="auth-v2-fields" onSubmit={submitPassword} noValidate aria-describedby={err ? 'signin-error' : undefined}>
+                <div className="field">
+                  <label htmlFor="signin-email" className="field-label">Email</label>
+                  <input
+                    id="signin-email"
+                    type="email"
+                    autoComplete="email"
+                    inputMode="email"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    value={email}
+                    onChange={(e) => { setEmail(e.target.value); if (emailErr) setEmailErr(null); if (err) setErr(null); }}
+                    onBlur={(e) => setEmailErr(validateEmail(e.target.value))}
+                    placeholder="you@example.com"
+                    required
+                    aria-invalid={!!emailErr || !!err || undefined}
+                    aria-describedby={emailErr ? 'signin-email-error' : undefined}
+                  />
+                  {emailErr && <span id="signin-email-error" className="field-error" role="alert">{emailErr}</span>}
+                </div>
+                <div className="field">
+                  <label htmlFor="signin-password" className="field-label">Password</label>
+                  <input
+                    id="signin-password"
+                    type="password"
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => { setPassword(e.target.value); if (passwordErr) setPasswordErr(null); if (err) setErr(null); }}
+                    required
+                    aria-invalid={!!passwordErr || !!err || undefined}
+                    aria-describedby={passwordErr ? 'signin-password-error' : undefined}
+                  />
+                  {passwordErr && <span id="signin-password-error" className="field-error" role="alert">{passwordErr}</span>}
+                </div>
+                {err && <div id="signin-error" className="field-error" role="alert">{err}</div>}
+                <button type="submit" className="auth-v2-btn" disabled={busy} aria-busy={busy || undefined}>
+                  {busy ? 'Signing in…' : 'Sign in'}
+                </button>
+              </form>
+            ) : (
+              <form className="auth-v2-fields" onSubmit={sendMagic} noValidate aria-describedby={err ? 'magic-error' : undefined}>
+                <div className="field">
+                  <label htmlFor="magic-email" className="field-label">Email</label>
+                  <input
+                    id="magic-email"
+                    type="email"
+                    autoComplete="email"
+                    inputMode="email"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    value={email}
+                    onChange={(e) => { setEmail(e.target.value); if (emailErr) setEmailErr(null); if (err) setErr(null); }}
+                    onBlur={(e) => setEmailErr(validateEmail(e.target.value))}
+                    placeholder="you@example.com"
+                    required
+                    aria-invalid={!!emailErr || !!err || undefined}
+                    aria-describedby={emailErr ? 'magic-email-error' : undefined}
+                  />
+                  {emailErr && <span id="magic-email-error" className="field-error" role="alert">{emailErr}</span>}
+                </div>
+                {err && <div id="magic-error" className="field-error" role="alert">{err}</div>}
+                {!magicToken ? (
+                  <button type="submit" className="auth-v2-btn" disabled={busy} aria-busy={busy || undefined}>
+                    {busy ? 'Sending…' : 'Send magic link'}
+                  </button>
+                ) : (
+                  <div className="auth-v2-card auth-v2-magic">
+                    <span className="auth-v2-label">Magic link issued</span>
+                    <p className="auth-v2-muted">In the beta this link isn't emailed. Use it below to finish signing in.</p>
+                    <code>{magicToken}</code>
+                    <button type="button" className="auth-v2-btn" onClick={verifyMagic} disabled={busy} aria-busy={busy || undefined}>
+                      {busy ? 'Verifying…' : 'Verify and sign in'}
+                    </button>
+                  </div>
+                )}
+              </form>
+            )}
+
+            <p className="auth-v2-foot">New to Alamut? <Link to="/signup" className="auth-v2-link">Create account</Link></p>
           </section>
         </div>
       </main>
 
-      <footer className="auth-airy-page-foot">
-        <span className="airy-meta">© 2026 Alamut</span>
-      </footer>
+      <footer className="auth-v2-page-foot">© 2026 Alamut</footer>
     </div>
   );
 }

@@ -17,8 +17,8 @@ import { BRIEFS, CREATORS } from '../listings';
 afterEach(cleanup);
 
 const pages = [
-  { name: 'creators', El: CreatorsPage, h1: 'Find campaigns. Get found by brands.', signup: SIGNUP_HREF.creator, demo: DEMO_HREF.creator },
-  { name: 'brands', El: BrandsPage, h1: 'Find creators. Get pitched.', signup: SIGNUP_HREF.brand, demo: DEMO_HREF.brand },
+  { name: 'creators', El: CreatorsPage, h1: 'Find brand deals. Run them here.', signup: SIGNUP_HREF.creator, demo: DEMO_HREF.creator },
+  { name: 'brands', El: BrandsPage, h1: 'Find creators. Run the deal here.', signup: SIGNUP_HREF.brand, demo: DEMO_HREF.brand },
 ];
 
 describe.each(pages)('the $name page', ({ El, h1, signup, demo }) => {
@@ -80,8 +80,8 @@ describe('StorefrontBuilder', () => {
 
   it('shows the take-home of each package from the ledger maths', () => {
     render(<StorefrontBuilder />);
-    const reel = screen.getByLabelText('Reel rate, US dollars').closest('label')!;
-    fireEvent.change(screen.getByLabelText('Reel rate, US dollars'), { target: { value: '1,000' } });
+    const reel = screen.getByLabelText('Instagram Reel rate, US dollars').closest('label')!;
+    fireEvent.change(screen.getByLabelText('Instagram Reel rate, US dollars'), { target: { value: '1,000' } });
     // 1000 − 10% fee − 5% withholding.
     expect(within(reel).getByText('$850')).toBeTruthy();
   });
@@ -105,24 +105,23 @@ describe('the first-screen boards', () => {
   it('filter briefs by category in place', () => {
     render(<BriefBoard />);
     fireEvent.click(screen.getByRole('button', { name: 'Food' }));
-    const titles = screen.getAllByRole('listitem').map((li) => li.querySelector('.lx-item-title')!.textContent);
-    expect(titles).toEqual(BRIEFS.filter((b) => b.category === 'Food').slice(0, 4).map((b) => b.title));
+    const titles = [...document.querySelectorAll('.lx-tile-title')].map((t) => t.textContent);
+    expect(titles).toEqual(BRIEFS.filter((b) => b.category === 'Food').slice(0, 3).map((b) => b.title));
     expect(screen.getByRole('button', { name: 'Food' }).getAttribute('aria-pressed')).toBe('true');
   });
 
   it('filter creators by platform in place', () => {
     render(<CreatorBoard />);
     fireEvent.click(screen.getByRole('button', { name: 'YouTube' }));
-    const metas = screen.getAllByRole('listitem').map((li) => li.querySelector('.lx-item-meta')!.textContent);
-    expect(metas.length).toBe(CREATORS.filter((c) => c.platform === 'YouTube').length);
-    for (const m of metas) expect(m).toMatch(/^YouTube/);
+    const names = [...document.querySelectorAll('.lx-ccard-name')].map((n) => n.textContent);
+    expect(names).toEqual(CREATORS.filter((c) => c.channels.some((ch) => ch.platform === 'YouTube')).slice(0, 3).map((c) => c.niche));
   });
 
   it('say they are examples', () => {
     render(<BriefBoard />);
-    expect(screen.getByText('Example briefs.')).toBeTruthy();
+    expect(screen.getByText(/^Example briefs, drawn as the app shows them\./)).toBeTruthy();
     cleanup();
     render(<CreatorBoard />);
-    expect(screen.getByText('Example storefronts.')).toBeTruthy();
+    expect(screen.getByText(/^Example storefronts, drawn as the app shows them\./)).toBeTruthy();
   });
 });
