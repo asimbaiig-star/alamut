@@ -12,9 +12,9 @@
 
 import { AudienceSwitch, BetaLine, CtaRow, Faq, Footer, FounderNote, MarketStrip, Nav, NotYet, StickyCta } from './components';
 import { CREATOR_MARKET } from './market';
-import { CREATOR_SETUP, DEMO_HREF, SAMPLE_STOREFRONT_HREF, SIGNUP_HREF } from './facts';
+import { CREATOR_SETUP, DEMO_HREF, PLATFORM_FEE_LABEL, SAMPLE_STOREFRONT_HREF, SIGNUP_HREF } from './facts';
 import { Compare, CreatorDealWindow } from './productCards';
-import { BriefBrowser, CreatorReceipt, PayoutTool, RateHelper, StorefrontBuilder, StorefrontJoin, useStorefront } from './tools-creators';
+import { BriefBrowser, PayoutTool, RateHelper, StorefrontBuilder, StorefrontJoin, useStorefront } from './tools-creators';
 
 const JOIN = { href: SIGNUP_HREF.creator, label: 'Join free' };
 const DEMO = { href: DEMO_HREF.creator, label: 'or try the live demo, no sign-up' };
@@ -99,8 +99,10 @@ export function CreatorsPage() {
           <div className="lx-wrap lx-pricing">
             <div className="lx-pricing-main">
               <h2 className="lx-h2" id="pricing-title">Free to join.</h2>
-              <p className="lx-lead">Alamut is paid only when you are. The fee comes off a payment as it reaches you, never before.</p>
-              <CreatorReceipt rate={1000} />
+              <p className="lx-fee">
+                <span className="lx-money lx-fee-figure">{PLATFORM_FEE_LABEL}</span>
+                <span>of each payment, taken as it reaches you. Alamut is paid only when you are, and joining costs nothing.</span>
+              </p>
             </div>
             <div className="lx-pricing-side">
               <p className="lx-terms-p">

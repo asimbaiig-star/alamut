@@ -10,8 +10,9 @@
 import { AudienceSwitch, BetaLine, CtaRow, Faq, Footer, FounderNote, MarketStrip, Nav, NotYet, StickyCta } from './components';
 import { BRAND_MARKET } from './market';
 import { BRAND_SETUP, DEMO_HREF, SIGNUP_HREF } from './facts';
+import { brandEstimate, usd } from './estimate';
 import { BrandNeedsWindow, Compare, LAPSE_LINE, PitchInbox } from './productCards';
-import { BrandReceipt, BriefBuilder, CreatorBrowser, HoldTool } from './tools-brands';
+import { BriefBuilder, CreatorBrowser, HoldTool } from './tools-brands';
 
 const POST = { href: SIGNUP_HREF.brand, label: 'Post a brief' };
 const DEMO = { href: DEMO_HREF.brand, label: 'or try the live demo, no sign-up' };
@@ -100,8 +101,10 @@ export function BrandsPage() {
           <div className="lx-wrap lx-pricing">
             <div className="lx-pricing-main">
               <h2 className="lx-h2" id="pricing-title">Free to post.</h2>
-              <p className="lx-lead">You pay the rates you agree, and nothing on top. Money moves only when you accept an offer.</p>
-              <BrandReceipt rate={1500} />
+              <p className="lx-fee">
+                <span className="lx-money lx-fee-figure">{usd(brandEstimate(1000, 1, 1).brandFee)}</span>
+                <span>platform fee on top of the rates you agree. Money moves only when you accept an offer.</span>
+              </p>
             </div>
             <div className="lx-pricing-side">
               <p className="lx-terms-p">No subscription, no retainer and no minimum spend.</p>

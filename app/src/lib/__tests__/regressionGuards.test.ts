@@ -680,6 +680,10 @@ describe('marketing copy does not outrun the product', () => {
     const signUp = code('screens/auth/SignUp.tsx');
     expect(signUp, 'sign-up asks for a city again').not.toMatch(/signup-city|setCity\(/);
     expect(signUp, 'sign-up stopped asking for the country').toMatch(/id="signup-country"/);
+    // Industry likewise: brand onboarding asks it, required, from its own
+    // list, so a free-text answer at sign-up was asked twice and didn't match.
+    expect(signUp, 'sign-up asks a brand’s industry again').not.toMatch(/signup-industry|setIndustry\(/);
+    expect(code('screens/workspace-v2/screens/BrandOnboardingV2.tsx'), 'brand onboarding stopped asking the industry').toMatch(/if \(!s\.industry\)\s+missing\.push/);
     const onb = code('screens/workspace-v2/screens/CreatorOnboardingV2.tsx');
     expect(onb, 'onboarding presets a city nobody chose').not.toMatch(/city:[^,\n]*\|\|\s*'[A-Z][a-z]+'/);
     // The country field is behind askCountry, which is true only when the

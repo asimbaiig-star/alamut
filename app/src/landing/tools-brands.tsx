@@ -103,19 +103,6 @@ export function CreatorBrowser() {
   );
 }
 
-export function BrandReceipt({ rate }: { rate: number }) {
-  const e = brandEstimate(rate, 1, 1);
-  return (
-    <div className="lx-receipt" aria-label={`What a ${usd(rate)} booking costs you`}>
-      <span className="lx-label">Booking a {usd(rate)} package</span>
-      <WalletLine label="The creator’s rate" value={usd(rate)} />
-      <WalletLine label="Platform fee charged to you" value={usd(e.brandFee)} />
-      <WalletLine label="You pay" value={usd(e.held)} />
-      <p className="lx-receipt-note">The creator receives {usd(e.perCreatorNet)} after the {PLATFORM_FEE_LABEL} platform fee and withholding.</p>
-    </div>
-  );
-}
-
 // ── Brands: write the brief (NewCampaignWizard's fields) ────────────────
 
 export function BriefBuilder() {

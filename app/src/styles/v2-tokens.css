@@ -6,6 +6,22 @@
  * type or radii (pinned by regressionGuards CLASS 10).
  */
 
+/* Fallbacks sized to the web fonts, so text takes the same room before
+ * and after Fraunces and Inter Tight arrive and nothing jumps as they load.
+ * Widths measured in Chrome against Georgia and Arial (Fraunces at the
+ * display optical size the headlines use); ascent and descent divided by
+ * size-adjust, as size-adjust also scales them. */
+@font-face {
+  font-family: "Fraunces Fallback";
+  src: local("Georgia"), local("Times New Roman");
+  size-adjust: 85.5%; ascent-override: 114.6%; descent-override: 30.4%; line-gap-override: 0%;
+}
+@font-face {
+  font-family: "Inter Tight Fallback";
+  src: local("Arial"), local("Helvetica Neue"), local("Helvetica"), local("Roboto");
+  size-adjust: 95.9%; ascent-override: 101.1%; descent-override: 25%; line-gap-override: 0%;
+}
+
 [data-surface="v2"] {
   /* Surfaces */
   --v2-bg:        #F6F1E8;
@@ -53,8 +69,8 @@
   --v2-info:      #3F5B7A;
 
   /* Type */
-  --v2-font-display: "Fraunces", "Cormorant Garamond", Georgia, serif;
-  --v2-font-sans:    "Inter Tight", "Inter", system-ui, -apple-system, sans-serif;
+  --v2-font-display: "Fraunces", "Fraunces Fallback", Georgia, serif;
+  --v2-font-sans:    "Inter Tight", "Inter Tight Fallback", system-ui, -apple-system, sans-serif;
   --v2-font-mono:    "JetBrains Mono", ui-monospace, monospace;
 
   /* Radii */

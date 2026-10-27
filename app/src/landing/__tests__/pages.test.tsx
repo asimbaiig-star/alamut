@@ -8,9 +8,9 @@ import { renderToString } from 'react-dom/server';
 import { cleanup, render, screen, fireEvent, within } from '@testing-library/react';
 import { CreatorsPage } from '../CreatorsPage';
 import { BrandsPage } from '../BrandsPage';
-import { BriefBrowser, CreatorReceipt, RateHelper, STOREFRONT_START, StorefrontBuilder, StorefrontJoin, useStorefront } from '../tools-creators';
-import { BrandReceipt, BriefBuilder, CreatorBrowser } from '../tools-brands';
-import { brandEstimate, creatorEstimate, usd } from '../estimate';
+import { BriefBrowser, RateHelper, STOREFRONT_START, StorefrontBuilder, StorefrontJoin, useStorefront } from '../tools-creators';
+import { BriefBuilder, CreatorBrowser } from '../tools-brands';
+import { usd } from '../estimate';
 import { startingRates, suggestRateBand } from '@/screens/tools/rateGuidance';
 import { DEMO_HREF, PLATFORM_FORMATS, SIGNUP_HREF } from '../facts';
 import { CTA_ID } from '../events';
@@ -215,23 +215,6 @@ describe('what to charge', () => {
     fireEvent.change(screen.getByLabelText(/^Instagram followers/), { target: { value: '' } });
     expect(screen.getByText('Add your follower count to see a typical range.')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Use these prices' })).toBeNull();
-  });
-});
-
-describe('the worked receipts', () => {
-  it('itemise a creator payment from the ledger maths', () => {
-    const { container } = render(<CreatorReceipt rate={1000} />);
-    const e = creatorEstimate(1000, 1);
-    const values = [...container.querySelectorAll('.lx-wallet-line b')].map((b) => b.textContent);
-    expect(values).toEqual([`−${usd(e.fee)}`, `−${usd(e.tax)}`, usd(e.net)]);
-  });
-
-  it('itemise a brand booking from the ledger maths', () => {
-    const { container } = render(<BrandReceipt rate={1500} />);
-    const e = brandEstimate(1500, 1, 1);
-    const values = [...container.querySelectorAll('.lx-wallet-line b')].map((b) => b.textContent);
-    expect(values).toEqual([usd(1500), usd(e.brandFee), usd(e.held)]);
-    expect(container.querySelector('.lx-receipt-note')!.textContent).toContain(usd(e.perCreatorNet));
   });
 });
 

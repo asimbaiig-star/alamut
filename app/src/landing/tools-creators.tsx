@@ -163,19 +163,6 @@ export function RateHelper({ sf }: { sf: Storefront }) {
   );
 }
 
-/** A worked payment, line by line, from the ledger maths. */
-export function CreatorReceipt({ rate }: { rate: number }) {
-  const e = creatorEstimate(rate, 1);
-  return (
-    <div className="lx-receipt" aria-label={`What a ${usd(rate)} deal pays you`}>
-      <span className="lx-label">On a {usd(rate)} deal</span>
-      <WalletLine label={`Platform fee (${PLATFORM_FEE_LABEL})`} value={`−${usd(e.fee)}`} />
-      <WalletLine label={`Withholding (${WHT_LABEL})`} value={`−${usd(e.tax)}`} />
-      <WalletLine label="Reaches your wallet" value={usd(e.net)} />
-    </div>
-  );
-}
-
 // ── Creators: the storefront brands see ─────────────────────────────────
 
 /** What the product would accept as a handle, near enough for a preview. */

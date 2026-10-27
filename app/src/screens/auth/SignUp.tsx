@@ -40,7 +40,6 @@ export function SignUp() {
   const [email, setEmail] = useState(finishMode ? finishEmail : '');
   const [password, setPassword] = useState('');
   const [brandName, setBrandName] = useState('');
-  const [industry, setIndustry] = useState('');
   const [country, setCountry] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -75,7 +74,7 @@ export function SignUp() {
           role,
           name: role === 'brand' ? (brandName || name) : name,
           brandName: role === 'brand' ? brandName : undefined,
-          industry: role === 'brand' ? industry : undefined,
+          industry: undefined, // asked once, in brand onboarding, from its list
           // City is asked once, in onboarding, beside the country given here.
           city: undefined,
           country: role === 'creator' ? country : undefined,
@@ -91,7 +90,7 @@ export function SignUp() {
         email, password, role,
         name: role === 'brand' ? (brandName || name) : name,
         brandName: role === 'brand' ? brandName : undefined,
-        industry: role === 'brand' ? industry : undefined,
+        industry: undefined, // asked once, in brand onboarding, from its list
         city: undefined,
         country: role === 'creator' ? country : undefined,
       });
@@ -251,10 +250,6 @@ export function SignUp() {
                   <div className="field">
                     <label htmlFor="signup-name-brand" className="field-label">Your name</label>
                     <input id="signup-name-brand" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" required />
-                  </div>
-                  <div className="field">
-                    <label htmlFor="signup-industry" className="field-label">Industry</label>
-                    <input id="signup-industry" value={industry} onChange={(e) => setIndustry(e.target.value)} placeholder="Beauty / Personal care" />
                   </div>
                 </>
               ) : (
