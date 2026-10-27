@@ -6,8 +6,9 @@ import { useId, useRef, useState } from 'react';
 import { Credits, PhotoImg } from './components';
 import { brandEstimate, usd } from './estimate';
 import { PLATFORM_FEE_LABEL, PLATFORM_FORMATS, SIGNUP_HREF } from './facts';
-import { CREATORS, CREATOR_FILTERS, fromRate, PACKAGE_LABEL, type CreatorListing } from './listings';
-import { browserStore, Chips, MoneyInput, platStyle, revealPicked, Stepper, WalletLine } from './tools-shared';
+import { PACKAGE_LABEL } from './listings';
+import { CREATORS, CREATOR_FILTERS, fromRate, type CreatorListing } from './listings-creators';
+import { browserStore, Chips, MoneyInput, PlatMark, revealPicked, Stepper, WalletLine } from './tools-shared';
 import { BRIEF_DRAFT_KEY, saveDraft } from '@/lib/landingDraft';
 
 // ── Brands' first screen: Discover, working ─────────────────────────────
@@ -17,7 +18,7 @@ import { BRIEF_DRAFT_KEY, saveDraft } from '@/lib/landingDraft';
 function Channels({ c }: { c: CreatorListing }) {
   return (
     <div className="lx-ccard-channels">
-      {c.channels.map((ch) => <span key={ch.platform} className="lx-plat" style={platStyle(ch.platform)}>{ch.platform} <b>{ch.followers}</b></span>)}
+      {c.channels.map((ch) => <span key={ch.platform} className="lx-plat"><PlatMark of={ch.platform} />{ch.platform} <b>{ch.followers}</b></span>)}
       <span className="lx-ccard-er">{c.engagement}% ER</span>
     </div>
   );
@@ -41,7 +42,8 @@ export function CreatorBrowser() {
           <h2 className="lx-board-title">Creators</h2>
           <span className="lx-pill lx-pill-dark">Examples</span>
         </div>
-        <Chips label="Filter creators by platform" options={CREATOR_FILTERS} value={platform} onChange={(p) => { setPlatform(p); setPkg(null); }} />
+        <Chips label="Filter creators by platform" options={CREATOR_FILTERS} value={platform} onChange={(p) => { setPlatform(p); setPkg(null); }}
+          mark={(o) => <PlatMark of={o} />} />
         <ul className="lx-picks" aria-label="Example creator storefronts">
           {shown.map((x) => (
             <li key={x.niche}>
@@ -49,7 +51,11 @@ export function CreatorBrowser() {
                 <span className="lx-pick-photo" aria-hidden="true"><PhotoImg photo={x.photo} width={88} ratio={1} sizes="44px" eager /></span>
                 <span className="lx-pick-text">
                   <span className="lx-pick-title">{x.niche}</span>
-                  <span className="lx-pick-sub">{x.channels.map((ch) => `${ch.platform} ${ch.followers}`).join(', ')}</span>
+                  <span className="lx-pick-sub">
+                    {x.channels.map((ch) => (
+                      <span key={ch.platform} className="lx-pick-ch"><PlatMark of={ch.platform} /><span className="lx-sr">{ch.platform} </span>{ch.followers}</span>
+                    ))}
+                  </span>
                 </span>
                 <span className="lx-pick-price"><span className="lx-pick-from">from</span> <span className="lx-money">{usd(fromRate(x))}</span></span>
               </button>
@@ -141,7 +147,7 @@ export function BriefBuilder() {
       </div>
       <MoneyInput label="Target rate per creator" value={rate} onChange={setRate} />
       <div className="lx-kv">
-        <div><span>Creators will see</span><b>{count} × {p.label} {f.label}</b></div>
+        <div><span>Creators will see</span><b className="lx-plat"><PlatMark of={p.value} />{count} × {p.label} {f.label}</b></div>
       </div>
       <div className="lx-act lx-act-flat">
         <a className="lx-btn accent" href={SIGNUP_HREF.brand} data-cta="brief-post" onClick={keepDraft}>Post this brief</a>

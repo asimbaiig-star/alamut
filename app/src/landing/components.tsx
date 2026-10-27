@@ -130,8 +130,24 @@ export function StickyCta({ cta }: { cta: Cta }) {
   );
 }
 
-export function BetaLine({ prefix }: { prefix?: string }) {
-  return <p className="lx-hero-small">{prefix ? `${prefix} ` : ''}{BETA_LINE}.</p>;
+/** A done thing, checked: the hero's promises and what the workspace does. */
+export function CheckMark() {
+  return <svg className="lx-check" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 8.4 6.7 11 12 5.4" /></svg>;
+}
+
+/** The hero's promises, each one the pricing section and the FAQ keep,
+ *  then the beta line under them. */
+export function Promises({ items }: { items: string[] }) {
+  return (
+    <div className="lx-promises">
+      <ul>
+        {items.map((t) => (
+          <li key={t}><CheckMark />{t}</li>
+        ))}
+      </ul>
+      <p className="lx-hero-small">{BETA_LINE}.</p>
+    </div>
+  );
 }
 
 /** A credited photograph as an <img>, cropped to `ratio`. The credit sits in
@@ -209,7 +225,10 @@ export function FounderNote() {
 export function NotYet({ items }: { items: string[] }) {
   return (
     <aside className="lx-notyet" aria-labelledby="notyet-title">
-      <h3 className="lx-h3" id="notyet-title">Not live yet</h3>
+      <div className="lx-notyet-head">
+        <h3 className="lx-h3" id="notyet-title">Not live yet</h3>
+        <span className="lx-pill lx-pill-beta">Public beta</span>
+      </div>
       <ul>{items.map((t) => <li key={t}>{t}</li>)}</ul>
     </aside>
   );

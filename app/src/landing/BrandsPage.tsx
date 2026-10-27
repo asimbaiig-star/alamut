@@ -7,11 +7,12 @@
 // Not "AI": the least real part of the product and the claim every
 // competitor makes (LANDING-REVIEW.md §3).
 
-import { AudienceSwitch, BetaLine, CtaRow, Faq, Footer, FounderNote, MarketStrip, Nav, NotYet, StickyCta } from './components';
+import { AudienceSwitch, CtaRow, Faq, Footer, FounderNote, MarketStrip, Nav, NotYet, Promises, StickyCta } from './components';
 import { BRAND_MARKET } from './market';
 import { BRAND_SETUP, DEMO_HREF, SIGNUP_HREF } from './facts';
 import { brandEstimate, usd } from './estimate';
-import { BrandNeedsWindow, Compare, LAPSE_LINE, PitchInbox } from './productCards';
+import { BrandNeedsWindow, LAPSE_LINE, PitchInbox } from './cards-brands';
+import { Compare } from './productCards';
 import { BriefBuilder, CreatorBrowser, HoldTool } from './tools-brands';
 
 const POST = { href: SIGNUP_HREF.brand, label: 'Post a brief' };
@@ -34,7 +35,7 @@ export function BrandsPage() {
                     payout stays in one workspace.
                   </p>
                   <CtaRow primary={{ ...POST, id: 'hero-post' }} secondary={{ ...DEMO, id: 'hero-demo' }} />
-                  <BetaLine prefix="Free to post, with no subscription or minimum spend." />
+                  <Promises items={['Free to post', 'No subscription', 'No minimum spend']} />
                 </div>
               </div>
               <CreatorBrowser />

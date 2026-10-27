@@ -10,10 +10,11 @@
 // the page they'd see, then keep it), the deal runs in one place, the money
 // is held before you work, and what it costs. One action throughout: Join free.
 
-import { AudienceSwitch, BetaLine, CtaRow, Faq, Footer, FounderNote, MarketStrip, Nav, NotYet, StickyCta } from './components';
+import { AudienceSwitch, CtaRow, Faq, Footer, FounderNote, MarketStrip, Nav, NotYet, Promises, StickyCta } from './components';
 import { CREATOR_MARKET } from './market';
 import { CREATOR_SETUP, DEMO_HREF, PLATFORM_FEE_LABEL, SAMPLE_STOREFRONT_HREF, SIGNUP_HREF } from './facts';
-import { Compare, CreatorDealWindow } from './productCards';
+import { CreatorDealWindow } from './cards-creators';
+import { Compare } from './productCards';
 import { BriefBrowser, PayoutTool, RateHelper, StorefrontBuilder, StorefrontJoin, useStorefront } from './tools-creators';
 
 const JOIN = { href: SIGNUP_HREF.creator, label: 'Join free' };
@@ -37,7 +38,7 @@ export function CreatorsPage() {
                     payouts stay in one workspace.
                   </p>
                   <CtaRow primary={{ ...JOIN, id: 'hero-signup' }} secondary={{ ...DEMO, id: 'hero-demo' }} />
-                  <BetaLine prefix="Free, with no follower minimum." />
+                  <Promises items={['Free to join', 'No follower minimum', 'No exclusivity']} />
                 </div>
               </div>
               <BriefBrowser />

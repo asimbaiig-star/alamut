@@ -10,9 +10,11 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { Credits, PhotoImg } from './components';
 import { creatorEstimate, usd } from './estimate';
 import { brandAccent, CREATOR_CATEGORIES, PLATFORM_FEE_LABEL, SIGNUP_HREF, WHT_LABEL } from './facts';
-import { BRIEFS, BRIEF_FILTERS, PACKAGE_LABEL, type BriefListing } from './listings';
+import { PACKAGE_LABEL } from './listings';
+import { BRIEFS, BRIEF_FILTERS, type BriefListing } from './listings-briefs';
 import { PHOTOS } from './photos';
-import { browserStore, Chips, MoneyInput, moneyText, platStyle, revealPicked, Stepper, toMoney, WalletLine } from './tools-shared';
+import { browserStore, Chips, MoneyInput, moneyText, PlatMark, platformIn, revealPicked, Stepper, toMoney, WalletLine } from './tools-shared';
+import { fmtFollowers } from '@/lib/followers';
 import { saveDraft, STOREFRONT_DRAFT_KEY } from '@/lib/landingDraft';
 import { startingRates, suggestRateBand } from '@/screens/tools/rateGuidance';
 
@@ -62,7 +64,10 @@ export function BriefBrowser() {
                 <span className="lx-pick-mark" aria-hidden="true" style={{ background: brandAccent(b.brand).bg }}>{b.title[0]}</span>
                 <span className="lx-pick-text">
                   <span className="lx-pick-title">{b.title}</span>
-                  <span className="lx-pick-sub">{b.deliverables.join(', ')}</span>
+                  <span className="lx-pick-sub">
+                    {[...new Set(b.deliverables.map(platformIn))].map((p) => p && <PlatMark key={p} of={p} />)}
+                    <span className="lx-pick-clip">{b.deliverables.join(', ')}</span>
+                  </span>
                 </span>
                 <span className="lx-money lx-pick-price">{usd(b.perCreator)}</span>
               </button>
@@ -79,7 +84,7 @@ export function BriefBrowser() {
           </div>
           <div className="lx-tile-cols">
             <div><span className="lx-label">Per creator</span><span className="lx-money lx-tile-price">{usd(brief.perCreator)}</span></div>
-            <div><span className="lx-label">Deliverables</span><ul className="lx-tile-list">{brief.deliverables.map((d) => <li key={d} className="lx-plat" style={platStyle(d)}>{d}</li>)}</ul></div>
+            <div><span className="lx-label">Deliverables</span><ul className="lx-tile-list">{brief.deliverables.map((d) => <li key={d} className="lx-plat"><PlatMark of={d} />{d}</li>)}</ul></div>
             <div><span className="lx-label">Deadline</span><span className="lx-money lx-tile-price">{brief.deadlineDays}<small> d</small></span></div>
           </div>
           <div className="lx-act">
@@ -113,12 +118,10 @@ export const STOREFRONT_START = startingRates(suggestRateBand('instagram', HELPE
 // "starting point" prices onboarding would set.
 
 export function RateHelper({ sf }: { sf: Storefront }) {
-  const [followers, setFollowers] = useState(HELPER_START.followers);
-  // Kept as typed, so "3." on the way to "3.5" survives the next render.
-  const [engagement, setEngagement] = useState(String(HELPER_START.engagement));
+  const { followers, setFollowers, engagement, setEngagement } = sf;
   const fId = useId();
   const eId = useId();
-  const band = suggestRateBand('instagram', followers, Math.min(100, Number(engagement) || 0));
+  const band = suggestRateBand('instagram', followers, engagementOf(engagement));
   const start = band ? startingRates(band) : null;
   return (
     <div className="lx-card lx-rh" aria-label="What to charge on Instagram">
@@ -179,8 +182,15 @@ const SF_PACKAGES = (['reel', 'story', 'combo'] as const).map((key) => ({ key, l
 type SfKey = (typeof SF_PACKAGES)[number]['key'];
 const WORK = [PHOTOS.makeupTable, PHOTOS.kitchenShoot, PHOTOS.phoneOnTripod];
 
-/** The storefront builder's state, shared with the button that keeps it. */
+const engagementOf = (typed: string) => Math.min(100, Number(typed) || 0);
+
+/** The storefront builder's state, shared with the rate helper (whose
+ *  Instagram numbers are the storefront's channel) and the button that
+ *  keeps it. */
 export function useStorefront() {
+  const [followers, setFollowers] = useState(HELPER_START.followers);
+  // Kept as typed, so "3." on the way to "3.5" survives the next render.
+  const [engagement, setEngagement] = useState(String(HELPER_START.engagement));
   const [name, setName] = useState('');
   const [handle, setHandle] = useState<string | null>(null);
   const [niche, setNiche] = useState('Beauty');
@@ -191,7 +201,7 @@ export function useStorefront() {
     const store = browserStore();
     if (store) saveDraft(store, STOREFRONT_DRAFT_KEY, { name: name.trim(), handle: shownHandle, niche, rates, savedAt: Date.now() });
   };
-  return { name, setName, handle: shownHandle, setHandle, niche, setNiche, rates, setRates, keepDraft };
+  return { name, setName, handle: shownHandle, setHandle, niche, setNiche, rates, setRates, followers, setFollowers, engagement, setEngagement, keepDraft };
 }
 export type Storefront = ReturnType<typeof useStorefront>;
 
@@ -226,6 +236,17 @@ export function StorefrontBuilder({ sf }: { sf: Storefront }) {
           <span className="lx-pill accent">{sf.niche}</span>
         </div>
         <span className="lx-preview-btn" aria-hidden="true">{first ? `Brief ${first} on Alamut` : 'Send a brief'}</span>
+      </div>
+      <div className="lx-sf-section">
+        <span className="lx-label">Channels</span>
+        <div className="lx-sf-channel">
+          <PlatMark of="instagram" size="lg" />
+          <div className="lx-sf-ch-id"><b>Instagram</b><span>@{sf.handle || 'yourhandle'}</span></div>
+          <div className="lx-sf-ch-num">
+            <span className="lx-money">{fmtFollowers(sf.followers)}</span>
+            <span>{engagementOf(sf.engagement)}% ER</span>
+          </div>
+        </div>
       </div>
       <div className="lx-sf-section">
         <span className="lx-label">Recent work</span>

@@ -14,7 +14,8 @@ import { usd } from '../estimate';
 import { startingRates, suggestRateBand } from '@/screens/tools/rateGuidance';
 import { DEMO_HREF, PLATFORM_FORMATS, SIGNUP_HREF } from '../facts';
 import { CTA_ID } from '../events';
-import { BRIEFS, CREATORS } from '../listings';
+import { BRIEFS } from '../listings-briefs';
+import { CREATORS } from '../listings-creators';
 import { BRAND_MARKET, CREATOR_MARKET, MARKET_SOURCE_LINE } from '../market';
 import { BRIEF_DRAFT_KEY, readBriefDraft, readStorefrontDraft, STOREFRONT_DRAFT_KEY } from '@/lib/landingDraft';
 

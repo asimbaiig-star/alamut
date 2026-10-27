@@ -738,6 +738,23 @@ describe('marketing copy does not outrun the product', () => {
     }
   });
 
+  it('every promise in a hero is one its page keeps', () => {
+    // The hero's checked promises stand alone above the fold. Each must also
+    // be said where it's explained (pricing or the questions), so the hero
+    // can't gain a promise the page never backs up.
+    for (const page of ['landing/CreatorsPage.tsx', 'landing/BrandsPage.tsx']) {
+      const src = code(page);
+      const m = src.match(/<Promises items=\{\[([^\]]*)\]\} \/>/);
+      expect(m, `${page} lost its hero promises`).toBeTruthy();
+      const items = [...m![1]!.matchAll(/'([^']+)'/g)].map((x) => x[1]!);
+      expect(items.length, page).toBeGreaterThan(0);
+      const rest = src.replace(m![0], '').toLowerCase();
+      for (const item of items) {
+        expect(rest, `${page} promises "${item}" in the hero and nowhere else`).toContain(item.toLowerCase());
+      }
+    }
+  });
+
   it('carries no social proof it does not have', () => {
     // No customers, quotes, press or volume figures until real ones exist.
     expect(claims()).not.toMatch(/trusted by|as seen in|featured in|loved by|testimonial|case study|\bpress\b/i);
@@ -874,6 +891,21 @@ describe('marketing copy does not outrun the product', () => {
       expect(f.length, shell).toBeGreaterThan(0);
       for (const fam of f) expect(app.has(fam), `${shell} loads ${fam}, which the app doesn't`).toBe(true);
     }
+  });
+
+  it('the landing draws platforms with the portal’s glyphs, from one copy', () => {
+    // The portal's channel badges and the landing's platform marks read the
+    // same paths (lib/platformGlyphs.ts), so neither can drift into a look-alike.
+    const lib = code('screens/workspace-v2/lib.tsx');
+    for (const k of ['instagram', 'tiktok', 'youtube']) {
+      expect(lib, `lib.tsx no longer draws ${k} from platformGlyphs.ts`).toContain(`PLATFORM_GLYPH.${k}`);
+    }
+    expect(code('landing/tools-shared.tsx')).toMatch(/PLATFORM_GLYPH\[p\]/);
+    const starts = ['M12 2.16c3.2', 'M19.59 6.69', 'M23.5 6.2'];
+    const walk = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+      e.isDirectory() ? (e.name === '__tests__' ? [] : walk(join(dir, e.name))) : /\.(ts|tsx)$/.test(e.name) ? [join(dir, e.name)] : []);
+    const holders = walk(SRC).filter((f) => starts.some((p) => readFileSync(f, 'utf8').includes(p)));
+    expect(holders.map((f) => f.slice(SRC.length + 1))).toEqual(['lib/platformGlyphs.ts']);
   });
 
   it('the public pages around the landing sit on the v2 surface too', () => {

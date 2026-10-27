@@ -3,9 +3,9 @@
 // The page tools themselves live in tools-creators.tsx and tools-brands.tsx,
 // so each page's bundle carries only its own (see hydrate.tsx).
 
-import { useId, type CSSProperties } from 'react';
+import { useId, type ReactNode } from 'react';
 import { clampMoney } from './estimate';
-import type { CreatorChannel } from './listings';
+import { PLATFORM_GLYPH, type GlyphPlatform } from '@/lib/platformGlyphs';
 
 export const toMoney = (raw: string) => clampMoney(Number(raw.replace(/[^\d]/g, '')) || 0);
 export const moneyText = (n: number) => (n === 0 ? '' : n.toLocaleString('en-US'));
@@ -23,16 +23,22 @@ export function revealPicked(el: HTMLElement | null) {
   requestAnimationFrame(() => el.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'start' }));
 }
 
-// The platform's colour for whatever names it ("2 × Instagram Reel", "TikTok"),
-// as the portal colours channel badges.
-const PLATFORM_COLOUR: Record<CreatorChannel['platform'], string> = {
-  Instagram: 'var(--v2-platform-instagram)',
-  TikTok: 'var(--v2-platform-tiktok)',
-  YouTube: 'var(--v2-platform-youtube)',
-};
-export function platStyle(text: string): CSSProperties | undefined {
-  const p = (Object.keys(PLATFORM_COLOUR) as CreatorChannel['platform'][]).find((k) => text.includes(k));
-  return p ? ({ '--plat': PLATFORM_COLOUR[p] } as CSSProperties) : undefined;
+/** The platform a label names ("2 × Instagram Reel", "TikTok"), if any. */
+export function platformIn(text: string): GlyphPlatform | null {
+  const t = text.toLowerCase();
+  return (Object.keys(PLATFORM_GLYPH) as GlyphPlatform[]).find((k) => t.includes(k)) ?? null;
+}
+
+/** That platform's mark, as the portal draws channel badges: the glyph on a
+ *  tile in the platform's colour. Decorative; the label beside it names it. */
+export function PlatMark({ of, size }: { of: string; size?: 'lg' }) {
+  const p = platformIn(of);
+  if (!p) return null;
+  return (
+    <span className={`lx-pmark ${p}${size ? ` ${size}` : ''}`} aria-hidden="true">
+      <svg viewBox="0 0 24 24" focusable="false"><path d={PLATFORM_GLYPH[p]} /></svg>
+    </span>
+  );
 }
 
 export function MoneyInput({ label, value, onChange, className = 'lx-field-label' }: {
@@ -65,13 +71,13 @@ export function Stepper({ label, value, min, max, onChange, unit }: {
   );
 }
 
-export function Chips<T extends string>({ label, options, value, onChange }: {
-  label: string; options: readonly T[]; value: T; onChange: (v: T) => void;
+export function Chips<T extends string>({ label, options, value, onChange, mark }: {
+  label: string; options: readonly T[]; value: T; onChange: (v: T) => void; mark?: (o: T) => ReactNode;
 }) {
   return (
     <div className="lx-chips" role="group" aria-label={label}>
       {options.map((o) => (
-        <button key={o} type="button" className="lx-chip" aria-pressed={o === value} onClick={() => onChange(o)}>{o}</button>
+        <button key={o} type="button" className="lx-chip" aria-pressed={o === value} onClick={() => onChange(o)}>{mark?.(o)}{o}</button>
       ))}
     </div>
   );

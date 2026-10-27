@@ -118,6 +118,7 @@
 .lx-pill.moss { background: var(--v2-moss-soft); color: var(--v2-moss); }
 .lx-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .lx-chip {
+  display: inline-flex; align-items: center; gap: 8px;
   min-height: 44px; padding: 0 18px; border-radius: var(--v2-r-pill); border: 1px solid var(--v2-line-2);
   background: var(--v2-paper); color: var(--v2-ink-2); font: 500 0.9375rem/1 var(--v2-font-sans); cursor: pointer;
   transition: background-color .12s, color .12s, border-color .12s;
@@ -151,6 +152,12 @@
 .lx-aud a[aria-current="page"] { background: var(--v2-paper); color: var(--v2-ink); }
 .lx-hero-side { display: grid; gap: 22px; }
 .lx-hero-small { font-size: 0.875rem; color: var(--v2-ink-3); }
+/* The hero's promises, checked off: what joining costs and asks. */
+.lx-promises { display: grid; gap: 10px; }
+.lx-promises ul { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.lx-promises li { display: inline-flex; align-items: center; gap: 8px; font-size: 0.9375rem; font-weight: 500; }
+/* A done thing: the hero's promises, and what the workspace does. */
+.lx-check { width: 20px; height: 20px; flex: none; border-radius: 50%; background: var(--v2-moss-soft); fill: none; stroke: var(--v2-moss-deep); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 /* The hero's working slice: a list to pick from, the picked item open. */
 .lx-browse { margin-top: clamp(40px, 5vw, 64px); display: grid; gap: 20px; align-items: start; }
 @media (min-width: 1000px) { .lx-browse { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 20px 28px; } }
@@ -174,7 +181,10 @@
 .lx-pick-photo img { width: 100%; height: 100%; object-fit: cover; }
 .lx-pick-text { display: grid; gap: 2px; min-width: 0; }
 .lx-pick-title { font-weight: 600; }
-.lx-pick-sub { font-size: 0.875rem; color: color-mix(in srgb, var(--v2-paper) 74%, transparent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lx-pick-sub { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 0.875rem; color: color-mix(in srgb, var(--v2-paper) 74%, transparent); }
+.lx-pick-clip { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lx-pick-ch { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.lx-pick-ch + .lx-pick-ch { padding-left: 4px; }
 .lx-pick[aria-pressed="true"] .lx-pick-sub { color: var(--v2-ink-3); }
 .lx-pick-price { font-size: 1.25rem; white-space: nowrap; }
 .lx-pick-from { font-size: 0.8125rem; color: color-mix(in srgb, var(--v2-paper) 74%, transparent); }
@@ -217,9 +227,17 @@
 .lx-dark .lx-link:not(.lx-card *) { color: var(--v2-paper); text-decoration-color: color-mix(in srgb, var(--v2-paper) 45%, transparent); }
 
 
-/* A channel's platform colour, as the portal draws channel badges. */
-.lx-plat { display: inline-flex; align-items: center; gap: 7px; }
-.lx-plat::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--plat, var(--v2-ink-3)); flex: none; }
+/* A platform's mark beside whatever names it, as the portal draws channel
+ * badges (.v2-channel-icon): the glyph on a tile in the platform's colour.
+ * TikTok's black tile keeps a faint edge for the dark grounds. */
+.lx-plat { display: inline-flex; align-items: center; gap: 8px; }
+.lx-pmark { width: 18px; height: 18px; border-radius: 5px; display: inline-grid; place-items: center; flex: none; color: var(--v2-paper); background: var(--v2-ink-3); }
+.lx-pmark svg { width: 11px; height: 11px; fill: currentColor; }
+.lx-pmark.lg { width: 40px; height: 40px; border-radius: 10px; }
+.lx-pmark.lg svg { width: 20px; height: 20px; }
+.lx-pmark.instagram { background: var(--v2-platform-instagram); }
+.lx-pmark.tiktok { background: var(--v2-platform-tiktok); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--v2-paper) 24%, transparent); }
+.lx-pmark.youtube { background: var(--v2-platform-youtube); }
 
 /* Campaign tile, after BrowseBriefs' CampaignTile. */
 .lx-tile { display: flex; flex-direction: column; }
@@ -238,7 +256,7 @@
 .lx-tile-cols > div:first-child { background: linear-gradient(180deg, color-mix(in oklab, var(--v2-gold) 12%, transparent), transparent 90%); }
 .lx-tile-price { font-size: 1.75rem; line-height: 1; }
 .lx-tile-price small { font-size: 0.6em; color: var(--v2-ink-3); }
-.lx-tile-list { display: grid; gap: 2px; font-size: 0.875rem; color: var(--v2-ink-2); }
+.lx-tile-list { display: grid; gap: 6px; font-size: 0.875rem; color: var(--v2-ink-2); }
 
 /* Creator card, after Discover's CreatorCard. */
 .lx-ccard { display: flex; flex-direction: column; }
@@ -279,7 +297,6 @@
 .lx-field-sage { background: var(--v2-moss-soft); }
 /* On peach and sage, muted text needs the second ink to stay readable. */
 :is(.lx-field-peach, .lx-field-sage) .lx-note:not(.lx-card *) { color: var(--v2-ink-2); }
-:is(.lx-field-peach, .lx-field-sage) .lx-notyet { background: var(--v2-paper); }
 /* A section drawn as a campaign tile's letterhead: navy, with its texture. */
 .lx-band { position: relative; isolation: isolate; overflow: hidden; background: var(--v2-band-navy); }
 .lx-band .lx-window { border-color: transparent; box-shadow: 0 30px 60px -30px color-mix(in srgb, var(--v2-ink) 85%, transparent); }
@@ -322,6 +339,13 @@
 .lx-sf-meta input { width: 11ch; }
 .lx-sf-meta input:focus, .lx-sf-meta select:focus { border-bottom: 1px solid var(--v2-ink-3); }
 .lx-sf-section { padding: 18px 24px; border-top: 1px solid var(--v2-line); display: grid; gap: 12px; }
+/* A channel row, as the storefront's Channels block draws one. */
+.lx-sf-channel { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid var(--v2-line); border-radius: var(--v2-r-md); background: var(--v2-bg); }
+.lx-sf-ch-id { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.lx-sf-ch-id b { font-weight: 600; }
+.lx-sf-ch-id span, .lx-sf-ch-num span:last-child { font-size: 0.8125rem; color: var(--v2-ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lx-sf-ch-num { display: grid; gap: 1px; text-align: right; }
+.lx-sf-ch-num .lx-money { font-size: 1.25rem; line-height: 1.2; }
 .lx-sf-work { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .lx-sf-work figure { aspect-ratio: 1; border-radius: var(--v2-r-md); overflow: hidden; background: var(--v2-bg-2); }
 .lx-sf-work img { width: 100%; height: 100%; object-fit: cover; }
@@ -386,6 +410,7 @@
 .lx-pitch-row { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 4px 14px; align-items: start; padding: 16px 18px; }
 .lx-pitch-row + .lx-pitch-row { border-top: 1px solid var(--v2-line); }
 .lx-pitch-row .lx-row-amt { grid-column: 3; grid-row: 1; }
+.lx-pitch-row .lx-row-what { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .lx-pitch-row p { color: var(--v2-ink-2); font-size: 0.9375rem; margin-top: 2px; }
 .lx-pitch-bar { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 18px; border-top: 1px solid var(--v2-line); background: var(--v2-bg); }
 
@@ -442,17 +467,16 @@
 .lx-compare th { text-align: left; padding: 0 24px 14px 0; font-size: 1rem; font-weight: 600; color: color-mix(in srgb, var(--v2-paper) 74%, transparent); }
 .lx-compare th + th { color: var(--v2-paper); }
 .lx-compare td { width: 50%; padding: 18px 24px 18px 0; vertical-align: top; border-top: 1px solid color-mix(in srgb, var(--v2-paper) 16%, transparent); font-size: 1.0625rem; line-height: 1.5; text-wrap: pretty; }
-.lx-compare td + td { position: relative; padding-left: 26px; color: var(--v2-paper); font-weight: 500; }
-.lx-compare td + td::before { content: ""; position: absolute; left: 0; top: 27px; width: 8px; height: 8px; border-radius: 50%; background: var(--v2-accent-2); }
+.lx-compare td + td { color: var(--v2-paper); font-weight: 500; }
+.lx-compare-now { display: flex; align-items: flex-start; gap: 12px; }
+.lx-compare-now .lx-check { margin-top: calc((1.5em - 20px) / 2); }
 @media (max-width: 640px) {
   .lx-compare, .lx-compare tbody, .lx-compare tr, .lx-compare td { display: block; width: 100%; }
   .lx-compare thead { display: none; }
   .lx-compare tr { padding: 18px 0; border-top: 1px solid color-mix(in srgb, var(--v2-paper) 16%, transparent); display: grid; gap: 10px; }
   .lx-compare td { border-top: 0; padding: 0; }
-  .lx-compare td + td { padding-left: 0; }
-  .lx-compare td::before,
-  .lx-compare td + td::before {
-    content: attr(data-label); position: static; display: block; width: auto; height: auto; margin-bottom: 4px; border-radius: 0; background: none;
+  .lx-compare td::before {
+    content: attr(data-label); display: block; margin-bottom: 4px;
     font-size: 0.875rem; font-weight: 600; color: color-mix(in srgb, var(--v2-paper) 74%, transparent);
   }
   .lx-compare td + td::before { color: var(--v2-paper); }
@@ -474,9 +498,14 @@
 .lx-fee > span:last-child { font-size: var(--t-lead); line-height: 1.45; color: var(--v2-ink-2); text-wrap: pretty; }
 @media (max-width: 560px) { .lx-fee { grid-template-columns: minmax(0, 1fr); } }
 @media (min-width: 960px) { .lx-pricing-side { padding-top: 12px; } }
-.lx-notyet { padding: 24px; border-radius: var(--v2-r-lg); background: var(--v2-bg-2); display: grid; gap: 12px; }
+/* What isn't built yet, in the portal's warning gold: each item an open
+ * circle, where the hero's promises are checked. */
+.lx-notyet { padding: 24px; border-radius: var(--v2-r-lg); background: color-mix(in srgb, var(--v2-warning) 10%, var(--v2-paper)); border: 1px solid color-mix(in srgb, var(--v2-warning) 40%, var(--v2-paper)); display: grid; gap: 14px; }
+.lx-notyet-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
+.lx-pill-beta { background: var(--v2-warning); color: var(--v2-ink); font-weight: 600; }
 .lx-notyet ul { display: grid; gap: 10px; }
-.lx-notyet li { color: var(--v2-ink-2); }
+.lx-notyet li { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 12px; color: var(--v2-ink-2); }
+.lx-notyet li::before { content: ""; width: 14px; height: 14px; box-sizing: border-box; margin-top: calc(0.75em - 7px); border-radius: 50%; border: 2px solid color-mix(in srgb, var(--v2-warning) 80%, var(--v2-ink)); }
 
 /* ── Questions: every answer open ────────────────────────────────────── */
 .lx-qa { display: grid; gap: 36px 56px; }

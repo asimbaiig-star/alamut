@@ -14,7 +14,8 @@ import { STALENESS } from '@/lib/api/staleness';
 import * as facts from '../facts';
 import { brandEstimate, clampMoney, creatorEstimate, usd } from '../estimate';
 import { toHandle } from '../tools-creators';
-import { BRIEFS, BRIEF_FILTERS, CREATORS, CREATOR_FILTERS } from '../listings';
+import { BRIEFS, BRIEF_FILTERS } from '../listings-briefs';
+import { CREATORS, CREATOR_FILTERS } from '../listings-creators';
 
 const SRC = join(__dirname, '..', '..');
 const read = (rel: string) => readFileSync(join(SRC, rel), 'utf8');
