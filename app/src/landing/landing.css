@@ -51,7 +51,7 @@
 }
 
 /* ── Type: Fraunces for display and money, Inter Tight for reading ────── */
-.lx-h1, .lx-h2, .lx-fr {
+.lx-h1, .lx-h2 {
   font-family: var(--v2-font-display); font-weight: 500;
   font-variation-settings: "opsz" 144; letter-spacing: -0.02em; text-wrap: balance;
 }
@@ -60,7 +60,6 @@
 .lx-h2 { font-size: var(--t-h2); line-height: 1.04; }
 .lx-h3 { font-size: 1.125rem; font-weight: 600; line-height: 1.3; letter-spacing: -0.005em; }
 .lx-lead { font-size: var(--t-lead); line-height: 1.5; color: var(--v2-ink-2); max-width: 34em; text-wrap: pretty; }
-.lx-body { color: var(--v2-ink-2); max-width: 36em; text-wrap: pretty; }
 .lx-note { font-size: 0.875rem; color: var(--v2-ink-3); text-wrap: pretty; }
 /* The portal's small uppercase field label, used only where the portal
  * itself labels a field. */
@@ -87,9 +86,10 @@
 }
 .lx-btn:hover { background: var(--v2-ink-2); }
 .lx-btn-sm { min-height: 44px; padding: 0 18px; font-size: 0.9375rem; }
-.lx-btn-line { background: var(--v2-paper); color: var(--v2-ink); border-color: var(--v2-line-2); }
-.lx-btn-line:hover { background: var(--v2-bg-2); }
-.lx-cta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.lx-btn.accent { background: var(--accent-fill); color: var(--v2-paper); }
+.lx-btn.accent:hover { background: var(--v2-accent-2); color: var(--v2-ink); }
+.lx-cta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 22px; }
+.lx-cta-link { display: inline-flex; align-items: center; justify-self: start; min-height: 44px; }
 .lx-link {
   font-weight: 500; color: var(--v2-ink); white-space: nowrap;
   text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; text-decoration-color: var(--v2-line-2);
@@ -116,7 +116,9 @@
  * the dark card with the terracotta glow (BrandHome's Spark card): the first
  * thing each side sees after signing up. The card bleeds out by its own
  * padding, so what's inside lines up with the rest of the page. */
-.lx-hero { --panel-pad: clamp(24px, 5vw, 64px); padding-block: clamp(4px, 1vw, 12px) var(--gap-section); }
+/* The card is the hero's edge, and a coloured section follows it, so the
+ * hero needs little ground of its own below. */
+.lx-hero { --panel-pad: clamp(24px, 5vw, 64px); padding-block: clamp(4px, 1vw, 12px) clamp(20px, 3vw, 36px); }
 .lx-hero > .lx-wrap { max-width: calc(var(--wrap) + 2 * var(--panel-pad)); }
 .lx-panel { position: relative; isolation: isolate; overflow: hidden; border-radius: var(--v2-r-xl); padding: var(--panel-pad); }
 .lx-panel.moss { background: linear-gradient(135deg, var(--v2-moss) 0%, var(--v2-moss-deep) 100%); }
@@ -127,14 +129,53 @@
 }
 .lx-panel.moss::before { opacity: .18; }
 .lx-hero-top { display: grid; gap: 28px; align-items: end; }
+/* "For creators | For brands": the portal's segmented tabs, on the card. */
+.lx-aud { display: inline-flex; gap: 2px; padding: 3px; margin-bottom: clamp(28px, 4vw, 44px); border-radius: var(--v2-r-pill); background: color-mix(in srgb, var(--v2-paper) 10%, transparent); }
+.lx-aud a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border-radius: var(--v2-r-pill); font-size: 0.9375rem; font-weight: 500; color: color-mix(in srgb, var(--v2-paper) 80%, transparent); transition: background-color .12s, color .12s; }
+.lx-aud a:hover { color: var(--v2-paper); }
+.lx-aud a[aria-current="page"] { background: var(--v2-paper); color: var(--v2-ink); }
 .lx-hero-side { display: grid; gap: 22px; }
 .lx-hero-small { font-size: 0.875rem; color: var(--v2-ink-3); }
-.lx-board { margin-top: clamp(40px, 5vw, 64px); display: grid; gap: 18px; }
-.lx-board-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; }
+/* The hero's working slice: a list to pick from, the picked item open. */
+.lx-browse { margin-top: clamp(40px, 5vw, 64px); display: grid; gap: 20px; align-items: start; }
+@media (min-width: 1000px) { .lx-browse { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 20px 28px; } }
+.lx-browse-list { display: grid; gap: 16px; align-content: start; }
+.lx-browse-detail { scroll-margin-top: 16px; }
+.lx-browse-head { display: flex; align-items: center; gap: 12px; }
+.lx-browse > .lx-board-note { grid-column: 1 / -1; }
 .lx-board-title { font-family: var(--v2-font-display); font-size: 1.5rem; font-weight: 500; letter-spacing: -0.01em; }
-.lx-board-grid { display: grid; gap: 18px; }
-@media (min-width: 760px) { .lx-board-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (min-width: 1100px) { .lx-board-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.lx-picks { display: grid; gap: 8px; }
+.lx-pick {
+  width: 100%; min-height: 68px; display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 14px;
+  padding: 12px 16px 12px 12px; border-radius: var(--v2-r-lg); text-align: left; cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--v2-paper) 14%, transparent);
+  background: color-mix(in srgb, var(--v2-paper) 6%, transparent); color: var(--v2-paper); font: inherit;
+  transition: background-color .15s, border-color .15s, color .15s, transform .15s;
+}
+.lx-pick:hover { background: color-mix(in srgb, var(--v2-paper) 11%, transparent); border-color: color-mix(in srgb, var(--v2-paper) 30%, transparent); }
+.lx-pick[aria-pressed="true"] { background: var(--v2-paper); border-color: var(--v2-paper); color: var(--v2-ink); }
+.lx-pick-mark { width: 44px; height: 44px; border-radius: var(--v2-r-sm); display: grid; place-items: center; color: var(--v2-paper); font-family: var(--v2-font-display); font-weight: 600; font-size: 1.125rem; }
+.lx-pick-photo { width: 44px; height: 44px; border-radius: var(--v2-r-sm); overflow: hidden; }
+.lx-pick-photo img { width: 100%; height: 100%; object-fit: cover; }
+.lx-pick-text { display: grid; gap: 2px; min-width: 0; }
+.lx-pick-title { font-weight: 600; }
+.lx-pick-sub { font-size: 0.875rem; color: color-mix(in srgb, var(--v2-paper) 74%, transparent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lx-pick[aria-pressed="true"] .lx-pick-sub { color: var(--v2-ink-3); }
+.lx-pick-price { font-size: 1.25rem; white-space: nowrap; }
+.lx-pick-from { font-size: 0.8125rem; color: color-mix(in srgb, var(--v2-paper) 74%, transparent); }
+.lx-pick[aria-pressed="true"] .lx-pick-from { color: var(--v2-ink-3); }
+.lx-pick-price .lx-money { font-size: 1.25rem; }
+.lx-pill-dark { background: color-mix(in srgb, var(--v2-paper) 12%, transparent); color: var(--v2-paper); }
+.lx-pill-band { background: color-mix(in srgb, var(--v2-paper) 18%, transparent); color: var(--v2-paper); }
+/* The picked item's card swaps in, as a portal panel opens. */
+@keyframes lx-swap-in { from { opacity: 0; transform: translateY(6px); } }
+.lx-swap { animation: lx-swap-in .28s cubic-bezier(.16, 1, .3, 1) both; }
+/* The one thing to do in a card: the price, what it means, the button. */
+.lx-act { display: grid; gap: 12px; padding: 18px; border-top: 1px solid var(--v2-line); }
+.lx-act-flat { padding: 4px 0 0; border-top: 0; }
+.lx-act .lx-btn { justify-self: start; }
+.lx-act-keep { color: var(--v2-ink-2); font-size: 0.9375rem; text-wrap: pretty; }
+.lx-act-keep b { color: var(--v2-ink); font-weight: 600; }
 @media (min-width: 1024px) {
   .lx-hero-top { grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr); gap: 56px; }
   .lx-hero-side { padding-bottom: 10px; }
@@ -146,21 +187,13 @@
 .lx-dark { color: var(--v2-paper); }
 .lx-dark :is(.lx-lead, .lx-facts3 p) { color: color-mix(in srgb, var(--v2-paper) 80%, transparent); }
 .lx-dark :is(.lx-hero-small, .lx-board-note, .lx-note):not(.lx-card *, .lx-window *) { color: color-mix(in srgb, var(--v2-paper) 74%, transparent); }
-.lx-dark .lx-btn { background: var(--v2-paper); color: var(--v2-ink); }
-.lx-dark .lx-btn:hover { background: var(--v2-bg-2); }
-/* The Spark card's Send button: terracotta, on the dark card only. */
-.lx-dark .lx-btn.accent { background: var(--accent-fill); color: var(--v2-paper); }
-.lx-dark .lx-btn.accent:hover { background: var(--v2-accent-2); color: var(--v2-ink); }
-.lx-dark .lx-btn-line { background: color-mix(in srgb, var(--v2-paper) 10%, transparent); color: var(--v2-paper); border-color: color-mix(in srgb, var(--v2-paper) 24%, transparent); }
-.lx-dark .lx-btn-line:hover { background: color-mix(in srgb, var(--v2-paper) 18%, transparent); }
+.lx-dark .lx-btn:not(.accent, .lx-card *) { background: var(--v2-paper); color: var(--v2-ink); }
+.lx-dark .lx-btn:not(.accent, .lx-card *):hover { background: var(--v2-bg-2); }
 .lx-dark .lx-chip { background: color-mix(in srgb, var(--v2-paper) 8%, transparent); border-color: color-mix(in srgb, var(--v2-paper) 26%, transparent); color: var(--v2-paper); }
 .lx-dark .lx-chip:hover { border-color: color-mix(in srgb, var(--v2-paper) 60%, transparent); }
 .lx-dark .lx-chip[aria-pressed="true"] { background: var(--v2-paper); border-color: var(--v2-paper); color: var(--v2-ink); }
 .lx-dark .lx-link:not(.lx-card *) { color: var(--v2-paper); text-decoration-color: color-mix(in srgb, var(--v2-paper) 45%, transparent); }
 
-/* Cards lift on hover, as the portal's campaign tiles do. */
-.lx-tile, .lx-ccard { transition: transform .15s ease, box-shadow .15s ease; }
-.lx-tile:hover, .lx-ccard:hover { transform: translateY(-3px); box-shadow: var(--v2-shadow-lg); }
 
 /* A channel's platform colour, as the portal draws channel badges. */
 .lx-plat { display: inline-flex; align-items: center; gap: 7px; }
@@ -172,7 +205,8 @@
 .lx-tile-band::after { content: ""; position: absolute; inset: 0; opacity: .1; background-image: repeating-linear-gradient(135deg, currentColor 0 1px, transparent 1px 7px); pointer-events: none; }
 .lx-tile-initial { width: 30px; height: 30px; border-radius: var(--v2-r-sm); display: grid; place-items: center; background: var(--v2-paper); color: var(--v2-ink); font-family: var(--v2-font-display); font-weight: 600; flex: none; }
 .lx-tile-brand { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
-.lx-tile-cat { margin-left: auto; font-size: 12px; font-weight: 500; opacity: .85; }
+.lx-tile-cat { margin-left: auto; font-size: 12px; font-weight: 500; }
+.lx-tile-band .lx-pill { position: relative; z-index: 1; }
 .lx-tile-body { padding: 18px 18px 6px; display: grid; gap: 4px; }
 .lx-tile-title { font-family: var(--v2-font-display); font-size: 1.625rem; font-weight: 500; letter-spacing: -0.015em; line-height: 1.1; }
 .lx-tile-blurb { color: var(--v2-ink-3); font-size: 0.9375rem; }
@@ -183,25 +217,33 @@
 .lx-tile-price { font-size: 1.75rem; line-height: 1; }
 .lx-tile-price small { font-size: 0.6em; color: var(--v2-ink-3); }
 .lx-tile-list { display: grid; gap: 2px; font-size: 0.875rem; color: var(--v2-ink-2); }
-.lx-tile-foot { margin-top: auto; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 18px; border-top: 1px solid var(--v2-line); font-size: 0.875rem; color: var(--v2-ink-3); }
 
 /* Creator card, after Discover's CreatorCard. */
 .lx-ccard { display: flex; flex-direction: column; }
-.lx-ccard-cover { height: 96px; overflow: hidden; background: var(--v2-bg-2); }
+.lx-ccard-cover { height: 120px; overflow: hidden; background: var(--v2-bg-2); }
 .lx-ccard-cover img { width: 100%; height: 100%; object-fit: cover; }
 .lx-ccard-body { padding: 0 18px 16px; display: grid; gap: 10px; }
+.lx-ccard-id { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
 .lx-ccard-avatar { position: relative; z-index: 1; width: 52px; height: 52px; margin-top: -26px; border-radius: 50%; border: 3px solid var(--v2-paper); background: var(--v2-accent-soft); color: var(--v2-ink-2); display: grid; place-items: center; font-family: var(--v2-font-display); font-weight: 600; font-size: 1.125rem; }
 .lx-ccard-name { font-family: var(--v2-font-display); font-size: 1.5rem; font-weight: 500; letter-spacing: -0.01em; line-height: 1.1; }
 .lx-ccard-channels { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 0.875rem; color: var(--v2-ink-2); }
 .lx-ccard-channels b { font-weight: 600; color: var(--v2-ink); }
 .lx-ccard-er { color: var(--v2-moss); font-weight: 600; }
-.lx-ccard-foot { margin-top: auto; display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; padding: 14px 18px; border-top: 1px solid var(--v2-line); }
-.lx-ccard-from { font-size: 1.625rem; color: var(--v2-accent); line-height: 1; }
+.lx-pkgs { border: 0; margin: 0; padding: 0 18px 18px; display: grid; gap: 8px; min-width: 0; }
+.lx-pkgs legend { padding: 0; margin-bottom: 8px; }
+.lx-pkg {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 50px; padding: 0 14px;
+  border: 1px solid var(--v2-line); border-radius: var(--v2-r-md); background: var(--v2-bg); cursor: pointer; transition: border-color .12s, background-color .12s;
+}
+.lx-pkg:hover { border-color: var(--v2-line-2); }
+.lx-pkg:has(input:checked) { border-color: var(--v2-ink); background: var(--v2-paper); }
+.lx-pkg input { width: 18px; height: 18px; margin: 0; accent-color: var(--v2-accent); }
+/* 24px: large text, where terracotta on paper passes (3:1). */
+.lx-pkg b { font-size: 1.5rem; line-height: 1; color: var(--v2-accent); }
 .lx-board-note { font-size: 0.875rem; color: var(--v2-ink-3); max-width: 70em; }
 
 /* ── Sections ────────────────────────────────────────────────────────── */
 .lx-section { padding-block: var(--gap-section); }
-.lx-field { background: var(--v2-bg-2); }
 .lx-field-peach { background: var(--v2-accent-soft); }
 .lx-field-sage { background: var(--v2-moss-soft); }
 /* On peach and sage, muted text needs the second ink to stay readable. */
@@ -212,29 +254,18 @@
 .lx-band::after { content: ""; position: absolute; z-index: -1; inset: 0; opacity: .05; background-image: repeating-linear-gradient(135deg, var(--v2-paper) 0 1px, transparent 1px 9px); pointer-events: none; }
 .lx-band .lx-window { border-color: transparent; box-shadow: 0 30px 60px -30px color-mix(in srgb, var(--v2-ink) 85%, transparent); }
 .lx-head { display: grid; gap: 18px; margin-bottom: clamp(40px, 5vw, 64px); max-width: 44rem; }
-.lx-after { margin-top: clamp(40px, 5vw, 56px); }
 
 /* A text input with a large font has a wide intrinsic minimum; these grids
  * take the card's width instead, or a phone screen clips them. */
-.lx-pane, .lx-brief, .lx-field-label, .lx-wallet-field { grid-template-columns: minmax(0, 1fr); }
+.lx-brief, .lx-field-label, .lx-wallet-field { grid-template-columns: minmax(0, 1fr); }
 
-/* Pitch: the brief and the apply form, side by side, as on BriefDetail. */
+/* Brands: the brief and the pitches it brings, side by side. */
 .lx-pitch { display: grid; gap: 18px; align-items: start; }
 @media (min-width: 900px) { .lx-pitch { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
-.lx-pane { padding: 24px; display: grid; gap: 16px; }
-.lx-pane-title { font-family: var(--v2-font-display); font-size: 1.75rem; font-weight: 500; letter-spacing: -0.015em; line-height: 1.1; }
 .lx-kv { display: grid; gap: 10px; }
 .lx-kv > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 16px; align-items: baseline; color: var(--v2-ink-2); }
 .lx-kv b { color: var(--v2-ink); font-weight: 600; text-align: right; }
 .lx-field-label { display: grid; gap: 8px; }
-.lx-textarea::placeholder { color: var(--v2-ink-3); }
-.lx-input, .lx-textarea {
-  width: 100%; border: 1px solid var(--v2-line-2); border-radius: var(--v2-r-md); background: var(--v2-paper);
-  color: var(--v2-ink); font: 400 1rem/1.45 var(--v2-font-sans); padding: 12px 14px; outline: none;
-  transition: border-color .12s, box-shadow .12s;
-}
-.lx-textarea { min-height: 112px; resize: vertical; }
-.lx-input:focus, .lx-textarea:focus { border-color: var(--v2-ink-3); box-shadow: 0 0 0 3px var(--v2-bg-2); }
 .lx-money-input { display: flex; align-items: center; gap: 4px; padding: 0 14px; height: 54px; border: 1px solid var(--v2-line-2); border-radius: var(--v2-r-md); background: var(--v2-paper); }
 .lx-money-input:focus-within { border-color: var(--v2-ink-3); box-shadow: 0 0 0 3px var(--v2-bg-2); }
 .lx-money-input b { font-family: var(--v2-font-display); font-weight: 500; font-size: 1.375rem; color: var(--v2-ink-2); }
@@ -243,6 +274,8 @@
 
 /* Storefront: copy on one side, the storefront itself on the other. */
 .lx-found { display: grid; gap: 40px; align-items: start; }
+.lx-sf-join { display: grid; gap: 10px; justify-items: start; }
+.lx-sf-join .lx-note { color: var(--v2-ink-2); }
 @media (min-width: 1000px) { .lx-found { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 64px; } .lx-found .lx-head { position: sticky; top: 32px; margin-bottom: 0; } }
 .lx-sf-cover { height: 132px; overflow: hidden; background: var(--v2-bg-2); }
 .lx-sf-cover img { width: 100%; height: 100%; object-fit: cover; }
@@ -391,22 +424,37 @@
 .lx-foot nav a:hover { color: var(--v2-ink); }
 .lx-foot-note { width: 100%; font-size: 0.8125rem; color: var(--v2-ink-3); }
 
+/* ── Phones: the page's one action, kept in reach ───────────────────── */
+@keyframes lx-rise { from { transform: translateY(110%); } }
+.lx-sticky {
+  position: fixed; z-index: 20; left: 0; right: 0; bottom: 0; display: grid;
+  padding: 10px max(16px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  background: color-mix(in srgb, var(--v2-bg) 92%, transparent); border-top: 1px solid var(--v2-line);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); animation: lx-rise .25s ease-out both;
+}
+@media (min-width: 761px) { .lx-sticky { display: none; } }
+
 /* ── Motion: the hero's listings settle in, as the portal's lists do ─── */
 @keyframes lx-settle-in { from { opacity: 0; transform: translateY(14px); } }
-.lx-anim .lx-board-grid > * { animation: lx-settle-in .6s cubic-bezier(.16, 1, .3, 1) both; }
-.lx-anim .lx-board-grid > :nth-child(2) { animation-delay: 70ms; }
-.lx-anim .lx-board-grid > :nth-child(3) { animation-delay: 140ms; }
+.lx-anim .lx-picks > li { animation: lx-settle-in .6s cubic-bezier(.16, 1, .3, 1) both; }
+.lx-anim .lx-picks > li:nth-child(2) { animation-delay: 60ms; }
+.lx-anim .lx-picks > li:nth-child(3) { animation-delay: 120ms; }
+.lx-anim .lx-picks > li:nth-child(4) { animation-delay: 180ms; }
 
 /* ── Phones: their own composition ───────────────────────────────────── */
 @media (max-width: 560px) {
   .lx-hero { --panel-pad: 22px; }
   .lx-hero > .lx-wrap { padding-left: max(12px, env(safe-area-inset-left, 0px)); padding-right: max(12px, env(safe-area-inset-right, 0px)); }
   .lx-nav-links { gap: 14px; }
-  .lx-nav-aud { display: none; }
   .lx-cta-row .lx-btn { flex: 1 1 100%; }
+  .lx-cta-row { justify-content: center; }
+  .lx-aud { display: flex; }
+  .lx-aud a { flex: 1; justify-content: center; padding: 0 10px; }
+  .lx-act .lx-btn { justify-self: stretch; }
+  .lx-foot { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
   .lx-tile-cols { grid-template-columns: 1fr 1fr; }
   .lx-tile-cols > div:nth-child(3) { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--v2-line); }
-  .lx-pane, .lx-brief { padding: 18px; }
+  .lx-brief { padding: 18px; }
   .lx-sf-head, .lx-sf-section { padding-inline: 18px; }
   .lx-wallet .lx-money-input { width: 100%; }
   .lx-wallet-inputs { display: grid; grid-template-columns: 1fr auto; }

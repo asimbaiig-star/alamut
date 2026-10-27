@@ -8,6 +8,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api/client';
 import { pushToast } from '@/lib/utils/toast';
 import { BrandMarkSvg } from '@/screens/workspace-v2/BrandMark';
+import { readStorefrontDraft } from '@/lib/landingDraft';
 import '@/styles/auth-v2.css';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -28,7 +29,9 @@ export function SignUp() {
   // copy in that mode and make the role choice the explicit first step.
   const finishEmail = params.get('email') ?? '';
 
-  const [name, setName] = useState('');
+  // A storefront laid out on the landing and claimed brings its name along.
+  const [name, setName] = useState(() =>
+    (initialRole === 'creator' && !finishMode ? readStorefrontDraft(window.localStorage)?.name : '') ?? '');
   const [email, setEmail] = useState(finishMode ? finishEmail : '');
   const [password, setPassword] = useState('');
   const [brandName, setBrandName] = useState('');

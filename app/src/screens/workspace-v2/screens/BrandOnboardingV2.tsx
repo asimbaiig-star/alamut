@@ -16,6 +16,7 @@ import { listAnd } from '@/lib/utils/format';
 import { useV2CurrentBrand } from '../v2Hooks';
 import { v2UpdateBrand } from '../v2CampaignActions';
 import { pushToast } from '@/lib/utils/toast';
+import { readBriefDraft } from '@/lib/landingDraft';
 
 interface Props {
   onRoute: (r: string) => void;
@@ -131,6 +132,8 @@ export function BrandOnboardingV2({ onRoute }: Props) {
 
   function routeAfterFinish() {
     if (s.firstBriefMode === 'spark') onRoute('spark');
+    // The brief they wrote on the landing before signing up opens, filled in.
+    else if (readBriefDraft(window.localStorage)) onRoute('campaign-new');
     else if (s.firstBriefMode === 'brief') onRoute('campaigns');
     else onRoute('discover');
   }

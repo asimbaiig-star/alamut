@@ -1,17 +1,19 @@
 // BrandsPage.tsx — `/for-brands`, the brand landing.
 //
 // The portal's front door for brands, in the portal's language. Leads with
-// discovery both ways, then the workspace, then paying for live posts
-// (escrow), then cost. Not "AI": the least real part of the product and the
-// claim every competitor makes (LANDING-REVIEW.md §3).
+// discovery both ways (the hero lets you price a creator's package), then
+// writing a brief you can keep, then the workspace, then paying for live
+// posts (escrow), then cost. One action throughout: Post a brief.
+// Not "AI": the least real part of the product and the claim every
+// competitor makes (LANDING-REVIEW.md §3).
 
-import { BetaLine, CtaRow, Faq, Footer, Nav, NotYet } from './components';
+import { AudienceSwitch, BetaLine, CtaRow, Faq, Footer, Nav, NotYet, StickyCta } from './components';
 import { DEMO_HREF, PLATFORM_FEE_LABEL, SIGNUP_HREF } from './facts';
 import { BrandNeedsWindow, LAPSE_LINE, PitchInbox } from './productCards';
-import { BriefBuilder, CreatorBoard, HoldTool } from './tools';
+import { BriefBuilder, CreatorBrowser, HoldTool } from './tools';
 
-const PRIMARY = { href: SIGNUP_HREF.brand, label: 'Post a brief, free' };
-const DEMO = { href: DEMO_HREF.brand, label: 'Try the live demo' };
+const POST = { href: SIGNUP_HREF.brand, label: 'Post a brief' };
+const DEMO = { href: DEMO_HREF.brand, label: 'or try the live demo' };
 
 export function BrandsPage() {
   return (
@@ -21,18 +23,19 @@ export function BrandsPage() {
         <section className="lx-hero" aria-labelledby="hero-title">
           <div className="lx-wrap">
             <div className="lx-panel lx-dark ink">
+              <AudienceSwitch audience="brands" />
               <div className="lx-hero-top">
                 <h1 className="lx-h1" id="hero-title"><span>Find creators.</span> <span>Run the deal here.</span></h1>
                 <div className="lx-hero-side">
                   <p className="lx-lead">
                     Browse storefronts with published rates, or post a brief and let creators pitch you. Brief to
-                    payout in one workspace.
+                    payout stays in one workspace.
                   </p>
-                  <CtaRow accent primary={{ ...PRIMARY, id: 'hero-post' }} secondary={{ ...DEMO, id: 'hero-demo' }} />
-                  <BetaLine prefix="No subscription or minimum spend." />
+                  <CtaRow primary={{ ...POST, id: 'hero-post' }} secondary={{ ...DEMO, id: 'hero-demo' }} />
+                  <BetaLine prefix="Free to post, with no subscription or minimum spend." />
                 </div>
               </div>
-              <CreatorBoard />
+              <CreatorBrowser />
             </div>
           </div>
         </section>
@@ -42,7 +45,7 @@ export function BrandsPage() {
             <div className="lx-head">
               <h2 className="lx-h2" id="pitches-title">Post a brief, get pitched.</h2>
               <p className="lx-lead">
-                Describe the deliverables, timing and target rate once. Creators who want the work pitch you with
+                Describe the deliverables and your target rate once. Creators who want the work pitch you with
                 their own price.
               </p>
             </div>
@@ -59,10 +62,10 @@ export function BrandsPage() {
         <section className="lx-section lx-band lx-dark" id="workspace" aria-labelledby="workspace-title">
           <div className="lx-wrap">
             <div className="lx-head">
-              <h2 className="lx-h2" id="workspace-title">Every deal, in one workspace.</h2>
+              <h2 className="lx-h2" id="workspace-title">Every deal on one list.</h2>
               <p className="lx-lead">
-                Offers, review rounds, paid changes, disputes and payouts live on the deal, with everything that
-                needs you on one list.
+                Offers, review rounds, paid changes, disputes and payouts live on the deal, and whatever is
+                waiting on you is in one place.
               </p>
             </div>
             <BrandNeedsWindow />
@@ -70,9 +73,6 @@ export function BrandsPage() {
               <div><h3 className="lx-h3">Teams and deal owners</h3><p>Give every deal an owner. Only admin and finance roles can top up the wallet.</p></div>
               <div><h3 className="lx-h3">Changes as amendments</h3><p>Need another deliverable or longer usage? Propose a paid change. It applies once the creator agrees.</p></div>
               <div><h3 className="lx-h3">Disputes inside the deal</h3><p>Freeze the escrow, propose a split and settle it where the work happened.</p></div>
-            </div>
-            <div className="lx-after">
-              <CtaRow primary={{ ...PRIMARY, id: 'workspace-post' }} secondary={{ ...DEMO, id: 'workspace-demo' }} />
             </div>
           </div>
         </section>
@@ -120,6 +120,7 @@ export function BrandsPage() {
               { q: 'What does it cost?', a: 'Posting is free. You pay the rates you agree with creators, and the platform fee is deducted on the creator’s side.' },
               { q: 'When does money leave my wallet?', a: 'When you accept an offer, the agreed rate moves into escrow. It reaches the creator post by post, as you confirm each one is live.' },
               { q: 'What if a post is off-brief or never goes live?', a: 'Ask for revisions, or open a dispute. The escrow freezes and either side can propose a split. Nothing releases without your confirmation or a settlement you agree to.' },
+              { q: 'What happens to the brief I write on this page?', a: 'If you post it from here, it’s waiting in New campaign when you sign up, filled in. Until then it stays in this browser and is sent nowhere.' },
               { q: 'Can I try it first?', a: <>Yes. The <a className="lx-link" href={DEMO_HREF.brand} data-cta="faq-demo">demo account</a> is a full brand workspace with creators to browse and sample campaigns.</> },
             ]} />
           </div>
@@ -130,12 +131,13 @@ export function BrandsPage() {
             <h2 className="lx-h2" id="final-title">Post your first brief.</h2>
             <div className="lx-hero-side">
               <p className="lx-lead">It’s free, and money only moves when you accept an offer.</p>
-              <CtaRow primary={{ ...PRIMARY, id: 'final-post' }} secondary={{ ...DEMO, id: 'final-demo' }} />
+              <CtaRow primary={{ ...POST, id: 'final-post' }} secondary={{ ...DEMO, id: 'final-demo' }} />
             </div>
           </div>
         </section>
       </main>
       <Footer audience="brands" />
+      <StickyCta cta={{ ...POST, id: 'sticky-post' }} />
     </div>
   );
 }

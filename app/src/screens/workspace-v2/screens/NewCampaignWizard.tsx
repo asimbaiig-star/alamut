@@ -13,6 +13,7 @@ import { pushToast } from '@/lib/utils/toast';
 import { useStore } from '@/lib/api/store';
 import { parseNumberInput } from '@/lib/utils/format';
 import { PLATFORM_FORMATS } from '@/lib/api/marketplaceOptions';
+import { BRIEF_DRAFT_KEY, clearDraft, readBriefDraft, wizardFromDraft } from '@/lib/landingDraft';
 
 interface Props {
   onRoute: (r: string) => void;
@@ -120,6 +121,11 @@ export function NewCampaignWizard({
   const savedDraft = useStore((s) =>
     initialDraftId ? s.db.campaigns.find((c) => c.id === initialDraftId && c.stage === 'draft') : undefined,
   );
+  // A brief the brand wrote on the landing and chose to post: it seeds a
+  // fresh wizard (not a reopened draft or a prefilled link) until it's
+  // saved or launched (landingDraft.ts).
+  const [landingBrief] = useState(() =>
+    initialDraftId || initialName ? null : wizardFromDraft(readBriefDraft(window.localStorage), PLATFORM_FORMATS));
   const [draft, setDraft] = useState<Draft>(savedDraft ? {
     name: savedDraft.title,
     objective: (savedDraft.objective as Draft['objective']) ?? 'awareness',
@@ -136,13 +142,15 @@ export function NewCampaignWizard({
     deadline: savedDraft.deadline,
     invitedCreators: [],
   } : {
-    name: initialName ?? '',
+    name: initialName ?? landingBrief?.name ?? '',
     objective: 'awareness',
     brief: initialBriefSeed ?? '',
-    placements: [
-      { platform: 'instagram', format: 'reel', count: 1 },
-      { platform: 'instagram', format: 'story', count: 2 },
-    ],
+    placements: landingBrief
+      ? landingBrief.placements
+      : [
+        { platform: 'instagram', format: 'reel', count: 1 },
+        { platform: 'instagram', format: 'story', count: 2 },
+      ],
     audienceCity: ['Karachi', 'Lahore'],
     audienceGender: 'any',
     audienceAge: ['25-34', '18-24'],
@@ -150,7 +158,7 @@ export function NewCampaignWizard({
       ? [initialCategory, ...(brand?.preferredCategories?.slice(0, 1) ?? [])]
       : (brand?.preferredCategories?.slice(0, 2) ?? ['Fashion', 'Lifestyle']),
     budget: initialBudget ?? 15000,
-    perCreator: initialPerCreator ?? 350,
+    perCreator: initialPerCreator ?? (landingBrief?.perCreator || 350),
     // Was hardcoded '2026-06-30', which quietly went stale — a fresh wizard
     // opened with a deadline already in the past. Default to 30 days out.
     deadline: initialDeadline ?? defaultDeadline(),
@@ -226,6 +234,7 @@ export function NewCampaignWizard({
                 // named a place to find it.
                 try {
                   const saved = v2SaveCampaignDraft(asInput(), draftId);
+                  if (landingBrief) clearDraft(window.localStorage, BRIEF_DRAFT_KEY);
                   setDraftId(saved.id);
                   pushToast(`Draft saved · "${saved.title}" is in Campaigns`, 'good');
                   onRoute('campaigns');
@@ -310,6 +319,7 @@ export function NewCampaignWizard({
                     setSubmitting(true);
                     try {
                       const camp = v2LaunchCampaign(asInput());
+                      if (landingBrief) clearDraft(window.localStorage, BRIEF_DRAFT_KEY);
                       pushToast(`Launched "${camp.title}" — live and accepting applications`, 'good');
                       onRoute(`campaign:${camp.id}`);
                     } catch (err) {

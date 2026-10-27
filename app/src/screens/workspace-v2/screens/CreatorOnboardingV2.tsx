@@ -20,6 +20,7 @@ import { pushToast } from '@/lib/utils/toast';
 import { parseNumberInput, listAnd } from '@/lib/utils/format';
 import { suggestRateBand } from '@/screens/tools/rateGuidance';
 import { CREATOR_CATEGORIES } from '@/lib/api/marketplaceOptions';
+import { clearDraft, onboardingFromDraft, readStorefrontDraft, STOREFRONT_DRAFT_KEY } from '@/lib/landingDraft';
 
 interface Props {
   onRoute: (r: string) => void;
@@ -67,21 +68,35 @@ export function CreatorOnboardingV2({ onRoute }: Props) {
   const currentCreator = useV2CurrentCreator();
   const [submitting, setSubmitting] = useState(false);
   const [step, setStep] = useState<StepId>('platform');
-  const [s, setS] = useState<State>({
-    // Pre-fill from any existing creator record so partial returns
-    // don't blank everything out.
-    platform: null,
-    handle: currentCreator?.handle?.replace(/^@/, '') ?? '',
-    followers: '',
-    engagement: '',
-    city: currentCreator?.city || 'Lahore',
-    bio: currentCreator?.bio ?? '',
-    category: currentCreator?.categories?.[0] ?? '',
-    reelRate: currentCreator?.rateCard?.reel ?? '250',
-    storyRate: currentCreator?.rateCard?.story ?? '180',
-    comboRate: currentCreator?.rateCard?.post ?? '380',
-    payoutMethod: null,
-    agreedTerms: false,
+  const [s, setS] = useState<State>(() => {
+    // A storefront the creator laid out on the landing and kept: its
+    // handle, niche and package rates fill these steps (landingDraft.ts).
+    const fromLanding = onboardingFromDraft({
+      handle: currentCreator?.handle,
+      category: currentCreator?.categories?.[0],
+      reel: currentCreator?.rateCard?.reel,
+      story: currentCreator?.rateCard?.story,
+      post: currentCreator?.rateCard?.post,
+    }, readStorefrontDraft(window.localStorage), {
+      categories: CATEGORIES,
+      fallback: { reel: '250', story: '180', post: '380' },
+    });
+    return {
+      // Pre-fill from any existing creator record so partial returns
+      // don't blank everything out.
+      platform: null,
+      handle: fromLanding.handle,
+      followers: '',
+      engagement: '',
+      city: currentCreator?.city || 'Lahore',
+      bio: currentCreator?.bio ?? '',
+      category: fromLanding.category,
+      reelRate: fromLanding.reelRate,
+      storyRate: fromLanding.storyRate,
+      comboRate: fromLanding.comboRate,
+      payoutMethod: null,
+      agreedTerms: false,
+    };
   });
 
   // Persist all five steps' inputs onto the creator record before
@@ -133,6 +148,8 @@ export function CreatorOnboardingV2({ onRoute }: Props) {
       setSubmitting(false);
       return;
     }
+    // Saved onto the creator record, so the landing's copy is spent.
+    clearDraft(window.localStorage, STOREFRONT_DRAFT_KEY);
     setSubmitting(false);
     onRoute('creator-home');
   }

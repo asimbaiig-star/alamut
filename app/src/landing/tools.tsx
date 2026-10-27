@@ -1,20 +1,42 @@
 // tools.tsx — the interactive pieces of each page, drawn as the portal's
-// own screens so the visitor meets the product before signing up.
+// own screens so the visitor does the first thing the product does before
+// signing up: pick a brief and price a pitch, pick a creator and a package,
+// lay out a storefront, write a brief.
 //
 // Options come from the product's lists (facts.ts → marketplaceOptions.ts,
 // brandPalette.ts) and money from its maths (estimate.ts → money.ts): type a
-// rate and you see what the ledger would record.
+// rate and you see what the ledger would record. What a visitor builds can
+// be kept for sign-up (landingDraft.ts), but only when they ask to.
 
-import { useId, useState, type CSSProperties } from 'react';
+import { useId, useRef, useState, type CSSProperties } from 'react';
 import { Credits, PhotoImg } from './components';
 import { brandEstimate, clampMoney, creatorEstimate, usd } from './estimate';
-import { brandAccent, CREATOR_CATEGORIES, PLATFORM_FEE_LABEL, PLATFORM_FORMATS, WHT_LABEL } from './facts';
-import { BRIEFS, BRIEF_FILTERS, CREATORS, CREATOR_FILTERS, type BriefListing, type CreatorChannel } from './listings';
+import {
+  brandAccent, CREATOR_CATEGORIES, PLATFORM_FEE_LABEL, PLATFORM_FORMATS, SIGNUP_HREF, WHT_LABEL,
+} from './facts';
+import {
+  BRIEFS, BRIEF_FILTERS, CREATORS, CREATOR_FILTERS, fromRate, PACKAGE_LABEL,
+  type BriefListing, type CreatorChannel, type CreatorListing,
+} from './listings';
 import { PHOTOS } from './photos';
+import { BRIEF_DRAFT_KEY, saveDraft, STOREFRONT_DRAFT_KEY } from '@/lib/landingDraft';
 
 const toMoney = (raw: string) => clampMoney(Number(raw.replace(/[^\d]/g, '')) || 0);
 const moneyText = (n: number) => (n === 0 ? '' : n.toLocaleString('en-US'));
 const keep = (rate: number) => usd(creatorEstimate(rate, 1).net);
+
+/** The visitor's own browser storage, when there is one to write. */
+const browserStore = () => {
+  try { return window.localStorage; } catch { return null; }
+};
+
+/** Where the list stacks above the card (phones, tablets), a pick would
+ *  change a card the visitor can't see: bring it into view. */
+function revealPicked(el: HTMLElement | null) {
+  if (!el || typeof window.matchMedia !== 'function' || !window.matchMedia('(max-width: 999px)').matches) return;
+  const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  requestAnimationFrame(() => el.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'start' }));
+}
 
 // The platform's colour for whatever names it ("2 × Instagram Reel", "TikTok"),
 // as the portal colours channel badges.
@@ -70,122 +92,172 @@ function Chips<T extends string>({ label, options, value, onChange }: {
   );
 }
 
-// ── Creators' first screen: open briefs, as Browse campaigns shows them ──
+// ── Creators' first screen: Browse campaigns, working ───────────────────
+// The list on the left is what Browse campaigns lists; the card on the
+// right is the brief a creator opens, with the one thing they'd do there:
+// name their rate and see what they keep.
 
-function CampaignTile({ brief }: { brief: BriefListing }) {
+/** The letterhead band of a campaign tile, as BrowseBriefs draws it. */
+function Letterhead({ brief }: { brief: BriefListing }) {
   const band = brandAccent(brief.brand);
   return (
-    <article className="lx-card lx-tile">
-      <div className="lx-tile-band" style={{ background: band.bg, color: band.ink }}>
-        <span className="lx-tile-initial" aria-hidden="true">{brief.title[0]}</span>
-        <span className="lx-tile-brand">{brief.brand}</span>
-        <span className="lx-tile-cat">{brief.category}</span>
-      </div>
-      <div className="lx-tile-body">
-        <h3 className="lx-tile-title">{brief.title}</h3>
-        <p className="lx-tile-blurb">{brief.blurb}</p>
-      </div>
-      <div className="lx-tile-cols">
-        <div><span className="lx-label">Per creator</span><span className="lx-money lx-tile-price">{usd(brief.perCreator)}</span></div>
-        <div><span className="lx-label">Deliverables</span><ul className="lx-tile-list">{brief.deliverables.map((d) => <li key={d} className="lx-plat" style={platStyle(d)}>{d}</li>)}</ul></div>
-        <div><span className="lx-label">Deadline</span><span className="lx-money lx-tile-price">{brief.deadlineDays}<small> d</small></span></div>
-      </div>
-      <div className="lx-tile-foot"><span>Example brief</span><span className="lx-pill">Open to pitches</span></div>
-    </article>
+    <div className="lx-tile-band" style={{ background: band.bg, color: band.ink }}>
+      <span className="lx-tile-initial" aria-hidden="true">{brief.title[0]}</span>
+      <span className="lx-tile-brand">{brief.brand}</span>
+      <span className="lx-pill lx-pill-band">Example</span>
+      <span className="lx-tile-cat">{brief.category}</span>
+    </div>
   );
 }
 
-export function BriefBoard() {
+export function BriefBrowser() {
   const [cat, setCat] = useState<(typeof BRIEF_FILTERS)[number]>('All');
-  const shown = BRIEFS.filter((b) => cat === 'All' || b.category === cat).slice(0, 3);
+  const [picked, setPicked] = useState(BRIEFS[0]!.title);
+  // null: the visitor hasn't named a rate yet, so the pitch starts at the
+  // brief's own target rate.
+  const [rate, setRate] = useState<number | null>(null);
+  const shown = BRIEFS.filter((b) => cat === 'All' || b.category === cat).slice(0, 4);
+  const brief = shown.find((b) => b.title === picked) ?? shown[0]!;
+  const myRate = rate ?? brief.perCreator;
+  const detail = useRef<HTMLDivElement>(null);
+  const pick = (title: string) => { setPicked(title); setRate(null); revealPicked(detail.current); };
   return (
-    <div className="lx-board" aria-label="Example open briefs">
-      <div className="lx-board-head">
-        <h2 className="lx-board-title">Open briefs</h2>
-        <Chips label="Filter briefs by category" options={BRIEF_FILTERS} value={cat} onChange={setCat} />
-      </div>
-      <div className="lx-board-grid" aria-live="polite">
-        {shown.map((b) => <CampaignTile key={b.title} brief={b} />)}
-      </div>
-      <p className="lx-board-note">
-        Example briefs, drawn as the app shows them. In the app you search open briefs by brand, category or platform,
-        filter by budget, and save the ones you want.
-      </p>
-    </div>
-  );
-}
-
-// ── Brands' first screen: creator storefronts, as Discover shows them ───
-
-export function CreatorBoard() {
-  const [platform, setPlatform] = useState<(typeof CREATOR_FILTERS)[number]>('All');
-  const shown = CREATORS.filter((c) => platform === 'All' || c.channels.some((ch) => ch.platform === platform)).slice(0, 3);
-  return (
-    <div className="lx-board" aria-label="Example creator storefronts">
-      <div className="lx-board-head">
-        <h2 className="lx-board-title">Creators</h2>
-        <Chips label="Filter creators by platform" options={CREATOR_FILTERS} value={platform} onChange={setPlatform} />
-      </div>
-      <div className="lx-board-grid" aria-live="polite">
-        {shown.map((c) => (
-          <article key={c.niche} className="lx-card lx-ccard">
-            <div className="lx-ccard-cover"><PhotoImg photo={c.photo} width={400} ratio={400 / 96} sizes="(min-width: 1100px) 380px, (min-width: 760px) 50vw, 100vw" /></div>
-            <div className="lx-ccard-body">
-              <span className="lx-ccard-avatar" aria-hidden="true">{c.niche[0]}</span>
-              <h3 className="lx-ccard-name">{c.niche}</h3>
-              <div className="lx-ccard-channels">
-                {c.channels.map((ch) => <span key={ch.platform} className="lx-plat" style={platStyle(ch.platform)}>{ch.platform} <b>{ch.followers}</b></span>)}
-                <span className="lx-ccard-er">{c.engagement}% ER</span>
-              </div>
-              <span className="lx-pill">{c.category}</span>
-            </div>
-            <div className="lx-ccard-foot">
-              <span className="lx-note">Example storefront</span>
-              <span><span className="lx-label">From </span><span className="lx-money lx-ccard-from">{usd(c.from)}</span></span>
-            </div>
-          </article>
-        ))}
-      </div>
-      <p className="lx-board-note">
-        Example storefronts, drawn as the app shows them. In the app you filter creators by platform, category,
-        followers, city and price. Follower counts are what creators enter. <Credits photos={CREATORS.map((c) => c.photo)} />
-      </p>
-    </div>
-  );
-}
-
-// ── Creators: pitch a brief (BriefDetail's apply form) ──────────────────
-
-export function ApplyPreview() {
-  const brief = BRIEFS[0]!;
-  const [pitch, setPitch] = useState('Two Reels built around my morning routine, filmed at home in natural light.');
-  const [rate, setRate] = useState(1600);
-  const pitchId = useId();
-  return (
-    <div className="lx-pitch">
-      <article className="lx-card lx-pane" aria-label="Example brief">
-        <span className="lx-label">{brief.brand} · {brief.category}</span>
-        <h3 className="lx-pane-title">{brief.title}</h3>
-        <p className="lx-body">{brief.blurb}</p>
-        <div className="lx-kv">
-          <div><span>Deliverables</span><b>{brief.deliverables.join(', ')}</b></div>
-          <div><span>Target rate</span><b>{usd(brief.perCreator)} per creator</b></div>
-          <div><span>Deadline</span><b>{brief.deadlineDays} days</b></div>
+    <div className="lx-browse">
+      <div className="lx-browse-list">
+        <div className="lx-browse-head">
+          <h2 className="lx-board-title">Open briefs</h2>
+          <span className="lx-pill lx-pill-dark">Examples</span>
         </div>
-        <span className="lx-note">Example brief</span>
-      </article>
-      <form className="lx-card lx-pane" aria-label="Apply with a pitch" onSubmit={(e) => e.preventDefault()}>
-        <h3 className="lx-h3">Apply with a pitch</h3>
-        <label className="lx-field-label" htmlFor={pitchId}>
-          <span>Your pitch</span>
-          <textarea id={pitchId} className="lx-textarea" value={pitch} maxLength={400} onChange={(e) => setPitch(e.target.value)} />
-        </label>
-        <MoneyInput label="Your rate for the deal" value={rate} onChange={setRate} />
-        <p className="lx-note">
-          You keep <b className="tnum">{usd(creatorEstimate(rate, 1).net)}</b> after the {PLATFORM_FEE_LABEL} platform fee and {WHT_LABEL} withholding.
-        </p>
-        <span className="lx-preview-btn" aria-hidden="true">Send application</span>
-      </form>
+        <Chips label="Filter briefs by category" options={BRIEF_FILTERS} value={cat} onChange={(c) => { setCat(c); setRate(null); }} />
+        <ul className="lx-picks" aria-label="Example open briefs">
+          {shown.map((b) => (
+            <li key={b.title}>
+              <button type="button" className="lx-pick" aria-pressed={b === brief} onClick={() => pick(b.title)}>
+                <span className="lx-pick-mark" aria-hidden="true" style={{ background: brandAccent(b.brand).bg }}>{b.title[0]}</span>
+                <span className="lx-pick-text">
+                  <span className="lx-pick-title">{b.title}</span>
+                  <span className="lx-pick-sub">{b.deliverables.join(', ')}</span>
+                </span>
+                <span className="lx-money lx-pick-price">{usd(b.perCreator)}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="lx-browse-detail" aria-live="polite" ref={detail}>
+        <article key={brief.title} className="lx-card lx-tile lx-swap" aria-label={`Example brief: ${brief.title}`}>
+          <Letterhead brief={brief} />
+          <div className="lx-tile-body">
+            <h3 className="lx-tile-title">{brief.title}</h3>
+            <p className="lx-tile-blurb">{brief.blurb}</p>
+          </div>
+          <div className="lx-tile-cols">
+            <div><span className="lx-label">Per creator</span><span className="lx-money lx-tile-price">{usd(brief.perCreator)}</span></div>
+            <div><span className="lx-label">Deliverables</span><ul className="lx-tile-list">{brief.deliverables.map((d) => <li key={d} className="lx-plat" style={platStyle(d)}>{d}</li>)}</ul></div>
+            <div><span className="lx-label">Deadline</span><span className="lx-money lx-tile-price">{brief.deadlineDays}<small> d</small></span></div>
+          </div>
+          <div className="lx-act">
+            <MoneyInput label="Your rate for the deal" value={myRate} onChange={setRate} />
+            <p className="lx-act-keep">
+              You keep <b className="tnum">{usd(creatorEstimate(myRate, 1).net)}</b> after the {PLATFORM_FEE_LABEL} platform fee
+              and {WHT_LABEL} withholding.
+            </p>
+            <a className="lx-btn accent" href={SIGNUP_HREF.creator} data-cta="hero-pitch">Join free to pitch</a>
+          </div>
+        </article>
+      </div>
+      <p className="lx-board-note">
+        Example briefs, drawn as Browse campaigns shows them. In the app you search open briefs by brand, category or
+        platform, filter by budget, and save the ones you want.
+      </p>
+    </div>
+  );
+}
+
+// ── Brands' first screen: Discover, working ─────────────────────────────
+// The list is Discover's; the card is the storefront a brand opens, with
+// its packages, priced, and what booking one costs the brand.
+
+function Channels({ c }: { c: CreatorListing }) {
+  return (
+    <div className="lx-ccard-channels">
+      {c.channels.map((ch) => <span key={ch.platform} className="lx-plat" style={platStyle(ch.platform)}>{ch.platform} <b>{ch.followers}</b></span>)}
+      <span className="lx-ccard-er">{c.engagement}% ER</span>
+    </div>
+  );
+}
+
+export function CreatorBrowser() {
+  const [platform, setPlatform] = useState<(typeof CREATOR_FILTERS)[number]>('All');
+  const [picked, setPicked] = useState(CREATORS[0]!.niche);
+  const [pkg, setPkg] = useState<string | null>(null);
+  const groupName = useId();
+  const shown = CREATORS.filter((c) => platform === 'All' || c.channels.some((ch) => ch.platform === platform)).slice(0, 4);
+  const c = shown.find((x) => x.niche === picked) ?? shown[0]!;
+  const chosen = c.packages.find((p) => p.key === pkg) ?? c.packages[0]!;
+  const e = brandEstimate(chosen.rate, 1, 1);
+  const detail = useRef<HTMLDivElement>(null);
+  const pick = (niche: string) => { setPicked(niche); setPkg(null); revealPicked(detail.current); };
+  return (
+    <div className="lx-browse">
+      <div className="lx-browse-list">
+        <div className="lx-browse-head">
+          <h2 className="lx-board-title">Creators</h2>
+          <span className="lx-pill lx-pill-dark">Examples</span>
+        </div>
+        <Chips label="Filter creators by platform" options={CREATOR_FILTERS} value={platform} onChange={(p) => { setPlatform(p); setPkg(null); }} />
+        <ul className="lx-picks" aria-label="Example creator storefronts">
+          {shown.map((x) => (
+            <li key={x.niche}>
+              <button type="button" className="lx-pick" aria-pressed={x === c} onClick={() => pick(x.niche)}>
+                <span className="lx-pick-photo" aria-hidden="true"><PhotoImg photo={x.photo} width={88} ratio={1} sizes="44px" eager /></span>
+                <span className="lx-pick-text">
+                  <span className="lx-pick-title">{x.niche}</span>
+                  <span className="lx-pick-sub">{x.channels.map((ch) => `${ch.platform} ${ch.followers}`).join(', ')}</span>
+                </span>
+                <span className="lx-pick-price"><span className="lx-pick-from">from</span> <span className="lx-money">{usd(fromRate(x))}</span></span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="lx-browse-detail" aria-live="polite" ref={detail}>
+        <article key={c.niche} className="lx-card lx-ccard lx-swap" aria-label={`Example storefront: ${c.niche}`}>
+          <div className="lx-ccard-cover"><PhotoImg photo={c.photo} width={560} ratio={560 / 120} sizes="(min-width: 1000px) 560px, 100vw" eager /></div>
+          <div className="lx-ccard-body">
+            <span className="lx-ccard-avatar" aria-hidden="true">{c.niche[0]}</span>
+            <div className="lx-ccard-id">
+              <h3 className="lx-ccard-name">{c.niche}</h3>
+              <span className="lx-pill">{c.category}</span>
+              <span className="lx-pill accent">Example</span>
+            </div>
+            <Channels c={c} />
+          </div>
+          <fieldset className="lx-pkgs">
+            <legend className="lx-label">Packages</legend>
+            {c.packages.map((p) => (
+              <label key={p.key} className="lx-pkg">
+                <input type="radio" name={groupName} checked={p === chosen} onChange={() => setPkg(p.key)} />
+                <span>{PACKAGE_LABEL[p.key]}</span>
+                <b className="lx-money">{usd(p.rate)}</b>
+              </label>
+            ))}
+          </fieldset>
+          <div className="lx-act">
+            <p className="lx-act-keep">
+              You pay <b className="tnum">{usd(e.held)}</b>
+              {e.brandFee === 0
+                ? <>, with no fee on top. The {PLATFORM_FEE_LABEL} platform fee comes out of the creator’s payout.</>
+                : <>, including a {usd(e.brandFee)} platform fee.</>}
+            </p>
+            <a className="lx-btn accent" href={SIGNUP_HREF.brand} data-cta="hero-brief">Join free to brief</a>
+          </div>
+        </article>
+      </div>
+      <p className="lx-board-note">
+        Example storefronts, drawn as Discover shows them. In the app you filter creators by platform, category,
+        followers, city and price. Follower counts are what creators enter. <Credits photos={CREATORS.map((x) => x.photo)} />
+      </p>
     </div>
   );
 }
@@ -201,38 +273,54 @@ function initials(name: string): string {
   return name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('');
 }
 
-const PACKAGES = [
-  { key: 'reel', label: 'Instagram Reel' },
-  { key: 'post', label: 'Feed post' },
-  { key: 'story', label: 'Story' },
-] as const;
-type PackageKey = (typeof PACKAGES)[number]['key'];
+// The storefront's own three packages, the ones onboarding asks a price for.
+const SF_PACKAGES = (['reel', 'story', 'combo'] as const).map((key) => ({ key, label: PACKAGE_LABEL[key] }));
+type SfKey = (typeof SF_PACKAGES)[number]['key'];
 const WORK = [PHOTOS.makeupTable, PHOTOS.kitchenShoot, PHOTOS.phoneOnTripod];
 
-export function StorefrontBuilder() {
+/** The storefront builder's state, shared with the button that keeps it. */
+export function useStorefront() {
   const [name, setName] = useState('');
   const [handle, setHandle] = useState<string | null>(null);
   const [niche, setNiche] = useState('Beauty');
-  const [rates, setRates] = useState<Record<PackageKey, number>>({ reel: 900, post: 600, story: 250 });
+  const [rates, setRates] = useState<Record<SfKey, number>>({ reel: 900, story: 450, combo: 1250 });
   // Until the visitor types a handle, it follows the name, as sign-up does.
   const shownHandle = handle ?? toHandle(name);
-  const first = name.trim().split(/\s+/)[0];
+  const keepDraft = () => {
+    const store = browserStore();
+    if (store) saveDraft(store, STOREFRONT_DRAFT_KEY, { name: name.trim(), handle: shownHandle, niche, rates, savedAt: Date.now() });
+  };
+  return { name, setName, handle: shownHandle, setHandle, niche, setNiche, rates, setRates, keepDraft };
+}
+export type Storefront = ReturnType<typeof useStorefront>;
+
+export function StorefrontJoin({ sf }: { sf: Storefront }) {
+  return (
+    <div className="lx-sf-join">
+      <a className="lx-btn" href={SIGNUP_HREF.creator} data-cta="sf-join" onClick={sf.keepDraft}>Join free</a>
+      <p className="lx-note">Your name, handle, niche and rates carry into setup.</p>
+    </div>
+  );
+}
+
+export function StorefrontBuilder({ sf }: { sf: Storefront }) {
+  const first = sf.name.trim().split(/\s+/)[0];
   return (
     <div className="lx-card" aria-label="Your storefront, as a brand sees it">
       <div className="lx-sf-cover"><PhotoImg photo={PHOTOS.ringLight} width={720} ratio={720 / 132} sizes="(min-width: 1000px) 700px, 100vw" /></div>
       <div className="lx-sf-head">
-        <span className="lx-sf-portrait" aria-hidden="true">{initials(name) || '+'}</span>
-        <input className="lx-sf-name" aria-label="Your name" placeholder="Your name" value={name} maxLength={40}
-          autoComplete="off" spellCheck={false} onChange={(e) => setName(e.target.value)} />
+        <span className="lx-sf-portrait" aria-hidden="true">{initials(sf.name) || '+'}</span>
+        <input className="lx-sf-name" aria-label="Your name" placeholder="Your name" value={sf.name} maxLength={40}
+          autoComplete="off" spellCheck={false} onChange={(e) => sf.setName(e.target.value)} />
         <div className="lx-sf-meta">
-          <span>@<input aria-label="Your handle" placeholder="yourhandle" value={shownHandle} maxLength={24}
-            autoComplete="off" spellCheck={false} onChange={(e) => setHandle(toHandle(e.target.value))} /></span>
-          <select aria-label="Your niche" value={niche} onChange={(e) => setNiche(e.target.value)}>
+          <span>@<input aria-label="Your handle" placeholder="yourhandle" value={sf.handle} maxLength={24}
+            autoComplete="off" spellCheck={false} onChange={(e) => sf.setHandle(toHandle(e.target.value))} /></span>
+          <select aria-label="Your niche" value={sf.niche} onChange={(e) => sf.setNiche(e.target.value)}>
             {CREATOR_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
-          <span className="lx-pill accent">{niche}</span>
+          <span className="lx-pill accent">{sf.niche}</span>
         </div>
-        <span className="lx-preview-btn" aria-hidden="true">{first ? `Brief ${first} on Alamut` : 'Send a brief'} →</span>
+        <span className="lx-preview-btn" aria-hidden="true">{first ? `Brief ${first} on Alamut` : 'Send a brief'}</span>
       </div>
       <div className="lx-sf-section">
         <span className="lx-label">Recent work</span>
@@ -241,25 +329,25 @@ export function StorefrontBuilder() {
         </div>
       </div>
       <div className="lx-sf-section">
-        <span className="lx-label">Packages and rates</span>
+        <span className="lx-label">Packages</span>
         <div className="lx-rates">
-          {PACKAGES.map((p) => (
+          {SF_PACKAGES.map((p) => (
             <label key={p.key} className="lx-rate">
               <span className="lx-rate-name">{p.label}</span>
               <span className="lx-rate-price">
                 <b aria-hidden="true">$</b>
                 <input type="text" inputMode="numeric" autoComplete="off" placeholder="0" aria-label={`${p.label} rate, US dollars`}
-                  value={moneyText(rates[p.key])} onChange={(e) => setRates((r) => ({ ...r, [p.key]: toMoney(e.target.value) }))} />
+                  value={moneyText(sf.rates[p.key])} onChange={(e) => sf.setRates((r) => ({ ...r, [p.key]: toMoney(e.target.value) }))} />
               </span>
-              <span className="lx-rate-keep">you keep <b>{keep(rates[p.key])}</b></span>
+              <span className="lx-rate-keep">you keep <b>{keep(sf.rates[p.key])}</b></span>
             </label>
           ))}
         </div>
       </div>
       <div className="lx-sf-section">
         <p className="lx-note">
-          <span className="tnum">/c/{shownHandle || 'yourhandle'}</span> · “You keep” is after the {PLATFORM_FEE_LABEL} platform
-          fee and {WHT_LABEL} withholding. <Credits photos={[PHOTOS.ringLight, ...WORK]} />
+          Your page’s address: <span className="tnum">/c/{sf.handle || 'yourhandle'}</span>. “You keep” is after
+          the {PLATFORM_FEE_LABEL} platform fee and {WHT_LABEL} withholding. <Credits photos={[PHOTOS.ringLight, ...WORK]} />
         </p>
       </div>
     </div>
@@ -276,6 +364,10 @@ export function BriefBuilder() {
   const [rate, setRate] = useState(1500);
   const p = PLATFORM_FORMATS.find((x) => x.value === platform) ?? PLATFORM_FORMATS[0]!;
   const f = p.formats.find((x) => x.value === format) ?? p.formats[0]!;
+  const keepDraft = () => {
+    const store = browserStore();
+    if (store) saveDraft(store, BRIEF_DRAFT_KEY, { title: title.trim(), platform: p.value, format: f.value, count, perCreator: rate, savedAt: Date.now() });
+  };
   return (
     <div className="lx-card lx-brief" aria-label="Your brief, as a creator sees it">
       <span className="lx-label">New brief</span>
@@ -302,12 +394,15 @@ export function BriefBuilder() {
       <div className="lx-kv">
         <div><span>Creators will see</span><b>{count} × {p.label} {f.label}</b></div>
       </div>
-      <span className="lx-preview-btn" aria-hidden="true">Publish brief</span>
+      <div className="lx-act lx-act-flat">
+        <a className="lx-btn accent" href={SIGNUP_HREF.brand} data-cta="brief-post" onClick={keepDraft}>Post this brief</a>
+        <p className="lx-note">Free to post. Sign up and it’s waiting in New campaign, filled in.</p>
+      </div>
     </div>
   );
 }
 
-// ── Payment: the portal's moss wallet card, as a calculator ─────────────
+// ── Payment: the portal's wallet cards, as calculators ──────────────────
 
 function WalletLine({ label, value }: { label: string; value: string }) {
   return (

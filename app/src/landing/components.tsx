@@ -41,18 +41,16 @@ function useSignedIn(): boolean {
 
 export function Nav({ audience }: { audience: Audience }) {
   const signedIn = useSignedIn();
-  const other = audience === 'creators'
-    ? { href: '/for-brands', label: 'For brands' }
-    : { href: '/', label: 'For creators' };
   const cta = audience === 'creators'
     ? { href: SIGNUP_HREF.creator, label: 'Join free', id: 'nav-join' }
     : { href: SIGNUP_HREF.brand, label: 'Post a brief', id: 'nav-post' };
+  // The audience switch lives at the top of the hero, where a visitor on
+  // the wrong page looks first, on every screen size.
   return (
     <header className="lx-nav">
       <div className="lx-wrap lx-nav-inner">
         <a href="/" aria-label="Alamut home"><Brand /></a>
         <nav className="lx-nav-links" aria-label="Main">
-          <a className="lx-nav-link lx-nav-aud" href={other.href} data-cta="nav-audience">{other.label}</a>
           {signedIn ? (
             <a className="lx-btn lx-btn-sm" href="/v2" data-cta="nav-workspace">Open workspace</a>
           ) : (
@@ -69,13 +67,58 @@ export function Nav({ audience }: { audience: Audience }) {
 
 export interface Cta { href: string; label: string; id: string }
 
-/** `accent` gives the primary the terracotta of the Spark card's Send button,
- *  for the dark cards that button sits on. */
-export function CtaRow({ primary, secondary, accent }: { primary: Cta; secondary?: Cta; accent?: boolean }) {
+/** One button per screen; the second way in (the demo) is a plain link. */
+export function CtaRow({ primary, secondary }: { primary: Cta; secondary?: Cta }) {
   return (
     <div className="lx-cta-row">
-      <a className={accent ? 'lx-btn accent' : 'lx-btn'} href={primary.href} data-cta={primary.id}>{primary.label}</a>
-      {secondary && <a className="lx-btn lx-btn-line" href={secondary.href} data-cta={secondary.id}>{secondary.label}</a>}
+      <a className="lx-btn" href={primary.href} data-cta={primary.id}>{primary.label}</a>
+      {secondary && <a className="lx-link lx-cta-link" href={secondary.href} data-cta={secondary.id}>{secondary.label}</a>}
+    </div>
+  );
+}
+
+/** "For creators | For brands", as the portal's segmented tabs. */
+export function AudienceSwitch({ audience }: { audience: Audience }) {
+  const tabs = [
+    { aud: 'creators' as const, href: '/', label: 'For creators' },
+    { aud: 'brands' as const, href: '/for-brands', label: 'For brands' },
+  ];
+  return (
+    <nav className="lx-aud" aria-label="Who this page is for">
+      {tabs.map((t) => t.aud === audience
+        ? <a key={t.aud} href={t.href} aria-current="page">{t.label}</a>
+        : <a key={t.aud} href={t.href} data-cta="hero-audience">{t.label}</a>)}
+    </nav>
+  );
+}
+
+/** On a phone, the page's one action stays in reach once the hero's own
+ *  button has scrolled away. It steps aside wherever the page already shows
+ *  an action (an open card, the storefront's Join, the brief's Post, the
+ *  closing call), so a screen never carries two.
+ *  Rendered only after hydration, so a page without JavaScript is unchanged. */
+const OWN_ACTIONS = '.lx-hero .lx-cta-row, .lx-browse-detail, .lx-sf-join, .lx-brief .lx-act, .lx-final';
+export function StickyCta({ cta }: { cta: Cta }) {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    const first = document.querySelector('.lx-hero .lx-cta-row');
+    if (!first || typeof IntersectionObserver === 'undefined') return;
+    const inView = new Set<Element>();
+    let past = false;
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (e.isIntersecting) inView.add(e.target); else inView.delete(e.target);
+        if (e.target === first) past = !e.isIntersecting && e.boundingClientRect.top < 0;
+      }
+      setShow(past && inView.size === 0);
+    });
+    document.querySelectorAll(OWN_ACTIONS).forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, []);
+  if (!show) return null;
+  return (
+    <div className="lx-sticky">
+      <a className="lx-btn" href={cta.href} data-cta={cta.id}>{cta.label}</a>
     </div>
   );
 }
@@ -86,8 +129,8 @@ export function BetaLine({ prefix }: { prefix?: string }) {
 
 /** A credited photograph as an <img>, cropped to `ratio`. The credit sits in
  *  the nearest caption or note; this only draws the picture. */
-export function PhotoImg({ photo, width, ratio, sizes, priority }: {
-  photo: PhotoData; width: number; ratio: number; sizes: string; priority?: boolean;
+export function PhotoImg({ photo, width, ratio, sizes, priority, eager }: {
+  photo: PhotoData; width: number; ratio: number; sizes: string; priority?: boolean; eager?: boolean;
 }) {
   // React 18 passes a lowercase attribute through but has no typed prop for it.
   const fetchPriority = priority ? ({ fetchpriority: 'high' } as Record<string, string>) : {};
@@ -100,7 +143,7 @@ export function PhotoImg({ photo, width, ratio, sizes, priority }: {
       width={width}
       height={Math.round(width / ratio)}
       alt={photo.alt}
-      loading={priority ? 'eager' : 'lazy'}
+      loading={priority || eager ? 'eager' : 'lazy'}
       decoding="async"
       {...fetchPriority}
     />

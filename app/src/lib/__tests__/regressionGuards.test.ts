@@ -691,6 +691,23 @@ describe('marketing copy does not outrun the product', () => {
     );
   });
 
+  it('what the landing says carries into the app, does', () => {
+    // The storefront builder and the brief builder say their contents carry
+    // into setup. That is only true while sign-up, onboarding and the
+    // campaign wizard read the draft (landingDraft.ts) and clear it once used.
+    if (/carry into setup/.test(claims())) {
+      expect(code('screens/auth/SignUp.tsx'), 'sign-up ignores the storefront draft').toMatch(/readStorefrontDraft\(/);
+      const onb = code('screens/workspace-v2/screens/CreatorOnboardingV2.tsx');
+      expect(onb, 'onboarding ignores the storefront draft').toMatch(/onboardingFromDraft\(\{[\s\S]*readStorefrontDraft\(/);
+      expect(onb, 'onboarding never spends the draft').toMatch(/clearDraft\([^)]*STOREFRONT_DRAFT_KEY\)/);
+    }
+    if (/waiting in New campaign/.test(claims())) {
+      const wiz = code('screens/workspace-v2/screens/NewCampaignWizard.tsx');
+      expect(wiz, 'the wizard ignores the brief draft').toMatch(/wizardFromDraft\(readBriefDraft\(/);
+      expect((wiz.match(/clearDraft\([^)]*BRIEF_DRAFT_KEY\)/g) ?? []).length, 'save and launch must both spend the draft').toBe(2);
+    }
+  });
+
   it('the landing bundle reaches nothing stateful', () => {
     // Fast by construction, and honest by construction: the store and seed
     // are where invented numbers live. Anything the landing imports from
