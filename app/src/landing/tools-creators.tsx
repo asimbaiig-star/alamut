@@ -104,14 +104,19 @@ export function BriefBrowser() {
 }
 
 // ── Creators: what to charge (the public rate calculator's maths) ──────
+
+/** Where the helper starts, and so where the storefront's prices start: the
+ *  two agree when the page loads instead of contradicting each other. */
+const HELPER_START = { followers: 50_000, engagement: 4 };
+export const STOREFRONT_START = startingRates(suggestRateBand('instagram', HELPER_START.followers, HELPER_START.engagement)!);
 // The same band onboarding shows on its rates step, from rateGuidance.ts:
 // a benchmark from followers and engagement, labelled as one, and the same
 // "starting point" prices onboarding would set.
 
 export function RateHelper({ sf }: { sf: Storefront }) {
-  const [followers, setFollowers] = useState(25_000);
+  const [followers, setFollowers] = useState(HELPER_START.followers);
   // Kept as typed, so "3." on the way to "3.5" survives the next render.
-  const [engagement, setEngagement] = useState('3');
+  const [engagement, setEngagement] = useState(String(HELPER_START.engagement));
   const fId = useId();
   const eId = useId();
   const band = suggestRateBand('instagram', followers, Math.min(100, Number(engagement) || 0));
@@ -193,7 +198,7 @@ export function useStorefront() {
   const [name, setName] = useState('');
   const [handle, setHandle] = useState<string | null>(null);
   const [niche, setNiche] = useState('Beauty');
-  const [rates, setRates] = useState<Record<SfKey, number>>({ reel: 900, story: 450, combo: 1250 });
+  const [rates, setRates] = useState<Record<SfKey, number>>(STOREFRONT_START);
   // Until the visitor types a handle, it follows the name, as sign-up does.
   const shownHandle = handle ?? toHandle(name);
   const keepDraft = () => {

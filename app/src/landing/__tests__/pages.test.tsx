@@ -8,7 +8,7 @@ import { renderToString } from 'react-dom/server';
 import { cleanup, render, screen, fireEvent, within } from '@testing-library/react';
 import { CreatorsPage } from '../CreatorsPage';
 import { BrandsPage } from '../BrandsPage';
-import { BriefBrowser, CreatorReceipt, RateHelper, StorefrontBuilder, StorefrontJoin, useStorefront } from '../tools-creators';
+import { BriefBrowser, CreatorReceipt, RateHelper, STOREFRONT_START, StorefrontBuilder, StorefrontJoin, useStorefront } from '../tools-creators';
 import { BrandReceipt, BriefBuilder, CreatorBrowser } from '../tools-brands';
 import { brandEstimate, creatorEstimate, usd } from '../estimate';
 import { startingRates, suggestRateBand } from '@/screens/tools/rateGuidance';
@@ -202,7 +202,7 @@ describe('what to charge', () => {
     const start = startingRates(band);
     expect(screen.getByText(`${usd(band.low)}–${usd(band.high)}`)).toBeTruthy();
     // Nothing changes until the visitor takes the suggestion.
-    expect((screen.getByLabelText('Instagram Reel rate, US dollars') as HTMLInputElement).value).toBe('900');
+    expect((screen.getByLabelText('Instagram Reel rate, US dollars') as HTMLInputElement).value).toBe(STOREFRONT_START.reel.toLocaleString('en-US'));
     expect(screen.getByText(new RegExp(`Reel ${usd(start.reel).replace('$', '\\$')}, Story bundle`))).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Use these prices' }));
     expect((screen.getByLabelText('Instagram Reel rate, US dollars') as HTMLInputElement).value).toBe(start.reel.toLocaleString('en-US'));
@@ -230,7 +230,8 @@ describe('the worked receipts', () => {
     const { container } = render(<BrandReceipt rate={1500} />);
     const e = brandEstimate(1500, 1, 1);
     const values = [...container.querySelectorAll('.lx-wallet-line b')].map((b) => b.textContent);
-    expect(values).toEqual([usd(e.held), usd(e.brandFee), usd(e.perCreatorNet)]);
+    expect(values).toEqual([usd(1500), usd(e.brandFee), usd(e.held)]);
+    expect(container.querySelector('.lx-receipt-note')!.textContent).toContain(usd(e.perCreatorNet));
   });
 });
 
@@ -255,6 +256,17 @@ describe.each([
     expect(strip.classList.contains('lx-market')).toBe(true);
     expect(within(strip as HTMLElement).getByText(MARKET_SOURCE_LINE)).toBeTruthy();
     expect([...strip.querySelectorAll('.lx-market-figure')].map((n) => n.textContent)).toEqual(figures.map((f) => f.figure));
+  });
+});
+
+describe('the storefront and the rate helper', () => {
+  it('agree when the page loads', () => {
+    render(<Storefront />);
+    const band = screen.getByText(/^\$[\d,]+–\$[\d,]+$/).textContent!;
+    const [low, high] = band.split('–').map((x) => Number(x.replace(/[^\d]/g, '')));
+    const reel = Number((screen.getByLabelText('Instagram Reel rate, US dollars') as HTMLInputElement).value.replace(/[^\d]/g, ''));
+    expect(reel).toBeGreaterThanOrEqual(low!);
+    expect(reel).toBeLessThanOrEqual(high!);
   });
 });
 

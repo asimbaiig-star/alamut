@@ -37,6 +37,8 @@
 :where(.lx) :where(a) { color: inherit; text-decoration: none; }
 .lx img { display: block; max-width: 100%; height: auto; }
 .lx :focus-visible { outline: 2px solid var(--v2-accent); outline-offset: 3px; border-radius: 6px; }
+/* Terracotta is under 3:1 on moss, navy and brick: paper there instead. */
+.lx-dark :focus-visible:not(.lx-card *, .lx-window *) { outline-color: var(--v2-paper); }
 .lx ::selection { background: var(--v2-accent-soft); color: var(--v2-ink); }
 .lx .tnum { font-variant-numeric: tabular-nums; }
 .lx-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
@@ -68,6 +70,19 @@
 
 /* ── The mark and nav, as in the portal's sidebar ────────────────────── */
 .lx-nav-inner { display: flex; align-items: center; gap: 24px; height: 76px; }
+/* Desktop keeps the nav, and its one button, in reach (phones have the
+ * bottom bar instead). It gains a hairline once the page has scrolled. */
+@media (min-width: 761px) {
+  .lx-nav {
+    position: sticky; top: 0; z-index: 30;
+    background: color-mix(in srgb, var(--v2-bg) 90%, transparent);
+    -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  }
+  @supports (animation-timeline: scroll()) {
+    .lx-nav { animation: lx-nav-stuck linear both; animation-timeline: scroll(); animation-range: 0 96px; }
+  }
+}
+@keyframes lx-nav-stuck { to { box-shadow: 0 1px 0 var(--v2-line); } }
 .lx-brand { display: inline-flex; align-items: center; gap: 10px; }
 .lx-brand-mark { width: 32px; height: 32px; border-radius: var(--v2-r-sm); display: grid; place-items: center; background: var(--v2-ink); color: var(--v2-paper); flex: none; }
 .lx-brand-name { font-family: var(--v2-font-display); font-size: 24px; font-weight: 500; letter-spacing: -0.02em; }
@@ -425,13 +440,14 @@
 .lx-rh-sets { font-size: 0.9375rem; color: var(--v2-ink-2); text-wrap: pretty; }
 
 /* A worked payment, as the wallet would itemise it. */
+.lx-receipt-note { margin-top: 10px; font-size: 0.875rem; color: var(--v2-ink-3); text-wrap: pretty; }
 .lx-receipt { display: grid; gap: 2px; padding: 20px 24px; border-radius: var(--v2-r-lg); background: var(--v2-paper); border: 1px solid var(--v2-line); max-width: 32rem; }
 .lx-receipt .lx-label { margin-bottom: 6px; }
 .lx-receipt .lx-wallet-line { color: var(--v2-ink-2); }
 .lx-receipt .lx-wallet-line b { color: var(--v2-ink); }
 .lx-receipt .lx-leader { border-bottom-color: var(--v2-line-2); }
-.lx-receipt .lx-wallet-line:last-child { margin-top: 8px; padding-top: 14px; border-top: 1px solid var(--v2-line); color: var(--v2-ink); font-weight: 600; }
-.lx-receipt .lx-wallet-line:last-child b { font-family: var(--v2-font-display); font-weight: 500; font-size: 1.75rem; line-height: 1; color: var(--v2-moss); }
+.lx-receipt .lx-wallet-line:last-of-type { margin-top: 8px; padding-top: 14px; border-top: 1px solid var(--v2-line); color: var(--v2-ink); font-weight: 600; }
+.lx-receipt .lx-wallet-line:last-of-type b { font-family: var(--v2-font-display); font-weight: 500; font-size: 1.75rem; line-height: 1; color: var(--v2-moss); }
 
 /* The status quo beside the workspace: a real table, read row by row. */
 .lx-compare-wrap { margin-top: clamp(48px, 6vw, 72px); }
@@ -488,7 +504,7 @@
   content: ""; position: absolute; z-index: -1; top: -200px; right: -120px; width: 560px; height: 560px; border-radius: 50%;
   background: radial-gradient(circle, var(--v2-accent-2) 0%, transparent 70%); opacity: .35; filter: blur(30px); pointer-events: none;
 }
-.lx-final-grid { display: grid; gap: 28px; align-items: end; }
+.lx-final-grid { display: grid; gap: 28px; align-items: center; }
 @media (min-width: 960px) { .lx-final-grid { grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: 64px; } }
 .lx-foot { padding-block: 40px calc(32px + env(safe-area-inset-bottom, 0px)); }
 .lx-foot-inner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 18px 28px; }
@@ -506,6 +522,17 @@
 }
 @media (min-width: 761px) { .lx-sticky { display: none; } }
 
+/* ── Motion: the deal thread and the ledger arrive as they scroll in ──
+ * Scroll-driven, CSS only: a browser without it shows everything at rest,
+ * and reduced motion turns it off (below). Each piece is fully shown well
+ * before it's fully on screen. */
+@keyframes lx-arrive { from { opacity: 0; transform: translateY(18px); } }
+@supports (animation-timeline: view()) {
+  .lx-window-main > .lx-card, .lx-wallet-side .lx-wallet-line {
+    animation: lx-arrive linear both; animation-timeline: view(); animation-range: entry 5% entry 80%;
+  }
+}
+
 /* ── Motion: the hero's listings settle in, as the portal's lists do ─── */
 @keyframes lx-settle-in { from { opacity: 0; transform: translateY(14px); } }
 .lx-anim .lx-picks > li { animation: lx-settle-in .6s cubic-bezier(.16, 1, .3, 1) both; }
@@ -518,6 +545,7 @@
   .lx-hero { --panel-pad: 22px; }
   .lx-hero > .lx-wrap { padding-left: max(12px, env(safe-area-inset-left, 0px)); padding-right: max(12px, env(safe-area-inset-right, 0px)); }
   .lx-nav-links { gap: 14px; }
+  .lx-nav-aud { display: none; }
   .lx-cta-row .lx-btn { flex: 1 1 100%; }
   .lx-cta-row { justify-content: center; }
   .lx-aud { display: flex; }

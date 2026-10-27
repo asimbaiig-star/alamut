@@ -108,9 +108,10 @@ export function BrandReceipt({ rate }: { rate: number }) {
   return (
     <div className="lx-receipt" aria-label={`What a ${usd(rate)} booking costs you`}>
       <span className="lx-label">Booking a {usd(rate)} package</span>
-      <WalletLine label="You pay" value={usd(e.held)} />
+      <WalletLine label="The creator’s rate" value={usd(rate)} />
       <WalletLine label="Platform fee charged to you" value={usd(e.brandFee)} />
-      <WalletLine label="The creator receives, after fees" value={usd(e.perCreatorNet)} />
+      <WalletLine label="You pay" value={usd(e.held)} />
+      <p className="lx-receipt-note">The creator receives {usd(e.perCreatorNet)} after the {PLATFORM_FEE_LABEL} platform fee and withholding.</p>
     </div>
   );
 }
@@ -157,7 +158,7 @@ export function BriefBuilder() {
       </div>
       <div className="lx-act lx-act-flat">
         <a className="lx-btn accent" href={SIGNUP_HREF.brand} data-cta="brief-post" onClick={keepDraft}>Post this brief</a>
-        <p className="lx-note">Free to post. Sign up and it’s waiting in New campaign, filled in.</p>
+        <p className="lx-note">Free to post. You’ll sign up first, then it opens in New campaign, filled in.</p>
       </div>
     </div>
   );

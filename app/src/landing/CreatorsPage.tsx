@@ -18,7 +18,7 @@ import { BriefBrowser, CreatorReceipt, PayoutTool, RateHelper, StorefrontBuilder
 import { CREATOR_SETUP } from './facts';
 
 const JOIN = { href: SIGNUP_HREF.creator, label: 'Join free' };
-const DEMO = { href: DEMO_HREF.creator, label: 'or try the live demo' };
+const DEMO = { href: DEMO_HREF.creator, label: 'or try the live demo, no sign-up' };
 
 export function CreatorsPage() {
   const sf = useStorefront();
@@ -130,7 +130,7 @@ export function CreatorsPage() {
               { q: 'When do I get paid?', a: 'Post by post. The full amount is held in escrow when the brand accepts, and each post’s share is released when it’s live and the brand confirms it.' },
               { q: 'What happens to the storefront I made on this page?', a: 'If you join from it, your name, handle, niche and rates fill in your setup. Until then they stay in this browser and are sent nowhere.' },
               { q: 'Do I have to take every deal through Alamut?', a: 'No. There’s no lock-in and no exclusivity. Take deals anywhere else too.' },
-              { q: 'Can I try it first?', a: <>Yes. The <a className="lx-link" href={DEMO_HREF.creator} data-cta="faq-demo">demo account</a> is a full creator workspace with open briefs and sample deals.</> },
+              { q: 'Can I try it first?', a: <>Yes. The <a className="lx-link" href={DEMO_HREF.creator} data-cta="faq-demo">demo account</a> is a full creator workspace with open briefs and sample deals, and needs no sign-up.</> },
             ]} />
           </div>
         </section>

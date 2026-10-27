@@ -15,7 +15,7 @@ import { BrandReceipt, BriefBuilder, CreatorBrowser, HoldTool } from './tools-br
 import { BRAND_SETUP } from './facts';
 
 const POST = { href: SIGNUP_HREF.brand, label: 'Post a brief' };
-const DEMO = { href: DEMO_HREF.brand, label: 'or try the live demo' };
+const DEMO = { href: DEMO_HREF.brand, label: 'or try the live demo, no sign-up' };
 
 export function BrandsPage() {
   return (
@@ -131,7 +131,7 @@ export function BrandsPage() {
               { q: 'What if a post is off-brief or never goes live?', a: 'Ask for revisions, or open a dispute. The escrow freezes and either side can propose a split. Nothing releases without your confirmation or a settlement you agree to.' },
               { q: 'What happens to the brief I write on this page?', a: 'If you post it from here, it’s waiting in New campaign when you sign up, filled in. Until then it stays in this browser and is sent nowhere.' },
               { q: 'Can my team work on the same deals?', a: 'Yes. Every deal has an owner, so it’s clear who answers the creator, and only admin and finance roles can top up the wallet.' },
-              { q: 'Can I try it first?', a: <>Yes. The <a className="lx-link" href={DEMO_HREF.brand} data-cta="faq-demo">demo account</a> is a full brand workspace with creators to browse and sample campaigns.</> },
+              { q: 'Can I try it first?', a: <>Yes. The <a className="lx-link" href={DEMO_HREF.brand} data-cta="faq-demo">demo account</a> is a full brand workspace with creators to browse and sample campaigns, and needs no sign-up.</> },
             ]} />
           </div>
         </section>

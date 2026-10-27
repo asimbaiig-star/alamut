@@ -42,16 +42,21 @@ function useSignedIn(): boolean {
 
 export function Nav({ audience }: { audience: Audience }) {
   const signedIn = useSignedIn();
+  const other = audience === 'creators'
+    ? { href: '/for-brands', label: 'For brands' }
+    : { href: '/', label: 'For creators' };
   const cta = audience === 'creators'
     ? { href: SIGNUP_HREF.creator, label: 'Join free', id: 'nav-join' }
     : { href: SIGNUP_HREF.brand, label: 'Post a brief', id: 'nav-post' };
-  // The audience switch lives at the top of the hero, where a visitor on
-  // the wrong page looks first, on every screen size.
+  // The audience switch sits at the top of the hero, where a visitor on the
+  // wrong page looks first. The nav repeats it on desktop, where the nav
+  // stays on screen as you scroll.
   return (
     <header className="lx-nav">
       <div className="lx-wrap lx-nav-inner">
         <a href="/" aria-label="Alamut home"><Brand /></a>
         <nav className="lx-nav-links" aria-label="Main">
+          <a className="lx-nav-link lx-nav-aud" href={other.href} data-cta="nav-audience">{other.label}</a>
           {signedIn ? (
             <a className="lx-btn lx-btn-sm" href="/v2" data-cta="nav-workspace">Open workspace</a>
           ) : (
