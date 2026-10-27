@@ -10,7 +10,8 @@
 // the page they'd see, then keep it), the deal runs in one place, the money
 // is held before you work, and what it costs. One action throughout: Join free.
 
-import { AudienceSwitch, BetaLine, CtaRow, Faq, Footer, Nav, NotYet, StickyCta } from './components';
+import { AudienceSwitch, BetaLine, CtaRow, Faq, Footer, MarketStrip, Nav, NotYet, StickyCta } from './components';
+import { CREATOR_MARKET } from './market';
 import { DEMO_HREF, PLATFORM_FEE_LABEL, SAMPLE_STOREFRONT_HREF, SIGNUP_HREF, WHT_LABEL } from './facts';
 import { Compare, CreatorDealWindow } from './productCards';
 import { BriefBrowser, CreatorReceipt, PayoutTool, RateHelper, StorefrontBuilder, StorefrontJoin, useStorefront } from './tools-creators';
@@ -44,6 +45,8 @@ export function CreatorsPage() {
             </div>
           </div>
         </section>
+
+        <MarketStrip title="Where brand deals are going" figures={CREATOR_MARKET} />
 
         <section className="lx-section lx-field-peach" id="found" aria-labelledby="found-title">
           <div className="lx-wrap lx-found">

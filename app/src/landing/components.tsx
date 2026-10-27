@@ -6,6 +6,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { BETA_LINE, SESSION_STORAGE_KEY, SIGNUP_HREF } from './facts';
+import { MARKET_SOURCE_LINE, type MarketFigure } from './market';
 import { photoUrl, type Photo as PhotoData } from './photos';
 import { BrandMarkSvg } from '@/screens/workspace-v2/BrandMark';
 
@@ -155,6 +156,27 @@ export function Credits({ photos }: { photos: PhotoData[] }) {
   const names = [...new Set(photos.map((p) => p.by))];
   const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0];
   return <>Photos by {list} on Unsplash.</>;
+}
+
+/** Three figures about the market, always with the line that says whose
+ *  they are: an industry survey's, never Alamut's (market.ts). */
+export function MarketStrip({ title, figures }: { title: string; figures: MarketFigure[] }) {
+  return (
+    <section className="lx-market" aria-labelledby="market-title">
+      <div className="lx-wrap">
+        <h2 className="lx-market-title" id="market-title">{title}</h2>
+        <ul className="lx-market-list">
+          {figures.map((f) => (
+            <li key={f.figure + f.claim}>
+              <span className="lx-money lx-market-figure">{f.figure}</span>
+              <span className="lx-market-claim">{f.claim}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="lx-market-source">{MARKET_SOURCE_LINE}</p>
+      </div>
+    </section>
+  );
 }
 
 export function NotYet({ items }: { items: string[] }) {

@@ -249,6 +249,20 @@
 .lx-pkg b { font-size: 1.5rem; line-height: 1; color: var(--v2-accent); }
 .lx-board-note { font-size: 0.875rem; color: var(--v2-ink-3); max-width: 70em; }
 
+/* ── The market, in three figures, credited to the survey they come from ─ */
+.lx-market { padding-block: clamp(28px, 4vw, 44px) clamp(48px, 6vw, 72px); }
+.lx-market-title { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--v2-ink-3); }
+.lx-market-list { display: grid; gap: 22px; margin-top: 18px; }
+@media (min-width: 860px) { .lx-market-list { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px; } }
+.lx-market-list li { display: grid; gap: 6px; align-content: start; padding-top: 16px; border-top: 1px solid var(--v2-line-2); }
+.lx-market-figure { font-size: clamp(2.5rem, 2rem + 1.6vw, 3.25rem); line-height: 1; color: var(--v2-ink); }
+.lx-market-claim { color: var(--v2-ink-2); max-width: 26em; text-wrap: pretty; }
+.lx-market-source { margin-top: 18px; font-size: 0.8125rem; color: var(--v2-ink-3); }
+@media (max-width: 560px) {
+  .lx-market-list li { grid-template-columns: 6rem minmax(0, 1fr); align-items: baseline; gap: 12px; }
+  .lx-market-figure { font-size: 2rem; }
+}
+
 /* ── Sections ────────────────────────────────────────────────────────── */
 .lx-section { padding-block: var(--gap-section); }
 .lx-field-peach { background: var(--v2-accent-soft); }

@@ -656,9 +656,41 @@ describe('marketing copy does not outrun the product', () => {
     // "A flat 5%" sat on the old page against a PLATFORM_FEE of 0.10. Copy
     // that restates a number drifts from it, so the landing never writes
     // one: every percentage comes from facts.ts, which imports money.ts.
-    const copy = landingFiles().map(code).join('\n') + shells();
+    // The one exception is market.ts, a third-party survey's figures, each
+    // pinned to its source sentence by the test below.
+    const copy = landingFiles().filter((f) => f !== 'landing/market.ts').map(code).join('\n') + shells();
     expect(copy).not.toMatch(/\d\s?%|\bper ?cent\b/i);
     expect(copy).toMatch(/PLATFORM_FEE_LABEL/);
+  });
+
+  it('every market figure is the survey’s, credited, and never passed off as ours', () => {
+    // The landing shows a few industry figures (market.ts). Each must be
+    // found, as shown, in the source sentence recorded for it; the strip that
+    // shows them must carry the line saying they come from a survey; and
+    // only that strip may show them. The publisher is kept off the page.
+    const market = code('landing/market.ts');
+    const shown = [...market.matchAll(/figure: '([^']+)'/g)].map((m) => m[1]!);
+    expect(shown.length, 'the figure pattern stopped matching').toBeGreaterThan(3);
+    const sources = read('landing/__tests__/market.sources.ts');
+    const recorded = [...sources.matchAll(/\{ figure: '([^']+)', page: (\d+), says: '([^']+)' \}/g)]
+      .map((m) => ({ figure: m[1]!, page: Number(m[2]), says: m[3]! }));
+    for (const f of new Set(shown)) {
+      const src = recorded.find((r) => r.figure === f);
+      expect(src, `market figure ${f} has no recorded source`).toBeDefined();
+      expect(src!.says, `market figure ${f} isn't in its source sentence`).toContain(f);
+      expect(src!.page).toBeGreaterThan(0);
+    }
+    const strip = code('landing/components.tsx');
+    expect(strip, 'the market strip lost its source line').toMatch(/<p className="lx-market-source">\{MARKET_SOURCE_LINE\}<\/p>/);
+    expect(market).toMatch(/MARKET_SOURCE_LINE = '[^']*survey[^']*'/);
+    for (const f of landingFiles().filter((x) => !['landing/market.ts', 'landing/components.tsx'].includes(x))) {
+      // Allowed: importing them, and handing them to the strip. Nothing else.
+      const rest = code(f)
+        .replace(/^import \{[^}]*\} from '\.\/market';$/gm, '')
+        .replace(/<MarketStrip title="[^"]+" figures=\{(CREATOR|BRAND)_MARKET\} \/>/g, '');
+      expect(rest, `${f} shows market figures outside the credited strip`).not.toMatch(/\b(CREATOR|BRAND)_MARKET\b|MarketFigure|['"]\.\/market['"]/);
+    }
+    expect(claims(), 'the survey publisher is named on the page').not.toMatch(/aspire/i);
   });
 
   it('names no seed brand, and no real company as a customer', () => {

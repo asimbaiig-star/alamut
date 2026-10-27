@@ -15,6 +15,7 @@ import { startingRates, suggestRateBand } from '@/screens/tools/rateGuidance';
 import { DEMO_HREF, PLATFORM_FORMATS, SIGNUP_HREF } from '../facts';
 import { CTA_ID } from '../events';
 import { BRIEFS, CREATORS } from '../listings';
+import { BRAND_MARKET, CREATOR_MARKET, MARKET_SOURCE_LINE } from '../market';
 import { BRIEF_DRAFT_KEY, readBriefDraft, readStorefrontDraft, STOREFRONT_DRAFT_KEY } from '@/lib/landingDraft';
 
 // globals are off, so Testing Library can't register its own cleanup.
@@ -240,6 +241,20 @@ describe.each(pages)('the $name page’s comparison', ({ El }) => {
     const cols = within(table).getAllByRole('columnheader').map((h) => h.textContent);
     expect(cols[1]).toBe('On Alamut');
     expect(within(table).getAllByRole('row').length).toBeGreaterThan(3);
+  });
+});
+
+describe.each([
+  { name: 'creators', El: CreatorsPage, figures: CREATOR_MARKET },
+  { name: 'brands', El: BrandsPage, figures: BRAND_MARKET },
+])('the $name page’s market figures', ({ El, figures }) => {
+  it('sit right under the hero, each with the line saying whose they are', () => {
+    const { container } = render(<El />);
+    const sections = [...container.querySelectorAll('main > section')];
+    const strip = sections[1]!;
+    expect(strip.classList.contains('lx-market')).toBe(true);
+    expect(within(strip as HTMLElement).getByText(MARKET_SOURCE_LINE)).toBeTruthy();
+    expect([...strip.querySelectorAll('.lx-market-figure')].map((n) => n.textContent)).toEqual(figures.map((f) => f.figure));
   });
 });
 
