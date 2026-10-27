@@ -8,7 +8,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api/client';
 import { pushToast } from '@/lib/utils/toast';
 import { BrandMarkSvg } from '@/screens/workspace-v2/BrandMark';
-import { readStorefrontDraft } from '@/lib/landingDraft';
+import { readBriefDraft, readStorefrontDraft } from '@/lib/landingDraft';
 import '@/styles/auth-v2.css';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -29,9 +29,14 @@ export function SignUp() {
   // copy in that mode and make the role choice the explicit first step.
   const finishEmail = params.get('email') ?? '';
 
-  // A storefront laid out on the landing and claimed brings its name along.
-  const [name, setName] = useState(() =>
-    (initialRole === 'creator' && !finishMode ? readStorefrontDraft(window.localStorage)?.name : '') ?? '');
+  // What the visitor built on the landing and chose to keep (landingDraft.ts):
+  // a storefront brings its name along, and both are named back to them here
+  // so they can see it wasn't lost on the way.
+  const [kept] = useState(() => (finishMode ? null : {
+    storefront: readStorefrontDraft(window.localStorage),
+    brief: readBriefDraft(window.localStorage),
+  }));
+  const [name, setName] = useState(() => (initialRole === 'creator' ? kept?.storefront?.name : '') ?? '');
   const [email, setEmail] = useState(finishMode ? finishEmail : '');
   const [password, setPassword] = useState('');
   const [brandName, setBrandName] = useState('');
@@ -190,8 +195,8 @@ export function SignUp() {
               {finishMode
                 ? 'Your sign-in is confirmed. Tell us whether you’re here as a creator or a brand, then a few details to set up your profile.'
                 : role === 'creator'
-                ? 'Browse open briefs and pitch your own rate, or let brands find your storefront. Offers, revisions and payouts live in one workspace.'
-                : 'Browse storefronts with published rates, or post a brief and let creators pitch you. Brief to payout in one workspace.'}
+                ? 'Pitch open briefs at your own rate, or let brands find your storefront. Offers, changes and payouts stay in one workspace.'
+                : 'Browse storefronts with published rates, or post a brief and let creators pitch you. Brief to payout stays in one workspace.'}
             </p>
             <ul className="auth-v2-points">
               <li>Free to sign up. No card required.</li>
@@ -199,9 +204,29 @@ export function SignUp() {
                   confirmation switched on, and signUp branches on whether
                   Supabase returns a session. Don't promise a confirmation
                   step the user may never see. */}
-              <li>Your account works on any device.</li>
+              <li>{role === 'brand'
+                ? 'No fee on top of the rates you agree. Money moves only when you accept an offer.'
+                : 'Alamut is paid only when you are. The fee comes off a payment, never before.'}</li>
               <li>Public beta. Payments are simulated, so no real money moves yet.</li>
             </ul>
+            {role === 'creator' && kept?.storefront && (
+              <div className="auth-v2-kept" role="status">
+                <span className="auth-v2-label">Kept from the last page</span>
+                <p>
+                  Your storefront{kept.storefront.handle ? <>, <b>@{kept.storefront.handle}</b></> : null}: {kept.storefront.niche},
+                  Instagram Reel at ${kept.storefront.rates.reel.toLocaleString('en-US')}. It fills in your setup after you sign up.
+                </p>
+              </div>
+            )}
+            {role === 'brand' && kept?.brief && (
+              <div className="auth-v2-kept" role="status">
+                <span className="auth-v2-label">Kept from the last page</span>
+                <p>
+                  Your brief{kept.brief.title ? <>, <b>{kept.brief.title}</b></> : null}: {kept.brief.count} deliverables at
+                  ${kept.brief.perCreator.toLocaleString('en-US')} per creator. It’s waiting in New campaign after you sign up.
+                </p>
+              </div>
+            )}
           </aside>
 
           <section className="auth-v2-card auth-v2-form-card" aria-labelledby="signup-title">

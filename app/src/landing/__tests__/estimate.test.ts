@@ -13,7 +13,7 @@ import * as options from '@/lib/api/marketplaceOptions';
 import { STALENESS } from '@/lib/api/staleness';
 import * as facts from '../facts';
 import { brandEstimate, clampMoney, creatorEstimate, usd } from '../estimate';
-import { toHandle } from '../tools';
+import { toHandle } from '../tools-creators';
 import { BRIEFS, BRIEF_FILTERS, CREATORS, CREATOR_FILTERS } from '../listings';
 
 const SRC = join(__dirname, '..', '..');

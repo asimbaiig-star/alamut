@@ -40,3 +40,9 @@ export const SAMPLE_STOREFRONT_HREF = '/c/sarahstyle';
  *  (src/lib/supabase.ts `storageKey`). Read directly so the landing can say
  *  "Open workspace" without loading supabase-js. */
 export const SESSION_STORAGE_KEY = 'alamut.sb.auth';
+
+/** Onboarding's own steps, as a visitor would read them. Pinned to the
+ *  STEPS arrays in CreatorOnboardingV2.tsx and BrandOnboardingV2.tsx by
+ *  regressionGuards, so the page can't promise a shorter setup than exists. */
+export const CREATOR_SETUP = 'your platform, channel, rates and payout, then publish';
+export const BRAND_SETUP = 'your company and preferences, then launch';

@@ -38,7 +38,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import {
   recordRemoteCampaigns, mayMirrorForCampaign, __resetRemoteRegistry,
 } from '@/lib/data/remoteRegistry';
@@ -691,6 +691,30 @@ describe('marketing copy does not outrun the product', () => {
     );
   });
 
+  it('the setup the landing describes is the setup onboarding has', () => {
+    // "Setup after you join: …" under each closing call. A step added to or
+    // dropped from onboarding must show up here, or the page undersells or
+    // oversells the work ahead.
+    const labels = (f: string) => {
+      const steps = /const STEPS = \[([\s\S]*?)\] as const;/.exec(code(f))?.[1] ?? '';
+      return [...steps.matchAll(/label: '([^']+)'/g)].map((m) => m[1]!.toLowerCase());
+    };
+    const facts = code('landing/facts.ts');
+    for (const [name, f] of [
+      ['CREATOR_SETUP', 'screens/workspace-v2/screens/CreatorOnboardingV2.tsx'],
+      ['BRAND_SETUP', 'screens/workspace-v2/screens/BrandOnboardingV2.tsx'],
+    ] as const) {
+      const line = new RegExp(`${name} = '([^']+)'`).exec(facts)?.[1] ?? '';
+      const steps = labels(f);
+      expect(steps.length, `${f}: the STEPS pattern stopped matching`).toBeGreaterThan(1);
+      const words = [...line.toLowerCase().matchAll(/[a-z]+/g)].map((m) => m[0]);
+      const found = steps.map((st) => words.indexOf(st));
+      expect(found.every((i) => i >= 0), `${name} misses a step of ${steps.join(', ')}`).toBe(true);
+      expect(found, `${name} lists the steps out of order`).toEqual([...found].sort((x, y) => x - y));
+      expect(words.filter((w) => !['your', 'and', 'then'].includes(w)), `${name} names a step onboarding doesn't have`).toEqual(steps);
+    }
+  });
+
   it('what the landing says carries into the app, does', () => {
     // The storefront builder and the brief builder say their contents carry
     // into setup. That is only true while sign-up, onboarding and the
@@ -711,17 +735,31 @@ describe('marketing copy does not outrun the product', () => {
   it('the landing bundle reaches nothing stateful', () => {
     // Fast by construction, and honest by construction: the store and seed
     // are where invented numbers live. Anything the landing imports from
-    // the app must itself import nothing, so nothing is reached transitively.
+    // the app may import only other app modules that follow the same rule,
+    // never a package, so nothing stateful is reached however deep.
     const allowedBare = new Set(['react', 'react-dom/client', 'react-dom/server']);
+    // `import x from '…'`, `export … from '…'`, and a bare `import '…'` run for its side effects.
+    const specs = (src: string) => [...src.matchAll(/^\s*(?:import|export)\s+(?:[^'";]*?\s+from\s+)?'([^']+)'/gm)].map((m) => m[1]!);
+    const resolve = (from: string, spec: string) => {
+      const rel = spec.startsWith('@/') ? spec.slice(2) : join(dirname(from), spec).replace(/\\/g, '/');
+      return ['.ts', '.tsx'].map((x) => rel + x).find((x) => { try { read(x); return true; } catch { return false; } });
+    };
+    const pure = (file: string, via: string, depth: number) => {
+      expect(depth, `${via} reaches too deep to check`).toBeLessThan(4);
+      for (const spec of specs(read(file))) {
+        expect(spec.startsWith('.') || spec.startsWith('@/'), `${via} → ${file} imports the package "${spec}"`).toBe(true);
+        const target = resolve(file, spec);
+        expect(target, `${file} imports ${spec}, which doesn't resolve`).toBeDefined();
+        pure(target!, `${via} → ${file}`, depth + 1);
+      }
+    };
     for (const f of landingFiles()) {
-      for (const m of read(f).matchAll(/^\s*(?:import|export)[^'"]*from\s+'([^']+)'/gm)) {
-        const spec = m[1]!;
+      for (const spec of specs(read(f))) {
         if (spec.startsWith('./')) continue;
         if (spec.startsWith('@/')) {
-          const rel = spec.slice(2);
-          const target = ['.ts', '.tsx'].map((x) => rel + x).find((x) => { try { read(x); return true; } catch { return false; } });
+          const target = resolve(f, spec);
           expect(target, `${f} imports ${spec}, which doesn't resolve`).toBeDefined();
-          expect(code(target!), `${f} imports ${spec}, which imports other modules`).not.toMatch(/^\s*import\s/m);
+          pure(target!, f, 0);
           continue;
         }
         expect(allowedBare.has(spec), `${f} imports the package "${spec}"`).toBe(true);
@@ -756,7 +794,8 @@ describe('marketing copy does not outrun the product', () => {
     // letterhead written as a hex would let the portal's bands and the
     // landing's drift apart again.
     const defined = new Set([...read('styles/v2-tokens.css').matchAll(/(--v2-[\w-]+)\s*:/g)].map((m) => m[1]!));
-    for (const f of ['landing/landing.css', 'styles/auth-v2.css', 'screens/workspace-v2/brandPalette.ts', 'landing/tools.tsx']) {
+    // Every landing source file, not a list: a list can't see a file added after it.
+    for (const f of ['landing/landing.css', 'styles/auth-v2.css', 'screens/workspace-v2/brandPalette.ts', ...landingFiles()]) {
       for (const [, name] of read(f).matchAll(/var\((--v2-[\w-]+)/g)) {
         expect(defined.has(name!), `${f} reads ${name}, which v2-tokens.css doesn't define`).toBe(true);
       }

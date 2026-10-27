@@ -49,6 +49,12 @@
 .auth-v2-points li { position: relative; padding-left: 20px; color: var(--v2-ink-2); }
 .auth-v2-points li::before { content: ""; position: absolute; left: 2px; top: 0.6em; width: 7px; height: 7px; border-radius: 50%; background: var(--v2-moss); }
 
+/* What the visitor built on the landing, named back on the way in. */
+.auth-v2-kept { margin-top: 22px; padding: 16px 18px; display: grid; gap: 6px; border-radius: var(--v2-r-lg); background: var(--v2-moss-soft); color: var(--v2-ink); }
+.auth-v2-kept .auth-v2-label { color: var(--v2-moss); }
+.auth-v2-kept p { color: var(--v2-ink-2); }
+.auth-v2-kept b { color: var(--v2-ink); font-weight: 600; }
+
 .auth-v2-card { background: var(--v2-paper); border: 1px solid var(--v2-line); border-radius: var(--v2-r-lg); box-shadow: var(--v2-shadow-sm); }
 .auth-v2-form-card { padding: 28px; display: grid; gap: 18px; }
 .auth-v2-h2 { font-family: var(--v2-font-display); font-weight: 500; font-size: 1.625rem; letter-spacing: -0.015em; line-height: 1.15; }

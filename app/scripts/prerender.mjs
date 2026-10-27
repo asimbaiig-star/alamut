@@ -2,7 +2,7 @@
 //
 // Run after both Vite builds (see package.json "build"). The hero, the copy
 // and the calculators' initial state are in the HTML a crawler or a slow phone
-// receives; entry-client.tsx then hydrates it.
+// receives; entry-creators.tsx and entry-brands.tsx then hydrate it.
 
 import fs from 'node:fs';
 import path from 'node:path';

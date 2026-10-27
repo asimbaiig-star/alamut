@@ -72,7 +72,7 @@
 .lx-brand-mark { width: 32px; height: 32px; border-radius: var(--v2-r-sm); display: grid; place-items: center; background: var(--v2-ink); color: var(--v2-paper); flex: none; }
 .lx-brand-name { font-family: var(--v2-font-display); font-size: 24px; font-weight: 500; letter-spacing: -0.02em; }
 .lx-nav-links { margin-left: auto; display: flex; align-items: center; gap: 22px; }
-.lx-nav-link { display: inline-flex; align-items: center; min-height: 44px; font-size: 0.9375rem; color: var(--v2-ink-2); white-space: nowrap; transition: color .12s; }
+.lx-nav-link { display: inline-flex; align-items: center; min-height: 44px; padding-inline: 6px; font-size: 0.9375rem; color: var(--v2-ink-2); white-space: nowrap; transition: color .12s; }
 .lx-nav-inner > a, .lx-foot-inner > a { display: inline-flex; align-items: center; min-height: 44px; }
 .lx-nav-link:hover { color: var(--v2-ink); }
 
@@ -173,6 +173,13 @@
 /* The one thing to do in a card: the price, what it means, the button. */
 .lx-act { display: grid; gap: 12px; padding: 18px; border-top: 1px solid var(--v2-line); }
 .lx-act-flat { padding: 4px 0 0; border-top: 0; }
+.lx-act-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 18px; }
+.lx-act-figure { display: grid; gap: 6px; justify-items: end; padding-bottom: 4px; }
+.lx-act-figure .lx-money { font-size: 2.5rem; line-height: 1; color: var(--v2-moss); }
+.lx-act-figure-solo { justify-items: start; padding-bottom: 0; }
+.lx-act-figure-solo .lx-money { color: var(--v2-ink); }
+.lx-act-split { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px 18px; }
+.lx-act-split .lx-btn { justify-self: auto; }
 .lx-act .lx-btn { justify-self: start; }
 .lx-act-keep { color: var(--v2-ink-2); font-size: 0.9375rem; text-wrap: pretty; }
 .lx-act-keep b { color: var(--v2-ink); font-weight: 600; }
@@ -185,8 +192,8 @@
 /* ── On a dark card or band: the portal's paper-on-ink treatment ───────
  * Text that sits on the dark ground only; cards inside keep their own. */
 .lx-dark { color: var(--v2-paper); }
-.lx-dark :is(.lx-lead, .lx-facts3 p) { color: color-mix(in srgb, var(--v2-paper) 80%, transparent); }
-.lx-dark :is(.lx-hero-small, .lx-board-note, .lx-note):not(.lx-card *, .lx-window *) { color: color-mix(in srgb, var(--v2-paper) 74%, transparent); }
+.lx-dark :is(.lx-lead, .lx-compare td:first-child) { color: color-mix(in srgb, var(--v2-paper) 80%, transparent); }
+.lx-dark :is(.lx-hero-small, .lx-board-note, .lx-note, .lx-next):not(.lx-card *, .lx-window *) { color: color-mix(in srgb, var(--v2-paper) 74%, transparent); }
 .lx-dark .lx-btn:not(.accent, .lx-card *) { background: var(--v2-paper); color: var(--v2-ink); }
 .lx-dark .lx-btn:not(.accent, .lx-card *):hover { background: var(--v2-bg-2); }
 .lx-dark .lx-chip { background: color-mix(in srgb, var(--v2-paper) 8%, transparent); border-color: color-mix(in srgb, var(--v2-paper) 26%, transparent); color: var(--v2-paper); }
@@ -220,7 +227,7 @@
 
 /* Creator card, after Discover's CreatorCard. */
 .lx-ccard { display: flex; flex-direction: column; }
-.lx-ccard-cover { height: 120px; overflow: hidden; background: var(--v2-bg-2); }
+.lx-ccard-cover { height: 104px; overflow: hidden; background: var(--v2-bg-2); }
 .lx-ccard-cover img { width: 100%; height: 100%; object-fit: cover; }
 .lx-ccard-body { padding: 0 18px 16px; display: grid; gap: 10px; }
 .lx-ccard-id { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
@@ -322,6 +329,9 @@
 .lx-window-crumb { font-size: 0.8125rem; color: var(--v2-ink-3); }
 .lx-window-title { font-family: var(--v2-font-display); font-size: 1.625rem; font-weight: 500; letter-spacing: -0.015em; }
 .lx-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 16px; align-items: center; padding: 14px 16px; }
+/* Label and text keep the first column; the amount, when there is one, the
+ * second. A row without an amount must not let its text take the narrow one. */
+.lx-row-who, .lx-row-what { grid-column: 1; }
 .lx-row-who { font-size: 0.8125rem; color: var(--v2-ink-3); }
 .lx-row-what { font-weight: 600; }
 .lx-row-amt { grid-row: 1 / span 2; grid-column: 2; font-size: 1.5rem; }
@@ -332,9 +342,6 @@
 .lx-mini-btn.dark { background: var(--v2-ink); border-color: var(--v2-ink); color: var(--v2-paper); }
 .lx-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--v2-accent); flex: none; }
 .lx-stars { color: var(--v2-ink-2); letter-spacing: 2px; }
-.lx-facts3 { display: grid; gap: 28px; margin-top: clamp(40px, 5vw, 56px); }
-@media (min-width: 760px) { .lx-facts3 { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px; } }
-.lx-facts3 p { color: var(--v2-ink-2); margin-top: 6px; }
 
 /* Brands: the brief and the pitches it brings. */
 .lx-brief { padding: 24px; display: grid; gap: 18px; }
@@ -387,13 +394,64 @@
 .lx-wallet-line { display: grid; grid-template-columns: auto minmax(12px, 1fr) auto; align-items: baseline; gap: 10px; padding: 9px 0; color: color-mix(in srgb, var(--v2-paper) 82%, transparent); }
 .lx-wallet-line .lx-leader { align-self: end; height: 0; margin-bottom: 0.38em; border-bottom: 1px dotted color-mix(in srgb, var(--v2-paper) 30%, transparent); }
 .lx-wallet-line b { font-weight: 600; color: var(--v2-paper); font-variant-numeric: tabular-nums; }
-.lx-wallet-steps { display: grid; gap: 28px; margin-top: clamp(40px, 5vw, 56px); }
-@media (min-width: 760px) { .lx-wallet-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px; } }
-.lx-wallet-steps p { color: var(--v2-ink-2); margin-top: 6px; }
+
+/* What to charge: the rate calculator, small, beside the storefront. */
+.lx-rh { padding: 20px; display: grid; gap: 14px; }
+.lx-rh-inputs { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 12px; }
+.lx-rh-input {
+  width: 100%; height: 48px; padding: 0 14px; border: 1px solid var(--v2-line-2); border-radius: var(--v2-r-md);
+  background: var(--v2-bg); color: var(--v2-ink); font: 600 1.0625rem/1 var(--v2-font-sans); outline: none;
+}
+.lx-rh-input:focus { border-color: var(--v2-ink-3); box-shadow: 0 0 0 3px var(--v2-bg-2); }
+.lx-rh-pct { position: relative; display: block; }
+.lx-rh-pct b { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); color: var(--v2-ink-3); font-weight: 600; }
+.lx-rh-band { display: grid; gap: 4px; }
+.lx-rh-band .lx-money { font-size: 1.75rem; line-height: 1.1; color: var(--v2-accent); }
+.lx-rh .lx-btn { justify-self: start; }
+.lx-rh-sets { font-size: 0.9375rem; color: var(--v2-ink-2); text-wrap: pretty; }
+
+/* A worked payment, as the wallet would itemise it. */
+.lx-receipt { display: grid; gap: 2px; padding: 20px 24px; border-radius: var(--v2-r-lg); background: var(--v2-paper); border: 1px solid var(--v2-line); max-width: 32rem; }
+.lx-receipt .lx-label { margin-bottom: 6px; }
+.lx-receipt .lx-wallet-line { color: var(--v2-ink-2); }
+.lx-receipt .lx-wallet-line b { color: var(--v2-ink); }
+.lx-receipt .lx-leader { border-bottom-color: var(--v2-line-2); }
+.lx-receipt .lx-wallet-line:last-child { margin-top: 8px; padding-top: 14px; border-top: 1px solid var(--v2-line); color: var(--v2-ink); font-weight: 600; }
+.lx-receipt .lx-wallet-line:last-child b { font-family: var(--v2-font-display); font-weight: 500; font-size: 1.75rem; line-height: 1; color: var(--v2-moss); }
+
+/* The status quo beside the workspace: a real table, read row by row. */
+.lx-compare-wrap { margin-top: clamp(48px, 6vw, 72px); }
+.lx-compare { width: 100%; border-collapse: collapse; }
+.lx-compare th { text-align: left; padding: 0 24px 14px 0; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: color-mix(in srgb, var(--v2-paper) 72%, transparent); }
+.lx-compare th + th { color: var(--v2-paper); }
+.lx-compare td { width: 50%; padding: 18px 24px 18px 0; vertical-align: top; border-top: 1px solid color-mix(in srgb, var(--v2-paper) 16%, transparent); font-size: 1.0625rem; line-height: 1.5; text-wrap: pretty; }
+.lx-compare td + td { position: relative; padding-left: 26px; color: var(--v2-paper); font-weight: 500; }
+.lx-compare td + td::before { content: ""; position: absolute; left: 0; top: 27px; width: 8px; height: 8px; border-radius: 50%; background: var(--v2-accent-2); }
+@media (max-width: 640px) {
+  .lx-compare, .lx-compare tbody, .lx-compare tr, .lx-compare td { display: block; width: 100%; }
+  .lx-compare thead { display: none; }
+  .lx-compare tr { padding: 18px 0; border-top: 1px solid color-mix(in srgb, var(--v2-paper) 16%, transparent); display: grid; gap: 10px; }
+  .lx-compare td { border-top: 0; padding: 0; }
+  .lx-compare td + td { padding-left: 0; }
+  .lx-compare td::before,
+  .lx-compare td + td::before {
+    content: attr(data-label); position: static; display: block; width: auto; height: auto; margin-bottom: 4px; border-radius: 0; background: none;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: color-mix(in srgb, var(--v2-paper) 72%, transparent);
+  }
+  .lx-compare td + td::before { color: var(--v2-paper); }
+}
+
+.lx-after-note { margin-top: 22px; color: var(--v2-ink-2); max-width: 46em; text-wrap: pretty; }
+.lx-after-note b { color: var(--v2-ink); font-weight: 600; }
+.lx-next { font-size: 0.9375rem; text-wrap: pretty; }
 
 /* ── Pricing ─────────────────────────────────────────────────────────── */
 .lx-pricing { display: grid; gap: 40px; align-items: start; }
-@media (min-width: 960px) { .lx-pricing { grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr); gap: 72px; } }
+@media (min-width: 960px) { .lx-pricing { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 72px; } }
+.lx-pricing-main { display: grid; gap: 20px; align-content: start; }
+.lx-pricing-side { display: grid; gap: 28px; align-content: start; }
+.lx-pricing-side .lx-terms { margin-top: 0; }
+@media (min-width: 960px) { .lx-pricing-side { padding-top: 12px; } }
 .lx-terms { display: grid; gap: 12px; margin-top: 24px; max-width: 36em; }
 .lx-terms li { position: relative; padding-left: 22px; color: var(--v2-ink-2); }
 .lx-terms li::before { content: ""; position: absolute; left: 2px; top: 0.6em; width: 7px; height: 7px; border-radius: 50%; background: var(--v2-moss); }
@@ -451,6 +509,8 @@
   .lx-aud { display: flex; }
   .lx-aud a { flex: 1; justify-content: center; padding: 0 10px; }
   .lx-act .lx-btn { justify-self: stretch; }
+  .lx-act-figure .lx-money { font-size: 2rem; }
+  .lx-rh-inputs { grid-template-columns: minmax(0, 1fr); }
   .lx-foot { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
   .lx-tile-cols { grid-template-columns: 1fr 1fr; }
   .lx-tile-cols > div:nth-child(3) { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--v2-line); }

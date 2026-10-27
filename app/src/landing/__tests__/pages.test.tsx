@@ -8,7 +8,10 @@ import { renderToString } from 'react-dom/server';
 import { cleanup, render, screen, fireEvent, within } from '@testing-library/react';
 import { CreatorsPage } from '../CreatorsPage';
 import { BrandsPage } from '../BrandsPage';
-import { BriefBrowser, BriefBuilder, CreatorBrowser, StorefrontBuilder, StorefrontJoin, useStorefront } from '../tools';
+import { BriefBrowser, CreatorReceipt, RateHelper, StorefrontBuilder, StorefrontJoin, useStorefront } from '../tools-creators';
+import { BrandReceipt, BriefBuilder, CreatorBrowser } from '../tools-brands';
+import { brandEstimate, creatorEstimate, usd } from '../estimate';
+import { startingRates, suggestRateBand } from '@/screens/tools/rateGuidance';
 import { DEMO_HREF, PLATFORM_FORMATS, SIGNUP_HREF } from '../facts';
 import { CTA_ID } from '../events';
 import { BRIEFS, CREATORS } from '../listings';
@@ -17,10 +20,10 @@ import { BRIEF_DRAFT_KEY, readBriefDraft, readStorefrontDraft, STOREFRONT_DRAFT_
 // globals are off, so Testing Library can't register its own cleanup.
 afterEach(() => { cleanup(); localStorage.clear(); });
 
-/** The storefront section: the builder and the button that keeps it. */
+/** The storefront section: the rate helper, the builder and the button that keeps it. */
 function Storefront() {
   const sf = useStorefront();
-  return <><StorefrontJoin sf={sf} /><StorefrontBuilder sf={sf} /></>;
+  return <><RateHelper sf={sf} /><StorefrontJoin sf={sf} /><StorefrontBuilder sf={sf} /></>;
 }
 /** Click a link without jsdom trying to navigate. */
 function clickLink(el: HTMLElement) {
@@ -79,7 +82,7 @@ describe('StorefrontBuilder', () => {
     expect(screen.getByText(/Send a brief/)).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Your name'), { target: { value: 'Maya Chen' } });
     expect(screen.getByText(/Brief Maya/)).toBeTruthy();
-    expect(screen.getByText('/c/mayachen')).toBeTruthy();
+    expect(screen.getByText(/\/c\/mayachen$/)).toBeTruthy();
     expect((screen.getByLabelText('Your handle') as HTMLInputElement).value).toBe('mayachen');
   });
 
@@ -87,7 +90,7 @@ describe('StorefrontBuilder', () => {
     render(<Storefront />);
     fireEvent.change(screen.getByLabelText('Your handle'), { target: { value: 'Maya.Makes' } });
     fireEvent.change(screen.getByLabelText('Your name'), { target: { value: 'Someone Else' } });
-    expect(screen.getByText('/c/maya.makes')).toBeTruthy();
+    expect(screen.getByText(/\/c\/maya\.makes$/)).toBeTruthy();
   });
 
   it('shows the take-home of each package from the ledger maths', () => {
@@ -174,7 +177,8 @@ describe('the first screens', () => {
     const card = screen.getByRole('article', { name: `Example storefront: ${c.niche}` });
     const story = c.packages.find((p) => p.key === 'story')!;
     fireEvent.click(within(card).getByLabelText(/Story bundle/));
-    expect(card.querySelector('.lx-act-keep')!.textContent).toMatch(new RegExp(`^You pay \\$${story.rate}, with no fee on top`));
+    expect(card.querySelector('.lx-act-figure .lx-money')!.textContent).toBe(usd(story.rate));
+    expect(card.querySelector('.lx-act-keep')!.textContent).toMatch(/^No fee on top\. The .+ platform fee comes out of the creator’s payout\.$/);
   });
 
   it('say they are examples', () => {
@@ -186,3 +190,56 @@ describe('the first screens', () => {
     expect(screen.getByText(/^Example storefronts, drawn as Discover shows them\./)).toBeTruthy();
   });
 });
+
+describe('what to charge', () => {
+  it('prices all three packages from the band onboarding uses, when asked', () => {
+    render(<Storefront />);
+    fireEvent.change(screen.getByLabelText(/^Instagram followers/), { target: { value: '80,000' } });
+    fireEvent.change(screen.getByLabelText(/^Engagement rate/), { target: { value: '3.5' } });
+    expect((screen.getByLabelText(/^Engagement rate/) as HTMLInputElement).value, 'a decimal survives typing').toBe('3.5');
+    const band = suggestRateBand('instagram', 80_000, 3.5)!;
+    const start = startingRates(band);
+    expect(screen.getByText(`${usd(band.low)}–${usd(band.high)}`)).toBeTruthy();
+    // Nothing changes until the visitor takes the suggestion.
+    expect((screen.getByLabelText('Instagram Reel rate, US dollars') as HTMLInputElement).value).toBe('900');
+    expect(screen.getByText(new RegExp(`Reel ${usd(start.reel).replace('$', '\\$')}, Story bundle`))).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Use these prices' }));
+    expect((screen.getByLabelText('Instagram Reel rate, US dollars') as HTMLInputElement).value).toBe(start.reel.toLocaleString('en-US'));
+    expect((screen.getByLabelText('Story bundle (×3) rate, US dollars') as HTMLInputElement).value).toBe(start.story.toLocaleString('en-US'));
+    expect((screen.getByLabelText('Reel + Stories combo rate, US dollars') as HTMLInputElement).value).toBe(start.combo.toLocaleString('en-US'));
+  });
+
+  it('shows no band without a follower count, rather than a zero', () => {
+    render(<Storefront />);
+    fireEvent.change(screen.getByLabelText(/^Instagram followers/), { target: { value: '' } });
+    expect(screen.getByText('Add your follower count to see a typical range.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Use these prices' })).toBeNull();
+  });
+});
+
+describe('the worked receipts', () => {
+  it('itemise a creator payment from the ledger maths', () => {
+    const { container } = render(<CreatorReceipt rate={1000} />);
+    const e = creatorEstimate(1000, 1);
+    const values = [...container.querySelectorAll('.lx-wallet-line b')].map((b) => b.textContent);
+    expect(values).toEqual([`−${usd(e.fee)}`, `−${usd(e.tax)}`, usd(e.net)]);
+  });
+
+  it('itemise a brand booking from the ledger maths', () => {
+    const { container } = render(<BrandReceipt rate={1500} />);
+    const e = brandEstimate(1500, 1, 1);
+    const values = [...container.querySelectorAll('.lx-wallet-line b')].map((b) => b.textContent);
+    expect(values).toEqual([usd(e.held), usd(e.brandFee), usd(e.perCreatorNet)]);
+  });
+});
+
+describe.each(pages)('the $name page’s comparison', ({ El }) => {
+  it('is a table a screen reader can read by column', () => {
+    render(<El />);
+    const table = screen.getByRole('table');
+    const cols = within(table).getAllByRole('columnheader').map((h) => h.textContent);
+    expect(cols[1]).toBe('On Alamut');
+    expect(within(table).getAllByRole('row').length).toBeGreaterThan(3);
+  });
+});
+

@@ -78,3 +78,15 @@ export function suggestRateBand(
     platform: config.name,
   };
 }
+
+/** The three storefront packages priced from a band's midpoint, as
+ *  onboarding's "Use these as a starting point" sets them: the Reel at the
+ *  midpoint, a Story bundle under half of it, the Reel + Stories combo at
+ *  one and a half times. One definition for onboarding and the landing. */
+export function startingRates(band: RateBand): { reel: number; story: number; combo: number } {
+  return {
+    reel: band.median,
+    story: Math.round(band.median * 0.45),
+    combo: Math.round(band.median * 1.5),
+  };
+}

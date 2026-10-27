@@ -127,3 +127,29 @@ export function PitchInbox() {
 }
 
 export const LAPSE_LINE = `Pitches nobody answers close after ${APPLICATION_LAPSE_DAYS} days, and the creator is warned before they do.`;
+
+/** The way it's done now, beside the way the workspace does it. Every
+ *  right-hand cell is something the product does today; the left is the
+ *  status quo it replaces, not a competitor. */
+export function Compare({ caption, before, rows }: {
+  caption: string; before: string; rows: [string, string][];
+}) {
+  return (
+    <div className="lx-compare-wrap">
+      <table className="lx-compare">
+        <caption className="lx-sr">{caption}</caption>
+        <thead>
+          <tr><th scope="col">{before}</th><th scope="col">On Alamut</th></tr>
+        </thead>
+        <tbody>
+          {rows.map(([was, now]) => (
+            <tr key={now}>
+              <td data-label={before}>{was}</td>
+              <td data-label="On Alamut">{now}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}

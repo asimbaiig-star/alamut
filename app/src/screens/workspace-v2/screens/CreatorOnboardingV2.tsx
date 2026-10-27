@@ -18,7 +18,7 @@ import { useV2CurrentCreator } from '../v2Hooks';
 import { v2UpdateCreatorIdentity, v2AddCreatorChannel } from '../v2CreatorActions';
 import { pushToast } from '@/lib/utils/toast';
 import { parseNumberInput, listAnd } from '@/lib/utils/format';
-import { suggestRateBand } from '@/screens/tools/rateGuidance';
+import { startingRates, suggestRateBand } from '@/screens/tools/rateGuidance';
 import { CREATOR_CATEGORIES } from '@/lib/api/marketplaceOptions';
 import { clearDraft, onboardingFromDraft, readStorefrontDraft, STOREFRONT_DRAFT_KEY } from '@/lib/landingDraft';
 
@@ -382,11 +382,10 @@ export function CreatorOnboardingV2({ onRoute }: Props) {
                       type="button"
                       className="v2-btn v2-btn-ghost v2-btn-sm"
                       style={{ marginTop: 10 }}
-                      onClick={() => update({
-                        reelRate: String(rateBand.median),
-                        storyRate: String(Math.round(rateBand.median * 0.45)),
-                        comboRate: String(Math.round(rateBand.median * 1.5)),
-                      })}
+                      onClick={() => {
+                        const r = startingRates(rateBand);
+                        update({ reelRate: String(r.reel), storyRate: String(r.story), comboRate: String(r.combo) });
+                      }}
                     >
                       Use these as a starting point
                     </button>

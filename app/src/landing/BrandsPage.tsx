@@ -9,8 +9,9 @@
 
 import { AudienceSwitch, BetaLine, CtaRow, Faq, Footer, Nav, NotYet, StickyCta } from './components';
 import { DEMO_HREF, PLATFORM_FEE_LABEL, SIGNUP_HREF } from './facts';
-import { BrandNeedsWindow, LAPSE_LINE, PitchInbox } from './productCards';
-import { BriefBuilder, CreatorBrowser, HoldTool } from './tools';
+import { BrandNeedsWindow, Compare, LAPSE_LINE, PitchInbox } from './productCards';
+import { BrandReceipt, BriefBuilder, CreatorBrowser, HoldTool } from './tools-brands';
+import { BRAND_SETUP } from './facts';
 
 const POST = { href: SIGNUP_HREF.brand, label: 'Post a brief' };
 const DEMO = { href: DEMO_HREF.brand, label: 'or try the live demo' };
@@ -69,11 +70,13 @@ export function BrandsPage() {
               </p>
             </div>
             <BrandNeedsWindow />
-            <div className="lx-facts3">
-              <div><h3 className="lx-h3">Teams and deal owners</h3><p>Give every deal an owner. Only admin and finance roles can top up the wallet.</p></div>
-              <div><h3 className="lx-h3">Changes as amendments</h3><p>Need another deliverable or longer usage? Propose a paid change. It applies once the creator agrees.</p></div>
-              <div><h3 className="lx-h3">Disputes inside the deal</h3><p>Freeze the escrow, propose a split and settle it where the work happened.</p></div>
-            </div>
+            <Compare caption="Creator deals in email and spreadsheets, and on Alamut" before="In email and spreadsheets" rows={[
+              ['Rate cards arrive one creator at a time, as attachments.', 'Packages and prices are on every storefront. Filter by price before you reach out.'],
+              ['Approvals and extra asks live in long email threads.', 'Review rounds and paid changes sit on the deal, and apply once the creator agrees.'],
+              ['You pay an invoice before you know the post is up.', 'Money is held when you accept, and released only as you confirm each post is live.'],
+              ['Who owes what lives in a spreadsheet someone updates.', 'Every figure in your wallet traces to a ledger row you can open.'],
+              ['A deal belongs to whoever happened to send the first email.', 'Every deal has an owner, and only admin and finance roles can top up the wallet.'],
+            ]} />
           </div>
         </section>
 
@@ -84,30 +87,33 @@ export function BrandsPage() {
               <p className="lx-lead">The agreed rate is held in escrow when you accept an offer, and released as you confirm each post.</p>
             </div>
             <HoldTool />
-            <div className="lx-wallet-steps">
-              <div><h3 className="lx-h3">When you accept an offer</h3><p>The agreed rate is held in escrow.</p></div>
-              <div><h3 className="lx-h3">When the post is up</h3><p>The creator links it, and you check that it’s live.</p></div>
-              <div><h3 className="lx-h3">When you confirm it</h3><p>That post’s share is released. The {PLATFORM_FEE_LABEL} fee comes out of the creator’s side, not yours.</p></div>
-            </div>
+            <p className="lx-after-note">
+              <b>The creator links each post</b>, you check it’s live, and only then is its share released. If a post is
+              off-brief or never goes up, open a dispute: the escrow freezes until you agree on a split.
+            </p>
           </div>
         </section>
 
         <section className="lx-section lx-field-sage" id="pricing" aria-labelledby="pricing-title">
           <div className="lx-wrap lx-pricing">
-            <div>
+            <div className="lx-pricing-main">
               <h2 className="lx-h2" id="pricing-title">Free to post.</h2>
+              <p className="lx-lead">You pay the rates you agree, and nothing on top. Money moves only when you accept an offer.</p>
+              <BrandReceipt rate={1500} />
+            </div>
+            <div className="lx-pricing-side">
               <ul className="lx-terms">
                 <li>You pay the rates you agree. The {PLATFORM_FEE_LABEL} platform fee comes out of the creator’s payout, not on top of your rate.</li>
                 <li>Money is held only once you accept an offer, and released as you confirm live posts.</li>
                 <li>Every figure in your wallet traces to a ledger row you can open.</li>
                 <li>No subscription, no retainer and no minimum spend.</li>
               </ul>
+              <NotYet items={[
+                'Click tracking and revenue attribution. You see spend, deliverables and posts, not sales.',
+                'Audience data pulled from the platforms. Creator numbers are self-reported.',
+                'Real money. Payments are simulated in the public beta.',
+              ]} />
             </div>
-            <NotYet items={[
-              'Click tracking and revenue attribution. You see spend, deliverables and posts, not sales.',
-              'Audience data pulled from the platforms. Creator numbers are self-reported.',
-              'Real money. Payments are simulated in the public beta.',
-            ]} />
           </div>
         </section>
 
@@ -121,6 +127,7 @@ export function BrandsPage() {
               { q: 'When does money leave my wallet?', a: 'When you accept an offer, the agreed rate moves into escrow. It reaches the creator post by post, as you confirm each one is live.' },
               { q: 'What if a post is off-brief or never goes live?', a: 'Ask for revisions, or open a dispute. The escrow freezes and either side can propose a split. Nothing releases without your confirmation or a settlement you agree to.' },
               { q: 'What happens to the brief I write on this page?', a: 'If you post it from here, it’s waiting in New campaign when you sign up, filled in. Until then it stays in this browser and is sent nowhere.' },
+              { q: 'Can my team work on the same deals?', a: 'Yes. Every deal has an owner, so it’s clear who answers the creator, and only admin and finance roles can top up the wallet.' },
               { q: 'Can I try it first?', a: <>Yes. The <a className="lx-link" href={DEMO_HREF.brand} data-cta="faq-demo">demo account</a> is a full brand workspace with creators to browse and sample campaigns.</> },
             ]} />
           </div>
@@ -132,6 +139,7 @@ export function BrandsPage() {
             <div className="lx-hero-side">
               <p className="lx-lead">It’s free, and money only moves when you accept an offer.</p>
               <CtaRow primary={{ ...POST, id: 'final-post' }} secondary={{ ...DEMO, id: 'final-demo' }} />
+              <p className="lx-next">Setup after you sign up: {BRAND_SETUP}.</p>
             </div>
           </div>
         </section>
