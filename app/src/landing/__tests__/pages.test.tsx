@@ -184,11 +184,11 @@ describe('the first screens', () => {
 
   it('say they are examples', () => {
     render(<BriefBrowser />);
-    expect(screen.getByText(/^Example briefs, drawn as Browse campaigns shows them\./)).toBeTruthy();
+    expect(screen.getByText(/^These are examples, shown the way the app shows open briefs\./)).toBeTruthy();
     expect(screen.getAllByText('Example').length).toBeGreaterThan(0);
     cleanup();
     render(<CreatorBrowser />);
-    expect(screen.getByText(/^Example storefronts, drawn as Discover shows them\./)).toBeTruthy();
+    expect(screen.getByText(/^These are examples, shown the way the app shows storefronts\./)).toBeTruthy();
   });
 });
 

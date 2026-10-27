@@ -12,10 +12,9 @@
 
 import { AudienceSwitch, BetaLine, CtaRow, Faq, Footer, FounderNote, MarketStrip, Nav, NotYet, StickyCta } from './components';
 import { CREATOR_MARKET } from './market';
-import { DEMO_HREF, PLATFORM_FEE_LABEL, SAMPLE_STOREFRONT_HREF, SIGNUP_HREF, WHT_LABEL } from './facts';
+import { CREATOR_SETUP, DEMO_HREF, SAMPLE_STOREFRONT_HREF, SIGNUP_HREF } from './facts';
 import { Compare, CreatorDealWindow } from './productCards';
 import { BriefBrowser, CreatorReceipt, PayoutTool, RateHelper, StorefrontBuilder, StorefrontJoin, useStorefront } from './tools-creators';
-import { CREATOR_SETUP } from './facts';
 
 const JOIN = { href: SIGNUP_HREF.creator, label: 'Join free' };
 const DEMO = { href: DEMO_HREF.creator, label: 'or try the live demo, no sign-up' };
@@ -104,12 +103,9 @@ export function CreatorsPage() {
               <CreatorReceipt rate={1000} />
             </div>
             <div className="lx-pricing-side">
-              <ul className="lx-terms">
-                <li>When a deal pays out, a {PLATFORM_FEE_LABEL} platform fee and {WHT_LABEL} withholding come off each payment, each as its own line in your wallet.</li>
-                <li>Withdraw to your bank once you’ve completed the identity step and added your bank details.</li>
-                <li>Money tied to an open dispute stays in escrow until it’s settled.</li>
-                <li>No subscription and no lock-in. Take deals anywhere else too.</li>
-              </ul>
+              <p className="lx-terms-p">
+                No subscription. Withdraw to your bank once you’ve finished the identity step and added your bank details.
+              </p>
               <NotYet items={[
                 'Pulling your follower numbers from Instagram or TikTok. Today they’re what you enter.',
                 'Identity document checks. The identity step is self-completed during the beta.',
@@ -123,11 +119,9 @@ export function CreatorsPage() {
           <div className="lx-wrap">
             <div className="lx-head"><h2 className="lx-h2" id="faq-title">Questions</h2></div>
             <Faq items={[
-              { q: 'How do I find brand deals?', a: 'Browse open briefs in the app. Search by brand, category or platform, filter by budget, save the ones you like, and apply with a pitch and your own rate.' },
-              { q: 'How do brands find me?', a: 'Through your storefront, a public page with your work, channels and packages. Brands browse creators by platform, category, followers, city and price, and can brief you from your page.' },
-              { q: 'What does it cost?', a: `Nothing to join or apply. When a deal pays out, a ${PLATFORM_FEE_LABEL} platform fee and ${WHT_LABEL} withholding come off each payment, shown as separate lines in your wallet.` },
-              { q: 'Do I need a big following?', a: 'No. There’s no follower minimum. You apply to the briefs that fit you.' },
-              { q: 'When do I get paid?', a: 'Post by post. The full amount is held in escrow when the brand accepts, and each post’s share is released when it’s live and the brand confirms it.' },
+              { q: 'Do I need a big following?', a: 'No. There’s no follower minimum. Pitch the briefs that fit you.' },
+              { q: 'Can I charge different brands different prices?', a: 'Yes. Your storefront shows your standard packages, and you can counter any offer a brand sends.' },
+              { q: 'What does “payments are simulated” mean?', a: 'Alamut is in public beta, so no real money moves yet. Offers, escrow, releases and your wallet work the way they will later. The balances just aren’t real money.' },
               { q: 'What happens to the storefront I made on this page?', a: 'If you join from it, your name, handle, niche and rates fill in your setup. Until then they stay in this browser and are sent nowhere.' },
               { q: 'Do I have to take every deal through Alamut?', a: 'No. There’s no lock-in and no exclusivity. Take deals anywhere else too.' },
               { q: 'Can I try it first?', a: <>Yes. The <a className="lx-link" href={DEMO_HREF.creator} data-cta="faq-demo">demo account</a> is a full creator workspace with open briefs and sample deals, and needs no sign-up.</> },

@@ -75,8 +75,7 @@
 @media (min-width: 761px) {
   .lx-nav {
     position: sticky; top: 0; z-index: 30;
-    background: color-mix(in srgb, var(--v2-bg) 90%, transparent);
-    -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+    background: var(--v2-bg);
   }
   @supports (animation-timeline: scroll()) {
     .lx-nav { animation: lx-nav-stuck linear both; animation-timeline: scroll(); animation-range: 0 96px; }
@@ -266,10 +265,10 @@
 
 /* ── The market, in three figures, credited to the survey they come from ─ */
 .lx-market { padding-block: clamp(28px, 4vw, 44px) clamp(48px, 6vw, 72px); }
-.lx-market-title { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--v2-ink-3); }
+.lx-market-title { font-size: 1.0625rem; font-weight: 600; color: var(--v2-ink-2); }
 .lx-market-list { display: grid; gap: 22px; margin-top: 18px; }
 @media (min-width: 860px) { .lx-market-list { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px; } }
-.lx-market-list li { display: grid; gap: 6px; align-content: start; padding-top: 16px; border-top: 1px solid var(--v2-line-2); }
+.lx-market-list li { display: grid; gap: 6px; align-content: start; }
 .lx-market-figure { font-size: clamp(2.5rem, 2rem + 1.6vw, 3.25rem); line-height: 1; color: var(--v2-ink); }
 .lx-market-claim { color: var(--v2-ink-2); max-width: 26em; text-wrap: pretty; }
 .lx-market-source { margin-top: 18px; font-size: 0.8125rem; color: var(--v2-ink-3); }
@@ -435,6 +434,7 @@
 .lx-rh-pct { position: relative; display: block; }
 .lx-rh-pct b { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); color: var(--v2-ink-3); font-weight: 600; }
 .lx-rh-band { display: grid; gap: 4px; }
+.lx-rh-label { font-size: 0.9375rem; font-weight: 600; color: var(--v2-ink-2); }
 .lx-rh-band .lx-money { font-size: 1.75rem; line-height: 1.1; color: var(--v2-accent); }
 .lx-rh .lx-btn { justify-self: start; }
 .lx-rh-sets { font-size: 0.9375rem; color: var(--v2-ink-2); text-wrap: pretty; }
@@ -442,7 +442,7 @@
 /* A worked payment, as the wallet would itemise it. */
 .lx-receipt-note { margin-top: 10px; font-size: 0.875rem; color: var(--v2-ink-3); text-wrap: pretty; }
 .lx-receipt { display: grid; gap: 2px; padding: 20px 24px; border-radius: var(--v2-r-lg); background: var(--v2-paper); border: 1px solid var(--v2-line); max-width: 32rem; }
-.lx-receipt .lx-label { margin-bottom: 6px; }
+.lx-receipt > .lx-label { margin-bottom: 6px; font-size: 0.9375rem; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--v2-ink-2); }
 .lx-receipt .lx-wallet-line { color: var(--v2-ink-2); }
 .lx-receipt .lx-wallet-line b { color: var(--v2-ink); }
 .lx-receipt .lx-leader { border-bottom-color: var(--v2-line-2); }
@@ -452,7 +452,7 @@
 /* The status quo beside the workspace: a real table, read row by row. */
 .lx-compare-wrap { margin-top: clamp(48px, 6vw, 72px); }
 .lx-compare { width: 100%; border-collapse: collapse; }
-.lx-compare th { text-align: left; padding: 0 24px 14px 0; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: color-mix(in srgb, var(--v2-paper) 72%, transparent); }
+.lx-compare th { text-align: left; padding: 0 24px 14px 0; font-size: 1rem; font-weight: 600; color: color-mix(in srgb, var(--v2-paper) 74%, transparent); }
 .lx-compare th + th { color: var(--v2-paper); }
 .lx-compare td { width: 50%; padding: 18px 24px 18px 0; vertical-align: top; border-top: 1px solid color-mix(in srgb, var(--v2-paper) 16%, transparent); font-size: 1.0625rem; line-height: 1.5; text-wrap: pretty; }
 .lx-compare td + td { position: relative; padding-left: 26px; color: var(--v2-paper); font-weight: 500; }
@@ -466,7 +466,7 @@
   .lx-compare td::before,
   .lx-compare td + td::before {
     content: attr(data-label); position: static; display: block; width: auto; height: auto; margin-bottom: 4px; border-radius: 0; background: none;
-    font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: color-mix(in srgb, var(--v2-paper) 72%, transparent);
+    font-size: 0.875rem; font-weight: 600; color: color-mix(in srgb, var(--v2-paper) 74%, transparent);
   }
   .lx-compare td + td::before { color: var(--v2-paper); }
 }
@@ -480,11 +480,8 @@
 @media (min-width: 960px) { .lx-pricing { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 72px; } }
 .lx-pricing-main { display: grid; gap: 20px; align-content: start; }
 .lx-pricing-side { display: grid; gap: 28px; align-content: start; }
-.lx-pricing-side .lx-terms { margin-top: 0; }
+.lx-terms-p { color: var(--v2-ink-2); max-width: 36em; text-wrap: pretty; }
 @media (min-width: 960px) { .lx-pricing-side { padding-top: 12px; } }
-.lx-terms { display: grid; gap: 12px; margin-top: 24px; max-width: 36em; }
-.lx-terms li { position: relative; padding-left: 22px; color: var(--v2-ink-2); }
-.lx-terms li::before { content: ""; position: absolute; left: 2px; top: 0.6em; width: 7px; height: 7px; border-radius: 50%; background: var(--v2-moss); }
 .lx-notyet { padding: 24px; border-radius: var(--v2-r-lg); background: var(--v2-bg-2); display: grid; gap: 12px; }
 .lx-notyet ul { display: grid; gap: 10px; }
 .lx-notyet li { color: var(--v2-ink-2); }
@@ -510,12 +507,7 @@
 
 /* ── Close ───────────────────────────────────────────────────────────── */
 .lx-final {
-  position: relative; isolation: isolate; overflow: hidden; padding-block: clamp(88px, 10vw, 144px);
-  background: linear-gradient(135deg, var(--v2-band-brick) 0%, var(--v2-band-cocoa) 100%);
-}
-.lx-final::before {
-  content: ""; position: absolute; z-index: -1; top: -200px; right: -120px; width: 560px; height: 560px; border-radius: 50%;
-  background: radial-gradient(circle, var(--v2-accent-2) 0%, transparent 70%); opacity: .35; filter: blur(30px); pointer-events: none;
+  padding-block: clamp(88px, 10vw, 144px); background: var(--v2-band-brick);
 }
 .lx-final-grid { display: grid; gap: 28px; align-items: center; }
 @media (min-width: 960px) { .lx-final-grid { grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: 64px; } }
@@ -530,8 +522,7 @@
 .lx-sticky {
   position: fixed; z-index: 20; left: 0; right: 0; bottom: 0; display: grid;
   padding: 10px max(16px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
-  background: color-mix(in srgb, var(--v2-bg) 92%, transparent); border-top: 1px solid var(--v2-line);
-  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); animation: lx-rise .25s ease-out both;
+  background: var(--v2-bg); border-top: 1px solid var(--v2-line); animation: lx-rise .25s ease-out both;
 }
 @media (min-width: 761px) { .lx-sticky { display: none; } }
 

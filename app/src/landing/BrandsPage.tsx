@@ -9,10 +9,9 @@
 
 import { AudienceSwitch, BetaLine, CtaRow, Faq, Footer, FounderNote, MarketStrip, Nav, NotYet, StickyCta } from './components';
 import { BRAND_MARKET } from './market';
-import { DEMO_HREF, PLATFORM_FEE_LABEL, SIGNUP_HREF } from './facts';
+import { BRAND_SETUP, DEMO_HREF, SIGNUP_HREF } from './facts';
 import { BrandNeedsWindow, Compare, LAPSE_LINE, PitchInbox } from './productCards';
 import { BrandReceipt, BriefBuilder, CreatorBrowser, HoldTool } from './tools-brands';
-import { BRAND_SETUP } from './facts';
 
 const POST = { href: SIGNUP_HREF.brand, label: 'Post a brief' };
 const DEMO = { href: DEMO_HREF.brand, label: 'or try the live demo, no sign-up' };
@@ -105,12 +104,7 @@ export function BrandsPage() {
               <BrandReceipt rate={1500} />
             </div>
             <div className="lx-pricing-side">
-              <ul className="lx-terms">
-                <li>You pay the rates you agree. The {PLATFORM_FEE_LABEL} platform fee comes out of the creator’s payout, not on top of your rate.</li>
-                <li>Money is held only once you accept an offer, and released as you confirm live posts.</li>
-                <li>Every figure in your wallet traces to a ledger row you can open.</li>
-                <li>No subscription, no retainer and no minimum spend.</li>
-              </ul>
+              <p className="lx-terms-p">No subscription, no retainer and no minimum spend.</p>
               <NotYet items={[
                 'Click tracking and revenue attribution. You see spend, deliverables and posts, not sales.',
                 'Audience data pulled from the platforms. Creator numbers are self-reported.',
@@ -124,10 +118,8 @@ export function BrandsPage() {
           <div className="lx-wrap">
             <div className="lx-head"><h2 className="lx-h2" id="faq-title">Questions</h2></div>
             <Faq items={[
-              { q: 'How do I find creators?', a: 'Browse storefronts in the app and filter by platform, category, followers, city and price. Each storefront shows the creator’s work, channels and packages.' },
-              { q: 'Or do creators come to me?', a: 'Both. Post a brief and creators pitch you with their own rate. Shortlist, accept, counter or pass.' },
-              { q: 'What does it cost?', a: 'Posting is free. You pay the rates you agree with creators, and the platform fee is deducted on the creator’s side.' },
-              { q: 'When does money leave my wallet?', a: 'When you accept an offer, the agreed rate moves into escrow. It reaches the creator post by post, as you confirm each one is live.' },
+              { q: 'Are creators’ numbers verified?', a: 'Not yet. Follower counts and engagement are what creators enter, so look at their work before you brief them. Pulling numbers straight from the platforms isn’t live yet.' },
+              { q: 'What does “payments are simulated” mean?', a: 'Alamut is in public beta, so no real money moves yet. Your wallet, escrow and releases work the way they will later. The balances just aren’t real money.' },
               { q: 'What if a post is off-brief or never goes live?', a: 'Ask for revisions, or open a dispute. The escrow freezes and either side can propose a split. Nothing releases without your confirmation or a settlement you agree to.' },
               { q: 'What happens to the brief I write on this page?', a: 'If you post it from here, it’s waiting in New campaign when you sign up, filled in. Until then it stays in this browser and is sent nowhere.' },
               { q: 'Can my team work on the same deals?', a: 'Yes. Every deal has an owner, so it’s clear who answers the creator, and only admin and finance roles can top up the wallet.' },

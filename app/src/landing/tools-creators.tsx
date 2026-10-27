@@ -96,8 +96,7 @@ export function BriefBrowser() {
         </article>
       </div>
       <p className="lx-board-note">
-        Example briefs, drawn as Browse campaigns shows them. In the app you search open briefs by brand, category or
-        platform, filter by budget, and save the ones you want.
+        These are examples, shown the way the app shows open briefs.
       </p>
     </div>
   );
@@ -142,7 +141,7 @@ export function RateHelper({ sf }: { sf: Storefront }) {
       {band && start ? (
         <>
           <p className="lx-rh-band" aria-live="polite">
-            <span className="lx-label">Typical for a Reel</span>
+            <span className="lx-rh-label">Typical for a Reel</span>
             <span className="lx-money">{usd(band.low)}–{usd(band.high)}</span>
           </p>
           <p className="lx-rh-sets">
@@ -265,8 +264,8 @@ export function StorefrontBuilder({ sf }: { sf: Storefront }) {
       </div>
       <div className="lx-sf-section">
         <p className="lx-note">
-          Your page’s address: <span className="tnum lx-sf-url">{host}/c/{sf.handle || 'yourhandle'}</span>. “You keep” is after
-          the {PLATFORM_FEE_LABEL} platform fee and {WHT_LABEL} withholding. <Credits photos={[PHOTOS.ringLight, ...WORK]} />
+          Your page’s address: <span className="tnum lx-sf-url">{host}/c/{sf.handle || 'yourhandle'}</span>.
+          {' '}<Credits photos={[PHOTOS.ringLight, ...WORK]} />
         </p>
       </div>
     </div>

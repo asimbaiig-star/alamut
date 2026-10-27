@@ -96,8 +96,8 @@ export function CreatorBrowser() {
         </article>
       </div>
       <p className="lx-board-note">
-        Example storefronts, drawn as Discover shows them. In the app you filter creators by platform, category,
-        followers, city and price. Follower counts are what creators enter. <Credits photos={CREATORS.map((x) => x.photo)} />
+        These are examples, shown the way the app shows storefronts. Follower counts are what creators
+        enter. <Credits photos={CREATORS.map((x) => x.photo)} />
       </p>
     </div>
   );
