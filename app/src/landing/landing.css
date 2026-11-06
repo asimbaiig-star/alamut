@@ -290,7 +290,7 @@ html:has(.lx) { scroll-padding-top: 88px; }
 /* ── Sheets: each section lies over the one before it ────────────────── */
 .lx-sheet {
   position: relative; margin-top: calc(var(--edge) * -1); border-radius: var(--edge) var(--edge) 0 0;
-  box-shadow: 0 -24px 60px -24px color-mix(in srgb, var(--v2-ink) 45%, transparent);
+  box-shadow: 0 -14px 40px -22px color-mix(in srgb, var(--v2-ink) 30%, transparent);
 }
 .lx-sheets [data-sheet] { position: sticky; top: var(--stick, 0px); }
 .lx-field-peach { padding-block: clamp(80px, 8vw, 116px) clamp(88px, 8vw, 120px); background: var(--v2-accent-soft); }
@@ -321,9 +321,13 @@ html:has(.lx) { scroll-padding-top: 88px; }
 .lx-sf-name:focus { border-bottom: 1px solid var(--v2-ink-3); }
 .lx-preview-btn { display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border-radius: var(--v2-r-pill); background: var(--accent-fill); color: var(--v2-paper); font-weight: 500; font-size: 0.9375rem; white-space: nowrap; }
 .lx-sf-meta { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; color: var(--v2-ink-3); font-size: 0.9375rem; }
-.lx-sf-meta input, .lx-sf-meta select { min-height: 44px; border: 0; border-bottom: 1px dashed var(--v2-line-2); background: transparent; color: var(--v2-ink-2); font: inherit; outline: none; padding: 0 0 1px; }
+/* 44px to tap, with the dashed rule drawn just under the text, not the box. */
+.lx-sf-meta input, .lx-sf-meta select {
+  min-height: 44px; border: 0; color: var(--v2-ink-2); font: inherit; outline: none; padding: 0;
+  background: repeating-linear-gradient(90deg, var(--v2-line-2) 0 4px, transparent 4px 7px) no-repeat 0 calc(100% - 9px) / 100% 1px;
+}
 .lx-sf-meta input { width: 13ch; }
-.lx-sf-meta input:focus, .lx-sf-meta select:focus { border-bottom: 1px solid var(--v2-ink-3); }
+.lx-sf-meta input:focus, .lx-sf-meta select:focus { background: linear-gradient(var(--v2-ink-3), var(--v2-ink-3)) no-repeat 0 calc(100% - 9px) / 100% 1px; }
 .lx-sf-section { padding: 18px clamp(18px, 2.1vw, 30px); border-top: 1px solid var(--v2-line); display: grid; gap: 12px; }
 /* A channel row, as the storefront's Channels block draws one. */
 .lx-sf-channel { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid var(--v2-line); border-radius: var(--v2-r-md); background: var(--v2-bg); }
@@ -469,6 +473,8 @@ html:has(.lx) { scroll-padding-top: 88px; }
 .lx-escrow-field { display: grid; gap: 6px; min-width: 0; font-size: 0.875rem; font-weight: 500; color: var(--on-dark); }
 .lx-escrow .lx-money-input { width: 170px; height: 54px; border-color: transparent; }
 .lx-escrow .lx-stepper { height: 54px; border-color: transparent; }
+/* The pill is paper here, so the ground's paper focus ring wouldn't show. */
+.lx-dark .lx-escrow .lx-stepper button:focus-visible { outline-color: var(--v2-accent); outline-offset: -4px; border-radius: var(--v2-r-pill); }
 .lx-bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(168px, 100%), 1fr)); gap: 6px; }
 
 .lx-bar .lx-seg {
