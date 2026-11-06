@@ -1,36 +1,35 @@
-// cards-brands.tsx — the brand page's workspace screens: what needs you
-// across campaigns, and the pitches a brief brings (see productCards.tsx).
+// cards-brands.tsx — the brand page's workspace screens: what needs you across
+// campaigns, one row per step of the story on the page, and the pitches a
+// brief brings (see productCards.tsx).
 
 import { Credits, PhotoImg } from './components';
 import { usd } from './estimate';
 import { APPLICATION_LAPSE_DAYS } from './facts';
 import { PHOTOS } from './photos';
-import { Window } from './productCards';
+import type { WorkspaceScreen } from './productCards';
 import { PlatMark } from './tools-shared';
 
-const BRAND_NAV = ['Home', 'Discover creators', 'My campaigns', 'Inbox', 'Calendar', 'Wallet', 'Brand profile'];
+const need = (what: string, action: string) => (
+  <div className="lx-row" key={what}>
+    <span className="lx-row-what lx-need"><span className="lx-dot" />{what}</span>
+    <span className="lx-mini-btn lx-need-btn">{action} →</span>
+  </div>
+);
 
-/** Brands: what needs you across campaigns, as BrandHome lists it. */
-export function BrandNeedsWindow() {
-  const items = [
-    { what: 'A creator posted live on Spring launch', action: 'Verify' },
-    { what: 'A creator countered at $2,200 on Spring launch', action: 'Respond' },
-    { what: 'Round 2 of a Reel is ready for review', action: 'Review' },
-    { what: 'A new pitch on Weeknight recipes', action: 'Review pitch' },
-  ];
-  return (
-    <Window nav={BRAND_NAV} active="Home" crumb="Home" title="Needs you">
-      <div className="lx-card">
-        {items.map((it, i) => (
-          <div key={it.what} className="lx-row" style={i ? { borderTop: '1px solid var(--v2-line)' } : undefined}>
-            <span className="lx-row-what" style={{ display: 'flex', alignItems: 'center', gap: 10 }}><span className="lx-dot" />{it.what}</span>
-            <span className="lx-mini-btn" style={{ gridRow: 1, gridColumn: 2 }}>{it.action} →</span>
-          </div>
-        ))}
-      </div>
-    </Window>
-  );
-}
+/** What needs you across campaigns, as BrandHome lists it. */
+export const BRAND_DEAL: WorkspaceScreen = {
+  nav: ['Home', 'Discover creators', 'My campaigns', 'Inbox', 'Calendar', 'Wallet', 'Brand profile'],
+  active: 'Home',
+  crumb: 'Home',
+  title: 'Needs you',
+  rows: [
+    need('A new pitch on Weeknight recipes', 'Review pitch'),
+    need('Round 2 of a Reel is ready for review', 'Review'),
+    need('A creator posted live on Spring launch', 'Verify'),
+    need(`${usd(4500)} held on Spring launch`, 'Open ledger'),
+    need(`A creator countered at ${usd(2200)} on Spring launch`, 'Respond'),
+  ],
+};
 
 // Each pitch shows a sample of the creator's work, as pitches in the app link
 // to their storefront.

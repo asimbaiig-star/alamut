@@ -13,8 +13,8 @@
 import { AudienceSwitch, CtaRow, Faq, Footer, FounderNote, MarketStrip, Nav, NotYet, Promises, StickyCta } from './components';
 import { CREATOR_MARKET } from './market';
 import { CREATOR_SETUP, DEMO_HREF, PLATFORM_FEE_LABEL, SAMPLE_STOREFRONT_HREF, SIGNUP_HREF } from './facts';
-import { CreatorDealWindow } from './cards-creators';
-import { Compare } from './productCards';
+import { CREATOR_DEAL } from './cards-creators';
+import { DealStory } from './productCards';
 import { BriefBrowser, PayoutTool, RateHelper, StorefrontBuilder, StorefrontJoin, useStorefront } from './tools-creators';
 
 const JOIN = { href: SIGNUP_HREF.creator, label: 'Join free' };
@@ -25,21 +25,19 @@ export function CreatorsPage() {
   return (
     <div className="lx" data-surface="v2">
       <Nav audience="creators" />
-      <main>
-        <section className="lx-hero" aria-labelledby="hero-title">
+      <main className="lx-creators">
+        <section className="lx-hero lx-dark" aria-labelledby="hero-title">
           <div className="lx-wrap">
-            <div className="lx-panel lx-dark moss">
-              <AudienceSwitch audience="creators" />
-              <div className="lx-hero-top">
-                <h1 className="lx-h1" id="hero-title"><span>Find brand deals.</span> <span>Run them here.</span></h1>
-                <div className="lx-hero-side">
-                  <p className="lx-lead">
-                    Pitch open briefs at your own rate, or let brands find your storefront. Offers, changes and
-                    payouts stay in one workspace.
-                  </p>
-                  <CtaRow primary={{ ...JOIN, id: 'hero-signup' }} secondary={{ ...DEMO, id: 'hero-demo' }} />
-                  <Promises items={['Free to join', 'No follower minimum', 'No exclusivity']} />
-                </div>
+            <AudienceSwitch audience="creators" />
+            <h1 className="lx-h1" id="hero-title"><span className="lx-line"><span>Find brand deals.</span></span> <span className="lx-line"><span>Run them here.</span></span></h1>
+            <div className="lx-hero-grid">
+              <div className="lx-hero-side">
+                <p className="lx-lead">
+                  Pitch open briefs at your own rate, or let brands find your storefront. Offers, changes and
+                  payouts stay in one workspace.
+                </p>
+                <CtaRow primary={{ ...JOIN, id: 'hero-signup' }} secondary={{ ...DEMO, id: 'hero-demo' }} />
+                <Promises items={['Free to join', 'No follower minimum', 'No exclusivity']} />
               </div>
               <BriefBrowser />
             </div>
@@ -48,65 +46,60 @@ export function CreatorsPage() {
 
         <MarketStrip title="Where brand deals are going" figures={CREATOR_MARKET} />
 
-        <section className="lx-section lx-field-peach" id="found" aria-labelledby="found-title">
-          <div className="lx-wrap lx-found">
-            <div className="lx-head">
+        <section className="lx-sheet lx-field-peach" id="found" data-sheet aria-labelledby="found-title">
+          <div className="lx-wrap">
+            <div className="lx-split">
               <h2 className="lx-h2" id="found-title">Let brands come to you.</h2>
               <p className="lx-lead">
                 Your storefront is a public page with your work, channels and packages. Brands see your prices
                 before they message you, and brief you from it. Try yours.
               </p>
-              <RateHelper sf={sf} />
-              <StorefrontJoin sf={sf} />
-              <a className="lx-link lx-cta-link" href={SAMPLE_STOREFRONT_HREF} data-cta="found-storefront">See a live storefront</a>
             </div>
-            <StorefrontBuilder sf={sf} />
+            <div className="lx-found-grid">
+              <StorefrontBuilder sf={sf} />
+              <div className="lx-found-side">
+                <RateHelper sf={sf} />
+                <StorefrontJoin sf={sf} />
+                <a className="lx-link lx-cta-link" href={SAMPLE_STOREFRONT_HREF} data-cta="found-storefront">See a live storefront</a>
+              </div>
+            </div>
           </div>
         </section>
 
-        <section className="lx-section lx-band lx-dark" id="workspace" aria-labelledby="workspace-title">
-          <div className="lx-wrap">
-            <div className="lx-head">
-              <h2 className="lx-h2" id="workspace-title">Deals out of your DMs.</h2>
-              <p className="lx-lead">
-                Offers, counters, paid changes and reviews stay on the deal, next to your inbox, calendar and wallet.
-              </p>
-            </div>
-            <CreatorDealWindow />
-            <Compare caption="Brand deals in your DMs, and on Alamut" before="In your DMs" rows={[
-              ['Every brand asks your rate, and you start from zero each time.', 'Your packages and prices are on your storefront before the first message.'],
-              ['What you agreed is somewhere far up the chat.', 'Every offer and counter stays on the deal, with the agreed one marked.'],
-              ['“Could you add one more Story?” arrives after the price is set.', 'Extra deliverables are paid changes. Nothing applies until you accept it.'],
-              ['You send an invoice, then you chase it.', 'The money is held when the brand accepts, and released as each post goes live.'],
-              ['Good feedback disappears with the thread.', 'Brands review you when the deal is done, and you pin the best to your storefront.'],
-            ]} />
-          </div>
-        </section>
+        <DealStory
+          id="workspace"
+          title="Deals out of your DMs."
+          lead="Offers, counters, paid changes and reviews stay on the deal, next to your inbox, calendar and wallet."
+          before="In your DMs"
+          screen={CREATOR_DEAL}
+          steps={[
+            ['Every brand asks your rate, and you start from zero each time.', 'Your packages and prices are on your storefront before the first message.'],
+            ['What you agreed is somewhere far up the chat.', 'Every offer and counter stays on the deal, with the agreed one marked.'],
+            ['“Could you add one more Story?” arrives after the price is set.', 'Extra deliverables are paid changes. Nothing applies until you accept it.'],
+            ['You send an invoice, then you chase it.', 'The money is held when the brand accepts, and released as each post goes live.'],
+            ['Good feedback disappears with the thread.', 'Brands review you when the deal is done, and you pin the best to your storefront.'],
+          ]}
+        />
 
-        <section className="lx-section" id="paid" aria-labelledby="paid-title">
+        <section className="lx-sheet lx-paid lx-dark" id="paid" data-sheet aria-labelledby="paid-title">
           <div className="lx-wrap">
-            <div className="lx-head">
-              <h2 className="lx-h2" id="paid-title">Money held before you start.</h2>
-              <p className="lx-lead">The brand’s money is held in escrow from the day they accept, and released to you post by post.</p>
-            </div>
-            <PayoutTool />
+            <h2 className="lx-h2 one-line" id="paid-title">Money held before you start.</h2>
+            <PayoutTool lead="The brand’s money is held in escrow from the day they accept, and released to you post by post." />
             <p className="lx-after-note">
-              <b>If something goes wrong</b>, open a dispute from the deal. The escrow freezes until you both agree on a split.
+              <b>Tap a post to mark it live.</b> If something goes wrong, open a dispute from the deal. The escrow freezes until you both agree on a split.
             </p>
           </div>
         </section>
 
-        <section className="lx-section lx-field-sage" id="pricing" aria-labelledby="pricing-title">
+        <section className="lx-sheet lx-field-sage" id="pricing" data-sheet aria-labelledby="pricing-title">
           <div className="lx-wrap lx-pricing">
             <div className="lx-pricing-main">
               <h2 className="lx-h2" id="pricing-title">Free to join.</h2>
-              <p className="lx-fee">
-                <span className="lx-money lx-fee-figure">{PLATFORM_FEE_LABEL}</span>
-                <span>of each payment, taken as it reaches you. Alamut is paid only when you are, and joining costs nothing.</span>
-              </p>
+              <p className="lx-money lx-fee-figure">{PLATFORM_FEE_LABEL}</p>
             </div>
             <div className="lx-pricing-side">
-              <p className="lx-terms-p">
+              <p className="lx-fee-line">
+                of each payment, taken as it reaches you. Alamut is paid only when you are, and joining costs nothing.
                 No subscription. Withdraw to your bank once you’ve finished the identity step and added your bank details.
               </p>
               <NotYet items={[
@@ -118,9 +111,9 @@ export function CreatorsPage() {
           </div>
         </section>
 
-        <section className="lx-section" id="faq" aria-labelledby="faq-title">
-          <div className="lx-wrap">
-            <div className="lx-head"><h2 className="lx-h2" id="faq-title">Questions</h2></div>
+        <section className="lx-sheet lx-faq" id="faq" data-sheet aria-labelledby="faq-title">
+          <div className="lx-wrap lx-faq-grid">
+            <h2 className="lx-h2 md" id="faq-title">Questions</h2>
             <Faq items={[
               { q: 'Do I need a big following?', a: 'No. There’s no follower minimum. Pitch the briefs that fit you.' },
               { q: 'Can I charge different brands different prices?', a: 'Yes. Your storefront shows your standard packages, and you can counter any offer a brand sends.' },
@@ -134,14 +127,14 @@ export function CreatorsPage() {
 
         <FounderNote />
 
-        <section className="lx-final lx-dark" aria-labelledby="final-title">
-          <div className="lx-wrap lx-final-grid">
-            <h2 className="lx-h2" id="final-title">Open your storefront.</h2>
-            <div className="lx-hero-side">
+        <section className="lx-sheet lx-final lx-dark" aria-labelledby="final-title">
+          <div className="lx-wrap">
+            <h2 className="lx-h1 lx-final-title" id="final-title">Open your storefront.</h2>
+            <div className="lx-final-row">
               <p className="lx-lead">Set your packages and pitch your first brief today. It’s free.</p>
               <CtaRow primary={{ ...JOIN, id: 'final-signup' }} secondary={{ ...DEMO, id: 'final-demo' }} />
-              <p className="lx-next">Setup after you join: {CREATOR_SETUP}.</p>
             </div>
+            <p className="lx-next">Setup after you join: {CREATOR_SETUP}.</p>
           </div>
         </section>
       </main>

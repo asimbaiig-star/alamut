@@ -1,31 +1,45 @@
 /* landing.css — the two public landing pages, in the portal's own language.
  *
- * Every colour, radius, shadow and typeface here is a token from
+ * Every colour, radius and typeface here is a token from
  * ../styles/v2-tokens.css, the same file the workspace reads: the landing is
- * the portal's front door, so it looks like the portal. This file defines
- * layout and the landing's scale (bigger type, more space) and nothing else.
- * No colour literals (pinned by regressionGuards CLASS 10).
+ * the portal's front door. No colour literals (pinned by regressionGuards
+ * CLASS 10).
  *
- * Layout: each page argues in order (find, pitch or be found, run the deal,
- * get paid, cost) and each argument is shown as the portal screen that does
- * it: campaign tiles, the apply form, the storefront, the workspace, the
- * wallet card. No two neighbouring sections share a composition.
+ * The idea comes from the portal's campaign tiles, where every brief arrives
+ * on its brand's coloured letterhead: colour is the ground, paper is the
+ * object. So the hero's ground takes the letterhead of the sheet on top of
+ * the pile, the sections are sheets that slide over each other, and whatever
+ * you can touch is paper lying on colour.
+ *
+ * Movement is carried by the same idea, and each move says something: a band
+ * becomes the open sheet, a DM is filed as a row of the deal, a held post is
+ * released. The page is complete at rest; motion.ts and the rules at the end
+ * only move it.
  */
 
 @import '../styles/v2-tokens.css';
 
+/* Whatever scrolls into view clears the floating nav. */
+html:has(.lx) { scroll-padding-top: 88px; }
+
 .lx {
-  --wrap: 1200px;
-  --gap-section: clamp(88px, 11vw, 168px);
-  --t-hero: clamp(3rem, 1.6rem + 4.6vw, 6rem);
-  --t-h2: clamp(2.125rem, 1.35rem + 2.4vw, 3.5rem);
-  --t-lead: clamp(1.0625rem, 1rem + 0.35vw, 1.25rem);
+  --wrap: 1440px;
+  --gutter: clamp(20px, 2.8vw, 40px);
+  --ease: cubic-bezier(.16, 1, .3, 1);
+  --edge: 30px;
+  --t-h2: clamp(2.75rem, 1rem + 6.6vw, 6.875rem);
+  --t-h2-md: clamp(2.5rem, 1rem + 4.9vw, 5.5rem);
+  --t-lead: clamp(1.125rem, 1rem + 0.6vw, 1.5rem);
+  --on-dark: color-mix(in srgb, var(--v2-paper) 86%, transparent);
+  --on-dark-2: color-mix(in srgb, var(--v2-paper) 76%, transparent);
   /* Terracotta deepened a step, so paper text on it passes 4.5:1 (5.1). */
   --accent-fill: color-mix(in srgb, var(--v2-accent) 85%, var(--v2-ink));
+  --shadow-sheet: 0 40px 70px -24px color-mix(in srgb, var(--v2-ink) 62%, transparent);
 
-  background: var(--v2-bg);
+  overflow-x: clip;
+  background: var(--v2-paper);
   color: var(--v2-ink);
-  font: 400 1.0625rem/1.55 var(--v2-font-sans);
+  font: 400 1.0625rem/1.5 var(--v2-font-sans);
   font-feature-settings: "ss01", "cv11";
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -37,7 +51,7 @@
 :where(.lx) :where(a) { color: inherit; text-decoration: none; }
 .lx img { display: block; max-width: 100%; height: auto; }
 .lx :focus-visible { outline: 2px solid var(--v2-accent); outline-offset: 3px; border-radius: 6px; }
-/* Terracotta is under 3:1 on moss, navy and brick: paper there instead. */
+/* Terracotta is under 3:1 on the grounds: paper there instead. */
 .lx-dark :focus-visible:not(.lx-card *, .lx-window *) { outline-color: var(--v2-paper); }
 .lx ::selection { background: var(--v2-accent-soft); color: var(--v2-ink); }
 .lx :is(input, textarea) { caret-color: var(--v2-accent); }
@@ -46,190 +60,117 @@
 
 .lx-wrap {
   width: 100%; max-width: var(--wrap); margin-inline: auto;
-  padding-left: max(20px, env(safe-area-inset-left, 0px));
-  padding-right: max(20px, env(safe-area-inset-right, 0px));
+  padding-left: max(var(--gutter), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--gutter), env(safe-area-inset-right, 0px));
 }
-@media (min-width: 760px) {
-  .lx-wrap { padding-left: max(32px, env(safe-area-inset-left, 0px)); padding-right: max(32px, env(safe-area-inset-right, 0px)); }
+
+/* Each page's colours, in the order you meet them. */
+.lx-creators {
+  --ground: var(--v2-band-navy); --story: var(--v2-band-aubergine); --paid: var(--v2-band-moss);
+  /* As big as line two can be and still clear the pile beside it: "Run them
+   * here." is 5.22em wide, and 515px is the pile, its gap and the gutters. */
+  --t-hero: min(calc((100vw - 515px) / 5.22), 172px, 22vh);
+  /* The pile tucks under the end of line one, beside line two. */
+  --tuck: -.77; --clear: 1.02;
+}
+.lx-brands {
+  --ground: var(--v2-band-aubergine); --story: var(--v2-band-navy); --paid: var(--v2-band-ink);
+  /* The same sum for "Run the deal here.", 6em wide. */
+  --t-hero: min(calc((100vw - 522px) / 6), 156px, 21vh);
+  /* Both lines end short of the pile, so it stands beside the headline. */
+  --tuck: -1.9; --clear: 2.15;
 }
 
 /* ── Type: Fraunces for display and money, Inter Tight for reading ────── */
-.lx-h1, .lx-h2 {
-  font-family: var(--v2-font-display); font-weight: 500;
-  font-variation-settings: "opsz" 144; letter-spacing: -0.02em; text-wrap: balance;
+.lx-h1, .lx-h2, .lx-giant, .lx-fee-figure {
+  font-family: var(--v2-font-display); font-weight: 400; font-variation-settings: "opsz" 144;
 }
-.lx-h1 { font-size: var(--t-hero); line-height: 1; }
-.lx-h1 > span { display: block; }
-.lx-h2 { font-size: var(--t-h2); line-height: 1.04; }
+.lx-h1 { font-size: var(--t-hero); line-height: .95; letter-spacing: -.04em; }
+.lx-line { display: block; overflow: hidden; padding: 0 0 .14em .04em; margin: 0 0 -.14em -.04em; }
+.lx-line > span { display: block; }
+.lx-h2 { font-size: var(--t-h2); line-height: .98; letter-spacing: -.036em; text-wrap: balance; }
+.lx-h2.md { font-size: var(--t-h2-md); line-height: 1; letter-spacing: -.032em; }
+.lx-h2.sm { font-size: clamp(2.25rem, 1.4rem + 2.4vw, 3.5rem); letter-spacing: -.024em; line-height: 1.04; }
+.lx-h2.one-line { font-size: clamp(2.75rem, 7.1vw, 102px); }
 .lx-h3 { font-size: 1.125rem; font-weight: 600; line-height: 1.3; letter-spacing: -0.005em; }
-.lx-lead { font-size: var(--t-lead); line-height: 1.5; color: var(--v2-ink-2); max-width: 34em; text-wrap: pretty; }
+.lx-lead { font-size: var(--t-lead); line-height: 1.38; color: var(--v2-ink-2); max-width: 34em; text-wrap: pretty; }
+.lx-dark .lx-lead { color: var(--on-dark); }
 .lx-note { font-size: 0.875rem; color: var(--v2-ink-3); text-wrap: pretty; }
 /* The portal's small uppercase field label, used only where the portal
  * itself labels a field. */
 .lx-label { font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--v2-ink-3); }
-.lx-money { font-family: var(--v2-font-display); font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.lx-money { font-family: var(--v2-font-display); font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: -0.015em; }
 
-/* ── The mark and nav, as in the portal's sidebar ────────────────────── */
-.lx-nav-inner { display: flex; align-items: center; gap: 24px; height: 76px; }
-/* Desktop keeps the nav, and its one button, in reach (phones have the
- * bottom bar instead). It gains a hairline once the page has scrolled. */
-@media (min-width: 761px) {
-  .lx-nav {
-    position: sticky; top: 0; z-index: 30;
-    background: var(--v2-bg);
-  }
-  @supports (animation-timeline: scroll()) {
-    .lx-nav { animation: lx-nav-stuck linear both; animation-timeline: scroll(); animation-range: 0 96px; }
-  }
+/* A figure on odometer columns (tools-shared.tsx, Roll): `--d` is the digit,
+ * and the column of all ten slides to it. Each column takes the width of the
+ * digit it shows, so the figure sets like ordinary type when it comes to rest. */
+.lx-roll { display: inline-block; line-height: 1; }
+.lx-roll-cols { display: flex; }
+.lx-d, .lx-c { display: block; height: 1em; line-height: 1; }
+.lx-d { position: relative; overflow: hidden; overflow-x: visible; overflow-y: clip; }
+.lx-d::after { content: attr(data-c); visibility: hidden; }
+.lx-d::before { content: "0\A 1\A 2\A 3\A 4\A 5\A 6\A 7\A 8\A 9"; position: absolute; top: 0; left: 50%; white-space: pre; text-align: center; transform: translate(-50%, calc(var(--d) * -1em)); transition: transform .8s var(--ease); }
+.lx-c::before { content: attr(data-c); }
+
+/* ── The nav: a sheet of paper over whatever ground is under it ──────── */
+.lx-nav { position: sticky; z-index: 30; top: 12px; height: 0; }
+.lx-nav-inner {
+  display: flex; align-items: center; gap: 20px; height: 60px; padding: 0 10px 0 16px; border-radius: 16px;
+  background: var(--v2-paper); color: var(--v2-ink); box-shadow: 0 14px 34px -16px color-mix(in srgb, var(--v2-ink) 55%, transparent);
 }
-@keyframes lx-nav-stuck { to { box-shadow: 0 1px 0 var(--v2-line); } }
 .lx-brand { display: inline-flex; align-items: center; gap: 10px; }
 .lx-brand-mark { width: 32px; height: 32px; border-radius: var(--v2-r-sm); display: grid; place-items: center; background: var(--v2-ink); color: var(--v2-paper); flex: none; }
 .lx-brand-name { font-family: var(--v2-font-display); font-size: 24px; font-weight: 500; letter-spacing: -0.02em; }
-.lx-nav-links { margin-left: auto; display: flex; align-items: center; gap: 22px; }
+.lx-nav-inner > a { display: inline-flex; align-items: center; min-height: 44px; }
+.lx-seg { display: flex; gap: 2px; padding: 3px; border-radius: var(--v2-r-pill); background: var(--v2-bg-2); font-size: 0.90625rem; font-weight: 500; }
+.lx-seg a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 15px; border-radius: var(--v2-r-pill); color: var(--v2-ink-2); transition: color .15s; }
+.lx-seg a:hover { color: var(--v2-ink); }
+.lx-seg a[aria-current="page"] { background: var(--v2-paper); color: var(--v2-ink); box-shadow: var(--v2-shadow-sm); }
+.lx-nav-links { margin-left: auto; display: flex; align-items: center; gap: 16px; }
 .lx-nav-link { display: inline-flex; align-items: center; min-height: 44px; padding-inline: 6px; font-size: 0.9375rem; color: var(--v2-ink-2); white-space: nowrap; transition: color .12s; }
-.lx-nav-inner > a, .lx-foot-inner > a { display: inline-flex; align-items: center; min-height: 44px; }
 .lx-nav-link:hover { color: var(--v2-ink); }
+
+/* The tabs at the top of a phone's hero. */
+.lx-aud { display: none; gap: 2px; padding: 3px; margin-bottom: 26px; border-radius: var(--v2-r-pill); background: color-mix(in srgb, var(--v2-paper) 12%, transparent); }
+.lx-aud a { flex: 1; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 10px; border-radius: var(--v2-r-pill); font-size: 0.9375rem; font-weight: 500; color: var(--on-dark); }
+.lx-aud a[aria-current="page"] { background: var(--v2-paper); color: var(--v2-ink); }
 
 /* ── Buttons: the portal's pills, at landing size ────────────────────── */
 .lx-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  min-height: 50px; padding: 0 24px; border-radius: var(--v2-r-pill); border: 1px solid transparent;
+  min-height: 54px; padding: 0 28px; border-radius: var(--v2-r-pill); border: 1px solid transparent;
   background: var(--v2-ink); color: var(--v2-paper);
-  font: 500 1rem/1 var(--v2-font-sans); white-space: nowrap; cursor: pointer;
-  transition: background-color .12s, border-color .12s, color .12s;
+  font: 500 1.0625rem/1 var(--v2-font-sans); white-space: nowrap; cursor: pointer;
+  transition: background-color .15s, color .15s, transform .25s var(--ease);
 }
 .lx-btn:hover { background: var(--v2-ink-2); }
+.lx-btn:active { transform: scale(.97); }
 .lx-btn-sm { min-height: 44px; padding: 0 18px; font-size: 0.9375rem; }
 .lx-btn.accent { background: var(--accent-fill); color: var(--v2-paper); }
 .lx-btn.accent:hover { background: var(--v2-accent-2); color: var(--v2-ink); }
+.lx-dark .lx-btn:not(.accent, .lx-card *) { background: var(--v2-paper); color: var(--v2-ink); }
+.lx-dark .lx-btn:not(.accent, .lx-card *):hover { background: var(--v2-bg-2); }
 .lx-cta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 22px; }
 .lx-cta-link { display: inline-flex; align-items: center; justify-self: start; min-height: 44px; }
 .lx-link {
   font-weight: 500; color: var(--v2-ink); white-space: nowrap;
   text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; text-decoration-color: var(--v2-line-2);
+  transition: text-decoration-color .15s;
 }
 .lx-link:hover { text-decoration-color: var(--v2-ink); }
+.lx-dark .lx-link:not(.lx-card *) { color: var(--v2-paper); text-decoration-color: color-mix(in srgb, var(--v2-paper) 45%, transparent); }
+.lx-dark .lx-link:not(.lx-card *):hover { text-decoration-color: var(--v2-paper); }
 
 /* ── Portal pieces ───────────────────────────────────────────────────── */
-.lx-card { color: var(--v2-ink); background: var(--v2-paper); border: 1px solid var(--v2-line); border-radius: var(--v2-r-lg); box-shadow: var(--v2-shadow-sm); overflow: hidden; }
-.lx-pill { justify-self: start; display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: var(--v2-r-pill); background: var(--v2-bg-2); color: var(--v2-ink-2); font-size: 12px; font-weight: 500; white-space: nowrap; }
-.lx-pill.accent { background: var(--v2-accent-soft); color: var(--v2-ink-2); }
+.lx-card { color: var(--v2-ink); background: var(--v2-paper); border: 1px solid var(--v2-line); border-radius: var(--v2-r-lg); overflow: hidden; }
+.lx-pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: var(--v2-r-pill); background: var(--v2-bg-2); color: var(--v2-ink-2); font-size: 12px; font-weight: 500; white-space: nowrap; }
 .lx-pill.moss { background: var(--v2-moss-soft); color: var(--v2-moss); }
-.lx-chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.lx-chip {
-  display: inline-flex; align-items: center; gap: 8px;
-  min-height: 44px; padding: 0 18px; border-radius: var(--v2-r-pill); border: 1px solid var(--v2-line-2);
-  background: var(--v2-paper); color: var(--v2-ink-2); font: 500 0.9375rem/1 var(--v2-font-sans); cursor: pointer;
-  transition: background-color .12s, color .12s, border-color .12s;
-}
-.lx-chip:hover { color: var(--v2-ink); border-color: var(--v2-ink-4); }
-.lx-chip[aria-pressed="true"] { background: var(--v2-ink); border-color: var(--v2-ink); color: var(--v2-paper); }
-.lx-photo-grade { filter: saturate(.88) sepia(.06); }
-
-/* ── Hero: the portal's home card, at the size of a page ───────────────
- * Creators open on the moss card (CreatorHome's earnings hero), brands on
- * the dark card with the terracotta glow (BrandHome's Spark card): the first
- * thing each side sees after signing up. The card bleeds out by its own
- * padding, so what's inside lines up with the rest of the page. */
-/* The card is the hero's edge, and a coloured section follows it, so the
- * hero needs little ground of its own below. */
-.lx-hero { --panel-pad: clamp(24px, 5vw, 64px); padding-block: clamp(4px, 1vw, 12px) clamp(20px, 3vw, 36px); }
-.lx-hero > .lx-wrap { max-width: calc(var(--wrap) + 2 * var(--panel-pad)); }
-.lx-panel { position: relative; isolation: isolate; overflow: hidden; border-radius: var(--v2-r-xl); padding: var(--panel-pad); }
-.lx-panel.moss { background: linear-gradient(135deg, var(--v2-moss) 0%, var(--v2-moss-deep) 100%); }
-.lx-panel.ink { background: linear-gradient(135deg, var(--v2-ink) 0%, var(--v2-ink-deep) 100%); }
-.lx-panel::before {
-  content: ""; position: absolute; z-index: -1; top: -240px; right: -200px; width: 720px; height: 720px; border-radius: 50%;
-  background: radial-gradient(circle, var(--v2-accent) 0%, transparent 70%); opacity: .25; filter: blur(30px); pointer-events: none;
-}
-.lx-panel.moss::before { opacity: .18; }
-.lx-hero-top { display: grid; gap: 28px; align-items: end; }
-/* "For creators | For brands": the portal's segmented tabs, on the card. */
-.lx-aud { display: inline-flex; gap: 2px; padding: 3px; margin-bottom: clamp(28px, 4vw, 44px); border-radius: var(--v2-r-pill); background: color-mix(in srgb, var(--v2-paper) 10%, transparent); }
-.lx-aud a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border-radius: var(--v2-r-pill); font-size: 0.9375rem; font-weight: 500; color: color-mix(in srgb, var(--v2-paper) 80%, transparent); transition: background-color .12s, color .12s; }
-.lx-aud a:hover { color: var(--v2-paper); }
-.lx-aud a[aria-current="page"] { background: var(--v2-paper); color: var(--v2-ink); }
-.lx-hero-side { display: grid; gap: 22px; }
-.lx-hero-small { font-size: 0.875rem; color: var(--v2-ink-3); }
-/* The hero's promises, checked off: what joining costs and asks. */
-.lx-promises { display: grid; gap: 10px; }
-.lx-promises ul { display: flex; flex-wrap: wrap; gap: 8px 16px; }
-.lx-promises li { display: inline-flex; align-items: center; gap: 8px; font-size: 0.9375rem; font-weight: 500; }
+.lx-photo-grade { filter: saturate(.92) sepia(.04); }
 /* A done thing: the hero's promises, and what the workspace does. */
 .lx-check { width: 20px; height: 20px; flex: none; border-radius: 50%; background: var(--v2-moss-soft); fill: none; stroke: var(--v2-moss-deep); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-/* The hero's working slice: a list to pick from, the picked item open. */
-.lx-browse { margin-top: clamp(40px, 5vw, 64px); display: grid; gap: 20px; align-items: start; }
-@media (min-width: 1000px) { .lx-browse { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 20px 28px; } }
-.lx-browse-list { display: grid; gap: 16px; align-content: start; }
-.lx-browse-detail { scroll-margin-top: 16px; }
-.lx-browse-head { display: flex; align-items: center; gap: 12px; }
-.lx-browse > .lx-board-note { grid-column: 1 / -1; }
-.lx-board-title { font-family: var(--v2-font-display); font-size: 1.5rem; font-weight: 500; letter-spacing: -0.01em; }
-.lx-picks { display: grid; gap: 8px; }
-.lx-pick {
-  width: 100%; min-height: 68px; display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 14px;
-  padding: 12px 16px 12px 12px; border-radius: var(--v2-r-lg); text-align: left; cursor: pointer;
-  border: 1px solid color-mix(in srgb, var(--v2-paper) 14%, transparent);
-  background: color-mix(in srgb, var(--v2-paper) 6%, transparent); color: var(--v2-paper); font: inherit;
-  transition: background-color .15s, border-color .15s, color .15s, transform .15s;
-}
-.lx-pick:hover { background: color-mix(in srgb, var(--v2-paper) 11%, transparent); border-color: color-mix(in srgb, var(--v2-paper) 30%, transparent); }
-.lx-pick[aria-pressed="true"] { background: var(--v2-paper); border-color: var(--v2-paper); color: var(--v2-ink); }
-.lx-pick-mark { width: 44px; height: 44px; border-radius: var(--v2-r-sm); display: grid; place-items: center; color: var(--v2-paper); font-family: var(--v2-font-display); font-weight: 600; font-size: 1.125rem; }
-.lx-pick-photo { width: 44px; height: 44px; border-radius: var(--v2-r-sm); overflow: hidden; }
-.lx-pick-photo img { width: 100%; height: 100%; object-fit: cover; }
-.lx-pick-text { display: grid; gap: 2px; min-width: 0; }
-.lx-pick-title { font-weight: 600; }
-.lx-pick-sub { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 0.875rem; color: color-mix(in srgb, var(--v2-paper) 74%, transparent); }
-.lx-pick-clip { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lx-pick-ch { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-.lx-pick-ch + .lx-pick-ch { padding-left: 4px; }
-.lx-pick[aria-pressed="true"] .lx-pick-sub { color: var(--v2-ink-3); }
-.lx-pick-price { font-size: 1.25rem; white-space: nowrap; }
-.lx-pick-from { font-size: 0.8125rem; color: color-mix(in srgb, var(--v2-paper) 74%, transparent); }
-.lx-pick[aria-pressed="true"] .lx-pick-from { color: var(--v2-ink-3); }
-.lx-pick-price .lx-money { font-size: 1.25rem; }
-.lx-pill-dark { background: color-mix(in srgb, var(--v2-paper) 12%, transparent); color: var(--v2-paper); }
-.lx-pill-band { background: color-mix(in srgb, var(--v2-paper) 18%, transparent); color: var(--v2-paper); }
-/* The picked item's card swaps in, as a portal panel opens. */
-@keyframes lx-swap-in { from { opacity: 0; transform: translateY(6px); } }
-.lx-swap { animation: lx-swap-in .28s cubic-bezier(.16, 1, .3, 1) both; }
-/* The one thing to do in a card: the price, what it means, the button. */
-.lx-act { display: grid; gap: 12px; padding: 18px; border-top: 1px solid var(--v2-line); }
-.lx-act-flat { padding: 4px 0 0; border-top: 0; }
-.lx-act-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 18px; }
-.lx-act-figure { display: grid; gap: 6px; justify-items: end; padding-bottom: 4px; }
-.lx-act-figure .lx-money { font-size: 2.5rem; line-height: 1; color: var(--v2-moss); }
-.lx-act-figure-solo { justify-items: start; padding-bottom: 0; }
-.lx-act-figure-solo .lx-money { color: var(--v2-ink); }
-.lx-act-split { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px 18px; }
-.lx-act-split .lx-btn { justify-self: auto; }
-.lx-act .lx-btn { justify-self: start; }
-.lx-act-keep { color: var(--v2-ink-2); font-size: 0.9375rem; text-wrap: pretty; }
-.lx-act-keep b { color: var(--v2-ink); font-weight: 600; }
-@media (min-width: 1024px) {
-  .lx-hero-top { grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr); gap: 56px; }
-  .lx-hero-side { padding-bottom: 10px; }
-}
-.lx-panel .lx-card { border-color: transparent; box-shadow: 0 24px 48px -24px color-mix(in srgb, var(--v2-ink) 80%, transparent); }
-
-/* ── On a dark card or band: the portal's paper-on-ink treatment ───────
- * Text that sits on the dark ground only; cards inside keep their own. */
-.lx-dark { color: var(--v2-paper); }
-.lx-dark :is(.lx-lead, .lx-compare td:first-child) { color: color-mix(in srgb, var(--v2-paper) 80%, transparent); }
-.lx-dark :is(.lx-hero-small, .lx-board-note, .lx-note, .lx-next):not(.lx-card *, .lx-window *) { color: color-mix(in srgb, var(--v2-paper) 74%, transparent); }
-.lx-dark .lx-btn:not(.accent, .lx-card *) { background: var(--v2-paper); color: var(--v2-ink); }
-.lx-dark .lx-btn:not(.accent, .lx-card *):hover { background: var(--v2-bg-2); }
-.lx-dark .lx-chip { background: color-mix(in srgb, var(--v2-paper) 8%, transparent); border-color: color-mix(in srgb, var(--v2-paper) 26%, transparent); color: var(--v2-paper); }
-.lx-dark .lx-chip:hover { border-color: color-mix(in srgb, var(--v2-paper) 60%, transparent); }
-.lx-dark .lx-chip[aria-pressed="true"] { background: var(--v2-paper); border-color: var(--v2-paper); color: var(--v2-ink); }
-.lx-dark .lx-link:not(.lx-card *) { color: var(--v2-paper); text-decoration-color: color-mix(in srgb, var(--v2-paper) 45%, transparent); }
-
-
 /* A platform's mark beside whatever names it, as the portal draws channel
- * badges (.v2-channel-icon): the glyph on a tile in the platform's colour.
- * TikTok's black tile keeps a faint edge for the dark grounds. */
+ * badges (.v2-channel-icon). TikTok's black tile keeps a faint edge for the
+ * dark grounds. */
 .lx-plat { display: inline-flex; align-items: center; gap: 8px; }
 .lx-pmark { width: 18px; height: 18px; border-radius: 5px; display: inline-grid; place-items: center; flex: none; color: var(--v2-paper); background: var(--v2-ink-3); }
 .lx-pmark svg { width: 11px; height: 11px; fill: currentColor; }
@@ -239,211 +180,176 @@
 .lx-pmark.tiktok { background: var(--v2-platform-tiktok); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--v2-paper) 24%, transparent); }
 .lx-pmark.youtube { background: var(--v2-platform-youtube); }
 
-/* Campaign tile, after BrowseBriefs' CampaignTile. */
-.lx-tile { display: flex; flex-direction: column; }
-.lx-tile-band { position: relative; display: flex; align-items: center; gap: 10px; padding: 13px 18px; overflow: hidden; }
-.lx-tile-band::after { content: ""; position: absolute; inset: 0; opacity: .1; background-image: repeating-linear-gradient(135deg, currentColor 0 1px, transparent 1px 7px); pointer-events: none; }
-.lx-tile-initial { width: 30px; height: 30px; border-radius: var(--v2-r-sm); display: grid; place-items: center; background: var(--v2-paper); color: var(--v2-ink); font-family: var(--v2-font-display); font-weight: 600; flex: none; }
-.lx-tile-brand { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
-.lx-tile-cat { margin-left: auto; font-size: 12px; font-weight: 500; }
-.lx-tile-band .lx-pill { position: relative; z-index: 1; }
-.lx-tile-body { padding: 18px 18px 6px; display: grid; gap: 4px; }
-.lx-tile-title { font-family: var(--v2-font-display); font-size: 1.625rem; font-weight: 500; letter-spacing: -0.015em; line-height: 1.1; }
-.lx-tile-blurb { color: var(--v2-ink-3); font-size: 0.9375rem; }
-.lx-tile-cols { display: grid; grid-template-columns: 1.1fr 1.2fr 0.8fr; margin-top: 14px; border-top: 1px solid var(--v2-line); }
-.lx-tile-cols > div { padding: 14px 18px; display: grid; gap: 6px; align-content: start; }
-.lx-tile-cols > div + div { border-left: 1px solid var(--v2-line); }
-.lx-tile-cols > div:first-child { background: linear-gradient(180deg, color-mix(in oklab, var(--v2-gold) 12%, transparent), transparent 90%); }
-.lx-tile-price { font-size: 1.75rem; line-height: 1; }
-.lx-tile-price small { font-size: 0.6em; color: var(--v2-ink-3); }
-.lx-tile-list { display: grid; gap: 6px; font-size: 0.875rem; color: var(--v2-ink-2); }
+/* ── Hero: the headline, and the pile of work ────────────────────────── */
+.lx-hero { padding-block: 100px 64px; background: var(--ground); color: var(--v2-paper); transition: background-color .5s; }
+.lx-hero-grid { display: grid; gap: 40px; margin-top: 28px; }
+.lx-hero-side { display: grid; gap: 24px; align-content: start; max-width: 590px; }
+@media (min-width: 1000px) {
+  .lx-hero-grid { grid-template-columns: minmax(0, 1fr) 410px; gap: 48px; align-items: start; margin-top: 44px; }
+}
+@media (min-width: 1240px) {
+  .lx-hero-grid { margin-top: calc(var(--t-hero) * var(--tuck)); }
+  .lx-hero-side { padding-top: calc(var(--t-hero) * var(--clear)); }
+}
+/* The hero's promises, checked off: what joining costs and asks. */
+.lx-promises { display: grid; gap: 12px; }
+.lx-promises ul { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.lx-promises li { display: inline-flex; align-items: center; gap: 8px; font-size: 0.96875rem; font-weight: 500; }
+.lx-hero-small { font-size: 0.90625rem; color: var(--on-dark-2); }
 
-/* Creator card, after Discover's CreatorCard. */
-.lx-ccard { display: flex; flex-direction: column; }
-.lx-ccard-cover { height: 104px; overflow: hidden; background: var(--v2-bg-2); }
-.lx-ccard-cover img { width: 100%; height: 100%; object-fit: cover; }
-.lx-ccard-body { padding: 0 18px 16px; display: grid; gap: 10px; }
-.lx-ccard-id { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
-.lx-ccard-avatar { position: relative; z-index: 1; width: 52px; height: 52px; margin-top: -26px; border-radius: 50%; border: 3px solid var(--v2-paper); background: var(--v2-accent-soft); color: var(--v2-ink-2); display: grid; place-items: center; font-family: var(--v2-font-display); font-weight: 600; font-size: 1.125rem; }
-.lx-ccard-name { font-family: var(--v2-font-display); font-size: 1.5rem; font-weight: 500; letter-spacing: -0.01em; line-height: 1.1; }
+/* The pile. Each waiting brief shows the top of its sheet, its letterhead
+ * running on under the one in front. */
+.lx-pile { display: grid; gap: 14px; min-width: 0; }
+.lx-bands > li { position: relative; height: 52px; }
+.lx-stack.tall .lx-bands > li { height: 62px; }
+.lx-band {
+  position: relative; display: flex; align-items: flex-start; gap: 10px; width: 100%; height: 74px; padding: 16px 18px 0; border: 0;
+  border-radius: 14px 14px 0 0; color: var(--v2-paper); font: 500 0.96875rem/1.25 var(--v2-font-sans); text-align: left; cursor: pointer; overflow: hidden;
+  box-shadow: 0 -10px 22px -10px color-mix(in srgb, var(--v2-ink) 50%, transparent), inset 0 1px 0 color-mix(in srgb, var(--v2-paper) 16%, transparent);
+  transition: transform .35s var(--ease);
+}
+.lx-stack.tall .lx-band { height: 84px; padding: 10px 18px 0 12px; align-items: flex-start; }
+.lx-band::after { content: ""; position: absolute; inset: 0; opacity: .055; background-image: repeating-linear-gradient(135deg, currentColor 0 1px, transparent 1px 7px); pointer-events: none; }
+.lx-band:hover { transform: translateY(-7px); }
+.lx-band:active { transform: translateY(-2px); }
+.lx-band:focus-visible { outline-offset: -4px; border-radius: 14px 14px 0 0; }
+.lx-band-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lx-band .lx-money { flex: none; font-size: 1.25rem; line-height: 1.05; }
+.lx-band-photo { width: 44px; height: 44px; border-radius: 10px; overflow: hidden; flex: none; }
+.lx-band-photo img { width: 100%; height: 100%; object-fit: cover; }
+.lx-band-who { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.lx-band-sub { display: flex; gap: 12px; font-size: 0.84375rem; font-weight: 400; color: var(--on-dark); }
+.lx-band-ch { display: inline-flex; align-items: center; gap: 5px; }
+.lx-band-ch .lx-pmark { width: 15px; height: 15px; border-radius: 4px; }
+.lx-band-ch .lx-pmark svg { width: 9px; height: 9px; }
+.lx-band-from { font-size: 0.8125rem; font-weight: 400; color: var(--on-dark); padding-top: 3px; }
+
+/* The open sheet. Paper, with the letterhead printed on it. */
+.lx-slot { position: relative; z-index: 2; border-radius: 16px; }
+.lx-slot:focus { outline: none; }
+.lx-paper { display: grid; gap: 14px; padding: 20px 22px 22px; border: 0; border-radius: 16px; box-shadow: 0 -10px 30px color-mix(in srgb, var(--v2-ink) 18%, transparent), var(--shadow-sheet); }
+.lx-paper.is-photo { padding: 0; gap: 0; }
+.lx-paper.is-photo .lx-paper-head, .lx-paper.is-photo .lx-act { padding-inline: 20px; }
+.lx-paper.is-photo .lx-paper-head { padding-block: 16px 12px; gap: 8px; }
+.lx-paper.is-photo .lx-act { padding-block: 14px 20px; }
+.lx-paper-cover { height: 128px; overflow: hidden; background: var(--v2-bg-2); }
+.lx-paper-cover img { width: 100%; height: 100%; object-fit: cover; }
+.lx-lh { display: flex; align-items: center; gap: 10px; color: var(--lh); }
+.lx-lh-mark { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; background: var(--lh); color: var(--v2-paper); font: 500 0.875rem/1 var(--v2-font-display); flex: none; }
+.lx-lh-brand { flex: 1; min-width: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lx-lh-note { font-size: 0.78125rem; font-weight: 500; color: var(--v2-ink-3); white-space: nowrap; }
+.lx-paper-head { display: grid; gap: 5px; }
+.lx-paper-line { display: flex; align-items: baseline; gap: 12px; }
+.lx-paper-line .lx-paper-title { flex: 1; min-width: 0; }
+.lx-paper-title { font: 500 2.125rem/1.05 var(--v2-font-display); letter-spacing: -.022em; }
+.lx-paper-blurb { font-size: 0.96875rem; color: var(--v2-ink-2); }
+.lx-paper-meta { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.90625rem; color: var(--v2-ink-2); }
+.lx-act { display: grid; gap: 10px; padding-top: 14px; border-top: 1px solid var(--v2-line); }
+.lx-act-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 14px; }
+.lx-act-figure { display: grid; justify-items: end; gap: 4px; font-size: 0.875rem; font-weight: 500; color: var(--v2-ink-2); }
+.lx-act-figure .lx-money { font-size: 2.875rem; color: var(--v2-moss); letter-spacing: -.025em; }
+.lx-paper.is-photo .lx-act-figure { justify-items: start; }
+.lx-paper.is-photo .lx-act-figure .lx-money { color: var(--v2-ink); font-size: 2.375rem; }
+.lx-paper.is-photo .lx-act-row { align-items: center; }
+.lx-paper.is-photo .lx-btn { justify-self: end; padding-inline: 22px; min-height: 50px; }
+.lx-act-keep { font-size: 0.84375rem; line-height: 1.35; color: var(--v2-ink-3); text-wrap: pretty; }
+.lx-paper > .lx-act > .lx-btn { min-height: 50px; }
+.lx-board-note { font-size: 0.84375rem; color: var(--on-dark-2); text-wrap: pretty; }
+
+.lx-field-label { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; font-size: 0.875rem; font-weight: 500; }
+.lx-money-input { display: flex; align-items: center; gap: 4px; padding: 0 12px; height: 50px; border: 1px solid var(--v2-line-2); border-radius: var(--v2-r-md); background: var(--v2-paper); transition: border-color .15s, box-shadow .15s; }
+.lx-money-input:focus-within { border-color: var(--v2-ink-3); box-shadow: 0 0 0 3px var(--v2-bg-2); }
+.lx-money-input b { font-family: var(--v2-font-display); font-weight: 500; font-size: 1.25rem; color: var(--v2-ink-3); }
+.lx-money-input input { flex: 1; width: 100%; min-width: 0; border: 0; background: transparent; outline: none; font-family: var(--v2-font-display); font-weight: 500; font-size: 1.5rem; color: var(--v2-ink); font-variant-numeric: tabular-nums; }
+
+/* The storefront on the sheet: its channels and packages. */
 .lx-ccard-channels { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 0.875rem; color: var(--v2-ink-2); }
 .lx-ccard-channels b { font-weight: 600; color: var(--v2-ink); }
 .lx-ccard-er { color: var(--v2-moss); font-weight: 600; }
-.lx-pkgs { border: 0; margin: 0; padding: 0 18px 18px; display: grid; gap: 8px; min-width: 0; }
-.lx-pkgs legend { padding: 0; margin-bottom: 8px; }
+.lx-pkgs { border: 0; margin: 0; padding: 0 20px; display: grid; gap: 6px; min-width: 0; }
 .lx-pkg {
-  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 50px; padding: 0 14px;
-  border: 1px solid var(--v2-line); border-radius: var(--v2-r-md); background: var(--v2-bg); cursor: pointer; transition: border-color .12s, background-color .12s;
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 46px; padding: 0 12px;
+  border: 1px solid var(--v2-line); border-radius: var(--v2-r-md); background: var(--v2-bg); font-size: 0.96875rem; cursor: pointer; transition: border-color .15s, background-color .15s;
 }
 .lx-pkg:hover { border-color: var(--v2-line-2); }
 .lx-pkg:has(input:checked) { border-color: var(--v2-ink); background: var(--v2-paper); }
 .lx-pkg input { width: 18px; height: 18px; margin: 0; accent-color: var(--v2-accent); }
 /* 24px: large text, where terracotta on paper passes (3:1). */
 .lx-pkg b { font-size: 1.5rem; line-height: 1; color: var(--v2-accent); }
-.lx-board-note { font-size: 0.875rem; color: var(--v2-ink-3); max-width: 70em; }
 
-/* ── The market, in three figures, credited to the survey they come from ─ */
-.lx-market { padding-block: clamp(28px, 4vw, 44px) clamp(48px, 6vw, 72px); }
-.lx-market-title { font-size: 1.0625rem; font-weight: 600; color: var(--v2-ink-2); }
-/* Three sentences, each carrying its figure, set as a statement. */
-.lx-market-list { display: grid; gap: 6px; margin-top: 14px; max-width: 46rem; }
-.lx-market-list li { font-family: var(--v2-font-display); font-weight: 400; font-size: clamp(1.375rem, 1.1rem + 1vw, 2rem); line-height: 1.3; letter-spacing: -0.01em; color: var(--v2-ink-2); text-wrap: pretty; }
-.lx-market-figure { font-weight: 500; color: var(--v2-moss); font-variant-numeric: tabular-nums; }
-.lx-market-source { margin-top: 18px; font-size: 0.8125rem; color: var(--v2-ink-3); }
+/* ── The market: three sentences, set large on the hero's own ground ──── */
+.lx-market { padding-block: 72px 170px; background: var(--ground); color: var(--v2-paper); transition: background-color .5s; }
+.lx-market-title { font-size: 1.0625rem; font-weight: 500; color: var(--on-dark); }
+.lx-market-list { display: grid; gap: .34em; margin-top: 26px; max-width: 1140px; font-size: clamp(2rem, 1.3rem + 2.9vw, 3.75rem); }
+.lx-market-list li { font-family: var(--v2-font-display); font-variation-settings: "opsz" 144; line-height: 1.12; letter-spacing: -.025em; text-wrap: pretty; }
+/* --ink is unset at rest and without JavaScript: every word stays inked. */
+.lx-w { opacity: clamp(.2, calc((var(--ink, 3) - var(--p)) * 4), 1); transition: opacity .2s linear; }
+.lx-market-figure { font-weight: 400; color: var(--v2-accent-2); font-variant-numeric: tabular-nums; }
+.lx-market-source { margin-top: 30px; font-size: 0.875rem; color: var(--on-dark-2); }
 
-/* ── Sections ────────────────────────────────────────────────────────── */
-.lx-section { padding-block: var(--gap-section); }
-.lx-field-peach { background: var(--v2-accent-soft); }
-.lx-field-sage { background: var(--v2-moss-soft); }
-/* On peach and sage, muted text needs the second ink to stay readable. */
-:is(.lx-field-peach, .lx-field-sage) .lx-note:not(.lx-card *) { color: var(--v2-ink-2); }
-/* A section drawn as a campaign tile's letterhead: navy, with its texture. */
-.lx-band { position: relative; isolation: isolate; overflow: hidden; background: var(--v2-band-navy); }
-.lx-band .lx-window { border-color: transparent; box-shadow: 0 30px 60px -30px color-mix(in srgb, var(--v2-ink) 85%, transparent); }
-.lx-head { display: grid; gap: 18px; margin-bottom: clamp(40px, 5vw, 64px); max-width: 44rem; }
-
-/* A text input with a large font has a wide intrinsic minimum; these grids
- * take the card's width instead, or a phone screen clips them. */
-.lx-brief, .lx-field-label, .lx-wallet-field { grid-template-columns: minmax(0, 1fr); }
-
-/* Brands: the brief and the pitches it brings, side by side. */
-.lx-pitch { display: grid; gap: 18px; align-items: start; }
-@media (min-width: 900px) { .lx-pitch { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
-.lx-kv { display: grid; gap: 10px; }
-.lx-kv > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 16px; align-items: baseline; color: var(--v2-ink-2); }
-.lx-kv b { color: var(--v2-ink); font-weight: 600; text-align: right; }
-.lx-field-label { display: grid; gap: 8px; }
-.lx-money-input { display: flex; align-items: center; gap: 4px; padding: 0 14px; height: 54px; border: 1px solid var(--v2-line-2); border-radius: var(--v2-r-md); background: var(--v2-paper); }
-.lx-money-input:focus-within { border-color: var(--v2-ink-3); box-shadow: 0 0 0 3px var(--v2-bg-2); }
-.lx-money-input b { font-family: var(--v2-font-display); font-weight: 500; font-size: 1.375rem; color: var(--v2-ink-2); }
-.lx-money-input input { flex: 1; width: 100%; min-width: 0; border: 0; background: transparent; outline: none; font-family: var(--v2-font-display); font-weight: 500; font-size: 1.75rem; color: var(--v2-ink); font-variant-numeric: tabular-nums; }
-.lx-preview-btn { display: inline-flex; align-items: center; gap: 8px; justify-self: start; min-height: 42px; padding: 0 18px; border-radius: var(--v2-r-pill); background: var(--accent-fill); color: var(--v2-paper); font-weight: 500; font-size: 0.9375rem; }
-
-/* Storefront: copy on one side, the storefront itself on the other. */
-.lx-found { display: grid; gap: 40px; align-items: start; }
-.lx-sf-join { display: grid; gap: 10px; justify-items: start; }
-.lx-sf-join .lx-note { color: var(--v2-ink-2); }
-@media (min-width: 1000px) { .lx-found { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 64px; } .lx-found .lx-head { position: sticky; top: 32px; margin-bottom: 0; } }
-.lx-sf-cover { height: 132px; overflow: hidden; background: var(--v2-bg-2); }
-.lx-sf-cover img { width: 100%; height: 100%; object-fit: cover; }
-.lx-sf-head { padding: 0 24px 20px; display: grid; gap: 10px; }
-.lx-sf-portrait { position: relative; z-index: 1; width: 76px; height: 76px; margin-top: -38px; border-radius: 50%; border: 4px solid var(--v2-paper); background: var(--v2-accent-soft); color: var(--v2-ink-2); display: grid; place-items: center; font-family: var(--v2-font-display); font-weight: 600; font-size: 1.5rem; }
-.lx-sf-name {
-  width: 100%; min-height: 48px; border: 0; border-bottom: 1px dashed var(--v2-line-2); background: transparent; outline: none; padding: 2px 0;
-  font-family: var(--v2-font-display); font-weight: 500; font-size: 2rem; letter-spacing: -0.015em; color: var(--v2-ink);
+/* ── Sheets: each section lies over the one before it ────────────────── */
+.lx-sheet {
+  position: relative; margin-top: calc(var(--edge) * -1); border-radius: var(--edge) var(--edge) 0 0;
+  box-shadow: 0 -24px 60px -24px color-mix(in srgb, var(--v2-ink) 45%, transparent);
 }
-.lx-sf-name::placeholder { color: var(--v2-ink-3); }
+.lx-sheets [data-sheet] { position: sticky; top: var(--stick, 0px); }
+.lx-field-peach { padding-block: clamp(80px, 8vw, 116px) clamp(88px, 8vw, 120px); background: var(--v2-accent-soft); }
+.lx-field-peach .lx-note { color: var(--v2-ink-2); }
+.lx-field-peach .lx-found-side > .lx-link { text-decoration-color: color-mix(in srgb, var(--v2-ink) 40%, transparent); }
+.lx-split { display: grid; gap: 18px; margin-bottom: clamp(32px, 4vw, 56px); }
+@media (min-width: 1000px) { .lx-split { grid-template-columns: minmax(0, 1fr) 410px; gap: 48px; align-items: end; } }
+.lx-split .lx-lead { font-size: clamp(1.0625rem, 1rem + .3vw, 1.25rem); }
+
+/* ── Storefront: the page a brand would see, and what to charge ──────── */
+.lx-found-grid { display: grid; gap: 24px; align-items: start; }
+@media (min-width: 1000px) {
+  .lx-found-grid { grid-template-columns: minmax(0, 1fr) 410px; gap: 48px; }
+  .lx-found-side { position: sticky; top: 96px; }
+}
+.lx-found-side { display: grid; gap: 18px; justify-items: start; }
+.lx-sf { border: 0; border-radius: 22px; box-shadow: 0 50px 90px -44px color-mix(in srgb, var(--v2-band-cocoa) 70%, transparent); }
+.lx-sf-cover { position: relative; height: clamp(170px, 19vw, 268px); overflow: hidden; background: var(--v2-ink); }
+.lx-sf-cover img { width: 100%; height: 100%; object-fit: cover; object-position: 60% 34%; }
+.lx-sf-url { position: absolute; left: 16px; top: 14px; max-width: calc(100% - 32px); padding: 7px 14px; border-radius: var(--v2-r-pill); background: color-mix(in srgb, var(--v2-ink) 76%, transparent); color: var(--v2-paper); font-size: 0.84375rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lx-sf-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 24px; align-items: end; padding: 0 clamp(18px, 2.1vw, 30px) 22px; }
+.lx-sf-portrait { position: relative; z-index: 1; grid-column: 1 / -1; width: 104px; height: 104px; margin-top: -52px; border-radius: 50%; border: 5px solid var(--v2-paper); background: var(--v2-accent-soft); color: var(--v2-ink-2); display: grid; place-items: center; font: 500 1.875rem/1 var(--v2-font-display); }
+.lx-sf-name {
+  width: 100%; min-height: 60px; border: 0; border-bottom: 1px dashed var(--v2-line-2); background: transparent; outline: none; padding: 2px 0;
+  font: 500 clamp(2rem, 1.4rem + 1.7vw, 2.875rem)/1.1 var(--v2-font-display); letter-spacing: -.024em; color: var(--v2-ink);
+}
+.lx-sf-name::placeholder { color: var(--v2-ink-3); opacity: 1; }
 .lx-sf-name:focus { border-bottom: 1px solid var(--v2-ink-3); }
-.lx-sf-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--v2-ink-3); font-size: 0.9375rem; }
+.lx-preview-btn { display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border-radius: var(--v2-r-pill); background: var(--accent-fill); color: var(--v2-paper); font-weight: 500; font-size: 0.9375rem; white-space: nowrap; }
+.lx-sf-meta { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; color: var(--v2-ink-3); font-size: 0.9375rem; }
 .lx-sf-meta input, .lx-sf-meta select { min-height: 44px; border: 0; border-bottom: 1px dashed var(--v2-line-2); background: transparent; color: var(--v2-ink-2); font: inherit; outline: none; padding: 0 0 1px; }
-.lx-sf-meta input { width: 11ch; }
+.lx-sf-meta input { width: 13ch; }
 .lx-sf-meta input:focus, .lx-sf-meta select:focus { border-bottom: 1px solid var(--v2-ink-3); }
-.lx-sf-section { padding: 18px 24px; border-top: 1px solid var(--v2-line); display: grid; gap: 12px; }
+.lx-sf-section { padding: 18px clamp(18px, 2.1vw, 30px); border-top: 1px solid var(--v2-line); display: grid; gap: 12px; }
 /* A channel row, as the storefront's Channels block draws one. */
 .lx-sf-channel { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid var(--v2-line); border-radius: var(--v2-r-md); background: var(--v2-bg); }
 .lx-sf-ch-id { flex: 1; min-width: 0; display: grid; gap: 1px; }
 .lx-sf-ch-id b { font-weight: 600; }
 .lx-sf-ch-id span, .lx-sf-ch-num span:last-child { font-size: 0.8125rem; color: var(--v2-ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lx-sf-ch-num { display: grid; gap: 1px; text-align: right; }
-.lx-sf-ch-num .lx-money { font-size: 1.25rem; line-height: 1.2; }
-.lx-sf-work { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.lx-sf-ch-num .lx-money { font-size: 1.375rem; line-height: 1.15; }
+.lx-sf-work { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .lx-sf-work figure { aspect-ratio: 1; border-radius: var(--v2-r-md); overflow: hidden; background: var(--v2-bg-2); }
-.lx-sf-work img { width: 100%; height: 100%; object-fit: cover; }
+.lx-sf-work img { width: 100%; height: 100%; object-fit: cover; transition: transform .6s var(--ease); }
+.lx-sf-work figure:hover img { transform: scale(1.05); }
 .lx-rates { display: grid; gap: 10px; }
 @media (min-width: 560px) { .lx-rates { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-.lx-rate { display: grid; gap: 6px; padding: 14px 16px; border: 1px solid var(--v2-line); border-radius: var(--v2-r-md); background: var(--v2-bg); cursor: text; }
+.lx-rate { display: grid; gap: 2px; padding: 14px 16px; border: 1px solid var(--v2-line); border-radius: var(--v2-r-md); background: var(--v2-paper); cursor: text; transition: border-color .15s; }
+.lx-rate:hover { border-color: var(--v2-line-2); }
 .lx-rate:focus-within { border-color: var(--v2-accent); }
 .lx-rate-name { font-weight: 600; font-size: 0.9375rem; }
 .lx-rate-price { display: flex; align-items: baseline; gap: 1px; }
 .lx-rate-price b, .lx-rate-price input { font-family: var(--v2-font-display); font-weight: 500; color: var(--v2-accent); font-variant-numeric: tabular-nums; }
-.lx-rate-price b { font-size: 1.5rem; }
-.lx-rate-price input { width: 100%; min-width: 0; border: 0; background: transparent; outline: none; font-size: 1.75rem; padding: 0; }
+.lx-rate-price b { font-size: 1.625rem; }
+.lx-rate-price input { width: 100%; min-width: 0; border: 0; background: transparent; outline: none; font-size: 2.125rem; line-height: 1.15; padding: 0; }
 .lx-rate-keep { font-size: 0.8125rem; color: var(--v2-ink-3); font-variant-numeric: tabular-nums; }
 .lx-rate-keep b { color: var(--v2-ink-2); font-weight: 600; }
-
-/* The workspace window: the portal's shell, drawn small. */
-.lx-window { color: var(--v2-ink); display: grid; grid-template-columns: 1fr; border-radius: var(--v2-r-xl); border: 1px solid var(--v2-line-2); background: var(--v2-bg); box-shadow: var(--v2-shadow-lg); overflow: hidden; }
-@media (min-width: 900px) { .lx-window { grid-template-columns: 220px minmax(0, 1fr); } }
-.lx-window-side { display: none; background: var(--v2-paper); border-right: 1px solid var(--v2-line); padding: 18px 12px; gap: 2px; align-content: start; }
-@media (min-width: 900px) { .lx-window-side { display: grid; } }
-.lx-window-side .lx-brand { padding: 2px 6px 14px; }
-.lx-window-side .lx-brand-name { font-size: 20px; }
-.lx-window-nav { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--v2-r-sm); font-size: 0.875rem; color: var(--v2-ink-2); }
-.lx-window-nav.on { background: var(--v2-bg-2); color: var(--v2-ink); font-weight: 500; }
-.lx-window-main { padding: 20px; display: grid; gap: 14px; align-content: start; }
-@media (min-width: 900px) { .lx-window-main { padding: 26px 28px; } }
-.lx-window-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
-.lx-window-crumb { font-size: 0.8125rem; color: var(--v2-ink-3); }
-.lx-window-title { font-family: var(--v2-font-display); font-size: 1.625rem; font-weight: 500; letter-spacing: -0.015em; }
-.lx-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 16px; align-items: center; padding: 14px 16px; }
-/* Label and text keep the first column; the amount, when there is one, the
- * second. A row without an amount must not let its text take the narrow one. */
-.lx-row-who, .lx-row-what { grid-column: 1; }
-.lx-row-who { font-size: 0.8125rem; color: var(--v2-ink-3); }
-.lx-row-what { font-weight: 600; }
-.lx-row-amt { grid-row: 1 / span 2; grid-column: 2; font-size: 1.5rem; }
-.lx-row-amt.struck { color: var(--v2-ink-3); text-decoration: line-through; text-decoration-thickness: 1px; }
-.lx-row-amt.accent { color: var(--v2-accent); }
-.lx-row-actions { grid-column: 1 / -1; display: flex; gap: 8px; margin-top: 8px; }
-.lx-mini-btn { display: inline-flex; align-items: center; min-height: 34px; padding: 0 14px; border-radius: var(--v2-r-pill); border: 1px solid var(--v2-line-2); background: var(--v2-paper); font-size: 0.8125rem; font-weight: 500; }
-.lx-mini-btn.dark { background: var(--v2-ink); border-color: var(--v2-ink); color: var(--v2-paper); }
-.lx-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--v2-accent); flex: none; }
-.lx-stars { display: inline-flex; gap: 2px; vertical-align: -2px; margin-right: 6px; }
-.lx-stars svg { fill: var(--v2-line-2); }
-.lx-stars svg.on { fill: var(--v2-gold); }
-
-/* Brands: the brief and the pitches it brings. */
-.lx-brief { padding: 24px; display: grid; gap: 18px; }
-.lx-brief-title { width: 100%; min-height: 48px; border: 0; border-bottom: 1px dashed var(--v2-line-2); background: transparent; outline: none; padding: 2px 0; font-family: var(--v2-font-display); font-weight: 500; font-size: 1.75rem; color: var(--v2-ink); }
-.lx-brief-title::placeholder { color: var(--v2-ink-3); }
-.lx-brief-title:focus { border-bottom: 1px solid var(--v2-ink-3); }
-.lx-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.lx-select { -webkit-appearance: none; appearance: none; height: 46px; padding: 0 34px 0 14px; border: 1px solid var(--v2-line-2); border-radius: var(--v2-r-pill); background: var(--v2-paper) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%236B6759' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 14px center / 12px; color: var(--v2-ink); font: 500 0.9375rem/1 var(--v2-font-sans); cursor: pointer; }
-.lx-stepper { display: inline-flex; align-items: center; height: 46px; border: 1px solid var(--v2-line-2); border-radius: var(--v2-r-pill); background: var(--v2-paper); }
-.lx-stepper button { width: 44px; height: 100%; border: 0; border-radius: var(--v2-r-pill); background: transparent; color: var(--v2-ink-2); font: 500 1.125rem/1 var(--v2-font-sans); cursor: pointer; }
-.lx-stepper button:hover:not(:disabled) { background: var(--v2-bg-2); color: var(--v2-ink); }
-.lx-stepper button:disabled { color: var(--v2-line-2); cursor: default; }
-.lx-stepper output { min-width: 22px; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
-.lx-pitches .lx-row + .lx-row { border-top: 1px solid var(--v2-line); }
-.lx-pitch-av { width: 44px; height: 44px; border-radius: var(--v2-r-sm); overflow: hidden; background: var(--v2-bg-2); }
-.lx-pitch-av img { width: 100%; height: 100%; object-fit: cover; }
-.lx-pitch-row { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 4px 14px; align-items: start; padding: 16px 18px; }
-.lx-pitch-row + .lx-pitch-row { border-top: 1px solid var(--v2-line); }
-.lx-pitch-row .lx-row-amt { grid-column: 3; grid-row: 1; }
-.lx-pitch-row .lx-row-what { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
-.lx-pitch-row p { color: var(--v2-ink-2); font-size: 0.9375rem; margin-top: 2px; }
-.lx-pitch-bar { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 18px; border-top: 1px solid var(--v2-line); background: var(--v2-bg); }
-
-/* ── The wallet card: the portal's moss hero, as a calculator ────────── */
-/* minmax(0, 1fr): on a phone the card is as wide as the screen, never as
- * wide as its widest input. */
-.lx-wallet {
-  position: relative; isolation: isolate; border-radius: var(--v2-r-xl); color: var(--v2-paper); overflow: hidden;
-  display: grid; grid-template-columns: minmax(0, 1fr);
-  background: linear-gradient(135deg, var(--v2-moss) 0%, var(--v2-moss-deep) 100%);
-}
-/* The brand wallet in the portal is the dark card with a terracotta edge. */
-.lx-wallet.ink { background: linear-gradient(135deg, var(--v2-ink) 0%, var(--v2-ink-deep) 60%, var(--v2-accent) 200%); }
-.lx-wallet::before {
-  content: ""; position: absolute; z-index: -1; top: -80px; right: -80px; width: 340px; height: 340px; border-radius: 50%;
-  background: radial-gradient(circle, var(--v2-moss-soft) 0%, transparent 60%); opacity: .25; pointer-events: none;
-}
-.lx-wallet.ink::before { background: radial-gradient(circle, var(--v2-accent) 0%, transparent 60%); opacity: .3; }
-@media (min-width: 960px) { .lx-wallet { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
-.lx-wallet-main { min-width: 0; padding: clamp(24px, 3.5vw, 40px); display: grid; gap: 20px; align-content: start; }
-.lx-wallet-side { padding: clamp(24px, 3.5vw, 40px); border-top: 1px solid color-mix(in srgb, var(--v2-paper) 18%, transparent); display: grid; gap: 4px; align-content: start; }
-@media (min-width: 960px) { .lx-wallet-side { border-top: 0; border-left: 1px solid color-mix(in srgb, var(--v2-paper) 18%, transparent); } }
-.lx-wallet .lx-label { color: color-mix(in srgb, var(--v2-paper) 70%, transparent); }
-.lx-wallet-big { font-size: clamp(3rem, 2rem + 3vw, 4.5rem); line-height: 1; }
-.lx-wallet-sub { color: color-mix(in srgb, var(--v2-paper) 78%, transparent); }
-.lx-wallet-inputs { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
-.lx-wallet-field { display: grid; gap: 8px; min-width: 0; }
-.lx-wallet-field > span { font-size: 0.875rem; color: color-mix(in srgb, var(--v2-paper) 78%, transparent); }
-.lx-wallet .lx-money-input { background: var(--v2-paper); border-color: transparent; width: 220px; }
-.lx-wallet .lx-stepper { height: 54px; border-color: transparent; color: var(--v2-ink); }
-.lx-wallet-line { display: grid; grid-template-columns: auto minmax(12px, 1fr) auto; align-items: baseline; gap: 10px; padding: 9px 0; color: color-mix(in srgb, var(--v2-paper) 82%, transparent); }
-.lx-wallet-line .lx-leader { align-self: end; height: 0; margin-bottom: 0.38em; border-bottom: 1px dotted color-mix(in srgb, var(--v2-paper) 30%, transparent); }
-.lx-wallet-line b { font-weight: 600; color: var(--v2-paper); font-variant-numeric: tabular-nums; }
+.lx-sf-join { display: grid; gap: 10px; justify-items: start; }
+.lx-sf-join .lx-note { color: var(--v2-ink-2); }
 
 /* What to charge: the rate calculator, small, beside the storefront. */
 .lx-rh { padding: 20px; display: grid; gap: 14px; }
@@ -460,44 +366,141 @@
 .lx-rh-band .lx-money { font-size: 1.75rem; line-height: 1.1; color: var(--v2-accent); }
 .lx-rh .lx-btn { justify-self: start; }
 .lx-rh-sets { font-size: 0.9375rem; color: var(--v2-ink-2); text-wrap: pretty; }
+.lx-rh { width: 100%; border: 0; border-radius: var(--v2-r-lg); box-shadow: 0 30px 60px -38px color-mix(in srgb, var(--v2-band-cocoa) 70%, transparent); }
 
-/* The status quo beside the workspace: a real table, read row by row. */
-.lx-compare-wrap { margin-top: clamp(48px, 6vw, 72px); }
-.lx-compare { width: 100%; border-collapse: collapse; }
-.lx-compare th { text-align: left; padding: 0 24px 14px 0; font-size: 1rem; font-weight: 600; color: color-mix(in srgb, var(--v2-paper) 74%, transparent); }
-.lx-compare th + th { color: var(--v2-paper); }
-.lx-compare td { width: 50%; padding: 18px 24px 18px 0; vertical-align: top; border-top: 1px solid color-mix(in srgb, var(--v2-paper) 16%, transparent); font-size: 1.0625rem; line-height: 1.5; text-wrap: pretty; }
-.lx-compare td + td { color: var(--v2-paper); font-weight: 500; }
-.lx-compare-now { display: flex; align-items: flex-start; gap: 12px; }
-.lx-compare-now .lx-check { margin-top: calc((1.5em - 20px) / 2); }
-@media (max-width: 640px) {
-  .lx-compare, .lx-compare tbody, .lx-compare tr, .lx-compare td { display: block; width: 100%; }
-  .lx-compare thead { display: none; }
-  .lx-compare tr { padding: 18px 0; border-top: 1px solid color-mix(in srgb, var(--v2-paper) 16%, transparent); display: grid; gap: 10px; }
-  .lx-compare td { border-top: 0; padding: 0; }
-  .lx-compare td::before {
-    content: attr(data-label); display: block; margin-bottom: 4px;
-    font-size: 0.875rem; font-weight: 600; color: color-mix(in srgb, var(--v2-paper) 74%, transparent);
-  }
-  .lx-compare td + td::before { color: var(--v2-paper); }
+/* Brands: the brief and the pitches it brings. */
+.lx-pitch { display: grid; gap: 24px; align-items: start; }
+@media (min-width: 900px) { .lx-pitch { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; } }
+.lx-pitch-side { display: grid; gap: 14px; }
+.lx-pitch .lx-card { border: 0; border-radius: 20px; box-shadow: 0 40px 70px -44px color-mix(in srgb, var(--v2-band-cocoa) 70%, transparent); }
+.lx-brief { padding: clamp(20px, 2.4vw, 30px); display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
+.lx-brief-title { width: 100%; min-height: 56px; border: 0; border-bottom: 1px dashed var(--v2-line-2); background: transparent; outline: none; padding: 2px 0; font: 500 clamp(1.75rem, 1.4rem + 1vw, 2.375rem)/1.1 var(--v2-font-display); letter-spacing: -.02em; color: var(--v2-ink); }
+.lx-brief-title::placeholder { color: var(--v2-ink-3); opacity: 1; }
+.lx-brief-title:focus { border-bottom: 1px solid var(--v2-ink-3); }
+.lx-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.lx-select { -webkit-appearance: none; appearance: none; height: 46px; padding: 0 34px 0 14px; border: 1px solid var(--v2-line-2); border-radius: var(--v2-r-pill); background: var(--v2-paper) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%236B6759' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 14px center / 12px; color: var(--v2-ink); font: 500 0.9375rem/1 var(--v2-font-sans); cursor: pointer; }
+.lx-stepper { display: inline-flex; align-items: center; height: 46px; border: 1px solid var(--v2-line-2); border-radius: var(--v2-r-pill); background: var(--v2-paper); color: var(--v2-ink); }
+.lx-stepper button { width: 44px; height: 100%; border: 0; border-radius: var(--v2-r-pill); background: transparent; color: var(--v2-ink-2); font: 500 1.125rem/1 var(--v2-font-sans); cursor: pointer; transition: background-color .12s; }
+.lx-stepper button:hover:not(:disabled) { background: var(--v2-bg-2); color: var(--v2-ink); }
+.lx-stepper button:disabled { color: var(--v2-line-2); cursor: default; }
+.lx-stepper output { min-width: 22px; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
+.lx-kv { display: grid; gap: 10px; }
+.lx-kv > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 16px; align-items: baseline; color: var(--v2-ink-2); }
+.lx-kv b { color: var(--v2-ink); font-weight: 600; text-align: right; }
+.lx-act-flat { padding-top: 0; border-top: 0; }
+.lx-act-flat .lx-btn { justify-self: start; }
+.lx-pitch-av { width: 44px; height: 44px; border-radius: var(--v2-r-sm); overflow: hidden; background: var(--v2-bg-2); }
+.lx-pitch-av img { width: 100%; height: 100%; object-fit: cover; }
+.lx-pitch-row { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 4px 14px; align-items: start; padding: 16px 18px; }
+.lx-pitch-row + .lx-pitch-row { border-top: 1px solid var(--v2-line); }
+.lx-pitch-row .lx-row-amt { grid-column: 3; grid-row: 1; }
+.lx-pitch-row .lx-row-what { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.lx-pitch-row p { color: var(--v2-ink-2); font-size: 0.9375rem; margin-top: 2px; }
+.lx-pitch-bar { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 18px; border-top: 1px solid var(--v2-line); background: var(--v2-bg); }
+
+/* ── The deal story: out of the DMs, line by line, onto the deal ─────── */
+.lx-story { background: var(--story); color: var(--v2-paper); }
+.lx-story-stage { padding-block: clamp(80px, 8vw, 116px); }
+.lx-story-grid { display: grid; gap: 36px; }
+.lx-story-copy { display: grid; gap: 18px; min-width: 0; }
+.lx-steps { display: grid; gap: 22px; margin-top: 8px; }
+.lx-was { display: inline-grid; gap: 2px; max-width: 26em; padding: 10px 15px; border-radius: 16px 16px 16px 4px; background: color-mix(in srgb, var(--v2-paper) 13%, transparent); color: var(--v2-paper); font-size: 0.96875rem; line-height: 1.35; }
+.lx-was-from { font-size: 0.78125rem; font-weight: 500; color: var(--on-dark-2); }
+.lx-now { display: flex; gap: 12px; margin-top: 14px; font: 400 clamp(1.5rem, 1.1rem + 1.1vw, 2.125rem)/1.16 var(--v2-font-display); font-variation-settings: "opsz" 72; letter-spacing: -.018em; text-wrap: pretty; }
+.lx-now .lx-check { width: 26px; height: 26px; margin-top: .14em; }
+.lx-ticks { display: flex; gap: 6px; margin-top: 8px; }
+.lx-ticks i { flex: 1; height: 3px; border-radius: 3px; background: color-mix(in srgb, var(--v2-paper) 24%, transparent); transition: background-color .3s; }
+.lx-ticks i[data-on] { background: var(--v2-paper); }
+.lx-window { color: var(--v2-ink); display: grid; grid-template-columns: minmax(0, 1fr); border-radius: 20px; background: var(--v2-bg); box-shadow: 0 60px 100px -44px color-mix(in srgb, var(--v2-ink) 75%, transparent); overflow: hidden; }
+@media (min-width: 1100px) { .lx-window { grid-template-columns: 196px minmax(0, 1fr); } }
+.lx-window-side { display: none; background: var(--v2-paper); border-right: 1px solid var(--v2-line); padding: 18px 12px; gap: 2px; align-content: start; }
+@media (min-width: 1100px) { .lx-window-side { display: grid; } }
+.lx-window-side .lx-brand { padding: 2px 6px 14px; }
+.lx-window-side .lx-brand-name { font-size: 20px; }
+.lx-window-nav { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--v2-r-sm); font-size: 0.875rem; color: var(--v2-ink-2); }
+.lx-window-nav.on { background: var(--v2-bg-2); color: var(--v2-ink); font-weight: 500; }
+.lx-window-main { padding: 20px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+@media (min-width: 900px) { .lx-window-main { padding: 22px 24px 26px; } }
+.lx-window-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; padding-bottom: 4px; }
+.lx-window-crumb { font-size: 0.8125rem; color: var(--v2-ink-3); }
+.lx-window-title { font-family: var(--v2-font-display); font-size: 1.625rem; font-weight: 500; letter-spacing: -0.015em; }
+.lx-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 16px; align-items: center; padding: 13px 16px; }
+/* Label and text keep the first column; the amount, when there is one, the
+ * second. A row without an amount must not let its text take the narrow one. */
+.lx-row-who, .lx-row-what { grid-column: 1; }
+.lx-row-who { font-size: 0.8125rem; color: var(--v2-ink-3); }
+.lx-row-what { font-weight: 600; }
+.lx-row-amt { grid-row: 1 / span 2; grid-column: 2; font-size: 1.5rem; }
+.lx-row-amt.accent { color: var(--v2-accent); }
+.lx-row-actions { grid-column: 1 / -1; display: flex; gap: 8px; margin-top: 8px; }
+.lx-mini-btn { display: inline-flex; align-items: center; min-height: 34px; padding: 0 14px; border-radius: var(--v2-r-pill); border: 1px solid var(--v2-line-2); background: var(--v2-paper); font-size: 0.8125rem; font-weight: 500; white-space: nowrap; }
+.lx-mini-btn.dark { background: var(--v2-ink); border-color: var(--v2-ink); color: var(--v2-paper); }
+.lx-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--v2-accent); flex: none; }
+.lx-need { display: flex; align-items: center; gap: 10px; }
+.lx-need-btn { grid-row: 1; grid-column: 2; }
+.lx-stars { display: inline-flex; gap: 2px; vertical-align: -2px; margin-right: 6px; }
+.lx-stars svg { fill: var(--v2-line-2); }
+.lx-stars svg.on { fill: var(--v2-gold); }
+.lx-step-row { border-radius: 14px; transition: opacity .5s, transform .6s var(--ease), border-color .3s, box-shadow .4s; }
+
+/* On a wide screen it pins, and each stretch of scrolling is one step. */
+@media (min-width: 1000px) {
+  .lx-story-grid { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 64px; align-items: center; }
 }
+.lx-story-track.is-live { height: calc(100vh + var(--steps) * 72vh); }
+.is-live .lx-story-stage { position: sticky; top: 0; display: flex; align-items: center; height: 100vh; min-height: 620px; padding-block: 84px 28px; }
+.is-live .lx-steps { display: grid; margin-top: 6px; }
+.is-live .lx-steps > li { grid-area: 1 / 1; opacity: 0; transform: translateY(18px); transition: opacity .3s, transform .55s var(--ease); }
+.is-live .lx-steps > li[data-state="done"] { transform: translateY(-14px); }
+.is-live .lx-steps > li[data-state="now"] { opacity: 1; transform: none; transition-delay: .08s; }
+.lx-step-row[data-state="next"] { opacity: .3; transform: translateY(10px) scale(.985); }
+.lx-step-row[data-state="now"] { border-color: var(--v2-ink); box-shadow: 0 18px 34px -20px color-mix(in srgb, var(--v2-ink) 60%, transparent); }
 
-.lx-after-note { margin-top: 22px; color: var(--v2-ink-2); max-width: 46em; text-wrap: pretty; }
-.lx-after-note b { color: var(--v2-ink); font-weight: 600; }
-.lx-next { font-size: 0.9375rem; text-wrap: pretty; }
+/* ── The money: what a deal holds, and what it releases ──────────────── */
+.lx-paid { padding-block: clamp(84px, 8.4vw, 124px); background: var(--paid); color: var(--v2-paper); }
+.lx-escrow { display: grid; gap: 40px; margin-top: clamp(32px, 4vw, 56px); }
+.lx-escrow-top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 32px 48px; }
+.lx-escrow-figure { display: grid; gap: 4px; font-weight: 500; color: var(--on-dark); }
+.lx-escrow-figure > span:last-child { display: block; }
+.lx-giant { display: block; font-size: clamp(4.5rem, calc(118vw / var(--n)), 290px); letter-spacing: -.05em; color: var(--v2-paper); margin-left: -.03em; }
+.lx-escrow-side { display: grid; gap: 22px; flex: 1 1 400px; max-width: 470px; }
+.lx-escrow-side .lx-lead { font-size: clamp(1.0625rem, 1rem + .3vw, 1.25rem); }
+.lx-escrow-inputs { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+.lx-escrow-field { display: grid; gap: 6px; min-width: 0; font-size: 0.875rem; font-weight: 500; color: var(--on-dark); }
+.lx-escrow .lx-money-input { width: 170px; height: 54px; border-color: transparent; }
+.lx-escrow .lx-stepper { height: 54px; border-color: transparent; }
+.lx-bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(168px, 100%), 1fr)); gap: 6px; }
 
-/* ── Pricing ─────────────────────────────────────────────────────────── */
-.lx-pricing { display: grid; gap: 40px; align-items: start; }
-@media (min-width: 960px) { .lx-pricing { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 72px; } }
-.lx-pricing-main { display: grid; gap: 20px; align-content: start; }
-.lx-pricing-side { display: grid; gap: 28px; align-content: start; }
-.lx-terms-p { color: var(--v2-ink-2); max-width: 36em; text-wrap: pretty; }
-/* The fee itself, as the section's figure. */
-.lx-fee { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 4px 20px; max-width: 34rem; }
-.lx-fee-figure { font-size: clamp(3.5rem, 2.6rem + 3vw, 5.5rem); line-height: 1; color: var(--v2-moss); }
-.lx-fee > span:last-child { font-size: var(--t-lead); line-height: 1.45; color: var(--v2-ink-2); text-wrap: pretty; }
-@media (max-width: 560px) { .lx-fee { grid-template-columns: minmax(0, 1fr); } }
-@media (min-width: 960px) { .lx-pricing-side { padding-top: 12px; } }
+.lx-bar .lx-seg {
+  position: relative; isolation: isolate; display: flex; align-items: center; gap: 12px; width: 100%; min-height: 92px; padding: 14px 20px; border: 0; border-radius: 14px;
+  background: color-mix(in srgb, var(--v2-paper) 9%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--v2-paper) 32%, transparent);
+  color: var(--v2-paper); font: inherit; font-size: 0.96875rem; text-align: left; cursor: pointer; overflow: hidden; transition: color .3s .08s, transform .25s var(--ease);
+}
+.lx-bar .lx-seg:active { transform: scale(.985); }
+.lx-bar .lx-seg::before { content: ""; position: absolute; z-index: -2; inset: 0; opacity: .1; background-image: repeating-linear-gradient(135deg, currentColor 0 1px, transparent 1px 7px); }
+.lx-bar .lx-seg::after { content: ""; position: absolute; z-index: -1; inset: 0; background: var(--v2-paper); transform: scaleX(0); transform-origin: left; transition: transform .6s var(--ease); }
+.lx-bar .lx-seg[aria-pressed="true"] { color: var(--v2-ink); }
+.lx-bar .lx-seg[aria-pressed="true"]::after { transform: none; }
+.lx-seg-text { flex: 1; min-width: 0; display: grid; }
+.lx-seg-text b { font-weight: 600; }
+.lx-seg-text span { font-size: 0.875rem; opacity: .86; }
+.lx-seg-amt { font-size: 1.75rem; line-height: 1; }
+.lx-seg .lx-check { order: -1; }
+.lx-ledger { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 16px 24px; padding-top: 20px; border-top: 1px solid color-mix(in srgb, var(--v2-paper) 22%, transparent); }
+.lx-ledger dt { font-size: 0.96875rem; color: var(--on-dark); }
+.lx-ledger dd { font: 500 1.625rem/1.2 var(--v2-font-display); letter-spacing: -.012em; font-variant-numeric: tabular-nums; }
+.lx-after-note { margin-top: 26px; color: var(--on-dark); max-width: 46em; text-wrap: pretty; }
+.lx-after-note b { color: var(--v2-paper); font-weight: 600; }
+.lx-next { font-size: 0.9375rem; color: var(--on-dark-2); text-wrap: pretty; }
+
+/* ── Pricing: the one number that matters ────────────────────────────── */
+.lx-field-sage { padding-block: clamp(84px, 8vw, 116px); background: var(--v2-moss-soft); }
+.lx-pricing { display: grid; gap: 32px; align-items: end; }
+@media (min-width: 1000px) { .lx-pricing { grid-template-columns: auto minmax(0, 1fr); gap: 72px; } }
+.lx-pricing-main { display: grid; gap: 18px; }
+.lx-pricing-side { display: grid; gap: 24px; }
+.lx-fee-figure { font-size: clamp(7.5rem, 24vw, 340px); line-height: .84; font-weight: 400; font-variant-numeric: normal; letter-spacing: -.055em; color: var(--v2-moss-deep); margin-left: -.03em; }
+.lx-fee-line { font-size: clamp(1.125rem, 1rem + .4vw, 1.3125rem); line-height: 1.4; color: var(--v2-ink-2); max-width: 36em; text-wrap: pretty; }
 /* What isn't built yet, in the portal's warning gold: each item an open
  * circle, where the hero's promises are checked. */
 .lx-notyet { padding: 24px; border-radius: var(--v2-r-lg); background: color-mix(in srgb, var(--v2-warning) 10%, var(--v2-paper)); border: 1px solid color-mix(in srgb, var(--v2-warning) 40%, var(--v2-paper)); display: grid; gap: 14px; }
@@ -508,13 +511,20 @@
 .lx-notyet li::before { content: ""; width: 14px; height: 14px; box-sizing: border-box; margin-top: calc(0.75em - 7px); border-radius: 50%; border: 2px solid color-mix(in srgb, var(--v2-warning) 80%, var(--v2-ink)); }
 
 /* ── Questions: every answer open ────────────────────────────────────── */
-.lx-qa { display: grid; gap: 36px 56px; }
-@media (min-width: 900px) { .lx-qa { grid-template-columns: 1fr 1fr; } }
-.lx-qa h3 { font-family: var(--v2-font-display); font-size: 1.375rem; font-weight: 500; letter-spacing: -0.01em; line-height: 1.2; margin-bottom: 8px; }
-.lx-qa p { color: var(--v2-ink-2); max-width: 34em; }
+.lx-faq { padding-block: clamp(84px, 8vw, 116px) clamp(100px, 10vw, 150px); background: var(--v2-paper); }
+.lx-faq-grid { display: grid; gap: 28px; }
+@media (min-width: 1000px) {
+  .lx-faq-grid { grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); gap: 48px; }
+  .lx-faq-grid > .lx-h2 { position: sticky; top: 100px; align-self: start; }
+}
+.lx-qa-row { display: grid; gap: 6px; padding-block: 20px; border-top: 1px solid var(--v2-line); }
+@media (min-width: 760px) { .lx-qa-row { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 32px; } }
+.lx-qa-row:last-child { border-bottom: 1px solid var(--v2-line); }
+.lx-qa-row h3 { font: 500 1.375rem/1.2 var(--v2-font-display); letter-spacing: -.012em; text-wrap: balance; }
+.lx-qa-row p { color: var(--v2-ink-2); text-wrap: pretty; }
 
 /* ── The founder's note: a letter, not a feature ─────────────────────── */
-.lx-founder { background: var(--v2-paper); border-top: 1px solid var(--v2-line); }
+.lx-founder { padding-block: clamp(84px, 8vw, 116px) clamp(100px, 10vw, 150px); background: var(--v2-bg); }
 .lx-founder-grid { display: grid; gap: 28px; }
 @media (min-width: 900px) { .lx-founder-grid { grid-template-columns: 220px minmax(0, 40rem); gap: 64px; } }
 .lx-founder-who { display: flex; align-items: center; gap: 14px; align-self: start; }
@@ -523,70 +533,118 @@
 .lx-founder-who b { display: block; font-weight: 600; }
 .lx-founder-who span { color: var(--v2-ink-3); font-size: 0.9375rem; }
 .lx-founder-note { display: grid; gap: 18px; }
-.lx-founder-note .lx-h2 { margin-bottom: 6px; }
 .lx-founder-note p { font-size: 1.125rem; line-height: 1.65; color: var(--v2-ink-2); text-wrap: pretty; }
 
-/* ── Close ───────────────────────────────────────────────────────────── */
-.lx-final {
-  padding-block: clamp(88px, 10vw, 144px); background: var(--v2-band-brick);
-}
-.lx-final-grid { display: grid; gap: 28px; align-items: center; }
-@media (min-width: 960px) { .lx-final-grid { grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: 64px; } }
-.lx-foot { padding-block: 40px calc(32px + env(safe-area-inset-bottom, 0px)); }
-.lx-foot-inner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 18px 28px; }
-.lx-foot nav { display: flex; flex-wrap: wrap; gap: 8px 22px; color: var(--v2-ink-2); font-size: 0.9375rem; }
-.lx-foot nav a:hover { color: var(--v2-ink); }
-.lx-foot-note { width: 100%; font-size: 0.8125rem; color: var(--v2-ink-3); }
+/* ── Close: the last sheet, and the page ends on it ──────────────────── */
+.lx-final { padding-block: clamp(84px, 9vw, 130px) 28px; background: var(--v2-band-brick); color: var(--v2-paper); }
+.lx-final-title { font-size: min(11.6vw, 168px); text-wrap: balance; }
+.lx-final-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 22px 40px; margin-top: 36px; }
+.lx-final-row .lx-lead { max-width: 26em; }
+.lx-final .lx-next { margin-top: 26px; }
+.lx-foot { padding-bottom: calc(26px + env(safe-area-inset-bottom, 0px)); background: var(--v2-band-brick); color: var(--on-dark); }
+.lx-foot-inner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 28px; font-size: 0.90625rem; }
+.lx-foot-inner::before { content: ""; flex: 0 0 100%; height: 1px; margin-bottom: 10px; background: color-mix(in srgb, var(--v2-paper) 24%, transparent); }
+.lx-foot nav { display: flex; flex-wrap: wrap; gap: 2px 20px; }
+.lx-foot nav a { display: inline-flex; align-items: center; min-height: 44px; transition: color .15s; }
+.lx-foot nav a:hover { color: var(--v2-paper); }
+.lx-foot-note { max-width: 44em; text-wrap: pretty; }
 
 /* ── Phones: the page's one action, kept in reach ───────────────────── */
 @keyframes lx-rise { from { transform: translateY(110%); } }
 .lx-sticky {
   position: fixed; z-index: 20; left: 0; right: 0; bottom: 0; display: grid;
   padding: 10px max(16px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
-  background: var(--v2-bg); border-top: 1px solid var(--v2-line); animation: lx-rise .25s ease-out both;
+  background: var(--v2-paper); box-shadow: 0 -10px 30px -12px color-mix(in srgb, var(--v2-ink) 40%, transparent); animation: lx-rise .35s var(--ease) both;
 }
 @media (min-width: 761px) { .lx-sticky { display: none; } }
 
-/* ── Motion: the deal thread and the ledger arrive as they scroll in ──
- * Scroll-driven, CSS only: a browser without it shows everything at rest,
- * and reduced motion turns it off (below). Each piece is fully shown well
- * before it's fully on screen. */
-@keyframes lx-arrive { from { opacity: 0; transform: translateY(18px); } }
+/* ── Motion: the entrance ────────────────────────────────────────────── */
+@keyframes lx-line-in { from { transform: translateY(106%); } }
+@keyframes lx-fade-in { from { opacity: 0; transform: translateY(14px); } }
+@keyframes lx-dealt { from { opacity: 0; transform: translateY(-46px) rotate(-1.4deg); } }
+@keyframes lx-laid { from { opacity: 0; transform: translateY(34px) rotate(.6deg); } }
+.lx-anim .lx-line > span { animation: lx-line-in 1s var(--ease) both; }
+.lx-anim .lx-line + .lx-line > span { animation-delay: 90ms; }
+.lx-anim .lx-hero-side > * { animation: lx-fade-in .8s var(--ease) both; animation-delay: 260ms; }
+.lx-anim .lx-hero-side > * + * { animation-delay: 330ms; }
+.lx-anim .lx-hero-side > * + * + * { animation-delay: 400ms; }
+.lx-anim .lx-bands > li { animation: lx-dealt .75s var(--ease) both; animation-delay: calc(300ms + var(--i) * 75ms); }
+.lx-anim .lx-slot { animation: lx-laid .9s .62s var(--ease) both; }
+/* Once it has settled, the pile nudges: these can be picked up. */
+@keyframes lx-nudge { 35% { transform: translateY(-8px); } }
+.lx-anim .lx-bands > li:first-child .lx-band { animation: lx-nudge .9s 1.65s var(--ease); }
+
+/* ── Motion: the closing line grows as it arrives. Scroll-driven, and only
+ * outside the sheets: inside a sticky sheet a view() timeline stretches over
+ * the whole time the sheet stays pinned, so what moves there goes through
+ * motion.ts instead. ───────────────────────────────────────────────── */
+@keyframes lx-grow { from { transform: scale(.9); opacity: .4; } }
 @supports (animation-timeline: view()) {
-  .lx-window-main > .lx-card, .lx-wallet-side .lx-wallet-line {
-    animation: lx-arrive linear both; animation-timeline: view(); animation-range: entry 5% entry 80%;
-  }
+  .lx-final-title { transform-origin: left bottom; animation: lx-grow linear both; animation-timeline: view(); animation-range: entry 0% cover 34%; }
 }
 
-/* ── Motion: the hero's listings settle in, as the portal's lists do ─── */
-@keyframes lx-settle-in { from { opacity: 0; transform: translateY(14px); } }
-.lx-anim .lx-picks > li { animation: lx-settle-in .6s cubic-bezier(.16, 1, .3, 1) both; }
-.lx-anim .lx-picks > li:nth-child(2) { animation-delay: 60ms; }
-.lx-anim .lx-picks > li:nth-child(3) { animation-delay: 120ms; }
-.lx-anim .lx-picks > li:nth-child(4) { animation-delay: 180ms; }
+/* ── Motion: pitches arriving, prices landing, a check drawn ─────────── */
+.lx-pitch-row { transition: opacity .5s, transform .7s var(--ease); }
+.lx-pitch-row:nth-of-type(3) { transition-delay: .35s; }
+.lx-pitch-row:nth-of-type(4) { transition-delay: .7s; }
+.lx-pitches[data-waiting] .lx-pitch-row:not(:first-child) { opacity: 0; transform: translateY(22px); }
+@keyframes lx-land { 0% { background-color: var(--v2-accent-soft); transform: scale(.97); } 100% { background-color: var(--v2-paper); transform: none; } }
+.lx-rates[data-taken] .lx-rate { animation: lx-land .7s var(--ease) both; }
+.lx-rates[data-taken] .lx-rate:nth-child(2) { animation-delay: 70ms; }
+.lx-rates[data-taken] .lx-rate:nth-child(3) { animation-delay: 140ms; }
+@keyframes lx-draw { from { stroke-dashoffset: 14; } }
+.lx-check path { stroke-dasharray: 14; }
+.is-live .lx-steps > li[data-state="now"] .lx-check path { animation: lx-draw .45s .25s ease-out both; }
+.lx-seg[aria-pressed="true"] .lx-check path { animation: lx-draw .4s .3s ease-out both; }
 
-/* ── Phones: their own composition ───────────────────────────────────── */
-@media (max-width: 560px) {
-  .lx-hero { --panel-pad: 22px; }
-  .lx-hero > .lx-wrap { padding-left: max(12px, env(safe-area-inset-left, 0px)); padding-right: max(12px, env(safe-area-inset-right, 0px)); }
-  .lx-nav-links { gap: 14px; }
-  .lx-nav-aud { display: none; }
+/* ── Motion: a band becomes the open sheet, and its colour floods out ─── */
+::view-transition-group(*) { animation-duration: .6s; animation-timing-function: cubic-bezier(.16, 1, .3, 1); }
+::view-transition-old(*), ::view-transition-new(*) { height: 100%; width: 100%; object-fit: cover; object-position: top; animation-duration: .32s; }
+@keyframes lx-flood { from { clip-path: circle(0 at var(--fx) var(--fy)); } to { clip-path: circle(150vmax at var(--fx) var(--fy)); } }
+::view-transition-old(root) { animation: none; }
+::view-transition-new(root) { animation: lx-flood .8s cubic-bezier(.4, .1, .2, 1) both; }
+
+/* ── Between phone and desktop ───────────────────────────────────────── */
+@media (max-width: 1239px) {
+  .lx-creators { --t-hero: min(11.9vw, 22vh); }
+  .lx-brands { --t-hero: min(11.2vw, 22vh); }
+}
+@media (max-width: 999px) {
+  .lx-creators { --t-hero: 14.6vw; }
+  .lx-brands { --t-hero: 13vw; }
+  .lx-hero-side { max-width: none; }
+  .lx-final-title { font-size: 14.6vw; }
+  .lx-market { padding-block: 40px 110px; }
+  .lx-market-list li { font-variation-settings: "opsz" 60; letter-spacing: -.018em; }
+  .lx-pricing { align-items: start; }
+}
+@media (max-width: 760px) {
+  .lx { --edge: 22px; }
+  .lx-nav { position: relative; top: auto; }
+  .lx-seg { display: none; }
+  .lx-aud { display: flex; }
+  .lx-nav-inner { height: 56px; padding: 0 8px 0 12px; }
+  .lx-nav-links { gap: 8px; }
+  .lx-hero { padding-block: 92px 44px; }
   .lx-cta-row .lx-btn { flex: 1 1 100%; }
   .lx-cta-row { justify-content: center; }
-  .lx-aud { display: flex; }
-  .lx-aud a { flex: 1; justify-content: center; padding: 0 10px; }
-  .lx-act .lx-btn { justify-self: stretch; }
-  .lx-picks > li:nth-child(n+4) { display: none; }
-  .lx-act-figure .lx-money { font-size: 2rem; }
-  .lx-rh-inputs { grid-template-columns: minmax(0, 1fr); }
   .lx-foot { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
-  .lx-tile-cols { grid-template-columns: 1fr 1fr; }
-  .lx-tile-cols > div:nth-child(3) { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--v2-line); }
-  .lx-brief { padding: 18px; }
-  .lx-sf-head, .lx-sf-section { padding-inline: 18px; }
-  .lx-wallet .lx-money-input { width: 100%; }
-  .lx-wallet-inputs { display: grid; grid-template-columns: 1fr auto; }
+}
+@media (max-width: 560px) {
+  .lx-rh-inputs { grid-template-columns: minmax(0, 1fr); }
+  .lx-sf-head { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .lx-sf-portrait { width: 84px; height: 84px; margin-top: -42px; font-size: 1.5rem; }
+  .lx-preview-btn { justify-self: start; }
+  .lx-act-figure .lx-money { font-size: 2.25rem; }
+  .lx-paper-title { font-size: 1.875rem; }
+  .lx-bar { grid-template-columns: minmax(0, 1fr); }
+  .lx-bar .lx-seg { min-height: 72px; }
+  .lx-escrow .lx-money-input { width: 100%; }
+  .lx-escrow-inputs { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+  .lx-escrow-inputs .lx-escrow-field:first-child:nth-last-child(3) { grid-column: 1 / -1; }
+  .lx-fee-figure { font-size: 40vw; }
 }
 @media (prefers-reduced-motion: reduce) {
   .lx *, .lx *::before, .lx *::after { animation: none !important; transition: none !important; }
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
 }

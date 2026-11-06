@@ -8,11 +8,11 @@ import { renderToString } from 'react-dom/server';
 import { cleanup, render, screen, fireEvent, within } from '@testing-library/react';
 import { CreatorsPage } from '../CreatorsPage';
 import { BrandsPage } from '../BrandsPage';
-import { BriefBrowser, RateHelper, STOREFRONT_START, StorefrontBuilder, StorefrontJoin, useStorefront } from '../tools-creators';
-import { BriefBuilder, CreatorBrowser } from '../tools-brands';
+import { BriefBrowser, PayoutTool, RateHelper, STOREFRONT_START, StorefrontBuilder, StorefrontJoin, useStorefront } from '../tools-creators';
+import { BriefBuilder, CreatorBrowser, HoldTool } from '../tools-brands';
 import { usd } from '../estimate';
 import { startingRates, suggestRateBand } from '@/screens/tools/rateGuidance';
-import { DEMO_HREF, PLATFORM_FORMATS, SIGNUP_HREF } from '../facts';
+import { brandAccent, DEMO_HREF, PLATFORM_FORMATS, SIGNUP_HREF } from '../facts';
 import { CTA_ID } from '../events';
 import { BRIEFS } from '../listings-briefs';
 import { CREATORS } from '../listings-creators';
@@ -147,13 +147,12 @@ describe('BriefBuilder', () => {
 });
 
 describe('the first screens', () => {
-  const picks = () => [...document.querySelectorAll('.lx-pick-title')].map((t) => t.textContent);
-
-  it('filter briefs by category in place', () => {
+  it('lay a pile of briefs, each with its rate, and open the first', () => {
     render(<BriefBrowser />);
-    fireEvent.click(screen.getByRole('button', { name: 'Food' }));
-    expect(picks()).toEqual(BRIEFS.filter((b) => b.category === 'Food').slice(0, 4).map((b) => b.title));
-    expect(screen.getByRole('button', { name: 'Food' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('article', { name: `Example brief: ${BRIEFS[0]!.title}` })).toBeTruthy();
+    const pile = screen.getByRole('list', { name: 'Example open briefs' });
+    expect(within(pile).getAllByRole('button').length).toBeGreaterThanOrEqual(2);
+    expect(within(pile).getByRole('button', { name: new RegExp(BRIEFS[1]!.title) }).textContent).toContain(usd(BRIEFS[1]!.perCreator));
   });
 
   it('open the picked brief and price a pitch from the ledger maths', () => {
@@ -167,10 +166,25 @@ describe('the first screens', () => {
     expect(within(card).getByRole('link', { name: 'Join free to pitch' }).getAttribute('href')).toBe(SIGNUP_HREF.creator);
   });
 
-  it('filter creators by platform in place', () => {
-    render(<CreatorBrowser />);
-    fireEvent.click(screen.getByRole('button', { name: 'YouTube' }));
-    expect(picks()).toEqual(CREATORS.filter((c) => c.channels.some((ch) => ch.platform === 'YouTube')).slice(0, 4).map((c) => c.niche));
+  it('put the sheet that was open back on the pile, and start the next pitch fresh', () => {
+    render(<BriefBrowser />);
+    const [first, second] = BRIEFS;
+    fireEvent.change(screen.getByLabelText(/^Your rate for the deal/), { target: { value: '9,000' } });
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(second!.title) }));
+    expect(screen.getByRole('button', { name: new RegExp(first!.title) })).toBeTruthy();
+    expect((screen.getByLabelText(/^Your rate for the deal/) as HTMLInputElement).value).toBe(second!.perCreator.toLocaleString('en-US'));
+  });
+
+  it('move focus to the sheet, because the band that was clicked is gone', () => {
+    render(<BriefBrowser />);
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(BRIEFS[1]!.title) }));
+    expect(document.activeElement?.classList.contains('lx-slot')).toBe(true);
+  });
+
+  it('flood the page with the picked brand’s own letterhead', () => {
+    render(<main><BriefBrowser /></main>);
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(BRIEFS[1]!.title) }));
+    expect(document.querySelector('main')!.style.getPropertyValue('--ground')).toBe(brandAccent(BRIEFS[1]!.brand).bg);
   });
 
   it('price the package a brand picks, with the fee where the code puts it', () => {
@@ -190,6 +204,41 @@ describe('the first screens', () => {
     cleanup();
     render(<CreatorBrowser />);
     expect(screen.getByText(/^These are examples, shown the way the app shows storefronts\./)).toBeTruthy();
+  });
+});
+
+describe('the money tools', () => {
+  it('hold a figure that reads as plain text, whatever the odometer is doing', () => {
+    render(<PayoutTool lead="Lead" />);
+    // 1800 − 10% fee − 5% withholding.
+    expect(screen.getByText('$1,530')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(/^Your rate for the deal/), { target: { value: '1,000' } });
+    expect(screen.getByText('$850')).toBeTruthy();
+  });
+
+  it('release a post when it’s marked live, and take it back', () => {
+    render(<PayoutTool lead="Lead" />);
+    const posts = screen.getAllByRole('button', { pressed: false }).filter((b) => /Post/.test(b.textContent ?? ''));
+    expect(screen.getByText('Released so far').nextElementSibling!.textContent).toBe('$900');
+    fireEvent.click(posts[0]!);
+    expect(screen.getByText('Released so far').nextElementSibling!.textContent).toBe('$1,800');
+    fireEvent.click(screen.getByRole('button', { name: /Post 2/ }));
+    expect(screen.getByText('Released so far').nextElementSibling!.textContent).toBe('$900');
+  });
+
+  it('never show more posts released than the deal has', () => {
+    render(<PayoutTool lead="Lead" />);
+    fireEvent.click(screen.getByRole('button', { name: /Post 2/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fewer posts' }));
+    expect(screen.getByText('Released so far').nextElementSibling!.textContent).toBe('$1,800');
+    expect(screen.getByRole('button', { name: /^Post/ }).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('release what a whole round of posts holds across a brief', () => {
+    render(<HoldTool lead="Lead" />);
+    // 3 creators at $1,500, 2 posts each: a round is half of $4,500.
+    expect(screen.getByText('$4,500', { selector: '.lx-sr' })).toBeTruthy();
+    expect(screen.getByText('Released so far').nextElementSibling!.textContent).toBe('$2,250');
   });
 });
 
@@ -219,13 +268,27 @@ describe('what to charge', () => {
   });
 });
 
-describe.each(pages)('the $name page’s comparison', ({ El }) => {
-  it('is a table a screen reader can read by column', () => {
-    render(<El />);
-    const table = screen.getByRole('table');
-    const cols = within(table).getAllByRole('columnheader').map((h) => h.textContent);
-    expect(cols[1]).toBe('On Alamut');
-    expect(within(table).getAllByRole('row').length).toBeGreaterThan(3);
+describe.each(pages)('the $name page’s deal story', ({ El }) => {
+  it('reads as a plain list, each line saying where it’s from', () => {
+    const { container } = render(<El />);
+    const steps = [...container.querySelectorAll('.lx-steps > li')];
+    expect(steps.length).toBeGreaterThan(3);
+    for (const s of steps) {
+      expect(s.querySelector('.lx-was-from')!.textContent).toBeTruthy();
+      expect(s.querySelector('.lx-now')!.textContent).toMatch(/^On Alamut: /);
+    }
+  });
+
+  it('has a row of the workspace for every step of the story', () => {
+    const { container } = render(<El />);
+    expect(container.querySelectorAll('.lx-step-row').length).toBe(container.querySelectorAll('.lx-steps > li').length);
+  });
+
+  it('shows everything at rest until the browser says it can move', () => {
+    // jsdom has no matchMedia, like a page before this code has run.
+    const { container } = render(<El />);
+    expect(container.querySelector('.is-live')).toBeNull();
+    expect(container.querySelector('[data-state]')).toBeNull();
   });
 });
 

@@ -14,8 +14,8 @@ import { STALENESS } from '@/lib/api/staleness';
 import * as facts from '../facts';
 import { brandEstimate, clampMoney, creatorEstimate, usd } from '../estimate';
 import { toHandle } from '../tools-creators';
-import { BRIEFS, BRIEF_FILTERS } from '../listings-briefs';
-import { CREATORS, CREATOR_FILTERS } from '../listings-creators';
+import { BRIEFS } from '../listings-briefs';
+import { CREATORS } from '../listings-creators';
 
 const SRC = join(__dirname, '..', '..');
 const read = (rel: string) => readFileSync(join(SRC, rel), 'utf8');
@@ -115,14 +115,14 @@ describe('input handling', () => {
 
 describe('the example boards only offer what the product has', () => {
   it('brief and creator categories are the product’s categories', () => {
-    for (const c of [...BRIEF_FILTERS.filter((f) => f !== 'All'), ...BRIEFS.map((b) => b.category), ...CREATORS.map((c) => c.category)]) {
+    for (const c of [...BRIEFS.map((b) => b.category), ...CREATORS.map((c) => c.category)]) {
       expect(options.CREATOR_CATEGORIES, c).toContain(c);
     }
   });
 
   it('platforms and formats are the product’s', () => {
     const labels = options.PLATFORM_FORMATS.map((p) => p.label);
-    for (const p of [...CREATOR_FILTERS.filter((f) => f !== 'All'), ...CREATORS.flatMap((c) => c.channels.map((ch) => ch.platform))]) {
+    for (const p of CREATORS.flatMap((c) => c.channels.map((ch) => ch.platform))) {
       expect(labels, p).toContain(p);
     }
     for (const d of BRIEFS.flatMap((b) => b.deliverables)) {

@@ -1,19 +1,22 @@
 // tools-brands.tsx — the brand page's interactive pieces, drawn as the
-// portal's own screens: Discover with a package priced in place, the brief
-// builder (kept for the campaign wizard when posted), and the wallet card.
+// portal's own screens: storefronts with a package priced in place, the brief
+// builder (kept for the campaign wizard when posted), and the money a brief
+// holds.
 
-import { useId, useRef, useState } from 'react';
-import { Credits, PhotoImg } from './components';
+import { useEffect, useId, useState, type CSSProperties } from 'react';
+import { Credits, PhotoImg, photoSrcSet } from './components';
 import { brandEstimate, usd } from './estimate';
 import { PLATFORM_FEE_LABEL, PLATFORM_FORMATS, SIGNUP_HREF } from './facts';
 import { PACKAGE_LABEL } from './listings';
-import { CREATORS, CREATOR_FILTERS, fromRate, type CreatorListing } from './listings-creators';
-import { browserStore, Chips, MoneyInput, PlatMark, revealPicked, Stepper, WalletLine } from './tools-shared';
+import { CREATORS, fromRate, type CreatorListing } from './listings-creators';
+import { browserStore, EscrowBar, MoneyInput, PlatMark, Roll, Stack, Stepper, useArrived } from './tools-shared';
 import { BRIEF_DRAFT_KEY, saveDraft } from '@/lib/landingDraft';
 
-// ── Brands' first screen: Discover, working ─────────────────────────────
-// The list is Discover's; the card is the storefront a brand opens, with
-// its packages, priced, and what booking one costs the brand.
+// ── Brands' first screen: storefronts, working ──────────────────────────
+// The pile is Discover; the sheet on top is the storefront a brand opens,
+// with its packages, priced, and what booking one costs the brand.
+
+const SHEET_COVER = { width: 410, ratio: 410 / 128, sizes: '(min-width: 1000px) 410px, 100vw' };
 
 function Channels({ c }: { c: CreatorListing }) {
   return (
@@ -24,86 +27,90 @@ function Channels({ c }: { c: CreatorListing }) {
   );
 }
 
-export function CreatorBrowser() {
-  const [platform, setPlatform] = useState<(typeof CREATOR_FILTERS)[number]>('All');
-  const [picked, setPicked] = useState(CREATORS[0]!.niche);
-  const [pkg, setPkg] = useState<string | null>(null);
+function StorefrontSheet({ c, pkg, setPkg }: { c: CreatorListing; pkg: string | null; setPkg: (k: string) => void }) {
   const groupName = useId();
-  const shown = CREATORS.filter((c) => platform === 'All' || c.channels.some((ch) => ch.platform === platform)).slice(0, 4);
-  const c = shown.find((x) => x.niche === picked) ?? shown[0]!;
   const chosen = c.packages.find((p) => p.key === pkg) ?? c.packages[0]!;
   const e = brandEstimate(chosen.rate, 1, 1);
-  const detail = useRef<HTMLDivElement>(null);
-  const pick = (niche: string) => { setPicked(niche); setPkg(null); revealPicked(detail.current); };
   return (
-    <div className="lx-browse">
-      <div className="lx-browse-list">
-        <div className="lx-browse-head">
-          <h2 className="lx-board-title">Creators</h2>
-          <span className="lx-pill lx-pill-dark">Examples</span>
+    <article className="lx-card lx-paper is-photo" aria-label={`Example storefront: ${c.niche}`}>
+      <div className="lx-paper-cover"><PhotoImg photo={c.photo} {...SHEET_COVER} priority /></div>
+      <div className="lx-paper-head">
+        <div className="lx-paper-line">
+          <h2 className="lx-paper-title">{c.niche}</h2>
+          <span className="lx-lh-note">{c.category}</span>
+          <span className="lx-lh-note">Example</span>
         </div>
-        <Chips label="Filter creators by platform" options={CREATOR_FILTERS} value={platform} onChange={(p) => { setPlatform(p); setPkg(null); }}
-          mark={(o) => <PlatMark of={o} />} />
-        <ul className="lx-picks" aria-label="Example creator storefronts">
-          {shown.map((x) => (
-            <li key={x.niche}>
-              <button type="button" className="lx-pick" aria-pressed={x === c} onClick={() => pick(x.niche)}>
-                <span className="lx-pick-photo" aria-hidden="true"><PhotoImg photo={x.photo} width={88} ratio={1} sizes="44px" eager /></span>
-                <span className="lx-pick-text">
-                  <span className="lx-pick-title">{x.niche}</span>
-                  <span className="lx-pick-sub">
-                    {x.channels.map((ch) => (
-                      <span key={ch.platform} className="lx-pick-ch"><PlatMark of={ch.platform} /><span className="lx-sr">{ch.platform} </span>{ch.followers}</span>
-                    ))}
-                  </span>
-                </span>
-                <span className="lx-pick-price"><span className="lx-pick-from">from</span> <span className="lx-money">{usd(fromRate(x))}</span></span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        <Channels c={c} />
       </div>
-      <div className="lx-browse-detail" aria-live="polite" ref={detail}>
-        <article key={c.niche} className="lx-card lx-ccard lx-swap" aria-label={`Example storefront: ${c.niche}`}>
-          <div className="lx-ccard-cover"><PhotoImg photo={c.photo} width={560} ratio={560 / 120} sizes="(min-width: 1000px) 560px, 100vw" eager /></div>
-          <div className="lx-ccard-body">
-            <span className="lx-ccard-avatar" aria-hidden="true">{c.niche[0]}</span>
-            <div className="lx-ccard-id">
-              <h3 className="lx-ccard-name">{c.niche}</h3>
-              <span className="lx-pill">{c.category}</span>
-              <span className="lx-pill accent">Example</span>
-            </div>
-            <Channels c={c} />
+      <fieldset className="lx-pkgs">
+        <legend className="lx-sr">Packages</legend>
+        {c.packages.map((p) => (
+          <label key={p.key} className="lx-pkg">
+            <input type="radio" name={groupName} checked={p === chosen} onChange={() => setPkg(p.key)} />
+            <span>{PACKAGE_LABEL[p.key]}</span>
+            <b className="lx-money">{usd(p.rate)}</b>
+          </label>
+        ))}
+      </fieldset>
+      <div className="lx-act">
+        <div className="lx-act-row">
+          <div className="lx-act-figure">
+            <span>You pay</span>
+            <Roll className="lx-money" value={usd(e.held)} />
           </div>
-          <fieldset className="lx-pkgs">
-            <legend className="lx-label">Packages</legend>
-            {c.packages.map((p) => (
-              <label key={p.key} className="lx-pkg">
-                <input type="radio" name={groupName} checked={p === chosen} onChange={() => setPkg(p.key)} />
-                <span>{PACKAGE_LABEL[p.key]}</span>
-                <b className="lx-money">{usd(p.rate)}</b>
-              </label>
-            ))}
-          </fieldset>
-          <div className="lx-act">
-            <div className="lx-act-split">
-              <div className="lx-act-figure lx-act-figure-solo">
-                <span className="lx-label">You pay</span>
-                <span className="lx-money" aria-live="polite">{usd(e.held)}</span>
-              </div>
-              <a className="lx-btn accent" href={SIGNUP_HREF.brand} data-cta="hero-brief">Join free to brief</a>
-            </div>
-            <p className="lx-act-keep">
-              {e.brandFee === 0
-                ? <>No fee on top. The {PLATFORM_FEE_LABEL} platform fee comes out of the creator’s payout.</>
-                : <>Including a {usd(e.brandFee)} platform fee.</>}
-            </p>
-          </div>
-        </article>
+          <a className="lx-btn accent" href={SIGNUP_HREF.brand} data-cta="hero-brief">Join free to brief</a>
+        </div>
+        <p className="lx-act-keep">
+          {e.brandFee === 0
+            ? <>No fee on top. The {PLATFORM_FEE_LABEL} platform fee comes out of the creator’s payout.</>
+            : <>Including a {usd(e.brandFee)} platform fee.</>}
+        </p>
       </div>
+    </article>
+  );
+}
+
+export function CreatorBrowser() {
+  const [pkg, setPkg] = useState<string | null>(null);
+  // The covers of the sheets still in the pile, fetched once the page has
+  // settled, so the first one picked opens with its picture.
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      for (const c of CREATORS.slice(1)) {
+        const img = new Image();
+        img.sizes = SHEET_COVER.sizes;
+        img.srcset = photoSrcSet(c.photo, SHEET_COVER.width, SHEET_COVER.ratio);
+      }
+    }, 2500);
+    return () => window.clearTimeout(t);
+  }, []);
+  return (
+    <div className="lx-pile">
+      <Stack
+        tall
+        label="Example creator storefronts"
+        items={CREATORS}
+        ground={(c) => c.ground}
+        onPick={() => setPkg(null)}
+        band={(c) => (
+          <>
+            <span className="lx-band-photo" aria-hidden="true"><PhotoImg photo={c.photo} width={88} ratio={1} sizes="44px" eager /></span>
+            <span className="lx-band-who">
+              <span className="lx-band-name">{c.niche}</span>
+              <span className="lx-band-sub">
+                {c.channels.map((ch) => <span key={ch.platform} className="lx-band-ch"><PlatMark of={ch.platform} /><span className="lx-sr">{ch.platform} </span>{ch.followers}</span>)}
+              </span>
+            </span>
+            <span className="lx-band-from">from</span>
+            <b className="lx-money">{usd(fromRate(c))}</b>
+          </>
+        )}
+        show={(c) => <StorefrontSheet c={c} pkg={pkg} setPkg={setPkg} />}
+      />
       <p className="lx-board-note">
-        These are examples, shown the way the app shows storefronts. Follower counts are what creators
-        enter. <Credits photos={CREATORS.map((x) => x.photo)} />
+        These are examples, shown the way the app shows storefronts. Follower counts are what creators enter.
+        {' '}<Credits photos={CREATORS.map((c) => c.photo)} />
+        {' '}<a className="lx-link" href="/creators" data-cta="hero-directory">Browse the live directory</a>
       </p>
     </div>
   );
@@ -157,34 +164,42 @@ export function BriefBuilder() {
   );
 }
 
-// ── Payment: the portal's ink wallet card, as a calculator ──────────────
+// ── Payment: what a brief holds, and what it releases ───────────────────
 
-export function HoldTool() {
+export function HoldTool({ lead }: { lead: string }) {
   const [rate, setRate] = useState(1500);
   const [creators, setCreators] = useState(3);
-  const [posts, setPosts] = useState(1);
+  const [posts, setPosts] = useState(2);
+  const [live, setLive] = useState(1);
+  const [figure, arrived] = useArrived<HTMLDivElement>();
   const e = brandEstimate(rate, creators, posts);
-  const perPost = e.perPost[0] ?? 0;
-  const uneven = e.perPost.some((p) => p !== perPost);
+  // What each round of posts releases, across every creator on the brief.
+  const rounds = e.perPost.map((amt) => amt * creators);
+  const shown = Math.min(live, posts);
+  const total = usd(e.held);
   return (
-    <div className="lx-wallet ink" aria-label="What a brief holds and releases">
-      <div className="lx-wallet-main">
-        <span className="lx-label">You pay in total</span>
-        <div><span className="lx-money lx-wallet-big" aria-live="polite">{usd(e.held)}</span></div>
-        <p className="lx-wallet-sub">held in escrow as offers are accepted, and released post by post as you confirm each one is live.</p>
-        <div className="lx-wallet-inputs">
-          <MoneyInput className="lx-wallet-field" label="Rate per creator" value={rate} onChange={setRate} />
-          <div className="lx-wallet-field"><span>Creators</span><Stepper label="Creators" value={creators} min={1} max={50} onChange={setCreators} unit="creators" /></div>
-          <div className="lx-wallet-field"><span>Posts each</span><Stepper label="Posts each" value={posts} min={1} max={10} onChange={setPosts} unit="posts" /></div>
+    <div className="lx-escrow" aria-label="What a brief holds and releases">
+      <div className="lx-escrow-top">
+        <div className="lx-escrow-figure" ref={figure}>
+          <span>You pay in total</span>
+          <span style={{ '--n': total.length } as CSSProperties}><Roll className="lx-giant" value={total} atZero={!arrived} /></span>
+        </div>
+        <div className="lx-escrow-side">
+          <p className="lx-lead">{lead}</p>
+          <div className="lx-escrow-inputs">
+            <MoneyInput className="lx-escrow-field" label="Rate per creator" value={rate} onChange={setRate} />
+            <div className="lx-escrow-field"><span>Creators</span><Stepper label="Creators" value={creators} min={1} max={50} onChange={setCreators} unit="creators" /></div>
+            <div className="lx-escrow-field"><span>Posts each</span><Stepper label="Posts each" value={posts} min={1} max={10} onChange={setPosts} unit="posts" /></div>
+          </div>
         </div>
       </div>
-      <div className="lx-wallet-side">
-        <span className="lx-label">Ledger</span>
-        <WalletLine label="Held as offers are accepted" value={usd(e.held)} />
-        <WalletLine label="Released per confirmed post" value={uneven ? `${usd(perPost)}–${usd(Math.max(...e.perPost))}` : usd(perPost)} />
-        <WalletLine label="Platform fee charged to you" value={usd(e.brandFee)} />
-        <WalletLine label="Each creator receives, after fees" value={usd(e.perCreatorNet)} />
-      </div>
+      <EscrowBar amounts={rounds} live={shown} onChange={setLive} doneLabel="confirmed, released" />
+      <dl className="lx-ledger">
+        <div><dt>Held as offers are accepted</dt><dd>{usd(e.held)}</dd></div>
+        <div><dt>Released so far</dt><dd>{usd(rounds.slice(0, shown).reduce((a, b) => a + b, 0))}</dd></div>
+        <div><dt>Platform fee charged to you</dt><dd>{usd(e.brandFee)}</dd></div>
+        <div><dt>Each creator receives, after fees</dt><dd>{usd(e.perCreatorNet)}</dd></div>
+      </dl>
     </div>
   );
 }

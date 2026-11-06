@@ -4,7 +4,7 @@
 // hydrates in the browser. So: no window/localStorage at render, and anything
 // that depends on the visitor (are they signed in?) happens in an effect.
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { BETA_LINE, SESSION_STORAGE_KEY, SIGNUP_HREF } from './facts';
 import { MARKET_SOURCE_LINE, type MarketFigure } from './market';
 import { FOUNDER } from './founder';
@@ -43,21 +43,19 @@ function useSignedIn(): boolean {
 
 export function Nav({ audience }: { audience: Audience }) {
   const signedIn = useSignedIn();
-  const other = audience === 'creators'
-    ? { href: '/for-brands', label: 'For brands' }
-    : { href: '/', label: 'For creators' };
   const cta = audience === 'creators'
     ? { href: SIGNUP_HREF.creator, label: 'Join free', id: 'nav-join' }
     : { href: SIGNUP_HREF.brand, label: 'Post a brief', id: 'nav-post' };
-  // The audience switch sits at the top of the hero, where a visitor on the
-  // wrong page looks first. The nav repeats it on desktop, where the nav
-  // stays on screen as you scroll.
+  // A sheet of paper floating over whatever ground is under it, so it reads
+  // the same on every colour. The audience switch rides in it on desktop,
+  // where the nav stays on screen; a phone has it at the top of the hero.
   return (
     <header className="lx-nav">
-      <div className="lx-wrap lx-nav-inner">
+      <div className="lx-wrap">
+        <div className="lx-nav-inner">
         <a href="/" aria-label="Alamut home"><Brand /></a>
+        <AudienceTabs audience={audience} cta="nav-audience" className="lx-seg" />
         <nav className="lx-nav-links" aria-label="Main">
-          <a className="lx-nav-link lx-nav-aud" href={other.href} data-cta="nav-audience">{other.label}</a>
           {signedIn ? (
             <a className="lx-btn lx-btn-sm" href="/v2" data-cta="nav-workspace">Open workspace</a>
           ) : (
@@ -67,6 +65,7 @@ export function Nav({ audience }: { audience: Audience }) {
             </>
           )}
         </nav>
+        </div>
       </div>
     </header>
   );
@@ -85,18 +84,24 @@ export function CtaRow({ primary, secondary }: { primary: Cta; secondary?: Cta }
 }
 
 /** "For creators | For brands", as the portal's segmented tabs. */
-export function AudienceSwitch({ audience }: { audience: Audience }) {
+function AudienceTabs({ audience, cta, className }: { audience: Audience; cta: string; className: string }) {
   const tabs = [
     { aud: 'creators' as const, href: '/', label: 'For creators' },
     { aud: 'brands' as const, href: '/for-brands', label: 'For brands' },
   ];
   return (
-    <nav className="lx-aud" aria-label="Who this page is for">
+    <nav className={className} aria-label="Who this page is for">
       {tabs.map((t) => t.aud === audience
         ? <a key={t.aud} href={t.href} aria-current="page">{t.label}</a>
-        : <a key={t.aud} href={t.href} data-cta="hero-audience">{t.label}</a>)}
+        : <a key={t.aud} href={t.href} data-cta={cta}>{t.label}</a>)}
     </nav>
   );
+}
+
+/** The same tabs at the top of a phone's hero, where a visitor on the wrong
+ *  page looks first. */
+export function AudienceSwitch({ audience }: { audience: Audience }) {
+  return <AudienceTabs audience={audience} cta="hero-audience" className="lx-aud" />;
 }
 
 /** On a phone, the page's one action stays in reach once the hero's own
@@ -104,7 +109,7 @@ export function AudienceSwitch({ audience }: { audience: Audience }) {
  *  an action (an open card, the storefront's Join, the brief's Post, the
  *  closing call), so a screen never carries two.
  *  Rendered only after hydration, so a page without JavaScript is unchanged. */
-const OWN_ACTIONS = '.lx-hero .lx-cta-row, .lx-browse-detail, .lx-sf-join, .lx-brief .lx-act, .lx-final';
+const OWN_ACTIONS = '.lx-hero .lx-cta-row, .lx-slot, .lx-sf-join, .lx-brief .lx-act, .lx-final';
 export function StickyCta({ cta }: { cta: Cta }) {
   const [show, setShow] = useState(false);
   useEffect(() => {
@@ -150,6 +155,9 @@ export function Promises({ items }: { items: string[] }) {
   );
 }
 
+export const photoSrcSet = (photo: PhotoData, width: number, ratio: number) =>
+  [1, 2].map((d) => `${photoUrl(photo.id, width * d, ratio)} ${d}x`).join(', ');
+
 /** A credited photograph as an <img>, cropped to `ratio`. The credit sits in
  *  the nearest caption or note; this only draws the picture. */
 export function PhotoImg({ photo, width, ratio, sizes, priority, eager }: {
@@ -161,7 +169,7 @@ export function PhotoImg({ photo, width, ratio, sizes, priority, eager }: {
     <img
       className="lx-photo-grade"
       src={photoUrl(photo.id, width, ratio)}
-      srcSet={[1, 2].map((d) => `${photoUrl(photo.id, width * d, ratio)} ${d}x`).join(', ')}
+      srcSet={photoSrcSet(photo, width, ratio)}
       sizes={sizes}
       width={width}
       height={Math.round(width / ratio)}
@@ -180,19 +188,33 @@ export function Credits({ photos }: { photos: PhotoData[] }) {
   return <>Photos by {list} on Unsplash.</>;
 }
 
+/** One sentence, word by word, so it can ink in as it's read: `--p` is how
+ *  far through the sentence a word sits. */
+function Sentence({ f }: { f: MarketFigure }) {
+  const words = [...f.before.split(' ').filter(Boolean), f.figure, ...f.after.split(' ')];
+  return (
+    <>
+      {words.map((w, i) => {
+        const style = { '--p': (i / words.length).toFixed(3) } as CSSProperties;
+        return (
+          <Fragment key={i}>
+            {w === f.figure ? <b className="lx-market-figure lx-w" style={style}>{w}</b> : <span className="lx-w" style={style}>{w}</span>}{' '}
+          </Fragment>
+        );
+      })}
+    </>
+  );
+}
+
 /** Three figures about the market, always with the line that says whose
  *  they are: an industry survey's, never Alamut's (market.ts). */
 export function MarketStrip({ title, figures }: { title: string; figures: MarketFigure[] }) {
   return (
-    <section className="lx-market" aria-labelledby="market-title">
+    <section className="lx-market lx-dark" data-sheet aria-labelledby="market-title">
       <div className="lx-wrap">
         <h2 className="lx-market-title" id="market-title">{title}</h2>
         <ul className="lx-market-list">
-          {figures.map((f) => (
-            <li key={f.figure + f.after}>
-              {f.before && <>{f.before} </>}<b className="lx-market-figure">{f.figure}</b> {f.after}
-            </li>
-          ))}
+          {figures.map((f) => <li key={f.figure + f.after}><Sentence f={f} /></li>)}
         </ul>
         <p className="lx-market-source">{MARKET_SOURCE_LINE}</p>
       </div>
@@ -205,7 +227,7 @@ export function FounderNote() {
   if (!FOUNDER.ready) return null;
   const initials = FOUNDER.name.split(/\s+/).filter((w) => /^\p{L}/u.test(w)).map((w) => w[0]).join('').slice(0, 2);
   return (
-    <section className="lx-section lx-founder" aria-labelledby="founder-title">
+    <section className="lx-sheet lx-founder" data-sheet aria-labelledby="founder-title">
       <div className="lx-wrap lx-founder-grid">
         <div className="lx-founder-who">
           {FOUNDER.photo
@@ -214,7 +236,7 @@ export function FounderNote() {
           <div><b>{FOUNDER.name}</b><span>{FOUNDER.role}, Alamut</span></div>
         </div>
         <div className="lx-founder-note">
-          <h2 className="lx-h2" id="founder-title">{FOUNDER.title}</h2>
+          <h2 className="lx-h2 sm" id="founder-title">{FOUNDER.title}</h2>
           {FOUNDER.paragraphs.map((p) => <p key={p}>{p}</p>)}
         </div>
       </div>
@@ -240,7 +262,7 @@ export function Faq({ items }: { items: { q: string; a: ReactNode }[] }) {
   return (
     <div className="lx-qa">
       {items.map((it) => (
-        <div key={it.q}>
+        <div key={it.q} className="lx-qa-row">
           <h3>{it.q}</h3>
           <p>{it.a}</p>
         </div>
@@ -251,9 +273,9 @@ export function Faq({ items }: { items: { q: string; a: ReactNode }[] }) {
 
 export function Footer({ audience }: { audience: Audience }) {
   return (
-    <footer className="lx-foot">
+    <footer className="lx-foot lx-dark">
       <div className="lx-wrap lx-foot-inner">
-        <a href="/" aria-label="Alamut home"><Brand /></a>
+        <p className="lx-foot-note">{BETA_LINE}. Photographs on this page are from Unsplash and show the kind of work, not Alamut users.</p>
         <nav aria-label="Footer">
           <a href={audience === 'creators' ? '/for-brands' : '/'}>{audience === 'creators' ? 'For brands' : 'For creators'}</a>
           <a href="/creators">Browse creators</a>
@@ -262,7 +284,6 @@ export function Footer({ audience }: { audience: Audience }) {
           <a href="/terms">Terms</a>
           <a href="/privacy">Privacy</a>
         </nav>
-        <p className="lx-foot-note">{BETA_LINE}. Photographs on this page are from Unsplash and show the kind of work, not Alamut users.</p>
       </div>
     </footer>
   );

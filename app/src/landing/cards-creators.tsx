@@ -1,12 +1,11 @@
-// cards-creators.tsx — the creator page's workspace screen: one deal from
-// offer to review (see productCards.tsx).
+// cards-creators.tsx — the creator page's workspace screen: one deal, from a
+// price on the storefront to the review (see productCards.tsx). One row per
+// step of the story on the page.
 
 import { usd } from './estimate';
 import { BRIEFS } from './listings-briefs';
-import { Window } from './productCards';
+import type { WorkspaceScreen } from './productCards';
 import { PlatMark } from './tools-shared';
-
-const CREATOR_NAV = ['Home', 'My storefront', 'My collaborations', 'Browse campaigns', 'Inbox', 'Calendar', 'Wallet'];
 
 /** A review's stars, drawn, as the portal draws ratings. */
 function Stars({ count }: { count: number }) {
@@ -21,38 +20,36 @@ function Stars({ count }: { count: number }) {
   );
 }
 
-/** Creators: one deal from offer to review. */
-export function CreatorDealWindow() {
-  return (
-    <Window nav={CREATOR_NAV} active="My collaborations" crumb={`My collaborations · ${BRIEFS[0]!.brand}`} title="Skincare launch">
-      <div className="lx-card">
-        <div className="lx-row">
-          <span className="lx-row-who">The brand offered</span>
-          <span className="lx-row-what lx-plat"><PlatMark of="Instagram" />2 × Instagram Reel</span>
-          <span className="lx-money lx-row-amt struck">{usd(1500)}</span>
-        </div>
-      </div>
-      <div className="lx-card">
-        <div className="lx-row">
-          <span className="lx-row-who">You countered at your Reel rate · <span className="lx-pill moss">Agreed</span></span>
-          <span className="lx-row-what">2 × Reel at {usd(900)}</span>
-          <span className="lx-money lx-row-amt">{usd(1800)}</span>
-        </div>
-      </div>
-      <div className="lx-card">
-        <div className="lx-row">
-          <span className="lx-row-who">The brand proposed a paid change</span>
-          <span className="lx-row-what">Add 1 Story</span>
-          <span className="lx-money lx-row-amt accent">+{usd(250)}</span>
-          <div className="lx-row-actions"><span className="lx-mini-btn dark">Accept</span><span className="lx-mini-btn">Decline</span></div>
-        </div>
-      </div>
-      <div className="lx-card">
-        <div className="lx-row">
-          <span className="lx-row-who">After the deal</span>
-          <span className="lx-row-what"><Stars count={5} /> Review pinned to your storefront</span>
-        </div>
-      </div>
-    </Window>
-  );
-}
+export const CREATOR_DEAL: WorkspaceScreen = {
+  nav: ['Home', 'My storefront', 'My collaborations', 'Browse campaigns', 'Inbox', 'Calendar', 'Wallet'],
+  active: 'My collaborations',
+  crumb: `My collaborations · ${BRIEFS[0]!.brand}`,
+  title: 'Skincare launch',
+  rows: [
+    <div className="lx-row" key="storefront">
+      <span className="lx-row-who">On your storefront</span>
+      <span className="lx-row-what lx-plat"><PlatMark of="Instagram" />Instagram Reel</span>
+      <span className="lx-money lx-row-amt">{usd(900)}</span>
+    </div>,
+    <div className="lx-row" key="agreed">
+      <span className="lx-row-who">The brand offered {usd(1500)}. You countered at your Reel rate <span className="lx-pill moss">Agreed</span></span>
+      <span className="lx-row-what">2 × Reel at {usd(900)}</span>
+      <span className="lx-money lx-row-amt">{usd(1800)}</span>
+    </div>,
+    <div className="lx-row" key="change">
+      <span className="lx-row-who">The brand proposed a paid change</span>
+      <span className="lx-row-what">Add 1 Story</span>
+      <span className="lx-money lx-row-amt accent">+{usd(250)}</span>
+      <div className="lx-row-actions"><span className="lx-mini-btn dark">Accept</span><span className="lx-mini-btn">Decline</span></div>
+    </div>,
+    <div className="lx-row" key="held">
+      <span className="lx-row-who">Held since the brand accepted</span>
+      <span className="lx-row-what">Released as each post goes live</span>
+      <span className="lx-money lx-row-amt">{usd(2050)}</span>
+    </div>,
+    <div className="lx-row" key="review">
+      <span className="lx-row-who">After the deal</span>
+      <span className="lx-row-what"><Stars count={5} /> Review pinned to your storefront</span>
+    </div>,
+  ],
+};

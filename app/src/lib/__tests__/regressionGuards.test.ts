@@ -817,7 +817,7 @@ describe('marketing copy does not outrun the product', () => {
     // are where invented numbers live. Anything the landing imports from
     // the app may import only other app modules that follow the same rule,
     // never a package, so nothing stateful is reached however deep.
-    const allowedBare = new Set(['react', 'react-dom/client', 'react-dom/server']);
+    const allowedBare = new Set(['react', 'react-dom', 'react-dom/client', 'react-dom/server']);
     // `import x from '…'`, `export … from '…'`, and a bare `import '…'` run for its side effects.
     const specs = (src: string) => [...src.matchAll(/^\s*(?:import|export)\s+(?:[^'";]*?\s+from\s+)?'([^']+)'/gm)].map((m) => m[1]!);
     const resolve = (from: string, spec: string) => {
