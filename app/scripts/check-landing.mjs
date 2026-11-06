@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 
-const BUDGET = { js: 60 * 1024, css: 15 * 1024 }; // gzip bytes, per page
+const BUDGET = { js: 40 * 1024, css: 15 * 1024 }; // gzip bytes, per page
 const dist = path.resolve('dist');
 // Strings that only exist in app code. Finding one in a landing asset means
 // the landing bundle pulled in the store, the seed or supabase-js.
@@ -21,7 +21,7 @@ const fail = (msg) => { failed = true; console.error(`check-landing: FAIL ${msg}
 for (const file of ['index.html', 'for-brands/index.html']) {
   const html = fs.readFileSync(path.join(dist, file), 'utf8');
   if (html.includes('<!--lx-ssr-->')) fail(`${file} was never prerendered`);
-  if (!/<div id="lx-root"[^>]*><div class="lx" data-surface="v2">/.test(html)) fail(`${file} has no prerendered page in #lx-root, on the v2 surface`);
+  if (!/<div id="lx-root"[^>]*><div (?=[^>]*\bclass="lx")(?=[^>]*data-surface="v2")[^>]*>/.test(html)) fail(`${file} has no prerendered page in #lx-root, on the v2 surface`);
   if (!/<h1[\s>]/.test(html)) fail(`${file} has no <h1> in its HTML`);
   if (/assets\/(vendor|index)-[\w-]+\.js/.test(html)) fail(`${file} references the app bundle`);
 

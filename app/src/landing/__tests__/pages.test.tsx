@@ -62,7 +62,8 @@ describe.each(pages)('the $name page', ({ El, h1, signup, demo }) => {
     for (const a of container.querySelectorAll('a')) {
       const href = a.getAttribute('href') ?? '';
       // Our own pages, or the photographer credit on Unsplash.
-      expect(href, a.textContent ?? '').toMatch(/^(\/[a-z0-9/?=&.-]*|https:\/\/unsplash\.com\/photos\/[\w-]+)$/i);
+      expect(href, a.textContent ?? '').toMatch(/^(\/[a-z0-9/?=&.-]*|#to-[a-z]+|https:\/\/unsplash\.com\/photos\/[\w-]+)$/i);
+      if (href.startsWith('#')) expect(container.querySelector(href), `${href} points at nothing`).toBeTruthy();
     }
   });
 
@@ -206,6 +207,61 @@ describe('the first screens', () => {
     render(<CreatorBrowser />);
     expect(screen.getByText('Examples. Pick one.')).toBeTruthy();
     expect(screen.getAllByText('Example').length).toBeGreaterThan(0);
+  });
+});
+
+describe('the rate ruler', () => {
+  it('moves the same rate the field shows, and the take-home with it', () => {
+    render(<BriefBrowser />);
+    fireEvent.input(screen.getByLabelText('Drag to set your rate'), { target: { value: '2000' } });
+    expect((screen.getByLabelText(/^Your rate for the deal/) as HTMLInputElement).value).toBe('2,000');
+    // 2000 − 10% fee − 5% withholding.
+    expect(screen.getByText('$1,700')).toBeTruthy();
+  });
+
+  it('stays on the track when the field holds a rate past its end', () => {
+    render(<BriefBrowser />);
+    fireEvent.change(screen.getByLabelText(/^Your rate for the deal/), { target: { value: '9,000' } });
+    expect((screen.getByLabelText('Drag to set your rate') as HTMLInputElement).value).toBe('5000');
+  });
+});
+
+describe('the storefront’s look', () => {
+  const cover = () => document.querySelector('.lx-sf-cover img')!.getAttribute('alt');
+
+  it('dresses for the niche, and credits whoever took the pictures', () => {
+    render(<Storefront />);
+    const beauty = cover();
+    fireEvent.change(screen.getByLabelText('Your niche'), { target: { value: 'Food' } });
+    expect(cover()).not.toBe(beauty);
+    expect(cover()).toMatch(/cooking/);
+    expect(document.querySelectorAll('.lx-sf-work img').length).toBe(3);
+    expect(document.querySelector('.lx-sf .lx-note')!.textContent).toMatch(/Vitaly Gariev/);
+  });
+
+  it('has a look for every niche a creator can pick', () => {
+    render(<Storefront />);
+    for (const o of [...(screen.getByLabelText('Your niche') as HTMLSelectElement).options]) {
+      fireEvent.change(screen.getByLabelText('Your niche'), { target: { value: o.value } });
+      expect(cover(), o.value).toBeTruthy();
+      expect(document.querySelectorAll('.lx-sf-work img').length, o.value).toBe(3);
+    }
+  });
+});
+
+describe.each(pages)('the $name page’s reel', ({ El }) => {
+  it('can be stopped, says what its pictures are, and reads once', () => {
+    const { container } = render(<El />);
+    const reel = container.querySelector('.lx-reel') as HTMLElement;
+    expect(reel.textContent).toMatch(/not Alamut users/);
+    expect(reel.textContent).toMatch(/on Unsplash/);
+    fireEvent.click(within(reel).getByRole('button', { name: 'Pause' }));
+    expect(reel.hasAttribute('data-paused')).toBe(true);
+    fireEvent.click(within(reel).getByRole('button', { name: 'Play' }));
+    expect(reel.hasAttribute('data-paused')).toBe(false);
+    // Each line runs twice so the drift never ends, and only the first counts.
+    const runs = [...reel.querySelectorAll('.lx-reel-run')];
+    expect(runs.filter((r) => r.getAttribute('aria-hidden') === 'true').length).toBe(runs.length / 2);
   });
 });
 

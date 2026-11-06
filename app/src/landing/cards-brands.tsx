@@ -35,9 +35,9 @@ export const BRAND_DEAL: WorkspaceScreen = {
 // Each pitch shows a sample of the creator's work, as pitches in the app link
 // to their storefront.
 const PITCHES = [
-  { work: PHOTOS.makeupTable, who: 'Beauty creator · Instagram', pitch: 'Two Reels built around a morning routine, shot at home.', rate: 1400, age: 'Sent 2 days ago', status: '' },
-  { work: PHOTOS.ringLight, who: 'Lifestyle creator · Instagram', pitch: 'A get-ready-with-me Reel, then a before and after a week later.', rate: 1650, age: 'Sent 5 days ago', status: 'Shortlisted' },
-  { work: PHOTOS.productSet, who: 'Fitness creator · Instagram', pitch: 'Post-workout skincare. My audience asks about it every week.', rate: 1500, age: 'Sent 19 days ago', status: '' },
+  { work: PHOTOS.makeupTutorial, who: 'Beauty creator · Instagram', pitch: 'Two Reels built around a morning routine, shot at home.', rate: 1400, age: 'Sent 2 days ago', status: '' },
+  { work: PHOTOS.pinkBlue, who: 'Lifestyle creator · Instagram', pitch: 'A get-ready-with-me Reel, then a before and after a week later.', rate: 1650, age: 'Sent 5 days ago', status: 'Shortlisted' },
+  { work: PHOTOS.dumbbells, who: 'Fitness creator · Instagram', pitch: 'Post-workout skincare. My audience asks about it every week.', rate: 1500, age: 'Sent 19 days ago', status: '' },
 ];
 
 /** Brands: what arrives after you post a brief. */

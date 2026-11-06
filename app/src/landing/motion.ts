@@ -48,16 +48,48 @@ export function mountInk(): void {
   window.addEventListener('scroll', () => { frame ||= requestAnimationFrame(read); }, { passive: true });
 }
 
-/** Pitches arrive one by one once the inbox is on screen. Until then the
- *  later ones wait; a page without this file shows them all. */
+/** What arrives as it comes on screen: section headings rise from behind a
+ *  line, and pitches land one by one. Anything already on screen, or on a page
+ *  without this file, simply stays as it is. */
 export function mountArrivals(): void {
-  const inbox = document.querySelector<HTMLElement>('.lx-pitches');
-  if (!inbox || stillPlease() || inbox.getBoundingClientRect().top < window.innerHeight * 0.8) return;
-  inbox.dataset.waiting = '';
-  const io = new IntersectionObserver(([e]) => {
-    if (e!.isIntersecting) { delete inbox.dataset.waiting; io.disconnect(); }
-  }, { rootMargin: '0px 0px -200px 0px' });
-  io.observe(inbox);
+  if (stillPlease()) return;
+  const waiting = [...document.querySelectorAll<HTMLElement>('.lx-h2, .lx-pitches')]
+    .filter((el) => el.getBoundingClientRect().top > window.innerHeight * 0.8);
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (!e.isIntersecting) continue;
+      delete (e.target as HTMLElement).dataset.waiting;
+      io.unobserve(e.target);
+    }
+  }, { rootMargin: '0px 0px -120px 0px' });
+  for (const el of waiting) { el.dataset.waiting = ''; io.observe(el); }
+}
+
+/** The reel drifts by itself (CSS), and the scroll carries its two lines apart:
+ *  `--shift` is how far, and `--lean` a slight slant while it's moving fast. */
+export function mountReel(): void {
+  const reel = document.querySelector<HTMLElement>('.lx-reel');
+  if (!reel || stillPlease()) return;
+  let frame = 0;
+  let last = window.scrollY;
+  const next = reel.nextElementSibling as HTMLElement;
+  const read = () => {
+    frame = 0;
+    const y = window.scrollY;
+    // Pinned sheets stay put underneath, so "on screen" isn't enough: once the
+    // next sheet has covered it, the reel stops working.
+    const away = reel.getBoundingClientRect().top > window.innerHeight + 200 || next.getBoundingClientRect().top < 0;
+    reel.toggleAttribute('data-away', away);
+    if (away) { last = y; return; }
+    reel.style.setProperty('--shift', `${Math.round(y * 0.32)}px`);
+    reel.style.setProperty('--lean', `${Math.max(-4, Math.min(4, (y - last) * -0.09)).toFixed(2)}deg`);
+    last = y;
+    window.clearTimeout(settle);
+    settle = window.setTimeout(() => reel.style.setProperty('--lean', '0deg'), 120);
+  };
+  let settle = 0;
+  read();
+  window.addEventListener('scroll', () => { frame ||= requestAnimationFrame(read); }, { passive: true });
 }
 
 type Transitioning = Document & { startViewTransition?: (update: () => void) => unknown };

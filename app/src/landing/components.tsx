@@ -4,11 +4,11 @@
 // hydrates in the browser. So: no window/localStorage at render, and anything
 // that depends on the visitor (are they signed in?) happens in an effect.
 
-import { Fragment, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { BETA_LINE, SESSION_STORAGE_KEY, SIGNUP_HREF } from './facts';
 import { MARKET_SOURCE_LINE, type MarketFigure } from './market';
 import { FOUNDER } from './founder';
-import { photoUrl, type Photo as PhotoData } from './photos';
+import { PHOTOS, photoUrl, type Photo as PhotoData } from './photos';
 import { BrandMarkSvg } from '@/screens/workspace-v2/BrandMark';
 
 export type Audience = 'creators' | 'brands';
@@ -41,7 +41,41 @@ function useSignedIn(): boolean {
   return signedIn;
 }
 
-export function Nav({ audience }: { audience: Audience }) {
+export interface PageLink { href: string; label: string }
+
+/** Where you are on a long page: the sections, with a pill that slides to the
+ *  one on screen. Only on desktop, where the nav stays with you. */
+function SectionNav({ links }: { links: PageLink[] }) {
+  const [on, setOn] = useState(-1);
+  const [pill, setPill] = useState<CSSProperties>({ opacity: 0 });
+  const bar = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const marks = links.map((l) => document.querySelector(l.href));
+    let frame = 0;
+    const read = () => {
+      frame = 0;
+      let at = -1;
+      marks.forEach((m, i) => { if (m && m.getBoundingClientRect().top < window.innerHeight * 0.45) at = i; });
+      setOn(at);
+    };
+    const onScroll = () => { frame ||= requestAnimationFrame(read); };
+    read();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => { cancelAnimationFrame(frame); window.removeEventListener('scroll', onScroll); };
+  }, [links]);
+  useEffect(() => {
+    const a = bar.current?.querySelectorAll('a')[on] as HTMLElement | undefined;
+    setPill(a ? { opacity: 1, width: `${a.offsetWidth}px`, transform: `translateX(${a.offsetLeft}px)` } : { opacity: 0 });
+  }, [on]);
+  return (
+    <nav className="lx-secnav" aria-label="On this page" ref={bar}>
+      <span className="lx-secnav-pill" style={pill} aria-hidden="true" />
+      {links.map((l, i) => <a key={l.href} href={l.href} aria-current={i === on ? 'true' : undefined} data-cta={`nav-${l.href.slice(4)}`}>{l.label}</a>)}
+    </nav>
+  );
+}
+
+export function Nav({ audience, sections }: { audience: Audience; sections: PageLink[] }) {
   const signedIn = useSignedIn();
   const cta = audience === 'creators'
     ? { href: SIGNUP_HREF.creator, label: 'Join free', id: 'nav-join' }
@@ -55,6 +89,7 @@ export function Nav({ audience }: { audience: Audience }) {
         <div className="lx-nav-inner">
         <a href="/" aria-label="Alamut home"><Brand /></a>
         <AudienceTabs audience={audience} cta="nav-audience" className="lx-seg" />
+        <SectionNav links={sections} />
         <nav className="lx-nav-links" aria-label="Main">
           {signedIn ? (
             <a className="lx-btn lx-btn-sm" href="/v2" data-cta="nav-workspace">Open workspace</a>
@@ -160,8 +195,8 @@ export const photoSrcSet = (photo: PhotoData, width: number, ratio: number) =>
 
 /** A credited photograph as an <img>, cropped to `ratio`. The credit sits in
  *  the nearest caption or note; this only draws the picture. */
-export function PhotoImg({ photo, width, ratio, sizes, priority, eager }: {
-  photo: PhotoData; width: number; ratio: number; sizes: string; priority?: boolean; eager?: boolean;
+export function PhotoImg({ photo, width, ratio, sizes, priority, eager, decorative }: {
+  photo: PhotoData; width: number; ratio: number; sizes: string; priority?: boolean; eager?: boolean; decorative?: boolean;
 }) {
   // React 18 passes a lowercase attribute through but has no typed prop for it.
   const fetchPriority = priority ? ({ fetchpriority: 'high' } as Record<string, string>) : {};
@@ -173,7 +208,7 @@ export function PhotoImg({ photo, width, ratio, sizes, priority, eager }: {
       sizes={sizes}
       width={width}
       height={Math.round(width / ratio)}
-      alt={photo.alt}
+      alt={decorative ? '' : photo.alt}
       loading={priority || eager ? 'eager' : 'lazy'}
       decoding="async"
       {...fetchPriority}
@@ -210,7 +245,7 @@ function Sentence({ f }: { f: MarketFigure }) {
  *  they are: an industry survey's, never Alamut's (market.ts). */
 export function MarketStrip({ title, figures }: { title: string; figures: MarketFigure[] }) {
   return (
-    <section className="lx-market lx-dark" data-sheet aria-labelledby="market-title">
+    <section className="lx-market lx-dark" aria-labelledby="market-title">
       <div className="lx-wrap">
         <h2 className="lx-market-title" id="market-title">{title}</h2>
         <ul className="lx-market-list">
@@ -219,6 +254,65 @@ export function MarketStrip({ title, figures }: { title: string; figures: Market
         <p className="lx-market-source">{MARKET_SOURCE_LINE}</p>
       </div>
     </section>
+  );
+}
+
+/** A rubber stamp, slammed on paper when a step is done. Decoration: the same
+ *  word is always in the text beside it. */
+export function Stamp({ children, tone }: { children: string; tone?: 'accent' }) {
+  return <span className={tone ? `lx-stamp ${tone}` : 'lx-stamp'} aria-hidden="true">{children}</span>;
+}
+
+/** The niches, set huge with the work itself between the words, drifting in
+ *  opposite directions and carried along by the scroll. Each line runs twice
+ *  so the drift never reaches an end; the copy is hidden from screen readers. */
+const REEL: [string, PhotoData][][] = [
+  [['Beauty', PHOTOS.makeupTutorial], ['Food', PHOTOS.foodTutorial], ['Fitness', PHOTOS.dumbbells], ['Fashion', PHOTOS.pinkBlue]],
+  [['Tech', PHOTOS.cameraRed], ['Travel', PHOTOS.sunsetGimbal], ['Parenting', PHOTOS.canalSelfie], ['Finance', PHOTOS.podcastMic]],
+];
+function ReelRun({ line, hidden }: { line: [string, PhotoData][]; hidden?: boolean }) {
+  return (
+    <ul className="lx-reel-run" aria-hidden={hidden || undefined}>
+      {line.map(([name, photo]) => (
+        <li key={name}>
+          <span>{name}</span>
+          <i><PhotoImg photo={photo} width={300} ratio={300 / 134} sizes="300px" decorative /></i>
+        </li>
+      ))}
+    </ul>
+  );
+}
+export function Reel() {
+  // Anything that moves on its own for this long needs a way to stop it.
+  const [paused, setPaused] = useState(false);
+  return (
+    <section className="lx-reel lx-dark" data-sheet data-paused={paused || undefined} aria-label="Some of the niches on Alamut">
+      {REEL.map((line, i) => (
+        <div className="lx-reel-line" key={i}>
+          <div className="lx-reel-track"><ReelRun line={line} /><ReelRun line={line} hidden /></div>
+        </div>
+      ))}
+      <div className="lx-wrap lx-reel-foot">
+        <p className="lx-reel-cap">
+          Some of the niches on Alamut. Photographs show the kind of work, not Alamut users. <Credits photos={REEL.flat().map(([, p]) => p)} />
+        </p>
+        <button type="button" className="lx-reel-btn" aria-pressed={paused} onClick={() => setPaused((p) => !p)}>{paused ? 'Play' : 'Pause'}</button>
+      </div>
+    </section>
+  );
+}
+
+/** The close: the pile comes back as prints, fanned along the bottom edge. */
+const FAN: [PhotoData, number][] = [[PHOTOS.makeupTutorial, -13], [PHOTOS.foodTutorial, -7], [PHOTOS.cameraRed, -3], [PHOTOS.pinkBlue, 3], [PHOTOS.sunsetGimbal, 7], [PHOTOS.dumbbells, 13]];
+export function PrintFan() {
+  return (
+    <div className="lx-fan" aria-hidden="true">
+      {FAN.map(([photo, turn], i) => (
+        <figure key={photo.id} style={{ '--turn': `${turn}deg`, '--i': String(i) } as CSSProperties}>
+          <PhotoImg photo={photo} width={270} ratio={270 / 230} sizes="270px" decorative />
+        </figure>
+      ))}
+    </div>
   );
 }
 

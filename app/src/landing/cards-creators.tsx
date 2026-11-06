@@ -2,6 +2,7 @@
 // price on the storefront to the review (see productCards.tsx). One row per
 // step of the story on the page.
 
+import { Stamp } from './components';
 import { usd } from './estimate';
 import { BRIEFS } from './listings-briefs';
 import type { WorkspaceScreen } from './productCards';
@@ -32,9 +33,10 @@ export const CREATOR_DEAL: WorkspaceScreen = {
       <span className="lx-money lx-row-amt">{usd(900)}</span>
     </div>,
     <div className="lx-row" key="agreed">
-      <span className="lx-row-who">The brand offered {usd(1500)}. You countered at your Reel rate <span className="lx-pill moss">Agreed</span></span>
+      <span className="lx-row-who">The brand offered {usd(1500)}. You countered at your Reel rate <span className="lx-pill moss lx-no-stamp">Agreed</span></span>
       <span className="lx-row-what">2 × Reel at {usd(900)}</span>
       <span className="lx-money lx-row-amt">{usd(1800)}</span>
+      <Stamp>Agreed</Stamp>
     </div>,
     <div className="lx-row" key="change">
       <span className="lx-row-who">The brand proposed a paid change</span>
@@ -42,8 +44,9 @@ export const CREATOR_DEAL: WorkspaceScreen = {
       <span className="lx-money lx-row-amt accent">+{usd(250)}</span>
       <div className="lx-row-actions">
         <span className="lx-mini-btn dark lx-if-open">Accept</span><span className="lx-mini-btn lx-if-open">Decline</span>
-        <span className="lx-pill moss lx-if-done">Accepted</span>
+        <span className="lx-sr lx-if-done">Accepted</span>
       </div>
+      <Stamp tone="accent">Accepted</Stamp>
     </div>,
     <div className="lx-row" key="held">
       <span className="lx-row-who">Held since the brand accepted</span>
@@ -53,6 +56,7 @@ export const CREATOR_DEAL: WorkspaceScreen = {
     <div className="lx-row" key="review">
       <span className="lx-row-who">After the deal</span>
       <span className="lx-row-what"><Stars count={5} /> Review pinned to your storefront</span>
+      <Stamp>Pinned</Stamp>
     </div>,
   ],
 };

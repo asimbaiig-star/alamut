@@ -3,8 +3,8 @@
 // The page tools themselves live in tools-creators.tsx and tools-brands.tsx,
 // so each page's bundle carries only its own (see hydrate.tsx).
 
-import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { CheckMark } from './components';
+import { useEffect, useId, useRef, useState, type CSSProperties, type PointerEvent as PointerEv, type ReactNode } from 'react';
+import { CheckMark, Stamp } from './components';
 import { clampMoney, usd } from './estimate';
 import { floodFrom } from './motion';
 import { PLATFORM_GLYPH, type GlyphPlatform } from '@/lib/platformGlyphs';
@@ -90,6 +90,7 @@ export function Stack<T>({ label, items, ground, band, show, tall, onPick }: {
 }) {
   const [picked, setPicked] = useState(0);
   const slot = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ x: number; y: number; on: boolean } | null>(null);
   const pick = (i: number, el: HTMLElement) => {
     floodFrom(el, () => {
       setPicked(i);
@@ -98,6 +99,42 @@ export function Stack<T>({ label, items, ground, band, show, tall, onPick }: {
     });
     // The band just clicked is gone: focus moves with it, to the sheet it became.
     slot.current?.focus({ preventScroll: true });
+  };
+  const paper = () => slot.current?.style;
+  // On a touch screen the open sheet can be flicked away for the next one.
+  const swipe = {
+    onPointerDown: (e: PointerEv<HTMLDivElement>) => {
+      if (e.pointerType !== 'touch' || (e.target as Element).closest('input, a, button, label')) return;
+      drag.current = { x: e.clientX, y: e.clientY, on: false };
+    },
+    onPointerMove: (e: PointerEv<HTMLDivElement>) => {
+      const d = drag.current;
+      if (!d) return;
+      const dx = e.clientX - d.x;
+      if (!d.on && Math.abs(dx) < 12) return;
+      d.on = true;
+      paper()?.setProperty('--swipe', `${dx}px`);
+    },
+    onPointerUp: (e: PointerEv<HTMLDivElement>) => {
+      const d = drag.current;
+      drag.current = null;
+      if (!d?.on) return;
+      paper()?.removeProperty('--swipe');
+      const dx = e.clientX - d.x;
+      if (Math.abs(dx) > 70) pick((picked + (dx < 0 ? 1 : items.length - 1)) % items.length, e.currentTarget);
+    },
+    onPointerCancel: () => { drag.current = null; paper()?.removeProperty('--swipe'); },
+  };
+  // With a mouse the sheet leans toward the pointer, a few degrees, like paper
+  // held at the corner.
+  const tilt = {
+    onPointerMove: (e: PointerEv<HTMLDivElement>) => {
+      if (e.pointerType !== 'mouse') return;
+      const r = e.currentTarget.getBoundingClientRect();
+      paper()?.setProperty('--ry', `${(((e.clientX - r.left) / r.width) - 0.5) * 5}deg`);
+      paper()?.setProperty('--rx', `${(0.5 - ((e.clientY - r.top) / r.height)) * 4}deg`);
+    },
+    onPointerLeave: () => { paper()?.removeProperty('--rx'); paper()?.removeProperty('--ry'); },
   };
   // Named so a band and the sheet it becomes are one element to the browser.
   const named = (i: number) => ({ viewTransitionName: `lx-s${i}` }) as CSSProperties;
@@ -112,7 +149,29 @@ export function Stack<T>({ label, items, ground, band, show, tall, onPick }: {
           </li>
         ))}
       </ul>
-      <div className="lx-slot" ref={slot} tabIndex={-1} style={named(picked)}>{show(items[picked]!)}</div>
+      <div className="lx-slot" ref={slot} tabIndex={-1} style={named(picked)}
+        onPointerDown={swipe.onPointerDown} onPointerUp={swipe.onPointerUp} onPointerCancel={swipe.onPointerCancel}
+        onPointerMove={(e) => { swipe.onPointerMove(e); tilt.onPointerMove(e); }} onPointerLeave={tilt.onPointerLeave}>
+        {show(items[picked]!)}
+      </div>
+    </div>
+  );
+}
+
+/** The paper slips that fly when a post is released: each one's direction. */
+const SLIPS = [205, 235, 262, 290, 318, 340, 15, 40];
+
+/** Set a price by dragging, as well as by typing: on a phone it's a thumb
+ *  instead of a keyboard, and the figures roll as it moves. */
+export function RateRuler({ value, onChange, label, min = 100, max = 5000 }: {
+  value: number; onChange: (n: number) => void; label: string; min?: number; max?: number;
+}) {
+  const at = Math.min(max, Math.max(min, value));
+  return (
+    <div className="lx-ruler">
+      <input type="range" min={min} max={max} step={50} value={at} aria-label={label}
+        style={{ '--at': String((at - min) / (max - min)) } as CSSProperties}
+        onInput={(e) => onChange(Number(e.currentTarget.value))} onChange={(e) => onChange(Number(e.currentTarget.value))} />
     </div>
   );
 }
@@ -122,6 +181,8 @@ export function Stack<T>({ label, items, ground, band, show, tall, onPick }: {
 export function EscrowBar({ amounts, live, onChange, doneLabel }: {
   amounts: number[]; live: number; onChange: (n: number) => void; doneLabel: string;
 }) {
+  // Which post was just released, and a count so each release plays afresh.
+  const [burst, setBurst] = useState<{ at: number; n: number } | null>(null);
   return (
     <ol className="lx-bar" style={{ '--n': amounts.length } as CSSProperties} aria-label="Posts in this deal">
       {amounts.map((amt, i) => {
@@ -129,11 +190,19 @@ export function EscrowBar({ amounts, live, onChange, doneLabel }: {
         const name = amounts.length > 1 ? `Post ${i + 1}` : 'Post';
         return (
           <li key={i}>
-            <button type="button" className="lx-seg" aria-pressed={done} onClick={() => onChange(i + 1 === live ? i : i + 1)}>
+            <button type="button" className="lx-seg" aria-pressed={done} onClick={() => {
+              const next = i + 1 === live ? i : i + 1;
+              if (next > live) setBurst((b) => ({ at: i, n: (b?.n ?? 0) + 1 }));
+              onChange(next);
+            }}>
               <span className="lx-seg-text"><b>{name}</b><span>{done ? doneLabel : 'held in escrow'}</span></span>
+              {done && <Stamp tone="accent">Released</Stamp>}
               <span className="lx-money lx-seg-amt">{usd(amt)}</span>
               {done && <CheckMark />}
             </button>
+            {burst?.at === i && done && (
+              <span key={burst.n} className="lx-burst" aria-hidden="true">{SLIPS.map((s) => <i key={s} style={{ '--a': `${s}deg` } as CSSProperties} />)}</span>
+            )}
           </li>
         );
       })}

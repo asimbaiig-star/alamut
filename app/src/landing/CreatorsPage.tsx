@@ -10,7 +10,7 @@
 // the page they'd see, then keep it), the deal runs in one place, the money
 // is held before you work, and what it costs. One action throughout: Join free.
 
-import { AudienceSwitch, CtaRow, Faq, Footer, FounderNote, MarketStrip, Nav, NotYet, Promises, StickyCta } from './components';
+import { AudienceSwitch, CtaRow, Faq, Footer, FounderNote, MarketStrip, Nav, NotYet, PrintFan, Promises, Reel, StickyCta } from './components';
 import { CREATOR_MARKET } from './market';
 import { CREATOR_SETUP, DEMO_HREF, PLATFORM_FEE_LABEL, SAMPLE_STOREFRONT_HREF, SIGNUP_HREF } from './facts';
 import { CREATOR_DEAL } from './cards-creators';
@@ -20,11 +20,13 @@ import { BriefBrowser, PayoutTool, RateHelper, StorefrontBuilder, StorefrontJoin
 const JOIN = { href: SIGNUP_HREF.creator, label: 'Join free' };
 const DEMO = { href: DEMO_HREF.creator, label: 'or try the live demo, no sign-up' };
 
+const SECTIONS = [{ href: '#to-found', label: 'Storefront' }, { href: '#to-deals', label: 'Deals' }, { href: '#to-money', label: 'Money' }, { href: '#to-pricing', label: 'Pricing' }, { href: '#to-faq', label: 'Questions' }];
+
 export function CreatorsPage() {
   const sf = useStorefront();
   return (
     <div className="lx" data-surface="v2">
-      <Nav audience="creators" />
+      <Nav audience="creators" sections={SECTIONS} />
       <main className="lx-creators">
         <section className="lx-hero lx-dark" aria-labelledby="hero-title">
           <div className="lx-wrap">
@@ -46,6 +48,9 @@ export function CreatorsPage() {
 
         <MarketStrip title="Where brand deals are going" figures={CREATOR_MARKET} />
 
+        <Reel />
+
+        <i className="lx-anchor" id="to-found" />
         <section className="lx-sheet lx-field-peach" id="found" data-sheet aria-labelledby="found-title">
           <div className="lx-wrap">
             <div className="lx-split">
@@ -66,6 +71,7 @@ export function CreatorsPage() {
           </div>
         </section>
 
+        <i className="lx-anchor" id="to-deals" />
         <DealStory
           id="workspace"
           title="Deals out of your DMs."
@@ -81,6 +87,7 @@ export function CreatorsPage() {
           ]}
         />
 
+        <i className="lx-anchor" id="to-money" />
         <section className="lx-sheet lx-paid lx-dark" id="paid" data-sheet aria-labelledby="paid-title">
           <div className="lx-wrap">
             <h2 className="lx-h2 one-line" id="paid-title">Money held before you start.</h2>
@@ -91,6 +98,7 @@ export function CreatorsPage() {
           </div>
         </section>
 
+        <i className="lx-anchor" id="to-pricing" />
         <section className="lx-sheet lx-field-sage" id="pricing" data-sheet aria-labelledby="pricing-title">
           <div className="lx-wrap lx-pricing">
             <div className="lx-pricing-main">
@@ -111,6 +119,7 @@ export function CreatorsPage() {
           </div>
         </section>
 
+        <i className="lx-anchor" id="to-faq" />
         <section className="lx-sheet lx-faq" id="faq" data-sheet aria-labelledby="faq-title">
           <div className="lx-wrap lx-faq-grid">
             <h2 className="lx-h2 md" id="faq-title">Questions</h2>
@@ -136,6 +145,7 @@ export function CreatorsPage() {
             </div>
             <p className="lx-next">Setup after you join: {CREATOR_SETUP}.</p>
           </div>
+          <PrintFan />
         </section>
       </main>
       <Footer audience="creators" />

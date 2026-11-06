@@ -13,8 +13,8 @@ import { creatorEstimate, usd } from './estimate';
 import { brandAccent, CREATOR_CATEGORIES, PLATFORM_FEE_LABEL, SIGNUP_HREF, WHT_LABEL } from './facts';
 import { PACKAGE_LABEL } from './listings';
 import { BRIEFS, type BriefListing } from './listings-briefs';
-import { PHOTOS } from './photos';
-import { browserStore, EscrowBar, MoneyInput, moneyText, PlatMark, Roll, Stack, Stepper, toMoney, useArrived } from './tools-shared';
+import { PHOTOS, type Photo } from './photos';
+import { browserStore, EscrowBar, MoneyInput, moneyText, PlatMark, RateRuler, Roll, Stack, Stepper, toMoney, useArrived } from './tools-shared';
 import { fmtFollowers } from '@/lib/followers';
 import { saveDraft, STOREFRONT_DRAFT_KEY } from '@/lib/landingDraft';
 import { startingRates, suggestRateBand } from '@/screens/tools/rateGuidance';
@@ -26,10 +26,19 @@ const keep = (rate: number) => usd(creatorEstimate(rate, 1).net);
 // opens, with the one thing they'd do there: name their rate and see what
 // they keep.
 
+const SHEET_COVER = { width: 410, ratio: 410 / 96, sizes: '(min-width: 1000px) 410px, 100vw' };
+
 function BriefSheet({ brief, rate, setRate }: { brief: BriefListing; rate: number | null; setRate: (n: number) => void }) {
   const myRate = rate ?? brief.perCreator;
   return (
     <article className="lx-card lx-paper" aria-label={`Example brief: ${brief.title}`} style={{ '--lh': brandAccent(brief.brand).bg } as CSSProperties}>
+      <div className="lx-paper-cover short">
+        <PhotoImg photo={brief.photo} {...SHEET_COVER} priority />
+        <ul className="lx-chips">
+          {brief.deliverables.slice(0, 1).map((d) => <li key={d} className="lx-plat"><PlatMark of={d} />{d}</li>)}
+          <li>Due in {brief.deadlineDays} days</li>
+        </ul>
+      </div>
       <div className="lx-lh">
         <span className="lx-lh-mark" aria-hidden="true">{brief.title[0]}</span>
         <span className="lx-lh-brand">{brief.brand}</span>
@@ -40,10 +49,6 @@ function BriefSheet({ brief, rate, setRate }: { brief: BriefListing; rate: numbe
         <h2 className="lx-paper-title">{brief.title}</h2>
         <p className="lx-paper-blurb">{brief.blurb}</p>
       </div>
-      <ul className="lx-paper-meta">
-        {brief.deliverables.map((d) => <li key={d} className="lx-plat"><PlatMark of={d} />{d}</li>)}
-        <li>Due in {brief.deadlineDays} days</li>
-      </ul>
       <div className="lx-act">
         <div className="lx-act-row">
           <MoneyInput label="Your rate for the deal" value={myRate} onChange={setRate} />
@@ -52,7 +57,8 @@ function BriefSheet({ brief, rate, setRate }: { brief: BriefListing; rate: numbe
             <Roll className="lx-money" value={usd(creatorEstimate(myRate, 1).net)} />
           </div>
         </div>
-        <p className="lx-act-keep">After the {PLATFORM_FEE_LABEL} platform fee and {WHT_LABEL} withholding, taken only when the brand pays.</p>
+        <RateRuler label="Drag to set your rate" value={myRate} onChange={setRate} />
+        <p className="lx-act-keep">After the {PLATFORM_FEE_LABEL} platform fee and {WHT_LABEL} withholding.</p>
         <a className="lx-btn accent" href={SIGNUP_HREF.creator} data-cta="hero-pitch">Join free to pitch</a>
       </div>
     </article>
@@ -63,6 +69,18 @@ export function BriefBrowser() {
   // null: the visitor hasn't named a rate yet, so the pitch starts at the
   // brief's own target rate.
   const [rate, setRate] = useState<number | null>(null);
+  // Once the page has settled the rate moves by itself, once, so a visitor who
+  // hasn't touched anything sees the figures are live. Any touch stops it.
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const base = BRIEFS[0]!.perCreator;
+    const steps: [number, number | null][] = [[2700, base + 150], [3400, base + 300], [4500, null]];
+    const timers = steps.map(([at, value]) => window.setTimeout(() => setRate(value), at));
+    const stop = () => timers.forEach((t) => window.clearTimeout(t));
+    const events = ['pointerdown', 'keydown', 'wheel'];
+    for (const ev of events) window.addEventListener(ev, stop, { once: true, capture: true });
+    return () => { stop(); for (const ev of events) window.removeEventListener(ev, stop, { capture: true }); };
+  }, []);
   return (
     <div className="lx-pile">
       <p className="lx-pile-head"><b>Open briefs</b><span>Examples. Pick one.</span></p>
@@ -73,6 +91,8 @@ export function BriefBrowser() {
         onPick={() => setRate(null)}
         band={(b) => (
           <>
+            {/* The sheet's own picture, so opening one is instant. */}
+            <span className="lx-band-peek" aria-hidden="true"><PhotoImg photo={b.photo} {...SHEET_COVER} eager decorative /></span>
             <PlatMark of={b.deliverables[0]!} />
             <span className="lx-band-name">{b.title}</span>
             <b className="lx-money">{usd(b.perCreator)}</b>
@@ -80,6 +100,7 @@ export function BriefBrowser() {
         )}
         show={(b) => <BriefSheet brief={b} rate={rate} setRate={setRate} />}
       />
+      <p className="lx-board-note"><Credits photos={BRIEFS.map((b) => b.photo)} /></p>
     </div>
   );
 }
@@ -157,7 +178,16 @@ function initials(name: string): string {
 // The storefront's own three packages, the ones onboarding asks a price for.
 const SF_PACKAGES = (['reel', 'story', 'combo'] as const).map((key) => ({ key, label: PACKAGE_LABEL[key] }));
 type SfKey = (typeof SF_PACKAGES)[number]['key'];
-const WORK = [PHOTOS.makeupTable, PHOTOS.kitchenShoot, PHOTOS.phoneOnTripod];
+// Pick a niche and the page dresses for it: the cover, then the recent work.
+const LOOKS: Record<string, Photo[]> = {
+  Fashion: [PHOTOS.pinkBlue, PHOTOS.runway, PHOTOS.ringLight, PHOTOS.phoneOnTripod],
+  Beauty: [PHOTOS.makeupTutorial, PHOTOS.makeupTable, PHOTOS.ringLight, PHOTOS.phoneOnTripod],
+  Food: [PHOTOS.foodTutorial, PHOTOS.foodOverhead, PHOTOS.kitchenShoot, PHOTOS.phoneOnTripod],
+  Tech: [PHOTOS.cameraRed, PHOTOS.editTimeline, PHOTOS.podcastMic, PHOTOS.phoneOnTripod],
+  Travel: [PHOTOS.sunsetGimbal, PHOTOS.beachVlog, PHOTOS.canalSelfie, PHOTOS.phoneOnTripod],
+  Fitness: [PHOTOS.dumbbells, PHOTOS.phoneOnTripod, PHOTOS.ringLight, PHOTOS.podcastMic],
+};
+const ANY_NICHE = [PHOTOS.podcastMic, PHOTOS.phoneOnTripod, PHOTOS.ringLight, PHOTOS.cameraRed];
 
 const engagementOf = (typed: string) => Math.min(100, Number(typed) || 0);
 
@@ -201,10 +231,11 @@ export function StorefrontBuilder({ sf }: { sf: Storefront }) {
   // page shows the path and the domain arrives after hydration.
   const [host, setHost] = useState('');
   useEffect(() => { setHost(window.location.host); }, []);
+  const [cover, ...work] = LOOKS[sf.niche] ?? ANY_NICHE;
   return (
     <div className="lx-card lx-sf" role="group" aria-label="Your storefront, as a brand sees it">
       <div className="lx-sf-cover">
-        <PhotoImg photo={PHOTOS.ringLight} width={880} ratio={880 / 268} sizes="(min-width: 1000px) 900px, 100vw" />
+        <span key={cover!.id} className="lx-sf-swap"><PhotoImg photo={cover!} width={880} ratio={880 / 268} sizes="(min-width: 1000px) 900px, 100vw" /></span>
         <span className="lx-sf-url tnum">{host}/c/{sf.handle || 'yourhandle'}</span>
       </div>
       <div className="lx-sf-head">
@@ -250,9 +281,9 @@ export function StorefrontBuilder({ sf }: { sf: Storefront }) {
       <div className="lx-sf-section">
         <span className="lx-label">Recent work</span>
         <div className="lx-sf-work">
-          {WORK.map((p) => <figure key={p.id}><PhotoImg photo={p} width={280} ratio={1} sizes="(min-width: 1000px) 280px, 30vw" /></figure>)}
+          {work.map((p) => <figure key={p.id} className="lx-sf-swap"><PhotoImg photo={p} width={280} ratio={1} sizes="(min-width: 1000px) 280px, 30vw" /></figure>)}
         </div>
-        <p className="lx-note"><Credits photos={[PHOTOS.ringLight, ...WORK]} /></p>
+        <p className="lx-note"><Credits photos={[cover!, ...work]} /></p>
       </div>
     </div>
   );

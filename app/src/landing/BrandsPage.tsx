@@ -7,7 +7,7 @@
 // Not "AI": the least real part of the product and the claim every
 // competitor makes (LANDING-REVIEW.md §3).
 
-import { AudienceSwitch, CtaRow, Faq, Footer, FounderNote, MarketStrip, Nav, NotYet, Promises, StickyCta } from './components';
+import { AudienceSwitch, CtaRow, Faq, Footer, FounderNote, MarketStrip, Nav, NotYet, PrintFan, Promises, Reel, StickyCta } from './components';
 import { BRAND_MARKET } from './market';
 import { BRAND_SETUP, DEMO_HREF, SIGNUP_HREF } from './facts';
 import { brandEstimate, usd } from './estimate';
@@ -18,10 +18,12 @@ import { BriefBuilder, CreatorBrowser, HoldTool } from './tools-brands';
 const POST = { href: SIGNUP_HREF.brand, label: 'Post a brief' };
 const DEMO = { href: DEMO_HREF.brand, label: 'or try the live demo, no sign-up' };
 
+const SECTIONS = [{ href: '#to-brief', label: 'Briefs' }, { href: '#to-deals', label: 'Deals' }, { href: '#to-money', label: 'Money' }, { href: '#to-pricing', label: 'Pricing' }, { href: '#to-faq', label: 'Questions' }];
+
 export function BrandsPage() {
   return (
     <div className="lx" data-surface="v2">
-      <Nav audience="brands" />
+      <Nav audience="brands" sections={SECTIONS} />
       <main className="lx-brands">
         <section className="lx-hero lx-dark" aria-labelledby="hero-title">
           <div className="lx-wrap">
@@ -43,6 +45,9 @@ export function BrandsPage() {
 
         <MarketStrip title="Where creator marketing is going" figures={BRAND_MARKET} />
 
+        <Reel />
+
+        <i className="lx-anchor" id="to-brief" />
         <section className="lx-sheet lx-field-peach" id="pitches" data-sheet aria-labelledby="pitches-title">
           <div className="lx-wrap">
             <div className="lx-split">
@@ -62,6 +67,7 @@ export function BrandsPage() {
           </div>
         </section>
 
+        <i className="lx-anchor" id="to-deals" />
         <DealStory
           id="workspace"
           title="Every deal on one list."
@@ -77,6 +83,7 @@ export function BrandsPage() {
           ]}
         />
 
+        <i className="lx-anchor" id="to-money" />
         <section className="lx-sheet lx-paid lx-dark" id="escrow" data-sheet aria-labelledby="escrow-title">
           <div className="lx-wrap">
             <h2 className="lx-h2 one-line" id="escrow-title">Pay for posts that go live.</h2>
@@ -88,6 +95,7 @@ export function BrandsPage() {
           </div>
         </section>
 
+        <i className="lx-anchor" id="to-pricing" />
         <section className="lx-sheet lx-field-sage" id="pricing" data-sheet aria-labelledby="pricing-title">
           <div className="lx-wrap lx-pricing">
             <div className="lx-pricing-main">
@@ -108,6 +116,7 @@ export function BrandsPage() {
           </div>
         </section>
 
+        <i className="lx-anchor" id="to-faq" />
         <section className="lx-sheet lx-faq" id="faq" data-sheet aria-labelledby="faq-title">
           <div className="lx-wrap lx-faq-grid">
             <h2 className="lx-h2 md" id="faq-title">Questions</h2>
@@ -133,6 +142,7 @@ export function BrandsPage() {
             </div>
             <p className="lx-next">Setup after you sign up: {BRAND_SETUP}.</p>
           </div>
+          <PrintFan />
         </section>
       </main>
       <Footer audience="brands" />

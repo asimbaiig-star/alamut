@@ -19,13 +19,13 @@ export interface CreatorListing {
 
 export const CREATORS: CreatorListing[] = [
   { niche: 'Beauty creator', category: 'Beauty', channels: [{ platform: 'Instagram', followers: '48K' }, { platform: 'TikTok', followers: '12K' }], engagement: 5.2,
-    packages: [{ key: 'reel', rate: 900 }, { key: 'story', rate: 450 }, { key: 'combo', rate: 1250 }], photo: PHOTOS.makeupTable, ground: 'var(--v2-band-aubergine)' },
+    packages: [{ key: 'reel', rate: 900 }, { key: 'story', rate: 450 }, { key: 'combo', rate: 1250 }], photo: PHOTOS.makeupTutorial, ground: 'var(--v2-band-aubergine)' },
   { niche: 'Home cook', category: 'Food', channels: [{ platform: 'TikTok', followers: '120K' }, { platform: 'Instagram', followers: '36K' }], engagement: 7.1,
-    packages: [{ key: 'reel', rate: 1200 }, { key: 'story', rate: 550 }, { key: 'combo', rate: 1600 }], photo: PHOTOS.kitchenShoot, ground: 'var(--v2-band-ink)' },
+    packages: [{ key: 'reel', rate: 1200 }, { key: 'story', rate: 550 }, { key: 'combo', rate: 1600 }], photo: PHOTOS.foodTutorial, ground: 'var(--v2-band-ink)' },
   { niche: 'Tech reviewer', category: 'Tech', channels: [{ platform: 'YouTube', followers: '210K' }], engagement: 4.3,
-    packages: [{ key: 'longform', rate: 3500 }], photo: PHOTOS.editTimeline, ground: 'var(--v2-band-navy)' },
+    packages: [{ key: 'longform', rate: 3500 }], photo: PHOTOS.cameraRed, ground: 'var(--v2-band-navy)' },
   { niche: 'Lifestyle creator', category: 'Fashion', channels: [{ platform: 'Instagram', followers: '31K' }], engagement: 6.4,
-    packages: [{ key: 'reel', rate: 650 }, { key: 'story', rate: 300 }, { key: 'combo', rate: 850 }], photo: PHOTOS.ringLight, ground: 'var(--v2-band-brick)' },
+    packages: [{ key: 'reel', rate: 650 }, { key: 'story', rate: 300 }, { key: 'combo', rate: 850 }], photo: PHOTOS.pinkBlue, ground: 'var(--v2-band-brick)' },
 ];
 
 /** A storefront's lowest package, as Discover shows "from". */
