@@ -6,13 +6,12 @@
     <title>Alamut — Creator & Brand Workspace</title>
 
     <!-- F35 — favicon. Inline SVG data URI so there's no binary asset to
-         keep in sync with the brand; #b55f40 is the resolved value of the
-         terracotta accent token (oklch(0.58 0.12 40)). -->
+         keep in sync with the brand: the same mark as the landing pages. -->
     <link
       rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23b55f40'/%3E%3Cpath d='M16 7.5 L23.5 24.5 H19.6 L16 15.6 L12.4 24.5 H8.5 Z' fill='%23FBF7EE'/%3E%3C/svg%3E"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231C1A15'/%3E%3Cpath d='M16 7.5 L23.5 24.5 H19.6 L16 15.6 L12.4 24.5 H8.5 Z' fill='%23FBF7EE'/%3E%3C/svg%3E"
     />
-    <meta name="theme-color" content="#b55f40" />
+    <meta name="theme-color" content="#1C1A15" />
 
     <!-- F36 — description + social cards. These MUST live in the static
          HTML: the app sets some tags client-side, but crawlers (Facebook,
@@ -70,6 +69,15 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;450;500;550;600;700&display=swap"
     />
+    <!-- Sign-up and sign-in carry on from the landing's ground (v2-tokens.css):
+         painted before the app loads, so the move from one to the other has no
+         flash of another colour. The pages clear this once they're mounted. -->
+    <script>
+      (function (p, q, s) {
+        if (/^\/signup/.test(p)) s.background = /finish=1/.test(q) ? '#1C1A15' : /role=brand/.test(q) ? '#3E2F4A' : '#2A3F6E';
+        else if (/^\/signin/.test(p)) s.background = '#1C1A15';
+      })(location.pathname, location.search, document.documentElement.style);
+    </script>
   </head>
   <body>
     <div id="root"></div>

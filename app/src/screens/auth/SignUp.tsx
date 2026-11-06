@@ -1,18 +1,27 @@
 // Sign up — on the v2 surface, between the landing pages and the workspace,
 // so it uses their tokens, mark and components (styles/auth-v2.css).
-// Form logic unchanged: role tabs, conditional fields per role, validation,
-// email confirmation, post-signup navigation.
+//
+// It carries on from the landing: the same ground as the page you came from,
+// with the form as the sheet of paper on top. Switching role floods the
+// ground, as picking a brief does, and what you built on the landing rides
+// in on a band above the form.
 
-import { useState } from 'react';
+import { useEffect, useState, type MouseEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api/client';
 import { pushToast } from '@/lib/utils/toast';
 import { BrandMarkSvg } from '@/screens/workspace-v2/BrandMark';
 import { readBriefDraft, readStorefrontDraft } from '@/lib/landingDraft';
 import { BRAND_SETUP, CREATOR_SETUP } from '@/landing/facts';
+import { floodFrom } from '@/landing/motion';
+import { PasswordInput } from './PasswordInput';
 import '@/styles/auth-v2.css';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function Check() {
+  return <svg className="auth-v2-check" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 8.4 6.7 11 12 5.4" /></svg>;
+}
 
 export function SignUp() {
   const [params] = useSearchParams();
@@ -64,6 +73,20 @@ export function SignUp() {
   };
 
   const navigate = useNavigate();
+
+  // app.html paints the page this ground before the app loads, so there's no
+  // flash on the way in. From here on the page paints its own.
+  useEffect(() => { document.documentElement.style.removeProperty('background'); }, []);
+
+  const pickRole = (next: 'creator' | 'brand') => (e: MouseEvent<HTMLButtonElement>) => {
+    if (next !== role) floodFrom(e.currentTarget, () => setRole(next));
+  };
+  const ground = finishMode ? 'is-plain' : role === 'brand' ? 'is-brand' : 'is-creator';
+  const headline = finishMode
+    // Role-neutral: we can't know which one this account meant, so don't
+    // pitch them the wrong side (P-12).
+    ? ['One last', 'step.']
+    : role === 'creator' ? ['Open your', 'storefront.'] : ['Post your', 'first brief.'];
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,7 +144,7 @@ export function SignUp() {
   // real actions are "go check your inbox" or "resend".
   if (pendingEmail) {
     return (
-      <div data-surface="v2" className="auth-v2">
+      <div data-surface="v2" className={`auth-v2 ${ground}`}>
         <header className="auth-v2-nav">
           <Link to="/" aria-label="Alamut home" className="auth-v2-brand">
             <span className="auth-v2-mark"><BrandMarkSvg /></span><span>Alamut</span>
@@ -129,7 +152,7 @@ export function SignUp() {
           <div className="auth-v2-nav-actions"><Link to="/signin" className="auth-v2-link">Sign in</Link></div>
         </header>
         <main className="auth-v2-main">
-          <section className="auth-v2-card auth-v2-form-card" style={{ maxWidth: 520, margin: '0 auto' }} aria-labelledby="confirm-title">
+          <section className="auth-v2-card auth-v2-form-card auth-v2-solo" aria-labelledby="confirm-title">
             <span className="auth-v2-label">One more step</span>
             <h1 className="auth-v2-h2" id="confirm-title">Confirm your email.</h1>
             <p className="auth-v2-lede">
@@ -139,7 +162,7 @@ export function SignUp() {
             <p className="auth-v2-muted">Can't find it? Check spam. The link opens Alamut and finishes setting up your profile.</p>
             {err && <div className="field-error" role="alert">{err}</div>}
             <div className="auth-v2-demo-grid">
-              <button type="button" className="auth-v2-btn" style={{ width: 'auto' }} onClick={() => navigate('/signin')}>Go to sign in</button>
+              <button type="button" className="auth-v2-btn fit" onClick={() => navigate('/signin')}>Go to sign in</button>
               <button
                 type="button"
                 className="auth-v2-btn line"
@@ -168,7 +191,7 @@ export function SignUp() {
   }
 
   return (
-    <div data-surface="v2" className="auth-v2">
+    <div data-surface="v2" className={`auth-v2 ${ground}`}>
       <header className="auth-v2-nav">
         <Link to="/" aria-label="Alamut home" className="auth-v2-brand">
           <span className="auth-v2-mark"><BrandMarkSvg /></span><span>Alamut</span>
@@ -181,15 +204,10 @@ export function SignUp() {
 
       <main className="auth-v2-main">
         <div className="auth-v2-grid">
-          <aside className={`auth-v2-side auth-v2-panel ${role === 'brand' || finishMode ? 'ink' : 'moss'}`}>
+          <aside className="auth-v2-side">
             <h1 className="auth-v2-h1">
-              {finishMode
-                // Role-neutral: we can't know which one this account meant,
-                // so don't pitch them the wrong side (P-12).
-                ? 'One step to finish your account.'
-                : role === 'creator'
-                ? 'Open your storefront.'
-                : 'Post your first brief.'}
+              <span className="auth-v2-line"><span>{headline[0]}</span></span>{' '}
+              <span className="auth-v2-line"><span>{headline[1]}</span></span>
             </h1>
             <p className="auth-v2-lede">
               {finishMode
@@ -199,47 +217,48 @@ export function SignUp() {
                 : 'Browse storefronts with published rates, or post a brief and let creators pitch you. Brief to payout stays in one workspace.'}
             </p>
             <ul className="auth-v2-points">
-              <li>Free to sign up. No card required.</li>
+              <li><Check />Free to sign up. No card required.</li>
               {/* Mode-agnostic: the project may or may not have email
                   confirmation switched on, and signUp branches on whether
                   Supabase returns a session. Don't promise a confirmation
                   step the user may never see. */}
-              <li>{role === 'brand'
+              <li><Check />{role === 'brand'
                 ? 'No fee on top of the rates you agree. Money moves only when you accept an offer.'
                 : 'Alamut is paid only when you are. The fee comes off a payment, never before.'}</li>
-              <li>Public beta. Payments are simulated, so no real money moves yet.</li>
             </ul>
-            {role === 'creator' && kept?.storefront && (
-              <div className="auth-v2-kept" role="status">
-                <span className="auth-v2-label">Kept from the last page</span>
-                <p>
-                  Your storefront{kept.storefront.handle ? <>, <b>@{kept.storefront.handle}</b></> : null}: {kept.storefront.niche},
-                  Instagram Reel at ${kept.storefront.rates.reel.toLocaleString('en-US')}. It fills in your setup after you sign up.
-                </p>
-              </div>
-            )}
-            {role === 'brand' && kept?.brief && (
-              <div className="auth-v2-kept" role="status">
-                <span className="auth-v2-label">Kept from the last page</span>
-                <p>
-                  Your brief{kept.brief.title ? <>, <b>{kept.brief.title}</b></> : null}: {kept.brief.count} deliverables at
-                  ${kept.brief.perCreator.toLocaleString('en-US')} per creator. It’s waiting in New campaign after you sign up.
-                </p>
-              </div>
-            )}
+            <p className="auth-v2-beta">Public beta. Payments are simulated, so no real money moves yet.</p>
             {!finishMode && (
               <p className="auth-v2-next">After this: {role === 'brand' ? BRAND_SETUP : CREATOR_SETUP}.</p>
             )}
           </aside>
 
+          <div className="auth-v2-pile">
+            {role === 'creator' && kept?.storefront && (
+              <div className="auth-v2-band" role="status">
+                <span>Kept from the last page</span>
+                <p>
+                  <b>Your storefront{kept.storefront.handle ? <>, @{kept.storefront.handle}</> : null}</b>: {kept.storefront.niche},
+                  Instagram Reel at ${kept.storefront.rates.reel.toLocaleString('en-US')}. It fills in your setup after you sign up.
+                </p>
+              </div>
+            )}
+            {role === 'brand' && kept?.brief && (
+              <div className="auth-v2-band" role="status">
+                <span>Kept from the last page</span>
+                <p>
+                  <b>Your brief{kept.brief.title ? <>, {kept.brief.title}</> : null}</b>: {kept.brief.count} deliverables at
+                  ${kept.brief.perCreator.toLocaleString('en-US')} per creator. It’s waiting in New campaign after you sign up.
+                </p>
+              </div>
+            )}
           <section className="auth-v2-card auth-v2-form-card" aria-labelledby="signup-title">
             <h2 className="auth-v2-h2" id="signup-title">{finishMode ? 'Finish setting up' : 'Create your account'}</h2>
 
             <div className="auth-v2-tabs" role="tablist" aria-label="Account type">
-              <button type="button" role="tab" aria-selected={role === 'creator'} className={role === 'creator' ? 'is-on' : ''} onClick={() => setRole('creator')}>
+              <button type="button" role="tab" aria-selected={role === 'creator'} className={role === 'creator' ? 'is-on' : ''} onClick={pickRole('creator')}>
                 I&apos;m a creator
               </button>
-              <button type="button" role="tab" aria-selected={role === 'brand'} className={role === 'brand' ? 'is-on' : ''} onClick={() => setRole('brand')}>
+              <button type="button" role="tab" aria-selected={role === 'brand'} className={role === 'brand' ? 'is-on' : ''} onClick={pickRole('brand')}>
                 I&apos;m a brand
               </button>
             </div>
@@ -249,18 +268,18 @@ export function SignUp() {
                 <>
                   <div className="field">
                     <label htmlFor="signup-brandName" className="field-label">Brand name</label>
-                    <input id="signup-brandName" autoComplete="organization" value={brandName} onChange={(e) => setBrandName(e.target.value)} placeholder="Your brand" required />
+                    <input id="signup-brandName" autoComplete="organization" value={brandName} onChange={(e) => setBrandName(e.target.value)} required />
                   </div>
                   <div className="field">
                     <label htmlFor="signup-name-brand" className="field-label">Your name</label>
-                    <input id="signup-name-brand" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" required />
+                    <input id="signup-name-brand" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} required />
                   </div>
                 </>
               ) : (
                 <>
                   <div className="field">
                     <label htmlFor="signup-name-creator" className="field-label">Your name</label>
-                    <input id="signup-name-creator" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" required />
+                    <input id="signup-name-creator" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} required />
                   </div>
                   <div className="field">
                     <label htmlFor="signup-country" className="field-label">Country</label>
@@ -276,6 +295,9 @@ export function SignUp() {
                   type="email"
                   autoComplete="email"
                   inputMode="email"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   value={email}
                   onChange={(e) => { setEmail(e.target.value); if (emailErr) setEmailErr(null); }}
                   onBlur={(e) => setEmailErr(validateEmail(e.target.value))}
@@ -293,14 +315,12 @@ export function SignUp() {
               {!finishMode && (
                 <div className="field">
                   <label htmlFor="signup-password" className="field-label">Password</label>
-                  <input
+                  <PasswordInput
                     id="signup-password"
-                    type="password"
                     autoComplete="new-password"
                     value={password}
                     onChange={(e) => { setPassword(e.target.value); if (passwordErr) setPasswordErr(null); }}
                     onBlur={(e) => setPasswordErr(validatePassword(e.target.value))}
-                    placeholder="At least 6 characters"
                     required
                     minLength={6}
                     aria-invalid={!!passwordErr || undefined}
@@ -316,13 +336,17 @@ export function SignUp() {
 
               {err && <div id="signup-error" className="field-error" role="alert">{err}</div>}
 
-              <button type="submit" className="auth-v2-btn" disabled={busy} aria-busy={busy || undefined}>
-                {busy ? 'Working…' : finishMode ? 'Finish setup' : 'Create account'}
+              <button type="submit" className="auth-v2-btn accent" disabled={busy} aria-busy={busy || undefined}>
+                {busy ? 'Creating your account…' : finishMode ? 'Finish setup' : 'Create account'}
               </button>
+              <p className="auth-v2-legal">
+                By continuing you agree to the <Link to="/terms" className="auth-v2-link">Terms</Link> and <Link to="/privacy" className="auth-v2-link">Privacy Policy</Link>.
+              </p>
             </form>
 
             <p className="auth-v2-foot">Already have an account? <Link to="/signin" className="auth-v2-link">Sign in</Link></p>
           </section>
+          </div>
         </div>
       </main>
 

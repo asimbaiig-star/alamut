@@ -9,6 +9,7 @@ import { api, ApiError } from '@/lib/api/client';
 import { pushToast } from '@/lib/utils/toast';
 import { SUPABASE_STORAGE_KEY } from '@/lib/supabase';
 import { BrandMarkSvg } from '@/screens/workspace-v2/BrandMark';
+import { PasswordInput } from './PasswordInput';
 import '@/styles/auth-v2.css';
 
 // Demo quick-pick visibility. ON by default so the public beta is walkable
@@ -43,6 +44,9 @@ export function SignIn() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const demoRequested = useRef(false);
+  // app.html paints the page this ground before the app loads, so there's no
+  // flash on the way in. From here on the page paints its own.
+  useEffect(() => { document.documentElement.style.removeProperty('background'); }, []);
   const [signedInElsewhere, setSignedInElsewhere] = useState(false);
 
   const validateEmail = (v: string) => {
@@ -189,7 +193,7 @@ export function SignIn() {
   }, [params]); // once per ?demo= load — the ref above guards re-runs
 
   return (
-    <div data-surface="v2" className="auth-v2">
+    <div data-surface="v2" className="auth-v2 is-plain">
       <header className="auth-v2-nav">
         <Link to="/" aria-label="Alamut home" className="auth-v2-brand">
           <span className="auth-v2-mark"><BrandMarkSvg /></span><span>Alamut</span>
@@ -202,8 +206,8 @@ export function SignIn() {
 
       <main className="auth-v2-main">
         <div className="auth-v2-grid">
-          <aside className="auth-v2-side auth-v2-panel ink">
-            <h1 className="auth-v2-h1">Welcome back.</h1>
+          <aside className="auth-v2-side">
+            <h1 className="auth-v2-h1"><span className="auth-v2-line"><span>Welcome</span></span> <span className="auth-v2-line"><span>back.</span></span></h1>
             <p className="auth-v2-lede">Pick up your briefs, deals and wallet where you left them.</p>
 
             {/* Demo quick-pick. B4 originally gated this to local dev,
@@ -240,6 +244,7 @@ export function SignIn() {
             )}
           </aside>
 
+          <div className="auth-v2-pile">
           <section className="auth-v2-card auth-v2-form-card" aria-labelledby="signin-title">
             <h2 className="auth-v2-h2" id="signin-title">Sign in</h2>
 
@@ -276,9 +281,8 @@ export function SignIn() {
                 </div>
                 <div className="field">
                   <label htmlFor="signin-password" className="field-label">Password</label>
-                  <input
+                  <PasswordInput
                     id="signin-password"
-                    type="password"
                     autoComplete="current-password"
                     value={password}
                     onChange={(e) => { setPassword(e.target.value); if (passwordErr) setPasswordErr(null); if (err) setErr(null); }}
@@ -289,7 +293,7 @@ export function SignIn() {
                   {passwordErr && <span id="signin-password-error" className="field-error" role="alert">{passwordErr}</span>}
                 </div>
                 {err && <div id="signin-error" className="field-error" role="alert">{err}</div>}
-                <button type="submit" className="auth-v2-btn" disabled={busy} aria-busy={busy || undefined}>
+                <button type="submit" className="auth-v2-btn accent" disabled={busy} aria-busy={busy || undefined}>
                   {busy ? 'Signing in…' : 'Sign in'}
                 </button>
               </form>
@@ -335,6 +339,7 @@ export function SignIn() {
 
             <p className="auth-v2-foot">New to Alamut? <Link to="/signup" className="auth-v2-link">Create account</Link></p>
           </section>
+          </div>
         </div>
       </main>
 

@@ -40,7 +40,10 @@ export const CREATOR_DEAL: WorkspaceScreen = {
       <span className="lx-row-who">The brand proposed a paid change</span>
       <span className="lx-row-what">Add 1 Story</span>
       <span className="lx-money lx-row-amt accent">+{usd(250)}</span>
-      <div className="lx-row-actions"><span className="lx-mini-btn dark">Accept</span><span className="lx-mini-btn">Decline</span></div>
+      <div className="lx-row-actions">
+        <span className="lx-mini-btn dark lx-if-open">Accept</span><span className="lx-mini-btn lx-if-open">Decline</span>
+        <span className="lx-pill moss lx-if-done">Accepted</span>
+      </div>
     </div>,
     <div className="lx-row" key="held">
       <span className="lx-row-who">Held since the brand accepted</span>

@@ -131,7 +131,7 @@ export function BriefBuilder() {
     if (store) saveDraft(store, BRIEF_DRAFT_KEY, { title: title.trim(), platform: p.value, format: f.value, count, perCreator: rate, savedAt: Date.now() });
   };
   return (
-    <div className="lx-card lx-brief" aria-label="Your brief, as a creator sees it">
+    <div className="lx-card lx-brief" role="group" aria-label="Your brief, as a creator sees it">
       <span className="lx-label">New brief</span>
       <input className="lx-brief-title" aria-label="Campaign name" placeholder="Name your campaign" value={title} maxLength={60}
         autoComplete="off" onChange={(e) => setTitle(e.target.value)} />
@@ -171,14 +171,15 @@ export function HoldTool({ lead }: { lead: string }) {
   const [creators, setCreators] = useState(3);
   const [posts, setPosts] = useState(2);
   const [live, setLive] = useState(1);
-  const [figure, arrived] = useArrived<HTMLDivElement>();
+  const [figure, arrived, settled] = useArrived<HTMLDivElement>();
   const e = brandEstimate(rate, creators, posts);
   // What each round of posts releases, across every creator on the brief.
   const rounds = e.perPost.map((amt) => amt * creators);
-  const shown = Math.min(live, posts);
+  // Everything sits held as the section arrives, then the first round releases.
+  const shown = settled ? Math.min(live, posts) : 0;
   const total = usd(e.held);
   return (
-    <div className="lx-escrow" aria-label="What a brief holds and releases">
+    <div className="lx-escrow" role="group" aria-label="What a brief holds and releases">
       <div className="lx-escrow-top">
         <div className="lx-escrow-figure" ref={figure}>
           <span>You pay in total</span>

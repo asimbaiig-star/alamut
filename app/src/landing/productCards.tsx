@@ -17,7 +17,7 @@ export function Window({ nav, active, crumb, title, children }: {
   nav: string[]; active: string; crumb: string; title: string; children: ReactNode;
 }) {
   return (
-    <div className="lx-window" aria-label={`Example: the ${active} screen in the workspace`}>
+    <div className="lx-window" role="group" aria-label={`Example: the ${active} screen in the workspace`}>
       <aside className="lx-window-side" aria-hidden="true">
         <Brand />
         {nav.map((n) => <span key={n} className={n === active ? 'lx-window-nav on' : 'lx-window-nav'}>{n}</span>)}

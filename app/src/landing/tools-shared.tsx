@@ -53,25 +53,32 @@ export function Roll({ value, className = '', atZero }: { value: string; classNa
   );
 }
 
-/** False from the moment the page knows `ref` is below the screen until it
- *  scrolls into view, so what depends on it can arrive as it's seen. True
- *  when nothing can tell, so a page without JavaScript shows the figure. */
+/** `arrived` is false from the moment the page knows `ref` is below the screen
+ *  until it scrolls into view, so what depends on it can happen as it's seen,
+ *  and `settled` follows a beat later. Both are true when nothing can tell, so
+ *  a page without JavaScript shows the finished state. */
 export function useArrived<T extends Element>() {
   const ref = useRef<T>(null);
   const [arrived, setArrived] = useState(true);
+  const [settled, setSettled] = useState(true);
   useEffect(() => {
     const el = ref.current;
     if (!el || typeof IntersectionObserver === 'undefined') return;
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     if (el.getBoundingClientRect().top < window.innerHeight * 0.8) return;
     setArrived(false);
+    setSettled(false);
+    let beat = 0;
     const io = new IntersectionObserver(([e]) => {
-      if (e!.isIntersecting) { setArrived(true); io.disconnect(); }
+      if (!e!.isIntersecting) return;
+      setArrived(true);
+      beat = window.setTimeout(() => setSettled(true), 750);
+      io.disconnect();
     }, { rootMargin: '0px 0px -160px 0px' });
     io.observe(el);
-    return () => io.disconnect();
+    return () => { io.disconnect(); window.clearTimeout(beat); };
   }, []);
-  return [ref, arrived] as const;
+  return [ref, arrived, settled] as const;
 }
 
 /** A pile of sheets: each waiting item shows its letterhead band, and the one

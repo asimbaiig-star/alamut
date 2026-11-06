@@ -101,7 +101,7 @@ export function RateHelper({ sf }: { sf: Storefront }) {
   const band = suggestRateBand('instagram', followers, engagementOf(engagement));
   const start = band ? startingRates(band) : null;
   return (
-    <div className="lx-card lx-rh" aria-label="What to charge on Instagram">
+    <div className="lx-card lx-rh" role="group" aria-label="What to charge on Instagram">
       <h3 className="lx-h3">What should you charge?</h3>
       <div className="lx-rh-inputs">
         <label className="lx-field-label" htmlFor={fId}>
@@ -202,7 +202,7 @@ export function StorefrontBuilder({ sf }: { sf: Storefront }) {
   const [host, setHost] = useState('');
   useEffect(() => { setHost(window.location.host); }, []);
   return (
-    <div className="lx-card lx-sf" aria-label="Your storefront, as a brand sees it">
+    <div className="lx-card lx-sf" role="group" aria-label="Your storefront, as a brand sees it">
       <div className="lx-sf-cover">
         <PhotoImg photo={PHOTOS.ringLight} width={880} ratio={880 / 268} sizes="(min-width: 1000px) 900px, 100vw" />
         <span className="lx-sf-url tnum">{host}/c/{sf.handle || 'yourhandle'}</span>
@@ -264,12 +264,13 @@ export function PayoutTool({ lead }: { lead: string }) {
   const [rate, setRate] = useState(1800);
   const [posts, setPosts] = useState(2);
   const [live, setLive] = useState(1);
-  const [figure, arrived] = useArrived<HTMLDivElement>();
+  const [figure, arrived, settled] = useArrived<HTMLDivElement>();
   const e = creatorEstimate(rate, posts);
-  const shown = Math.min(live, posts);
+  // Everything sits held as the section arrives, then the first post releases.
+  const shown = settled ? Math.min(live, posts) : 0;
   const net = usd(e.net);
   return (
-    <div className="lx-escrow" aria-label="What you would receive">
+    <div className="lx-escrow" role="group" aria-label="What you would receive">
       <div className="lx-escrow-top">
         <div className="lx-escrow-figure" ref={figure}>
           <span>Reaches your wallet</span>

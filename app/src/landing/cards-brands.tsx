@@ -12,7 +12,8 @@ import { PlatMark } from './tools-shared';
 const need = (what: string, action: string) => (
   <div className="lx-row" key={what}>
     <span className="lx-row-what lx-need"><span className="lx-dot" />{what}</span>
-    <span className="lx-mini-btn lx-need-btn">{action} →</span>
+    <span className="lx-mini-btn lx-need-btn lx-if-open">{action} →</span>
+    <span className="lx-pill moss lx-need-btn lx-if-done">Done</span>
   </div>
 );
 
@@ -42,7 +43,7 @@ const PITCHES = [
 /** Brands: what arrives after you post a brief. */
 export function PitchInbox() {
   return (
-    <div className="lx-card lx-pitches" aria-label="Example: pitches on a brief">
+    <div className="lx-card lx-pitches" role="group" aria-label="Example: pitches on a brief">
       <div className="lx-pitch-row" style={{ display: 'flex', justifyContent: 'space-between' }}>
         <span className="lx-h3">Pitches · Skincare launch</span><span className="lx-pill">Example</span>
       </div>
