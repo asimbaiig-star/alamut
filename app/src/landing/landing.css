@@ -504,9 +504,10 @@ html:has(.lx) { scroll-padding-top: 88px; }
 @media (min-width: 1000px) { .lx-giant { font-size: clamp(4.5rem, calc((100vw - 540px) / (var(--n) * .42)), 290px); } }
 .lx-escrow-side { display: grid; gap: 22px; }
 .lx-escrow-side .lx-lead { font-size: clamp(1.0625rem, 1rem + .3vw, 1.25rem); }
-.lx-escrow-inputs { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; }
+.lx-escrow-inputs { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+.lx-escrow-inputs .lx-escrow-field:first-child { flex: 1 1 170px; }
 /* Three controls don't fit the rail in one row: the rate takes its own. */
-.lx-escrow-inputs .lx-escrow-field:first-child:nth-last-child(3) { grid-column: 1 / -1; }
+.lx-escrow-inputs .lx-escrow-field:first-child:nth-last-child(3) { flex-basis: 100%; }
 .lx-escrow-field { display: grid; gap: 6px; min-width: 0; font-size: 0.875rem; font-weight: 500; color: var(--on-dark); }
 .lx-escrow .lx-money-input { height: 54px; border-color: transparent; }
 .lx-escrow .lx-money-input:focus-within { border-color: var(--v2-accent); }
