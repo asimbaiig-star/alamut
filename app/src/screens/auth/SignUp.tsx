@@ -82,6 +82,8 @@ export function SignUp() {
     if (next !== role) floodFrom(e.currentTarget, () => setRole(next));
   };
   const ground = finishMode ? 'is-plain' : role === 'brand' ? 'is-brand' : 'is-creator';
+  const setup = role === 'brand' ? BRAND_SETUP : CREATOR_SETUP;
+  const hasKept = role === 'creator' ? !!kept?.storefront : !!kept?.brief;
   const headline = finishMode
     // Role-neutral: we can't know which one this account meant, so don't
     // pitch them the wrong side (P-12).
@@ -159,7 +161,7 @@ export function SignUp() {
               We sent a confirmation link to <strong>{pendingEmail}</strong>. Open it to activate your
               account, then sign in.
             </p>
-            <p className="auth-v2-muted">Can't find it? Check spam. The link opens Alamut and finishes setting up your profile.</p>
+            <p className="auth-v2-muted">Can’t find it? Check spam. The link opens Alamut and finishes setting up your profile.</p>
             {err && <div className="field-error" role="alert">{err}</div>}
             <div className="auth-v2-demo-grid">
               <button type="button" className="auth-v2-btn fit" onClick={() => navigate('/signin')}>Go to sign in</button>
@@ -191,7 +193,7 @@ export function SignUp() {
   }
 
   return (
-    <div data-surface="v2" className={`auth-v2 ${ground}`}>
+    <div data-surface="v2" className={`auth-v2 ${ground}${hasKept ? ' has-kept' : ''}`}>
       <header className="auth-v2-nav">
         <Link to="/" aria-label="Alamut home" className="auth-v2-brand">
           <span className="auth-v2-mark"><BrandMarkSvg /></span><span>Alamut</span>
@@ -228,7 +230,7 @@ export function SignUp() {
             </ul>
             <p className="auth-v2-beta">Public beta. Payments are simulated, so no real money moves yet.</p>
             {!finishMode && (
-              <p className="auth-v2-next">After this: {role === 'brand' ? BRAND_SETUP : CREATOR_SETUP}.</p>
+              <p className="auth-v2-next">After this: {setup}.</p>
             )}
           </aside>
 
@@ -251,15 +253,21 @@ export function SignUp() {
                 </p>
               </div>
             )}
+            {!finishMode && !hasKept && (
+              <div className="auth-v2-band is-next">
+                <span>After this</span>
+                <p>{setup[0]!.toUpperCase() + setup.slice(1)}.</p>
+              </div>
+            )}
           <section className="auth-v2-card auth-v2-form-card" aria-labelledby="signup-title">
             <h2 className="auth-v2-h2" id="signup-title">{finishMode ? 'Finish setting up' : 'Create your account'}</h2>
 
             <div className="auth-v2-tabs" role="tablist" aria-label="Account type">
               <button type="button" role="tab" aria-selected={role === 'creator'} className={role === 'creator' ? 'is-on' : ''} onClick={pickRole('creator')}>
-                I&apos;m a creator
+                I’m a creator
               </button>
               <button type="button" role="tab" aria-selected={role === 'brand'} className={role === 'brand' ? 'is-on' : ''} onClick={pickRole('brand')}>
-                I&apos;m a brand
+                I’m a brand
               </button>
             </div>
 
@@ -334,7 +342,11 @@ export function SignUp() {
                 </div>
               )}
 
-              {err && <div id="signup-error" className="field-error" role="alert">{err}</div>}
+              {err && (
+                <div id="signup-error" className="field-error" role="alert">
+                  {err}{/already exists/i.test(err) && <> <Link to="/signin" className="auth-v2-link">Sign in instead</Link></>}
+                </div>
+              )}
 
               <button type="submit" className="auth-v2-btn accent" disabled={busy} aria-busy={busy || undefined}>
                 {busy ? 'Creating your account…' : finishMode ? 'Finish setup' : 'Create account'}

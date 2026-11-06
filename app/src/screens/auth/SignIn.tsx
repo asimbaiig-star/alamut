@@ -224,7 +224,7 @@ export function SignIn() {
                 <span className="auth-v2-label">Explore the demo</span>
                 {signedInElsewhere && (
                   <p className="auth-v2-muted" role="status">
-                    You're already signed in. Pick a demo account to switch to it,
+                    You’re already signed in. Pick a demo account to switch to it,
                     or <Link to="/v2" className="auth-v2-link">open your workspace</Link>.
                   </p>
                 )}
@@ -327,7 +327,7 @@ export function SignIn() {
                 ) : (
                   <div className="auth-v2-card auth-v2-magic">
                     <span className="auth-v2-label">Magic link issued</span>
-                    <p className="auth-v2-muted">In the beta this link isn't emailed. Use it below to finish signing in.</p>
+                    <p className="auth-v2-muted">In the beta this link isn’t emailed. Use it below to finish signing in.</p>
                     <code>{magicToken}</code>
                     <button type="button" className="auth-v2-btn" onClick={verifyMagic} disabled={busy} aria-busy={busy || undefined}>
                       {busy ? 'Verifying…' : 'Verify and sign in'}

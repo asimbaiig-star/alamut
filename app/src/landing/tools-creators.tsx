@@ -65,6 +65,7 @@ export function BriefBrowser() {
   const [rate, setRate] = useState<number | null>(null);
   return (
     <div className="lx-pile">
+      <p className="lx-pile-head"><b>Open briefs</b><span>Examples. Pick one.</span></p>
       <Stack
         label="Example open briefs"
         items={BRIEFS}
@@ -79,7 +80,6 @@ export function BriefBrowser() {
         )}
         show={(b) => <BriefSheet brief={b} rate={rate} setRate={setRate} />}
       />
-      <p className="lx-board-note">These are examples, shown the way the app shows open briefs.</p>
     </div>
   );
 }

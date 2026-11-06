@@ -198,12 +198,14 @@ describe('the first screens', () => {
   });
 
   it('say they are examples', () => {
+    // Named above the pile, at eye level, not in a note under it.
     render(<BriefBrowser />);
-    expect(screen.getByText(/^These are examples, shown the way the app shows open briefs\./)).toBeTruthy();
+    expect(screen.getByText('Examples. Pick one.')).toBeTruthy();
     expect(screen.getAllByText('Example').length).toBeGreaterThan(0);
     cleanup();
     render(<CreatorBrowser />);
-    expect(screen.getByText(/^These are examples, shown the way the app shows storefronts\./)).toBeTruthy();
+    expect(screen.getByText('Examples. Pick one.')).toBeTruthy();
+    expect(screen.getAllByText('Example').length).toBeGreaterThan(0);
   });
 });
 

@@ -3,7 +3,8 @@
  * They carry on from the landing, so they use its idea and the same tokens
  * (v2-tokens.css): colour is the ground, paper is the object. The ground is
  * the one you came from, and the form is the sheet lying on it. Layout only
- * here; no colour of its own.
+ * here; no colour of its own. Sizes are in px, not rem: the app's root is 15px,
+ * which would quietly take fields under the 16px iOS needs not to zoom.
  */
 
 @import './v2-tokens.css';
@@ -13,7 +14,7 @@
   --ease: cubic-bezier(.16, 1, .3, 1);
   --gutter: clamp(16px, 2.8vw, 40px);
   /* As big as "storefront.", 4.9em, can be beside the sheet. */
-  --t-head: min(calc((100vw - 590px) / 4.9), 17vh, 136px);
+  --t-head: min(calc((100vw - 540px) / 4.9), 17vh, 136px);
   --on-dark: color-mix(in srgb, var(--v2-paper) 86%, transparent);
   --on-dark-2: color-mix(in srgb, var(--v2-paper) 76%, transparent);
   /* Terracotta deepened a step, so paper text on it passes 4.5:1 (5.1). */
@@ -22,7 +23,7 @@
   min-height: 100vh; min-height: 100dvh;
   background: var(--ground);
   color: var(--v2-paper);
-  font: 400 1rem/1.5 var(--v2-font-sans);
+  font: 400 16px/1.5 var(--v2-font-sans);
   font-feature-settings: "ss01", "cv11";
   -webkit-font-smoothing: antialiased;
   display: flex;
@@ -41,13 +42,13 @@
 /* The landing's nav: a sheet of paper over the ground. */
 .auth-v2-nav {
   display: flex; align-items: center; gap: 20px; height: 60px; flex: none;
-  width: calc(100% - var(--gutter) * 2); max-width: 1360px; margin: 12px auto 0; padding: 0 18px 0 16px; border-radius: 16px;
+  width: calc(100% - var(--gutter) * 2); max-width: 1360px; margin: 12px auto 0; padding: 0 18px 0 16px; border-radius: var(--v2-r-lg);
   background: var(--v2-paper); color: var(--v2-ink); box-shadow: 0 14px 34px -16px color-mix(in srgb, var(--v2-ink) 55%, transparent);
 }
 .auth-v2-brand { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; color: var(--v2-ink); text-decoration: none; }
 .auth-v2-mark { width: 32px; height: 32px; border-radius: var(--v2-r-sm); display: grid; place-items: center; background: var(--v2-ink); flex: none; }
 .auth-v2-brand > span:last-child { font-family: var(--v2-font-display); font-size: 24px; font-weight: 500; letter-spacing: -0.02em; }
-.auth-v2-nav-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: 0.9375rem; }
+.auth-v2-nav-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: 15px; }
 .auth-v2-muted { color: var(--v2-ink-3); }
 .auth-v2-link { color: var(--v2-ink); font-weight: 500; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; text-decoration-color: var(--v2-line-2); transition: text-decoration-color .15s; }
 .auth-v2-link:hover { text-decoration-color: var(--v2-ink); }
@@ -55,7 +56,7 @@
 
 .auth-v2-main {
   flex: 1; width: 100%; max-width: 1440px; margin: 0 auto;
-  padding: clamp(24px, 4.4vh, 48px) max(var(--gutter), env(safe-area-inset-right, 0px)) 28px max(var(--gutter), env(safe-area-inset-left, 0px));
+  padding: clamp(20px, 3vh, 32px) max(var(--gutter), env(safe-area-inset-right, 0px)) 20px max(var(--gutter), env(safe-area-inset-left, 0px));
 }
 .auth-v2-grid { display: flex; flex-direction: column; gap: 20px; }
 .auth-v2-h1 { font-family: var(--v2-font-display); font-weight: 400; font-variation-settings: "opsz" 144; font-size: var(--t-head); line-height: .96; letter-spacing: -.036em; }
@@ -63,14 +64,14 @@
 .auth-v2-line > span { display: block; }
 .auth-v2-pile { min-width: 0; }
 .auth-v2-side { display: contents; }
-.auth-v2-lede { font-size: clamp(1.125rem, 1rem + .5vw, 1.375rem); line-height: 1.38; color: var(--on-dark); max-width: 30em; text-wrap: pretty; }
+.auth-v2-lede { font-size: clamp(18px, 16px + .5vw, 22px); line-height: 1.38; color: var(--on-dark); max-width: 30em; text-wrap: pretty; }
 .auth-v2-side .auth-v2-lede { display: none; }
-.auth-v2-card .auth-v2-lede { font-size: 1.0625rem; color: var(--v2-ink-2); }
+.auth-v2-card .auth-v2-lede { font-size: 17px; color: var(--v2-ink-2); }
 .auth-v2-points { display: grid; gap: 10px; }
 .auth-v2-points li { display: flex; align-items: flex-start; gap: 10px; font-weight: 500; text-wrap: pretty; }
 .auth-v2-check { width: 20px; height: 20px; flex: none; margin-top: 2px; border-radius: 50%; background: var(--v2-moss-soft); fill: none; stroke: var(--v2-moss-deep); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.auth-v2-beta { font-size: 0.90625rem; color: var(--on-dark-2); }
-.auth-v2-next { font-size: 0.90625rem; color: var(--on-dark-2); text-wrap: pretty; }
+.auth-v2-beta { font-size: 14.5px; color: var(--on-dark-2); }
+.auth-v2-next { font-size: 14.5px; color: var(--on-dark-2); text-wrap: pretty; }
 
 /* Below desktop the form comes straight after the headline: they came here to
  * sign up, and the reassurance can follow it. */
@@ -86,7 +87,9 @@
 /* Side by side once there's room: the words, and the sheet where the pile
  * was on the landing. */
 @media (min-width: 1000px) {
-  .auth-v2-grid { display: grid; grid-template-columns: minmax(0, 1fr) 460px; gap: 56px; align-items: start; }
+  /* The sheet is the landing's pile column, to the pixel: it lands where the
+   * pile was. */
+  .auth-v2-grid { display: grid; grid-template-columns: minmax(0, 1fr) 410px; gap: 48px; align-items: start; }
   .auth-v2-side { display: grid; gap: 22px; padding-top: clamp(0px, 2.6vh, 24px); }
   .auth-v2-side .auth-v2-lede { display: block; }
   .auth-v2-points { margin-top: 6px; }
@@ -95,36 +98,45 @@
 /* What the visitor built on the landing, on a band above the sheet: the pile
  * came with them. */
 .auth-v2-band {
-  position: relative; display: grid; gap: 2px; padding: 12px 18px 30px; margin-bottom: -18px; border-radius: 14px 14px 0 0; overflow: hidden;
-  background: var(--v2-band-moss); color: var(--v2-paper); font-size: 0.90625rem; line-height: 1.35;
+  position: relative; display: grid; gap: 2px; padding: 12px 18px 30px; margin-bottom: -18px; border-radius: var(--v2-r-lg) var(--v2-r-lg) 0 0; overflow: hidden;
+  background: var(--v2-band-moss); color: var(--v2-paper); font-size: 14.5px; line-height: 1.35;
   box-shadow: 0 -10px 22px -10px color-mix(in srgb, var(--v2-ink) 50%, transparent), inset 0 1px 0 color-mix(in srgb, var(--v2-paper) 16%, transparent);
 }
 .is-brand .auth-v2-band { background: var(--v2-band-brick); }
 .auth-v2-band::after { content: ""; position: absolute; inset: 0; opacity: .055; background-image: repeating-linear-gradient(135deg, currentColor 0 1px, transparent 1px 7px); pointer-events: none; }
-.auth-v2-band > span { font-size: 0.8125rem; color: var(--on-dark); }
+.auth-v2-band > span { font-size: 13px; color: var(--on-dark); }
+/* The next step, on a band above the sheet. A phone keeps it as a line after
+ * the form, so the button stays on the first screen. A kept draft takes the
+ * band, and the next step falls back to its line. */
+.auth-v2-band.is-next { display: none; }
+@media (min-width: 1000px) {
+  .auth-v2-band.is-next { display: grid; }
+  .auth-v2-next { display: none; }
+  .has-kept .auth-v2-next { display: block; }
+}
 .auth-v2-band b { font-weight: 600; }
 
 /* The sheet. */
-.auth-v2-card { position: relative; color: var(--v2-ink); background: var(--v2-paper); border-radius: 18px; }
-.auth-v2-form-card { display: grid; gap: 16px; padding: clamp(20px, 2vw, 28px); box-shadow: 0 -10px 30px color-mix(in srgb, var(--v2-ink) 18%, transparent), 0 40px 70px -24px color-mix(in srgb, var(--v2-ink) 62%, transparent); view-transition-name: auth-sheet; }
+.auth-v2-card { position: relative; color: var(--v2-ink); background: var(--v2-paper); border-radius: var(--v2-r-lg); }
+.auth-v2-form-card { display: grid; gap: 14px; padding: clamp(20px, 2vw, 24px); box-shadow: 0 -10px 30px color-mix(in srgb, var(--v2-ink) 18%, transparent), 0 40px 70px -24px color-mix(in srgb, var(--v2-ink) 62%, transparent); view-transition-name: auth-sheet; }
 .auth-v2-solo { max-width: 520px; margin: clamp(0px, 8vh, 80px) auto 0; }
-.auth-v2-h2 { font-family: var(--v2-font-display); font-weight: 500; font-size: 1.75rem; letter-spacing: -0.02em; line-height: 1.1; }
+.auth-v2-h2 { font-family: var(--v2-font-display); font-weight: 500; font-size: 28px; letter-spacing: -0.02em; line-height: 1.1; }
 .auth-v2-label { font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--v2-ink-3); }
 
 /* The persona toggle, as in the workspace sidebar. */
 .auth-v2-tabs { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; border-radius: var(--v2-r-pill); background: var(--v2-bg-2); }
-.auth-v2-tabs button { min-height: 44px; border: 0; border-radius: var(--v2-r-pill); background: transparent; color: var(--v2-ink-2); font: 500 0.9375rem/1 var(--v2-font-sans); cursor: pointer; transition: color .15s; }
+.auth-v2-tabs button { min-height: 44px; border: 0; border-radius: var(--v2-r-pill); background: transparent; color: var(--v2-ink-2); font: 500 15px/1 var(--v2-font-sans); cursor: pointer; transition: color .15s; }
 .auth-v2-tabs button:hover { color: var(--v2-ink); }
 .auth-v2-tabs button.is-on { background: var(--v2-paper); color: var(--v2-ink); box-shadow: var(--v2-shadow-sm); }
 
-.auth-v2-fields { display: grid; gap: 14px; }
+.auth-v2-fields { display: grid; gap: 12px; }
 .auth-v2 .field { display: grid; gap: 6px; min-width: 0; }
 /* components.css styles .field-label as mono capitals for the old portal;
  * reset every property it sets. */
-.auth-v2 .field-label { font-family: var(--v2-font-sans); font-size: 0.875rem; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--v2-ink-2); }
+.auth-v2 .field-label { font-family: var(--v2-font-sans); font-size: 14px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--v2-ink-2); }
 .auth-v2 .field input {
-  width: 100%; min-height: 50px; padding: 0 14px; border: 1px solid var(--v2-line-2); border-radius: var(--v2-r-md);
-  background: var(--v2-paper); color: var(--v2-ink); font: 400 1rem/1.2 var(--v2-font-sans); outline: none;
+  width: 100%; min-height: 48px; padding: 0 14px; border: 1px solid var(--v2-line-2); border-radius: var(--v2-r-md);
+  background: var(--v2-paper); color: var(--v2-ink); font: 400 16px/1.2 var(--v2-font-sans); outline: none;
   transition: border-color .15s, box-shadow .15s;
 }
 .auth-v2 .field input::placeholder { color: var(--v2-ink-3); opacity: 1; }
@@ -132,18 +144,18 @@
 .auth-v2 .field input:focus { border-color: var(--v2-ink-3); box-shadow: 0 0 0 3px var(--v2-bg-2); }
 .auth-v2 .field input[aria-invalid="true"] { border-color: var(--v2-negative); }
 .auth-v2 .field input[readonly] { background: var(--v2-bg); color: var(--v2-ink-3); }
-.auth-v2 .field-error { font-size: 0.8125rem; color: var(--v2-negative); }
-.auth-v2 .field-help { margin-top: 0; font-size: 0.8125rem; color: var(--v2-ink-3); }
+.auth-v2 .field-error { font-size: 13px; color: var(--v2-negative); }
+.auth-v2 .field-help { margin-top: 0; font-size: 13px; color: var(--v2-ink-3); }
 .auth-v2 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .auth-v2-pw { position: relative; display: block; }
 .auth-v2 .auth-v2-pw input { padding-right: 68px; }
-.auth-v2-pw button { position: absolute; top: 3px; right: 3px; bottom: 3px; min-width: 58px; border: 0; border-radius: 9px; background: transparent; color: var(--v2-ink-2); font: 500 0.875rem/1 var(--v2-font-sans); cursor: pointer; transition: background-color .15s; }
+.auth-v2-pw button { position: absolute; top: 3px; right: 3px; bottom: 3px; min-width: 58px; border: 0; border-radius: var(--v2-r-sm); background: transparent; color: var(--v2-ink-2); font: 500 14px/1 var(--v2-font-sans); cursor: pointer; transition: background-color .15s; }
 .auth-v2-pw button:hover { background: var(--v2-bg-2); }
 
 .auth-v2-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
   min-height: 52px; padding: 0 22px; border: 1px solid transparent; border-radius: var(--v2-r-pill);
-  background: var(--v2-ink); color: var(--v2-paper); font: 500 1.0625rem/1 var(--v2-font-sans); cursor: pointer;
+  background: var(--v2-ink); color: var(--v2-paper); font: 500 17px/1 var(--v2-font-sans); cursor: pointer;
   transition: background-color .15s, color .15s, transform .25s var(--ease);
 }
 .auth-v2-btn:hover:not(:disabled) { background: var(--v2-ink-2); }
@@ -154,15 +166,15 @@
 .auth-v2-btn.fit { width: auto; }
 .auth-v2-btn.line { width: auto; background: var(--v2-paper); color: var(--v2-ink); border-color: var(--v2-line-2); }
 .auth-v2-btn.line:hover:not(:disabled) { background: var(--v2-bg-2); }
-.auth-v2-legal { font-size: 0.8125rem; color: var(--v2-ink-3); text-align: center; }
+.auth-v2-legal { font-size: 13px; color: var(--v2-ink-3); text-align: center; }
 .auth-v2-legal .auth-v2-link { font-weight: 400; color: var(--v2-ink-2); }
-.auth-v2-foot { font-size: 0.9375rem; color: var(--v2-ink-3); padding-top: 14px; border-top: 1px solid var(--v2-line); text-align: center; }
+.auth-v2-foot { font-size: 15px; color: var(--v2-ink-3); padding-top: 14px; border-top: 1px solid var(--v2-line); text-align: center; }
 
 .auth-v2-demo { padding: 22px; display: grid; gap: 12px; max-width: 520px; box-shadow: 0 30px 60px -36px color-mix(in srgb, var(--v2-ink) 70%, transparent); }
 .auth-v2-demo-grid { display: flex; flex-wrap: wrap; gap: 8px; }
 .auth-v2-magic { padding: 16px; display: grid; gap: 10px; background: var(--v2-bg); }
 .auth-v2-magic code { font-size: 12px; word-break: break-all; color: var(--v2-ink-2); }
-.auth-v2-page-foot { padding: 0 20px 20px; text-align: center; font-size: 0.8125rem; color: var(--on-dark-2); }
+.auth-v2-page-foot { padding: 0 20px 14px; text-align: center; font-size: 13px; color: var(--on-dark-2); }
 
 /* The entrance: the headline rises, the sheet is laid down. */
 @keyframes auth-line-in { from { transform: translateY(106%); } }

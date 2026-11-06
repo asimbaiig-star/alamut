@@ -86,6 +86,7 @@ export function CreatorBrowser() {
   }, []);
   return (
     <div className="lx-pile">
+      <p className="lx-pile-head"><b>Storefronts</b><span>Examples. Pick one.</span></p>
       <Stack
         tall
         label="Example creator storefronts"
@@ -108,7 +109,7 @@ export function CreatorBrowser() {
         show={(c) => <StorefrontSheet c={c} pkg={pkg} setPkg={setPkg} />}
       />
       <p className="lx-board-note">
-        These are examples, shown the way the app shows storefronts. Follower counts are what creators enter.
+        Shown the way the app shows storefronts. Follower counts are what creators enter.
         {' '}<Credits photos={CREATORS.map((c) => c.photo)} />
         {' '}<a className="lx-link" href="/creators" data-cta="hero-directory">Browse the live directory</a>
       </p>
