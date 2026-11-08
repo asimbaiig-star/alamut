@@ -92,6 +92,56 @@ export function mountReel(): void {
   window.addEventListener('scroll', () => { frame ||= requestAnimationFrame(read); }, { passive: true });
 }
 
+/** Keyboard focus is never left out of sight. Inside a pinned sheet the
+ *  browser works out the wrong place to scroll to (it measures the sheet where
+ *  it's pinned, not where it sits in the page), and a sheet that has slid up,
+ *  or the phone's sticky button, can cover what took focus without the browser
+ *  counting it as hidden. So when focus lands somewhere that isn't clear, the
+ *  page goes, in one step, to where it is. */
+export function mountFocusGuard(): void {
+  const clear = (el: HTMLElement) => {
+    const r = el.getBoundingClientRect();
+    if (r.top < 0 || r.bottom > window.innerHeight) return false;
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return !!hit && (el.contains(hit) || hit.contains(el));
+  };
+  // Where a sheet sits in the page, measured with its pinning switched off for
+  // the read. Nothing is drawn in between, so nothing moves on screen.
+  const naturalTop = (sheet: HTMLElement) => {
+    sheet.style.position = 'static';
+    const top = sheet.getBoundingClientRect().top + window.scrollY;
+    sheet.style.position = '';
+    return top;
+  };
+  const go = (y: number) => window.scrollTo({ top: Math.max(0, y), behavior: 'instant' });
+  const settle = (el: HTMLElement, tries: number) => {
+    if (!el.isConnected || clear(el)) return;
+    const h = window.innerHeight;
+    const r = el.getBoundingClientRect();
+    const bar = document.querySelector('.lx-sticky');
+    const sheet = el.closest<HTMLElement>('[data-sheet]');
+    if (sheet && document.documentElement.classList.contains('lx-sheets')) {
+      const top = naturalTop(sheet);
+      const at = r.top - sheet.getBoundingClientRect().top;
+      const tall = sheet.offsetHeight;
+      const stick = Math.min(0, h - tall);
+      // Near enough the sheet's top: show it unpinned, the element two-fifths
+      // down. Further in: the moment the sheet pins, its foot on the screen's,
+      // before the next one has slid over it.
+      go(at <= h * 0.4 - stick ? top + at - h * 0.4 : top + tall - h);
+    } else if (bar && r.bottom > bar.getBoundingClientRect().top && r.top < h) {
+      window.scrollBy({ top: r.bottom - bar.getBoundingClientRect().top + 24, behavior: 'instant' });
+    } else {
+      window.scrollBy({ top: r.top - h * 0.4, behavior: 'instant' });
+    }
+    if (tries > 0) requestAnimationFrame(() => settle(el, tries - 1));
+  };
+  document.addEventListener('focusin', (e) => {
+    const el = e.target as HTMLElement;
+    if (el.closest?.('.lx')) requestAnimationFrame(() => settle(el, 1));
+  });
+}
+
 type Transitioning = Document & { startViewTransition?: (update: () => void) => unknown };
 
 /** Apply `change` as a move on screen: what shares a view-transition-name

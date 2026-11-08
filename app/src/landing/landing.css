@@ -22,6 +22,9 @@
 /* Whatever scrolls into view clears the floating nav. */
 html:has(.lx) { scroll-padding-top: 88px; }
 @media (prefers-reduced-motion: no-preference) { html:has(.lx) { scroll-behavior: smooth; } }
+/* On a phone the sticky button sits at the foot: keep what scrolls into view
+ * above it. */
+@media (max-width: 760px) { html:has(.lx) { scroll-padding-bottom: 96px; } }
 
 .lx {
   --wrap: 1440px;
@@ -543,7 +546,9 @@ html:has(.lx) { scroll-padding-top: 88px; }
 .lx-step-row { position: relative; }
 .lx-step-row[data-state="next"] .lx-stamp, .lx-step-row:not([data-state="done"]) .lx-stamp.accent { opacity: 0; }
 @keyframes lx-slam { 0% { opacity: 0; transform: translateY(-50%) scale(2.3) rotate(-15deg); } 62% { opacity: 1; transform: translateY(-50%) scale(.92) rotate(-6deg); } 100% { opacity: 1; transform: translateY(-50%) rotate(-7deg); } }
-.lx-step-row[data-state="now"] .lx-stamp, .lx-step-row[data-state="done"] .lx-stamp.accent { animation: lx-slam .42s .5s cubic-bezier(.5, 0, .75, 0) both; }
+/* An accent stamp marks the step done, so it waits for "done"; the others
+ * land as their step plays. */
+.lx-step-row[data-state="now"] .lx-stamp:not(.accent), .lx-step-row[data-state="done"] .lx-stamp.accent { animation: lx-slam .42s .5s cubic-bezier(.5, 0, .75, 0) both; }
 .lx-step-row { border-radius: var(--v2-r-md); transition: opacity .5s, transform .6s var(--ease), border-color .3s, box-shadow .4s; }
 
 /* On a wide screen it pins, and each stretch of scrolling is one step. */

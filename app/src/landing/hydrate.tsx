@@ -8,7 +8,7 @@
 import { StrictMode, type ReactNode } from 'react';
 import { createRoot, hydrateRoot } from 'react-dom/client';
 import { mountLandingEvents, type LandingPage } from './events';
-import { mountArrivals, mountInk, mountReel, mountSheets } from './motion';
+import { mountArrivals, mountFocusGuard, mountInk, mountReel, mountSheets } from './motion';
 import './landing.css';
 
 export function hydrate(page: LandingPage, el: ReactNode): void {
@@ -21,6 +21,7 @@ export function hydrate(page: LandingPage, el: ReactNode): void {
   mountInk();
   mountArrivals();
   mountReel();
+  mountFocusGuard();
   // The entrance plays once; a sheet coming back to the pile later doesn't replay it.
   window.setTimeout(() => document.documentElement.classList.remove('lx-anim'), 2700);
 }
