@@ -3386,7 +3386,7 @@ export function v2LaunchCampaign(input: LaunchCampaignInput): Campaign {
  * on the brand team — same gate as editing any brand-owned record).
  */
 // Phase 2 — Supabase is now the source of truth for brand rows that
-// have been migrated (Aesop, Le Creuset). When configured, writes hit
+// have been migrated (Oakmoss, Kettle & Ember). When configured, writes hit
 // Supabase first (RLS gates by `auth.email() = owner_email`), then
 // mirror to the local Zustand store so the rest of the app — which
 // still reads from the store — sees the update immediately. For

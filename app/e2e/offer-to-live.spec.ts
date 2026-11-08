@@ -33,7 +33,7 @@ async function demoSignIn(page: Page, persona: 'Brand' | 'Creator') {
 test.describe('Spine — offer to live', () => {
   test('brand can sign in and see their workspace', async ({ page }) => {
     await demoSignIn(page, 'Brand');
-    // Topbar carries "Aesop · N campaigns total" — assert we land in
+    // Topbar carries "Oakmoss · N campaigns total" — assert we land in
     // the brand persona by checking the sidebar has "My campaigns".
     await expect(page.getByRole('button', { name: /My campaigns/ })).toBeVisible();
     // Home shows the New campaign CTA — proves BrandHome rendered.
@@ -78,6 +78,6 @@ test.describe('Spine — offer to live', () => {
     await expect(page.getByRole('heading', { name: 'Analytics', exact: false })).toBeVisible();
     // The brand-analytics topbar mentions "campaigns total" with the
     // brand name; that's a tell we don't want to see.
-    await expect(page.getByText(/Aesop · /)).toHaveCount(0);
+    await expect(page.getByText(/Oakmoss · /)).toHaveCount(0);
   });
 });

@@ -19,7 +19,7 @@ describe('RaiseDisputeModal', () => {
   it('renders the brand + campaign in the body copy', () => {
     render(
       <RaiseDisputeModal
-        brandName="Aesop"
+        brandName="Oakmoss"
         campaignName="Spring Renewal"
         onClose={() => undefined}
         onSubmit={() => undefined}
@@ -27,7 +27,7 @@ describe('RaiseDisputeModal', () => {
     );
     expect(screen.getByRole('heading', { name: /Raise a dispute/i })).toBeInTheDocument();
     expect(screen.getByText(/Spring Renewal/)).toBeInTheDocument();
-    expect(screen.getByText(/Aesop/)).toBeInTheDocument();
+    expect(screen.getByText(/Oakmoss/)).toBeInTheDocument();
   });
 
   it('renders all 6 category options with `non-delivery` selected by default', () => {

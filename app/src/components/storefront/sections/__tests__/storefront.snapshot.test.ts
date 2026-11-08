@@ -101,7 +101,7 @@ function makeCreator(): Creator {
       { id: 'rc_3', platform: 'TikTok',    format: 'post', rate: '$1,200', notes: '' },
     ],
     pressMentions: [
-      { source: 'Vogue',     title: 'The new beauty creators to watch in 2026', year: 2026 },
+      { source: 'Field & Frame',     title: 'The new beauty creators to watch in 2026', year: 2026 },
       { source: 'NY Times',  title: 'Why minimalism is back',                    year: 2025 },
     ],
     availability: {
@@ -144,8 +144,8 @@ function makeDb(): Database {
     creators: [creator],
     users: [buildUser({ id: 'u_creator_test', role: 'creator' })],
     brands: [
-      { id: 'br_1', userId: 'u_brand_1', name: 'Aesop', industry: 'Beauty', hq: 'NYC', website: 'https://example.com', about: '', preferredCategories: [], preferredRegions: [], walletBalance: 0, escrowHeld: 0, verified: true, savedCreators: [] },
-      { id: 'br_2', userId: 'u_brand_2', name: 'Glossier', industry: 'Beauty', hq: 'NYC', website: 'https://example.com', about: '', preferredCategories: [], preferredRegions: [], walletBalance: 0, escrowHeld: 0, verified: true, savedCreators: [] },
+      { id: 'br_1', userId: 'u_brand_1', name: 'Oakmoss', industry: 'Beauty', hq: 'NYC', website: 'https://example.com', about: '', preferredCategories: [], preferredRegions: [], walletBalance: 0, escrowHeld: 0, verified: true, savedCreators: [] },
+      { id: 'br_2', userId: 'u_brand_2', name: 'Petalcourt', industry: 'Beauty', hq: 'NYC', website: 'https://example.com', about: '', preferredCategories: [], preferredRegions: [], walletBalance: 0, escrowHeld: 0, verified: true, savedCreators: [] },
     ],
     campaigns: [
       // Lightweight campaign rows — fixture defaults aren't great for

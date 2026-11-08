@@ -73,7 +73,7 @@ function makePreMigrationDb(): Database {
     ],
     brands: [
       {
-        id: 'br_1', userId: 'u_brand', name: 'Aesop',
+        id: 'br_1', userId: 'u_brand', name: 'Oakmoss',
         industry: 'Beauty', hq: 'Sydney', website: 'aesop.com',
         about: '', preferredCategories: [], preferredRegions: [],
         walletBalance: 5000, escrowHeld: 1500,

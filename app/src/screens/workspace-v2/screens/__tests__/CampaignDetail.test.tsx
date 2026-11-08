@@ -26,7 +26,7 @@ function renderWithRouter(ui: React.ReactElement) {
 const ownerBrand = {
   id: 'b_aesop',
   userId: 'u_hannah',
-  name: 'Aesop',
+  name: 'Oakmoss',
   industry: 'Beauty',
   hq: 'Melbourne',
   website: '',
@@ -43,12 +43,12 @@ const otherBrand = {
   ...ownerBrand,
   id: 'b_lecreuset',
   userId: 'u_marcus',
-  name: 'Le Creuset',
+  name: 'Kettle & Ember',
 };
 
 const mockCampaign = {
   id: 'cmp_1',
-  brand: 'Aesop',
+  brand: 'Oakmoss',
   brandId: 'b_aesop',
   name: 'Spring Renewal',
   status: 'Live',
@@ -179,7 +179,7 @@ describe('CampaignDetail (smoke)', () => {
   });
 
   it('OWNERSHIP GATE — refuses access when current brand is NOT the owner', () => {
-    CURRENT_BRAND = otherBrand; // viewing as Le Creuset, not Aesop
+    CURRENT_BRAND = otherBrand; // viewing as Kettle & Ember, not Oakmoss
     renderWithRouter(<CampaignDetail campaignId="cmp_1" onRoute={() => undefined} />);
     expect(screen.getByText(/don't have access to this campaign's management view/i)).toBeInTheDocument();
     // The "View public brief" fallback CTA must be present.

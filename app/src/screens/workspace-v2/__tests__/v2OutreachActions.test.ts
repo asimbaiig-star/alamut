@@ -27,7 +27,7 @@ function setupDb() {
   return buildDb({
     users: [userBrand('u_brand', 'br_1'), userCreator('u_creator', 'cr_1')],
     creators: [buildCreator({ id: 'cr_1', userId: 'u_creator', name: 'Sarah Chen' })],
-    brands: [buildBrand({ id: 'br_1', userId: 'u_brand', name: 'Aesop' })],
+    brands: [buildBrand({ id: 'br_1', userId: 'u_brand', name: 'Oakmoss' })],
     campaigns: [buildCampaign({ id: 'cmp_1', brandId: 'br_1', title: 'Spring Renewal' })],
   });
 }
@@ -75,7 +75,7 @@ describe('v2SendOutreach', () => {
     const notif = useStore.getState().db.notifications.find((n) => n.userId === 'u_creator');
     expect(notif).toBeDefined();
     expect(notif?.text).toContain('Spring Renewal');
-    expect(notif?.text).toContain('reach-out from Aesop');
+    expect(notif?.text).toContain('reach-out from Oakmoss');
     expect(notif?.text).toContain('A specific hook line');
   });
 

@@ -60,7 +60,7 @@ describe('CounterOfferModal', () => {
       <CounterOfferModal
         offerId="off_1"
         currentRate={1000}
-        counterpartyName="Aesop"
+        counterpartyName="Oakmoss"
         side="creator"
         onClose={() => undefined}
       />,
@@ -92,7 +92,7 @@ describe('CounterOfferModal', () => {
       <CounterOfferModal
         offerId="off_1"
         currentRate={500}
-        counterpartyName="Aesop"
+        counterpartyName="Oakmoss"
         side="creator"
         onClose={() => undefined}
       />,
@@ -112,7 +112,7 @@ describe('CounterOfferModal', () => {
       <CounterOfferModal
         offerId="off_1"
         currentRate={500}
-        counterpartyName="Aesop"
+        counterpartyName="Oakmoss"
         side="creator"
         onClose={() => undefined}
       />,

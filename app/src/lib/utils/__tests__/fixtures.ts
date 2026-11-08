@@ -79,7 +79,7 @@ export function buildBrand(p: Partial<Brand> = {}): Brand {
   return {
     id: p.id ?? 'br_1',
     userId: 'u_brand',
-    name: 'Aesop',
+    name: 'Oakmoss',
     industry: 'Beauty',
     hq: 'NYC',
     website: 'https://example.com',
@@ -223,7 +223,7 @@ export function buildThread(p: Partial<Thread> = {}): Thread {
     id: p.id ?? id('th'),
     participants: ['u_brand', 'u_creator'],
     campaignId: 'cmp_1',
-    subject: 'Spring Renewal · Aesop · Sarah Chen',
+    subject: 'Spring Renewal · Oakmoss · Sarah Chen',
     lastMessageAt: '2026-04-12T00:00:00.000Z',
     unreadFor: [],
     // P1b §1.9 — placeholder; tests can override.

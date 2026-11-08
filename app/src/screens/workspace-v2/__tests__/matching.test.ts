@@ -9,7 +9,7 @@ import { matchCreatorToCampaign } from '../matching';
 import { buildDb, buildCreator, buildCampaign, buildBrand } from '@/lib/utils/__tests__/fixtures';
 import type { Creator, Campaign } from '@/lib/api/types';
 
-const brand = buildBrand({ id: 'br_1', name: 'Aesop' });
+const brand = buildBrand({ id: 'br_1', name: 'Oakmoss' });
 
 function db(extra: Partial<Parameters<typeof buildDb>[0]> = {}) {
   return buildDb({ brands: [brand], ...extra });
@@ -69,7 +69,7 @@ describe('matchCreatorToCampaign — refuses to invent a score', () => {
 describe('matchCreatorToCampaign — actually discriminates', () => {
   it('scores a strong fit far above a weak one', () => {
     const strong = matchCreatorToCampaign(
-      fullCreator({ pastClients: ['Aesop'] }),
+      fullCreator({ pastClients: ['Oakmoss'] }),
       campaign({ category: 'Beauty', region: 'Karachi' }),
       db(), 500,
     );
@@ -89,7 +89,7 @@ describe('matchCreatorToCampaign — actually discriminates', () => {
 
   it('produces a wide spread across varied creators, not a narrow band', () => {
     const variants: Creator[] = [
-      fullCreator({ id: 'a', categories: ['Beauty'], pastClients: ['Aesop'] }),
+      fullCreator({ id: 'a', categories: ['Beauty'], pastClients: ['Oakmoss'] }),
       fullCreator({ id: 'b', categories: ['Beauty'] }),
       fullCreator({ id: 'c', categories: ['Fashion'] }),
       fullCreator({ id: 'd', categories: ['B2B'], city: 'Oslo', country: 'Norway' }),
@@ -147,8 +147,8 @@ describe('matchCreatorToCampaign — geo uses region, not the deliverables text'
 
 describe('matchCreatorToCampaign — reasons come from the creator', () => {
   it('credits prior work with the brand by name', () => {
-    const r = matchCreatorToCampaign(fullCreator({ pastClients: ['Aesop'] }), campaign(), db(), 500);
-    expect(r.reasons.join(' ')).toMatch(/worked with Aesop/i);
+    const r = matchCreatorToCampaign(fullCreator({ pastClients: ['Oakmoss'] }), campaign(), db(), 500);
+    expect(r.reasons.join(' ')).toMatch(/worked with Oakmoss/i);
   });
 
   it('cites the creator’s real engagement figure', () => {
@@ -192,7 +192,7 @@ describe('matchCreatorToCampaign — reasons come from the creator', () => {
   });
 
   it('caps at three reasons', () => {
-    const r = matchCreatorToCampaign(fullCreator({ pastClients: ['Aesop'] }), campaign(), db(), 500);
+    const r = matchCreatorToCampaign(fullCreator({ pastClients: ['Oakmoss'] }), campaign(), db(), 500);
     expect(r.reasons.length).toBeLessThanOrEqual(3);
   });
 });

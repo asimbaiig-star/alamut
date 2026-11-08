@@ -117,7 +117,7 @@ function buildBrand(over: Partial<Brand> = {}): Brand {
 const sarahUser = buildUser({ id: 'u_sarah', email: 'sarah@alamut.test', role: 'creator', creatorId: 'cr_sarah' });
 const sarah = buildCreator({ id: 'cr_sarah', userId: 'u_sarah', name: 'Sarah Johnson', handle: '@sarah' });
 const hannahUser = buildUser({ id: 'u_hannah', email: 'hannah@aesop.test', role: 'brand', brandId: 'b_aesop' });
-const aesop = buildBrand({ id: 'b_aesop', userId: 'u_hannah', name: 'Aesop' });
+const aesop = buildBrand({ id: 'b_aesop', userId: 'u_hannah', name: 'Oakmoss' });
 
 const thread: Thread = {
   id: 't_1',

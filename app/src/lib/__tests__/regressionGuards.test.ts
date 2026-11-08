@@ -743,9 +743,10 @@ describe('marketing copy does not outrun the product', () => {
   });
 
   it('names no seed brand, and no real company as a customer', () => {
-    // The seed's brands are real companies (Aesop, Glossier, Le Creuset…)
-    // that are not customers. The old pages showed their logos and an
-    // "Aesop" case study.
+    // The seed's brands used to be real companies (Aesop, Glossier, Le
+    // Creuset…) that were not customers, and the old pages showed their
+    // logos and an "Aesop" case study. The demo brands are invented now, but
+    // they still aren't customers, so none of them may appear as one.
     const seed = code('lib/api/seed.ts');
     const names = [...seed.matchAll(/name:\s*'([^']+)',\s*industry:/g)].map((m) => m[1]!);
     expect(names.length, 'the seed brand pattern stopped matching — this check is blind').toBeGreaterThan(20);
@@ -1169,9 +1170,9 @@ describe('the app shows only terms and claims someone actually made', () => {
   });
 
   it('the sign-in demo buttons name no seed brand', () => {
-    // The seed borrows real companies (Aesop, Glossier, Le Creuset…). Their
-    // names may stay inside the demo data; they must not label a button on a
-    // public page, where they read as customers.
+    // The demo brands (invented since the portal revamp; real companies
+    // before it) must not label a button on a public page, where they read
+    // as customers.
     const seed = code('lib/api/seed.ts');
     const names = [...seed.matchAll(/name:\s*'([^']+)',\s*industry:/g)].map((m) => m[1]!);
     expect(names.length, 'the seed brand pattern stopped matching, so this check is blind').toBeGreaterThan(20);

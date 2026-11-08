@@ -322,7 +322,7 @@ export const STAGE_REQUIREMENTS: Record<
  *
  * Used by the lifecycle tests and available for a dev-time assertion. A
  * non-empty `violations` means the derivation and the data disagree — which
- * is precisely the class of bug that put "Aesop invited you" on a deal whose
+ * is precisely the class of bug that put "Oakmoss invited you" on a deal whose
  * offer had expired.
  */
 export function explainStage(

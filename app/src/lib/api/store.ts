@@ -111,9 +111,9 @@ export const useStore = create<StoreState>()(
       //   - Sarah: work[] (6 portfolio images), rateCards[] (6 per-
       //     platform packages), featuredReviewIds[] (3 pinned),
       //     savedBriefs[] (5 bookmarks), 2 extra press mentions
-      //   - Aesop: offerTemplates[] (3), expanded savedCreators[] (8),
+      //   - Oakmoss: offerTemplates[] (3), expanded savedCreators[] (8),
       //     preferredCreatorTier + monthlyBudgetBand
-      //   - 3 new Aesop campaigns: draft + paused + archived
+      //   - 3 new Oakmoss campaigns: draft + paused + archived
       //   - 4 new offers: 2 pending + 2 countered (Sarah + Yuki) so
       //     the Accept/Counter/Decline flow has live demo data
       //   - Smart-merge overlay extended to preserve work/pressMentions
@@ -134,7 +134,12 @@ export const useStore = create<StoreState>()(
       // Safe to flush now in a way it wasn't before Phase A: real
       // accounts' profiles live in Postgres, so a wipe re-hydrates them
       // on next sign-in instead of destroying them.
-      version: 16,
+      //
+      // v17 (portal revamp) — the demo brands were real companies (Aesop,
+      // Le Creuset, Patagonia…) presented as Alamut customers. They are
+      // invented now; bumping drops every visitor's cached copy of the old
+      // names so nobody keeps seeing them.
+      version: 17,
       // Forward-only data migrations layered on top of Zustand's persist
       // versioning. After rehydration, walk `db.migrationVersion + 1` to
       // CURRENT_MIGRATION_VERSION and run each migrator. Idempotent;

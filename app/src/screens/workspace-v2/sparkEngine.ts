@@ -114,7 +114,7 @@ export function emptyContext(): SparkContext {
     region: null,
     budget: null,
     campaignName: null,
-    brand: 'Sapphire',
+    brand: 'Indigo Lane',
   };
 }
 

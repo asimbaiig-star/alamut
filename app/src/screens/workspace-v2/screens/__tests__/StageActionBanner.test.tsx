@@ -38,7 +38,7 @@ function buildHandlers(): Pick<
 function baseProps(over: Partial<StageActionBannerProps> = {}): StageActionBannerProps {
   return {
     stage: 'pitched',
-    campaignBrand: 'Aesop',
+    campaignBrand: 'Oakmoss',
     campaignName: 'Spring Renewal',
     campaignPlacement: '1 Reel + 2 Stories',
     onAccept: noop,
@@ -60,7 +60,7 @@ describe('StageActionBanner', () => {
         pendingOffer: { id: 'off_1', rate: 1500, message: 'love your work' },
         ...h,
       })} />);
-      expect(screen.getByText(/Aesop invited you to Spring Renewal/i)).toBeInTheDocument();
+      expect(screen.getByText(/Oakmoss invited you to Spring Renewal/i)).toBeInTheDocument();
       // Net-aware copy
       expect(screen.getByText(/love your work/i)).toBeInTheDocument();
       // All three CTAs present
@@ -151,7 +151,7 @@ describe('StageActionBanner', () => {
         stage: 'negotiating',
         pendingOffer: { id: 'off_2', rate: 2000, message: 'best we can do' },
       })} />);
-      expect(screen.getByText(/Aesop sent an offer/i)).toBeInTheDocument();
+      expect(screen.getByText(/Oakmoss sent an offer/i)).toBeInTheDocument();
       // Rate appears in the body
       expect(screen.getByText(/best we can do/i)).toBeInTheDocument();
       // Both CTAs

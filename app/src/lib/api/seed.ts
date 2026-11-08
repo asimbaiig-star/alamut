@@ -54,7 +54,7 @@ const usedCampaignTitles = new Set<string>(
   // cmp_aesop_* lifecycle demos) so the generator can't reuse one of
   // their titles for the same brand. Without this, generated `cmp_g0`
   // took "Studio Notes" on b_aesop — the exact collision with cmp_3 that
-  // made Aesop's own campaign list ambiguous.
+  // made Oakmoss's own campaign list ambiguous.
   [
     'b_aesop::Spring Renewal',
     'b_lecreuset::Slow Sundays',
@@ -280,114 +280,114 @@ const TAGLINES_BY_CAT: Record<string, string[]> = {
 interface BrandSpec { name: string; industry: string; hq: string; about: string; mark: string; cats: string[]; }
 const BRAND_POOL: BrandSpec[] = [
   // Beauty
-  { name: 'Aesop',         industry: 'Beauty / Personal care', hq: 'Melbourne, AU',     mark: 'A', about: 'Aesop has carefully curated a range of skin, hair and body care formulations.', cats: ['Beauty', 'Lifestyle', 'Wellness', 'Design'] },
-  { name: 'Glossier',      industry: 'Beauty',                 hq: 'New York, USA',     mark: 'G', about: 'Skin first, then makeup. People-powered beauty.',                              cats: ['Beauty', 'Lifestyle'] },
-  { name: 'Le Labo',       industry: 'Fragrance',              hq: 'New York, USA',     mark: 'L', about: 'Soulful and crafted perfumery from Grasse to Brooklyn.',                       cats: ['Beauty', 'Lifestyle'] },
-  { name: 'Tata Harper',   industry: 'Beauty',                 hq: 'Vermont, USA',      mark: 'T', about: 'Farm-to-face, formulated in our Vermont laboratory.',                          cats: ['Beauty', 'Wellness'] },
-  { name: 'Drunk Elephant',industry: 'Beauty',                 hq: 'Houston, USA',      mark: 'D', about: 'Clean-clinical skincare without the suspicious six.',                          cats: ['Beauty', 'Wellness'] },
+  { name: 'Oakmoss',         industry: 'Beauty / Personal care', hq: 'Melbourne, AU',     mark: 'O', about: 'Skin, hair and body care, made in small batches.', cats: ['Beauty', 'Lifestyle', 'Wellness', 'Design'] },
+  { name: 'Petalcourt',      industry: 'Beauty',                 hq: 'New York, USA',     mark: 'P', about: 'Skin first, then a little colour.',                              cats: ['Beauty', 'Lifestyle'] },
+  { name: 'Atelier Vesper',       industry: 'Fragrance',              hq: 'New York, USA',     mark: 'A', about: 'Small-batch perfume, blended to order.',                       cats: ['Beauty', 'Lifestyle'] },
+  { name: 'Wildmeadow Botanics',   industry: 'Beauty',                 hq: 'Vermont, USA',      mark: 'W', about: 'Skincare grown and bottled on one farm.',                          cats: ['Beauty', 'Wellness'] },
+  { name: 'Clearwater Lab',industry: 'Beauty',                 hq: 'Houston, USA',      mark: 'C', about: 'Clinical skincare with short ingredient lists.',                          cats: ['Beauty', 'Wellness'] },
   // Home / Kitchen
-  { name: 'Le Creuset',    industry: 'Home / Kitchen',         hq: 'Fresnoy, FR',       mark: 'L', about: 'Cast iron cookware handcrafted in France since 1925.',                          cats: ['Food', 'Lifestyle', 'Design'] },
-  { name: 'Hay',           industry: 'Furniture',              hq: 'Copenhagen, DK',    mark: 'H', about: 'Contemporary furniture and accessories from Denmark.',                          cats: ['Design', 'Interiors', 'Lifestyle'] },
-  { name: 'Vitra',         industry: 'Furniture',              hq: 'Basel, CH',         mark: 'V', about: 'Designs by the most important designers of our time.',                          cats: ['Design', 'Interiors'] },
-  { name: 'Muji',          industry: 'Lifestyle',              hq: 'Tokyo, JP',         mark: 'M', about: 'Quality everyday products at fair prices.',                                     cats: ['Lifestyle', 'Design', 'Interiors', 'Sustainability'] },
-  { name: 'Iittala',       industry: 'Glassware',              hq: 'Helsinki, FI',      mark: 'I', about: 'Timeless Finnish design for everyday tables.',                                  cats: ['Design', 'Interiors', 'Food'] },
-  { name: 'Norm Architects',industry: 'Architecture',          hq: 'Copenhagen, DK',    mark: 'N', about: 'Quiet, considered design for living and working.',                              cats: ['Interiors', 'Design'] },
-  { name: 'Made.com',      industry: 'Furniture',              hq: 'London, UK',        mark: 'M', about: 'Original design, fair prices.',                                                 cats: ['Interiors', 'Design'] },
+  { name: 'Kettle & Ember',    industry: 'Home / Kitchen',         hq: 'Fresnoy, FR',       mark: 'K', about: 'Enamelled cast-iron cookware, made to be handed down.',                          cats: ['Food', 'Lifestyle', 'Design'] },
+  { name: 'Sagefold',           industry: 'Furniture',              hq: 'Copenhagen, DK',    mark: 'S', about: 'Bright, simple furniture for small rooms.',                          cats: ['Design', 'Interiors', 'Lifestyle'] },
+  { name: 'Lindqvist Studio',         industry: 'Furniture',              hq: 'Basel, CH',         mark: 'L', about: 'Chairs and tables from independent designers.',                          cats: ['Design', 'Interiors'] },
+  { name: 'Plainday',          industry: 'Lifestyle',              hq: 'Tokyo, JP',         mark: 'P', about: 'Everyday goods without the logo.',                                     cats: ['Lifestyle', 'Design', 'Interiors', 'Sustainability'] },
+  { name: 'Kivi Glass',       industry: 'Glassware',              hq: 'Helsinki, FI',      mark: 'K', about: 'Glassware for everyday tables.',                                  cats: ['Design', 'Interiors', 'Food'] },
+  { name: 'Quiet Frame Architects',industry: 'Architecture',          hq: 'Copenhagen, DK',    mark: 'Q', about: 'Calm rooms for living and working.',                              cats: ['Interiors', 'Design'] },
+  { name: 'Roomwell',      industry: 'Furniture',              hq: 'London, UK',        mark: 'R', about: 'Sofas and storage at fair prices.',                                                 cats: ['Interiors', 'Design'] },
   // Fashion
-  { name: 'Everlane',      industry: 'Fashion',                hq: 'San Francisco, USA',mark: 'E', about: 'Modern essentials. Radically transparent.',                                     cats: ['Fashion', 'Sustainability'] },
-  { name: 'COS',           industry: 'Fashion',                hq: 'Stockholm, SE',     mark: 'C', about: 'Modern, functional, considered design.',                                        cats: ['Fashion', 'Lifestyle'] },
-  { name: 'Net-a-Porter',  industry: 'Fashion (luxury)',       hq: 'London, UK',        mark: 'N', about: 'Considered curation of luxury fashion.',                                        cats: ['Fashion'] },
-  { name: 'Khaadi',        industry: 'Fashion',                hq: 'Karachi, PK',       mark: 'K', about: 'Pakistan’s most loved fashion house, crafted in our looms.',                    cats: ['Fashion', 'Lifestyle'] },
-  { name: 'Generation',    industry: 'Fashion',                hq: 'Lahore, PK',        mark: 'G', about: 'Contemporary South Asian fashion with a conscience.',                          cats: ['Fashion', 'Sustainability'] },
-  { name: 'Sapphire',      industry: 'Fashion',                hq: 'Lahore, PK',        mark: 'S', about: 'Festive and ready-to-wear, made in Pakistan.',                                 cats: ['Fashion', 'Lifestyle'] },
-  { name: 'Maria B',       industry: 'Fashion',                hq: 'Lahore, PK',        mark: 'M', about: 'Couture and prêt for the modern South Asian woman.',                           cats: ['Fashion'] },
-  { name: 'Sania Maskatiya',industry: 'Fashion',               hq: 'Karachi, PK',       mark: 'S', about: 'Hand-painted and embroidered women’s wear.',                                   cats: ['Fashion'] },
+  { name: 'Thread & Ledger',      industry: 'Fashion',                hq: 'San Francisco, USA',mark: 'T', about: 'Basics with the cost of each step shown.',                                     cats: ['Fashion', 'Sustainability'] },
+  { name: 'Linea Form',           industry: 'Fashion',                hq: 'Stockholm, SE',     mark: 'L', about: 'Clean, functional wardrobe staples.',                                        cats: ['Fashion', 'Lifestyle'] },
+  { name: 'Maison Arcade',  industry: 'Fashion (luxury)',       hq: 'London, UK',        mark: 'M', about: 'A curated edit of designer fashion.',                                        cats: ['Fashion'] },
+  { name: 'Loomhouse',        industry: 'Fashion',                hq: 'Karachi, PK',       mark: 'L', about: 'Hand-loomed cotton and lawn, made in Karachi.',                    cats: ['Fashion', 'Lifestyle'] },
+  { name: 'Neelam Studio',    industry: 'Fashion',                hq: 'Lahore, PK',        mark: 'N', about: 'Everyday South Asian wear with a conscience.',                          cats: ['Fashion', 'Sustainability'] },
+  { name: 'Indigo Lane',      industry: 'Fashion',                hq: 'Lahore, PK',        mark: 'I', about: 'Festive and ready-to-wear, made in Lahore.',                                 cats: ['Fashion', 'Lifestyle'] },
+  { name: 'Zarina Rehman',       industry: 'Fashion',                hq: 'Lahore, PK',        mark: 'Z', about: 'Couture and prêt for weddings and Eid.',                           cats: ['Fashion'] },
+  { name: 'Noor Atelier',industry: 'Fashion',               hq: 'Karachi, PK',       mark: 'N', about: 'Hand-painted and embroidered womenswear.',                                   cats: ['Fashion'] },
   // Food / Bev
-  { name: 'Blue Bottle',   industry: 'Coffee',                 hq: 'Oakland, USA',      mark: 'B', about: 'Specialty coffee roasted within 48 hours of shipping.',                        cats: ['Food', 'Lifestyle'] },
-  { name: 'OATLY',         industry: 'Plant milk',             hq: 'Malmö, SE',         mark: 'O', about: 'A company built around oats, not cows.',                                        cats: ['Food', 'Sustainability'] },
-  { name: 'Notpla',        industry: 'Food packaging',         hq: 'London, UK',        mark: 'N', about: 'Packaging that disappears.',                                                   cats: ['Sustainability', 'Food'] },
-  { name: 'KIND',          industry: 'Snacks',                 hq: 'New York, USA',     mark: 'K', about: 'Whole nuts. Whole fruit. Whole grains.',                                        cats: ['Food', 'Wellness'] },
-  { name: 'Olipop',        industry: 'Beverages',              hq: 'California, USA',   mark: 'O', about: 'A new kind of soda — gut healthy, prebiotic.',                                  cats: ['Food', 'Wellness'] },
+  { name: 'Ridgeback Coffee',   industry: 'Coffee',                 hq: 'Oakland, USA',      mark: 'R', about: 'Small-lot coffee, roasted within two days of shipping.',                        cats: ['Food', 'Lifestyle'] },
+  { name: 'Oatfield',         industry: 'Plant milk',             hq: 'Malmö, SE',         mark: 'O', about: 'Oat milk for coffee and cereal.',                                        cats: ['Food', 'Sustainability'] },
+  { name: 'Seaweave',        industry: 'Food packaging',         hq: 'London, UK',        mark: 'S', about: 'Packaging made from seaweed.',                                                   cats: ['Sustainability', 'Food'] },
+  { name: 'Wholegrove',          industry: 'Snacks',                 hq: 'New York, USA',     mark: 'W', about: 'Nut and fruit bars with nothing hidden.',                                        cats: ['Food', 'Wellness'] },
+  { name: 'Fizzroot',        industry: 'Beverages',              hq: 'California, USA',   mark: 'F', about: 'Low-sugar soda with added fibre.',                                  cats: ['Food', 'Wellness'] },
   // Travel / Hospitality
-  { name: 'Airbnb',        industry: 'Travel',                 hq: 'San Francisco, USA',mark: 'A', about: 'Belong anywhere.',                                                              cats: ['Travel', 'Lifestyle'] },
-  { name: 'Soho House',    industry: 'Hospitality',            hq: 'London, UK',        mark: 'S', about: 'Members\' clubs and hotels for creative people.',                              cats: ['Travel', 'Lifestyle'] },
-  { name: 'Ace Hotel',     industry: 'Hospitality',            hq: 'Portland, USA',     mark: 'A', about: 'Hotels for the curious and creative.',                                         cats: ['Travel', 'Lifestyle', 'Design'] },
-  { name: 'Aman Resorts',  industry: 'Hospitality',            hq: 'Singapore',         mark: 'A', about: 'Quiet, considered hospitality in extraordinary places.',                       cats: ['Travel', 'Wellness'] },
+  { name: 'Hostlane',        industry: 'Travel',                 hq: 'San Francisco, USA',mark: 'H', about: 'Homes to stay in, hosted by locals.',                                                              cats: ['Travel', 'Lifestyle'] },
+  { name: 'Gallery House',    industry: 'Hospitality',            hq: 'London, UK',        mark: 'G', about: 'Members’ rooms for people who make things.',                              cats: ['Travel', 'Lifestyle'] },
+  { name: 'Halden Hotels',     industry: 'Hospitality',            hq: 'Portland, USA',     mark: 'H', about: 'Small hotels for the curious.',                                         cats: ['Travel', 'Lifestyle', 'Design'] },
+  { name: 'Stillwater Retreats',  industry: 'Hospitality',            hq: 'Singapore',         mark: 'S', about: 'Quiet resorts in remote places.',                       cats: ['Travel', 'Wellness'] },
   // Tech / Gear
-  { name: 'Peak Design',   industry: 'Photography gear',       hq: 'San Francisco, USA',mark: 'P', about: 'Carry solutions for working photographers.',                                   cats: ['Tech', 'Travel', 'Design'] },
-  { name: 'Leica',         industry: 'Cameras',                hq: 'Wetzlar, DE',       mark: 'L', about: 'The decisive moment, since 1914.',                                              cats: ['Tech', 'Design'] },
-  { name: 'Teenage Eng.',  industry: 'Audio gear',             hq: 'Stockholm, SE',     mark: 'T', about: 'Pocket synths and beautiful electronics.',                                     cats: ['Tech', 'Design'] },
-  { name: 'Notion',        industry: 'Software',               hq: 'San Francisco, USA',mark: 'N', about: 'Connected workspace where better, faster work happens.',                       cats: ['Tech'] },
-  { name: 'Linear',        industry: 'Software',               hq: 'San Francisco, USA',mark: 'L', about: 'Built for high-performance product teams.',                                    cats: ['Tech'] },
-  { name: 'Arc',           industry: 'Software',               hq: 'New York, USA',     mark: 'A', about: 'A browser that thinks like you.',                                              cats: ['Tech'] },
+  { name: 'Carryall Works',   industry: 'Photography gear',       hq: 'San Francisco, USA',mark: 'C', about: 'Camera bags and straps for working photographers.',                                   cats: ['Tech', 'Travel', 'Design'] },
+  { name: 'Brennhaus Optics',         industry: 'Cameras',                hq: 'Wetzlar, DE',       mark: 'B', about: 'Rangefinder cameras and lenses.',                                              cats: ['Tech', 'Design'] },
+  { name: 'Pocket Synth Co.',  industry: 'Audio gear',             hq: 'Stockholm, SE',     mark: 'P', about: 'Small synths and recorders.',                                     cats: ['Tech', 'Design'] },
+  { name: 'Pagewise',        industry: 'Software',               hq: 'San Francisco, USA',mark: 'P', about: 'Notes, docs and tasks in one place.',                       cats: ['Tech'] },
+  { name: 'Trackline',        industry: 'Software',               hq: 'San Francisco, USA',mark: 'T', about: 'Issue tracking for product teams.',                                    cats: ['Tech'] },
+  { name: 'Lantern Browser',           industry: 'Software',               hq: 'New York, USA',     mark: 'L', about: 'A web browser that keeps tabs tidy.',                                              cats: ['Tech'] },
   // Wellness
-  { name: 'Lululemon',     industry: 'Athletic apparel',       hq: 'Vancouver, CA',     mark: 'L', about: 'Technical apparel for yoga, training, and life.',                              cats: ['Wellness', 'Fashion'] },
-  { name: 'Alo Yoga',      industry: 'Athletic apparel',       hq: 'Beverly Hills, USA',mark: 'A', about: 'Yoga to street style.',                                                        cats: ['Wellness', 'Fashion'] },
-  { name: 'On Running',    industry: 'Athletic shoes',         hq: 'Zurich, CH',        mark: 'O', about: 'Cloud-tec running shoes engineered in Switzerland.',                          cats: ['Wellness', 'Travel'] },
-  { name: 'Calm',          industry: 'App',                    hq: 'San Francisco, USA',mark: 'C', about: 'The #1 app for meditation and sleep.',                                          cats: ['Wellness', 'Tech'] },
+  { name: 'Northline Active',     industry: 'Athletic apparel',       hq: 'Vancouver, CA',     mark: 'N', about: 'Training and yoga wear.',                              cats: ['Wellness', 'Fashion'] },
+  { name: 'Solace Yoga',      industry: 'Athletic apparel',       hq: 'Beverly Hills, USA',mark: 'S', about: 'Yoga clothes you can wear out.',                                                        cats: ['Wellness', 'Fashion'] },
+  { name: 'Fellrun',    industry: 'Athletic shoes',         hq: 'Zurich, CH',        mark: 'F', about: 'Running shoes for road and trail.',                          cats: ['Wellness', 'Travel'] },
+  { name: 'Stillpoint',          industry: 'App',                    hq: 'San Francisco, USA',mark: 'S', about: 'An app for sleep and short meditations.',                                          cats: ['Wellness', 'Tech'] },
   // Sustainability / Conscious
-  { name: 'Patagonia',     industry: 'Outdoor apparel',        hq: 'Ventura, USA',      mark: 'P', about: 'In business to save our home planet.',                                         cats: ['Sustainability', 'Travel'] },
-  { name: 'Allbirds',      industry: 'Footwear',               hq: 'San Francisco, USA',mark: 'A', about: 'Naturally low carbon, super comfortable shoes.',                              cats: ['Sustainability', 'Fashion'] },
-  { name: 'Thousand Fell', industry: 'Footwear',               hq: 'New York, USA',     mark: 'T', about: 'Recyclable sneakers, made to last.',                                          cats: ['Sustainability', 'Fashion'] },
-  { name: 'Reformation',   industry: 'Fashion',                hq: 'Los Angeles, USA',  mark: 'R', about: 'Sustainable women\'s clothing, killer dresses.',                              cats: ['Fashion', 'Sustainability'] },
+  { name: 'Ridgewild Outdoor',     industry: 'Outdoor apparel',        hq: 'Ventura, USA',      mark: 'R', about: 'Repairable outdoor clothing.',                                         cats: ['Sustainability', 'Travel'] },
+  { name: 'Woolwalk',      industry: 'Footwear',               hq: 'San Francisco, USA',mark: 'W', about: 'Wool sneakers with a low footprint.',                              cats: ['Sustainability', 'Fashion'] },
+  { name: 'Loopsole', industry: 'Footwear',               hq: 'New York, USA',     mark: 'L', about: 'Sneakers you send back to be recycled.',                                          cats: ['Sustainability', 'Fashion'] },
+  { name: 'Second Bloom',   industry: 'Fashion',                hq: 'Los Angeles, USA',  mark: 'S', about: 'Dresses cut from deadstock fabric.',                              cats: ['Fashion', 'Sustainability'] },
   // Lifestyle / Magazine-y
-  { name: 'Kinfolk',       industry: 'Publishing',             hq: 'Copenhagen, DK',    mark: 'K', about: 'Quiet quarterly on essays, design, and food.',                                cats: ['Lifestyle', 'Design'] },
-  { name: 'Cereal',        industry: 'Publishing',             hq: 'Bath, UK',          mark: 'C', about: 'Travel and style magazine.',                                                  cats: ['Travel', 'Lifestyle', 'Design'] },
-  { name: 'Apartamento',   industry: 'Publishing',             hq: 'Barcelona, ES',     mark: 'A', about: 'An everyday-life interiors magazine.',                                        cats: ['Interiors', 'Lifestyle'] },
+  { name: 'Hearth Quarterly',       industry: 'Publishing',             hq: 'Copenhagen, DK',    mark: 'H', about: 'A slow magazine on homes, food and work.',                                cats: ['Lifestyle', 'Design'] },
+  { name: 'Wayside Magazine',        industry: 'Publishing',             hq: 'Bath, UK',          mark: 'W', about: 'Travel and design, twice a year.',                                                  cats: ['Travel', 'Lifestyle', 'Design'] },
+  { name: 'Casa Diaries',   industry: 'Publishing',             hq: 'Barcelona, ES',     mark: 'C', about: 'Lived-in homes and the people in them.',                                        cats: ['Interiors', 'Lifestyle'] },
   // Pakistani / Regional consumer
-  { name: 'National Foods',industry: 'Food (CPG)',             hq: 'Karachi, PK',       mark: 'N', about: 'Spices, recipes, and ready-to-cook for South Asian kitchens.',               cats: ['Food', 'Lifestyle'] },
-  { name: 'Daraz',         industry: 'E-commerce',             hq: 'Karachi, PK',       mark: 'D', about: 'Online shopping in South Asia.',                                              cats: ['Lifestyle', 'Tech'] },
-  { name: 'Foodpanda PK',  industry: 'Food delivery',          hq: 'Lahore, PK',        mark: 'F', about: 'Hot food delivered fast.',                                                    cats: ['Food', 'Tech'] },
-  { name: 'Careem',        industry: 'Mobility',               hq: 'Dubai, UAE',        mark: 'C', about: 'Move people, things and money in the region.',                              cats: ['Tech', 'Lifestyle'] },
+  { name: 'Masala House Foods',industry: 'Food (CPG)',             hq: 'Karachi, PK',       mark: 'M', about: 'Spice mixes and ready-to-cook for South Asian kitchens.',               cats: ['Food', 'Lifestyle'] },
+  { name: 'Bazaarline',         industry: 'E-commerce',             hq: 'Karachi, PK',       mark: 'B', about: 'Online shopping, delivered across Pakistan.',                                              cats: ['Lifestyle', 'Tech'] },
+  { name: 'Tiffin Run',  industry: 'Food delivery',          hq: 'Lahore, PK',        mark: 'T', about: 'Food delivery from local kitchens.',                                                    cats: ['Food', 'Tech'] },
+  { name: 'Rahgir',        industry: 'Mobility',               hq: 'Dubai, UAE',        mark: 'R', about: 'Rides and deliveries across the city.',                              cats: ['Tech', 'Lifestyle'] },
   // Made-up boutique
   { name: 'Studio Loma',   industry: 'Interiors',              hq: 'Lisbon, PT',        mark: 'S', about: 'Considered furniture for small homes.',                                       cats: ['Interiors', 'Design'] },
-  { name: 'Salt & Stone',  industry: 'Personal care',          hq: 'Los Angeles, USA',  mark: 'S', about: 'Naturally-derived deodorant, body care.',                                     cats: ['Beauty', 'Wellness'] },
-  { name: 'Linum & Co',    industry: 'Home textiles',          hq: 'Berlin, DE',        mark: 'L', about: 'Linen for your bedroom and table.',                                           cats: ['Interiors', 'Sustainability'] },
+  { name: 'Brine & Birch',  industry: 'Personal care',          hq: 'Los Angeles, USA',  mark: 'B', about: 'Natural deodorant and body care.',                                     cats: ['Beauty', 'Wellness'] },
+  { name: 'Flaxroom',    industry: 'Home textiles',          hq: 'Berlin, DE',        mark: 'F', about: 'Linen for the bedroom and the table.',                                           cats: ['Interiors', 'Sustainability'] },
   { name: 'Ocre',          industry: 'Ceramics',               hq: 'Mexico City, MX',   mark: 'O', about: 'Hand-thrown stoneware from Oaxaca.',                                          cats: ['Design', 'Interiors'] },
   { name: 'Vento Cycle',   industry: 'Cycling',                hq: 'Milan, IT',         mark: 'V', about: 'Steel road frames built in Lombardy.',                                        cats: ['Tech', 'Travel', 'Wellness'] },
   { name: 'Nord & Pine',   industry: 'Outdoor apparel',        hq: 'Oslo, NO',          mark: 'N', about: 'Wool layers for cold mornings.',                                              cats: ['Travel', 'Sustainability'] },
 
   // === Additional 32 brands across all categories for a fuller marketplace feel ===
-  { name: 'Byredo',           industry: 'Fragrance',          hq: 'Stockholm, SE',     mark: 'B', about: 'Niche fragrance, modern lifestyle accessories.',                cats: ['Beauty', 'Lifestyle'] },
-  { name: 'Diptyque',         industry: 'Home & fragrance',   hq: 'Paris, FR',         mark: 'D', about: 'Parisian house of perfume, candles, and personal care.',       cats: ['Beauty', 'Interiors', 'Lifestyle'] },
-  { name: 'Maison Margiela',  industry: 'Fragrance',          hq: 'Paris, FR',         mark: 'M', about: 'Replica scents and quietly disruptive ready-to-wear.',         cats: ['Beauty', 'Fashion'] },
-  { name: 'Olaplex',          industry: 'Hair care',          hq: 'Los Angeles, USA',  mark: 'O', about: 'Bond-building hair repair, salon-grade.',                       cats: ['Beauty'] },
-  { name: 'Skin + Me',        industry: 'Personal care',      hq: 'London, UK',        mark: 'S', about: 'Personalised prescription skincare delivered monthly.',         cats: ['Beauty', 'Wellness'] },
-  { name: 'Faherty',          industry: 'Fashion',            hq: 'New York, USA',     mark: 'F', about: 'Modern American style. Built to last, made for any place.',    cats: ['Fashion', 'Travel'] },
-  { name: 'Outerknown',       industry: 'Fashion',            hq: 'Culver City, USA',  mark: 'O', about: 'Sustainable surf-inspired apparel for men and women.',         cats: ['Fashion', 'Sustainability', 'Travel'] },
-  { name: 'Tibi',             industry: 'Fashion',            hq: 'New York, USA',     mark: 'T', about: 'Creative pragmatism — modern wardrobe staples.',                cats: ['Fashion', 'Lifestyle'] },
-  { name: 'Sézane',           industry: 'Fashion',            hq: 'Paris, FR',         mark: 'S', about: 'French-girl fashion, made responsibly.',                        cats: ['Fashion', 'Lifestyle'] },
-  { name: 'Universal Standard', industry: 'Fashion',          hq: 'New York, USA',     mark: 'U', about: 'Size-inclusive apparel for everyone, sized 00–40.',            cats: ['Fashion', 'Lifestyle'] },
-  { name: 'Outdoor Voices',   industry: 'Athletic apparel',   hq: 'Austin, USA',       mark: 'O', about: 'Doing things, together.',                                       cats: ['Wellness', 'Fashion'] },
-  { name: 'Gymshark',         industry: 'Athletic apparel',   hq: 'Solihull, UK',      mark: 'G', about: 'Conditioning apparel for the strongest version of you.',       cats: ['Wellness', 'Fashion'] },
-  { name: 'Beats',            industry: 'Audio',              hq: 'Los Angeles, USA',  mark: 'B', about: 'Sound-engineered for everyday and elite athletes.',             cats: ['Tech'] },
-  { name: 'Sonos',            industry: 'Audio',              hq: 'Santa Barbara, USA',mark: 'S', about: 'Smart home audio designed for great sound.',                    cats: ['Tech', 'Interiors'] },
-  { name: 'Bose',             industry: 'Audio',              hq: 'Framingham, USA',   mark: 'B', about: 'Better sound through research.',                                 cats: ['Tech'] },
-  { name: 'Apple',            industry: 'Tech',               hq: 'Cupertino, USA',    mark: 'A', about: 'Designed in California.',                                        cats: ['Tech', 'Lifestyle'] },
-  { name: 'Brilliant Earth',  industry: 'Jewelry',            hq: 'San Francisco, USA',mark: 'B', about: 'Beyond conflict-free fine jewelry, ethically sourced.',         cats: ['Fashion', 'Sustainability'] },
-  { name: 'Mejuri',           industry: 'Jewelry',            hq: 'Toronto, CA',       mark: 'M', about: 'Fine jewelry for everyday wear.',                                cats: ['Fashion', 'Lifestyle'] },
-  { name: 'Catbird',          industry: 'Jewelry',            hq: 'Brooklyn, USA',     mark: 'C', about: 'Brooklyn-made jewelry and gifts.',                               cats: ['Fashion', 'Lifestyle'] },
-  { name: 'Smeg',             industry: 'Appliances',         hq: 'Reggio Emilia, IT', mark: 'S', about: 'Italian-designed kitchen appliances.',                           cats: ['Food', 'Interiors', 'Design'] },
-  { name: 'Our Place',        industry: 'Cookware',           hq: 'Los Angeles, USA',  mark: 'O', about: 'Modern cookware made for the way you cook today.',              cats: ['Food', 'Lifestyle'] },
-  { name: 'Great Jones',      industry: 'Cookware',           hq: 'New York, USA',     mark: 'G', about: 'Direct-to-consumer cookware for home cooks.',                   cats: ['Food', 'Lifestyle'] },
-  { name: 'Trade Coffee',     industry: 'Coffee',             hq: 'Brooklyn, USA',     mark: 'T', about: 'Personalised coffee subscriptions from top roasters.',          cats: ['Food', 'Lifestyle'] },
-  { name: 'Death Wish',       industry: 'Coffee',             hq: 'New York, USA',     mark: 'D', about: 'World\'s strongest coffee.',                                    cats: ['Food'] },
-  { name: 'Magic Spoon',      industry: 'Snacks',             hq: 'New York, USA',     mark: 'M', about: 'High-protein cereals that taste like the box.',                cats: ['Food', 'Wellness'] },
-  { name: 'Liquid Death',     industry: 'Beverages',          hq: 'Los Angeles, USA',  mark: 'L', about: 'Mountain water in a tall boy can. Murder your thirst.',         cats: ['Food', 'Lifestyle'] },
-  { name: 'Recess',           industry: 'Beverages',          hq: 'Los Angeles, USA',  mark: 'R', about: 'Calm cans with adaptogens and hemp.',                            cats: ['Wellness', 'Food'] },
-  { name: 'Boll & Branch',    industry: 'Home textiles',      hq: 'Summit, USA',       mark: 'B', about: 'Organic cotton bedding and bath, ethically made.',              cats: ['Interiors', 'Sustainability'] },
-  { name: 'Brooklinen',       industry: 'Home textiles',      hq: 'Brooklyn, USA',     mark: 'B', about: 'Direct-to-consumer luxury sheets and towels.',                  cats: ['Interiors', 'Lifestyle'] },
-  { name: 'Parachute',        industry: 'Home',               hq: 'Los Angeles, USA',  mark: 'P', about: 'Premium home essentials made from natural materials.',          cats: ['Interiors', 'Sustainability', 'Lifestyle'] },
-  { name: 'Article',          industry: 'Furniture',          hq: 'Vancouver, CA',     mark: 'A', about: 'Modern furniture designed for everyday life.',                  cats: ['Interiors', 'Design'] },
-  { name: 'West Elm',         industry: 'Furniture',          hq: 'Brooklyn, USA',     mark: 'W', about: 'Modern furniture and home decor.',                              cats: ['Interiors', 'Design'] },
-  { name: 'Casper',           industry: 'Sleep',              hq: 'New York, USA',     mark: 'C', about: 'Sleep solutions for the better mornings ahead.',                cats: ['Wellness', 'Interiors'] },
-  { name: 'Bombas',           industry: 'Apparel',            hq: 'New York, USA',     mark: 'B', about: 'Comfort-first socks and tees that give back.',                  cats: ['Fashion', 'Sustainability'] },
-  { name: 'Vuori',            industry: 'Athletic apparel',   hq: 'Encinitas, USA',    mark: 'V', about: 'Performance apparel inspired by the active coastal lifestyle.', cats: ['Wellness', 'Fashion'] },
-  { name: 'Tracksmith',       industry: 'Athletic apparel',   hq: 'Boston, USA',       mark: 'T', about: 'Running apparel with a literary soul.',                          cats: ['Wellness', 'Fashion'] },
-  { name: 'TenThousand',      industry: 'Athletic apparel',   hq: 'Los Angeles, USA',  mark: 'T', about: 'Training-grade apparel built for the work.',                     cats: ['Wellness'] },
-  { name: 'Allset',           industry: 'Tech / Lifestyle',   hq: 'Lahore, PK',        mark: 'A', about: 'Local startups and apps made in Pakistan.',                      cats: ['Tech', 'Lifestyle'] },
-  { name: 'Bykea',            industry: 'Mobility',           hq: 'Karachi, PK',       mark: 'B', about: 'Karachi\'s favourite ride-and-delivery app.',                    cats: ['Tech', 'Lifestyle'] },
-  { name: 'Sapphire Home',    industry: 'Home textiles',      hq: 'Lahore, PK',        mark: 'S', about: 'Pakistan\'s home and lifestyle line from the Sapphire group.', cats: ['Interiors', 'Lifestyle'] },
+  { name: 'Sillage Room',           industry: 'Fragrance',          hq: 'Stockholm, SE',     mark: 'S', about: 'Fragrance and small leather goods.',                cats: ['Beauty', 'Lifestyle'] },
+  { name: 'Maison Cire',         industry: 'Home & fragrance',   hq: 'Paris, FR',         mark: 'M', about: 'Candles, perfume and home scent.',       cats: ['Beauty', 'Interiors', 'Lifestyle'] },
+  { name: 'Atelier Ombre',  industry: 'Fragrance',          hq: 'Paris, FR',         mark: 'A', about: 'Scents built from memories.',         cats: ['Beauty', 'Fashion'] },
+  { name: 'Bondwell',          industry: 'Hair care',          hq: 'Los Angeles, USA',  mark: 'B', about: 'Salon-grade hair repair at home.',                       cats: ['Beauty'] },
+  { name: 'Dermadesk',        industry: 'Personal care',      hq: 'London, UK',        mark: 'D', about: 'Personalised skincare by post.',         cats: ['Beauty', 'Wellness'] },
+  { name: 'Tidewater Supply',          industry: 'Fashion',            hq: 'New York, USA',     mark: 'T', about: 'Easy clothes for the coast.',    cats: ['Fashion', 'Travel'] },
+  { name: 'Swell & Stitch',       industry: 'Fashion',            hq: 'Culver City, USA',  mark: 'S', about: 'Surf-inspired clothing in recycled fibres.',         cats: ['Fashion', 'Sustainability', 'Travel'] },
+  { name: 'Marlow Grey',             industry: 'Fashion',            hq: 'New York, USA',     mark: 'M', about: 'Modern wardrobe staples.',                cats: ['Fashion', 'Lifestyle'] },
+  { name: 'Rue Clémence',           industry: 'Fashion',            hq: 'Paris, FR',         mark: 'R', about: 'Parisian dresses and knits, made responsibly.',                        cats: ['Fashion', 'Lifestyle'] },
+  { name: 'Every Size Studio', industry: 'Fashion',          hq: 'New York, USA',     mark: 'E', about: 'Clothing in every size, same price.',            cats: ['Fashion', 'Lifestyle'] },
+  { name: 'Weekend Motion',   industry: 'Athletic apparel',   hq: 'Austin, USA',       mark: 'W', about: 'Activewear for doing things together.',                                       cats: ['Wellness', 'Fashion'] },
+  { name: 'Ironleaf Training',         industry: 'Athletic apparel',   hq: 'Solihull, UK',      mark: 'I', about: 'Gym wear for lifting days.',       cats: ['Wellness', 'Fashion'] },
+  { name: 'Bassline Audio',            industry: 'Audio',              hq: 'Los Angeles, USA',  mark: 'B', about: 'Headphones tuned for training.',             cats: ['Tech'] },
+  { name: 'Roomtone Audio',            industry: 'Audio',              hq: 'Santa Barbara, USA',mark: 'R', about: 'Speakers for every room.',                    cats: ['Tech', 'Interiors'] },
+  { name: 'Clearhall Sound',             industry: 'Audio',              hq: 'Framingham, USA',   mark: 'C', about: 'Noise-cancelling headphones and speakers.',                                 cats: ['Tech'] },
+  { name: 'Orchard Devices',            industry: 'Tech',               hq: 'Cupertino, USA',    mark: 'O', about: 'Phones, laptops and watches.',                                        cats: ['Tech', 'Lifestyle'] },
+  { name: 'Truecut Jewels',  industry: 'Jewelry',            hq: 'San Francisco, USA',mark: 'T', about: 'Fine jewellery with traceable stones.',         cats: ['Fashion', 'Sustainability'] },
+  { name: 'Daily Gold Co.',           industry: 'Jewelry',            hq: 'Toronto, CA',       mark: 'D', about: 'Fine jewellery for every day.',                                cats: ['Fashion', 'Lifestyle'] },
+  { name: 'Wren & Wire',          industry: 'Jewelry',            hq: 'Brooklyn, USA',     mark: 'W', about: 'Delicate rings and charms.',                               cats: ['Fashion', 'Lifestyle'] },
+  { name: 'Pastello',             industry: 'Appliances',         hq: 'Reggio Emilia, IT', mark: 'P', about: 'Retro kitchen appliances in soft colours.',                           cats: ['Food', 'Interiors', 'Design'] },
+  { name: 'Common Table',        industry: 'Cookware',           hq: 'Los Angeles, USA',  mark: 'C', about: 'One pan that does most things.',              cats: ['Food', 'Lifestyle'] },
+  { name: 'Bond Street Pans',      industry: 'Cookware',           hq: 'New York, USA',     mark: 'B', about: 'Cookware for home cooks.',                   cats: ['Food', 'Lifestyle'] },
+  { name: 'Roaster’s Round',     industry: 'Coffee',             hq: 'Brooklyn, USA',     mark: 'R', about: 'Coffee subscriptions from small roasters.',          cats: ['Food', 'Lifestyle'] },
+  { name: 'Midnight Grind',       industry: 'Coffee',             hq: 'New York, USA',     mark: 'M', about: 'Very strong coffee.',                                    cats: ['Food'] },
+  { name: 'Spoonful Protein',      industry: 'Snacks',             hq: 'New York, USA',     mark: 'S', about: 'High-protein cereal that tastes like cereal.',                cats: ['Food', 'Wellness'] },
+  { name: 'Tallcan Water',     industry: 'Beverages',          hq: 'Los Angeles, USA',  mark: 'T', about: 'Mountain water in a can.',         cats: ['Food', 'Lifestyle'] },
+  { name: 'Unwind Cans',           industry: 'Beverages',          hq: 'Los Angeles, USA',  mark: 'U', about: 'Sparkling water with adaptogens.',                            cats: ['Wellness', 'Food'] },
+  { name: 'Cotton & Cove',    industry: 'Home textiles',      hq: 'Summit, USA',       mark: 'C', about: 'Organic cotton bedding.',              cats: ['Interiors', 'Sustainability'] },
+  { name: 'Sheetworks',       industry: 'Home textiles',      hq: 'Brooklyn, USA',     mark: 'S', about: 'Sheets and towels, sold direct.',                  cats: ['Interiors', 'Lifestyle'] },
+  { name: 'Softline Home',        industry: 'Home',               hq: 'Los Angeles, USA',  mark: 'S', about: 'Home essentials in natural materials.',          cats: ['Interiors', 'Sustainability', 'Lifestyle'] },
+  { name: 'Framework Furniture',          industry: 'Furniture',          hq: 'Vancouver, CA',     mark: 'F', about: 'Modern furniture shipped flat.',                  cats: ['Interiors', 'Design'] },
+  { name: 'Eastbank Home',         industry: 'Furniture',          hq: 'Brooklyn, USA',     mark: 'E', about: 'Furniture and decor for city flats.',                              cats: ['Interiors', 'Design'] },
+  { name: 'Slumberwell',           industry: 'Sleep',              hq: 'New York, USA',     mark: 'S', about: 'Mattresses and pillows.',                cats: ['Wellness', 'Interiors'] },
+  { name: 'Footnote Socks',           industry: 'Apparel',            hq: 'New York, USA',     mark: 'F', about: 'Comfortable socks that give a pair away.',                  cats: ['Fashion', 'Sustainability'] },
+  { name: 'Coastline Active',            industry: 'Athletic apparel',   hq: 'Encinitas, USA',    mark: 'C', about: 'Training clothes for warm weather.', cats: ['Wellness', 'Fashion'] },
+  { name: 'Milepost Running',       industry: 'Athletic apparel',   hq: 'Boston, USA',       mark: 'M', about: 'Running clothes with a long memory.',                          cats: ['Wellness', 'Fashion'] },
+  { name: 'Repcount',      industry: 'Athletic apparel',   hq: 'Los Angeles, USA',  mark: 'R', about: 'Training clothes built for the work.',                     cats: ['Wellness'] },
+  { name: 'Taiyar Apps',           industry: 'Tech / Lifestyle',   hq: 'Lahore, PK',        mark: 'T', about: 'Apps made in Pakistan.',                      cats: ['Tech', 'Lifestyle'] },
+  { name: 'Chalo Rides',            industry: 'Mobility',           hq: 'Karachi, PK',       mark: 'C', about: 'Bike rides and deliveries in Karachi.',                    cats: ['Tech', 'Lifestyle'] },
+  { name: 'Indigo Lane Home',    industry: 'Home textiles',      hq: 'Lahore, PK',        mark: 'I', about: 'Bedding and home textiles, made in Lahore.', cats: ['Interiors', 'Lifestyle'] },
 ];
 
 // ============ CAMPAIGN TITLE TEMPLATES ============
@@ -486,11 +486,11 @@ const DEMO_CREATORS: Creator[] = [
     walletBalance: 4200, pendingBalance: 3400, lifetimeEarnings: 47_800,
     verified: true,
     pressMentions: [
-      { source: 'Vogue', title: 'The new wave of sustainable creators', year: 2025 },
-      { source: 'The Cut', title: '10 creators changing fashion media', year: 2024 },
-      { source: 'Business of Fashion', title: 'Closet refresh: lasting style picks', year: 2024 },
+      { source: 'Field & Frame', title: 'The new wave of sustainable creators', year: 2025 },
+      { source: 'The Weekly Edit', title: '10 creators changing fashion media', year: 2024 },
+      { source: 'Style Ledger', title: 'Closet refresh: lasting style picks', year: 2024 },
     ],
-    pastClients: ['Aesop', 'Glossier', 'Le Labo', 'Reformation', 'Everlane', 'Mejuri'],
+    pastClients: ['Oakmoss', 'Petalcourt', 'Atelier Vesper', 'Second Bloom', 'Thread & Ledger', 'Daily Gold Co.'],
     availability: { status: 'limited', untilDate: dayAhead(30), note: 'Booked for May — open from June 1.' },
     // Phase 59 — Sarah's storefront portfolio (was getting nuked by
     // Supabase overlay; overlay now preserves local). 6 representative
@@ -504,7 +504,7 @@ const DEMO_CREATORS: Creator[] = [
     // These IDs reference reviews seeded later in this file.
     featuredReviewIds: ['rv_s1', 'rv_s2', 'rv_s3'],
     // Phase 59 — saved briefs so CreatorHome's "Saved for later" tile
-    // surfaces (was hidden when empty). Mix of Aesop + Le Creuset
+    // surfaces (was hidden when empty). Mix of Oakmoss + Kettle & Ember
     // briefs + a couple of generated campaigns to show variety.
     savedBriefs: ['cmp_3', 'cmp_4', 'cmp_g8', 'cmp_g10', 'cmp_g12'],
     // Demo-seed storefront pulse — Sarah is our hero creator account so
@@ -516,7 +516,7 @@ const DEMO_CREATORS: Creator[] = [
     storefrontViewsDeltaPct: 28,
     brandInquiriesThisWeek: 14,
     brandInquiriesDelta: 4,
-    recentBrandViewerNames: ['Aesop', 'Glossier', 'Le Labo', 'Reformation', 'Everlane', 'Mejuri', 'Cuyana', 'Outdoor Voices', 'Sézane', 'Vuori', 'Quince', 'Buffy'],
+    recentBrandViewerNames: ['Oakmoss', 'Petalcourt', 'Atelier Vesper', 'Second Bloom', 'Thread & Ledger', 'Daily Gold Co.', 'Cedar & Silk', 'Weekend Motion', 'Rue Clémence', 'Coastline Active', 'Pomme Basics', 'Cloudnest Bedding'],
     recentBrandViewerCount: 12,
   },
   {
@@ -538,13 +538,13 @@ const DEMO_CREATORS: Creator[] = [
     payout: { method: 'Wise', account: 'Wise USD ••• 8821', currency: 'USD' },
     walletBalance: 1800, pendingBalance: 2200, lifetimeEarnings: 18_400,
     verified: true,
-    pressMentions: [{ source: 'Dawn', title: 'Recipes worth keeping', year: 2024 }],
-    pastClients: ['Le Creuset', 'National Foods'],
+    pressMentions: [{ source: 'The Sunday Table', title: 'Recipes worth keeping', year: 2024 }],
+    pastClients: ['Kettle & Ember', 'Masala House Foods'],
     storefrontViewsLast30d: 1480,
     storefrontViewsDeltaPct: 12,
     brandInquiriesThisWeek: 8,
     brandInquiriesDelta: 2,
-    recentBrandViewerNames: ['Le Creuset', 'National Foods', 'Foodpanda', 'Daraz', 'Krave Mart', 'Tossdown', 'Khaadi'],
+    recentBrandViewerNames: ['Kettle & Ember', 'Masala House Foods', 'Tiffin Run', 'Bazaarline', 'Kiryana Express', 'Dastarkhwan', 'Loomhouse'],
     recentBrandViewerCount: 7,
   },
   {
@@ -566,14 +566,14 @@ const DEMO_CREATORS: Creator[] = [
     payout: { method: 'Stripe', account: 'Stripe Connect (JP)', currency: 'JPY' },
     walletBalance: 0, pendingBalance: 1500, lifetimeEarnings: 9_800,
     verified: true,
-    pressMentions: [{ source: 'Apartamento', title: 'Workshop in Kyoto', year: 2024 }],
-    pastClients: ['Muji'],
+    pressMentions: [{ source: 'Casa Diaries', title: 'Workshop in Kyoto', year: 2024 }],
+    pastClients: ['Plainday'],
     availability: { status: 'open', note: 'Open for design + lifestyle briefs through Q2.' },
     storefrontViewsLast30d: 920,
     storefrontViewsDeltaPct: 41,
     brandInquiriesThisWeek: 6,
     brandInquiriesDelta: 3,
-    recentBrandViewerNames: ['Muji', 'Snow Peak', 'Postalco', 'Hender Scheme', 'D&Department', 'Beams', 'Aesop'],
+    recentBrandViewerNames: ['Plainday', 'Ridgeline Camp', 'Paperpost Goods', 'Hide & Hand', 'Long Life Store', 'Rafters Select', 'Oakmoss'],
     recentBrandViewerCount: 7,
   },
 ];
@@ -581,9 +581,9 @@ const DEMO_CREATORS: Creator[] = [
 const DEMO_BRANDS: Brand[] = [
   {
     id: 'b_aesop', userId: 'u_hannah',
-    name: 'Aesop', industry: 'Beauty / Personal care', hq: 'Melbourne, AU',
-    website: 'aesop.com', logoMark: 'A',
-    about: 'Aesop has carefully curated a range of skin, hair and body care formulations.',
+    name: 'Oakmoss', industry: 'Beauty / Personal care', hq: 'Melbourne, AU',
+    website: 'oakmoss.example', logoMark: 'O',
+    about: 'Skin, hair and body care, made in small batches in Melbourne.',
     preferredCategories: ['Lifestyle', 'Beauty', 'Wellness', 'Design'],
     preferredRegions: ['US', 'UK', 'EU', 'APAC'],
     walletBalance: 48_200, escrowHeld: 5_400,
@@ -596,7 +596,7 @@ const DEMO_BRANDS: Brand[] = [
     // Phase 59 — offer templates so the brand-side SendOffer modal's
     // templates dropdown isn't empty on first open. Three common shapes
     // covering single-reel deals, multi-deliverable packs, and the
-    // newsletter sponsor format Aesop runs quarterly.
+    // newsletter sponsor format Oakmoss runs quarterly.
     offerTemplates: [
       {
         id: 'tpl_aesop_1',
@@ -624,7 +624,7 @@ const DEMO_BRANDS: Brand[] = [
       },
     ],
     // Phase 58 — preferred-tier + budget signals captured from
-    // BrandOnboardingV2. Aesop targets the Flagship segment for its
+    // BrandOnboardingV2. Oakmoss targets the Flagship segment for its
     // premium positioning; monthly budget anchors the campaign budget
     // defaults the wizard suggests.
     preferredCreatorTier: '$$$',
@@ -632,9 +632,9 @@ const DEMO_BRANDS: Brand[] = [
   },
   {
     id: 'b_lecreuset', userId: 'u_marcus',
-    name: 'Le Creuset', industry: 'Home / Kitchenware', hq: 'Fresnoy-le-Grand, FR',
-    website: 'lecreuset.com', logoMark: 'L',
-    about: 'Cast iron cookware and culinary tools handcrafted in France since 1925.',
+    name: 'Kettle & Ember', industry: 'Home / Kitchenware', hq: 'Lyon, FR',
+    website: 'kettleandember.example', logoMark: 'K',
+    about: 'Enamelled cast-iron cookware and kitchen tools, made to be handed down.',
     preferredCategories: ['Food', 'Lifestyle', 'Design'],
     preferredRegions: ['US', 'UK', 'EU', 'LATAM'],
     walletBalance: 22_800, escrowHeld: 0,
@@ -849,7 +849,7 @@ function genBrand(spec: BrandSpec, idx: number): { user: User; brand: Brand } {
     brand: {
       id: brandId, userId,
       name: spec.name, industry: spec.industry, hq: spec.hq,
-      website: spec.name.toLowerCase().replace(/[^a-z]/g, '') + '.com',
+      website: spec.name.toLowerCase().replace(/[^a-z]/g, '') + '.example',
       about: spec.about, logoMark: spec.mark,
       preferredCategories: spec.cats,
       preferredRegions: ['US', 'UK', 'EU', 'APAC'].slice(0, range(2, 4)),
@@ -861,7 +861,7 @@ function genBrand(spec: BrandSpec, idx: number): { user: User; brand: Brand } {
 }
 
 const generatedBrands: { user: User; brand: Brand }[] = BRAND_POOL
-  .filter((b) => b.name !== 'Aesop' && b.name !== 'Le Creuset')
+  .filter((b) => b.name !== 'Oakmoss' && b.name !== 'Kettle & Ember')
   .map((spec, i) => genBrand(spec, i));
 
 // ============ GENERATE CAMPAIGNS ============
@@ -1256,7 +1256,7 @@ function genCampaign(
   // (in_review / revisions). Anything past that — posted / reporting /
   // closed — had accepted offers + payouts but ZERO submissions,
   // which left `deriveCollab` rolling up to `confirmed` instead of
-  // `live` / `paid`. Result: Aesop's 14 closed campaigns showed as
+  // `live` / `paid`. Result: Oakmoss's 14 closed campaigns showed as
   // "Analytics unlock once content goes live" because no collab ever
   // crossed the live threshold.
   //
@@ -1429,8 +1429,8 @@ function genCampaign(
 const generatedCampaigns: CampaignSeed[] = [];
 let cmpIdx = 0;
 
-// Weight the demo brands so they end up with rich histories — Aesop gets ~22 campaigns
-// across the year, Le Creuset ~14. The rest are spread across the wider brand pool.
+// Weight the demo brands so they end up with rich histories — Oakmoss gets ~22 campaigns
+// across the year, Kettle & Ember ~14. The rest are spread across the wider brand pool.
 const aesopBrand = DEMO_BRANDS[0];
 const lecreusetBrand = DEMO_BRANDS[1];
 
@@ -1449,7 +1449,7 @@ const AESOP_PLAN: { stage: CampaignStage; progress: InternalProgress; count: num
 ];
 AESOP_PLAN.forEach(({ stage, progress, count }) => {
   for (let i = 0; i < count; i++) {
-    // Sarah is a recurring Aesop creator — present on most campaigns past draft.
+    // Sarah is a recurring Oakmoss creator — present on most campaigns past draft.
     // Yuki appears on design-leaning ones (every 3rd).
     const preferred: string[] = ['c_sarah'];
     if (i % 3 === 0) preferred.push('c_yuki');
@@ -1467,7 +1467,7 @@ const LECREUSET_PLAN: { stage: CampaignStage; progress: InternalProgress; count:
 ];
 LECREUSET_PLAN.forEach(({ stage, progress, count }) => {
   for (let i = 0; i < count; i++) {
-    // Amir is the recurring food creator for Le Creuset.
+    // Amir is the recurring food creator for Kettle & Ember.
     const preferred = ['c_amir'];
     generatedCampaigns.push(genCampaign(cmpIdx++, stage, lecreusetBrand, preferred, progress));
   }
@@ -1736,7 +1736,7 @@ const showcaseClosed: CampaignSeed = {
   // deductions beside it, matching the convention the release path writes.
   transactions: [
     { id: 'tx_show_paid_rel', at: dayAgo(37), userId: 'u_hannah', kind: 'escrow_release', amount: -PAID_RATE, status: 'cleared', campaignId: SHOWCASE_CLOSED_ID, counterpartyUserId: showcaseUser(paidCreator), note: `Released · Second Light` },
-    { id: 'tx_show_paid_pay', at: dayAgo(37), userId: showcaseUser(paidCreator), kind: 'payout', amount: PAID_RATE, status: 'cleared', campaignId: SHOWCASE_CLOSED_ID, counterpartyUserId: 'u_hannah', note: `Payout from Aesop · Second Light` },
+    { id: 'tx_show_paid_pay', at: dayAgo(37), userId: showcaseUser(paidCreator), kind: 'payout', amount: PAID_RATE, status: 'cleared', campaignId: SHOWCASE_CLOSED_ID, counterpartyUserId: 'u_hannah', note: `Payout from Oakmoss · Second Light` },
     { id: 'tx_show_paid_fee', at: dayAgo(37), userId: showcaseUser(paidCreator), kind: 'fee', amount: -Math.round(PAID_RATE * 0.10), status: 'cleared', campaignId: SHOWCASE_CLOSED_ID, note: 'Platform fee (10%)' },
     { id: 'tx_show_paid_tax', at: dayAgo(37), userId: showcaseUser(paidCreator), kind: 'fee', amount: -Math.round(PAID_RATE * 0.05), status: 'cleared', campaignId: SHOWCASE_CLOSED_ID, note: 'Withholding tax (5%)' },
   ],
@@ -1799,9 +1799,9 @@ const seededInvitedCollabs: import('./types').Collaboration[] = [
 // a demo where every card is waiting on the other guy shows nothing:
 //
 //   A  dispute open, BRAND proposed a split      → Sarah (creator) must answer
-//   B  dispute open, CREATOR proposed a split    → Aesop (brand) must answer
+//   B  dispute open, CREATOR proposed a split    → Oakmoss (brand) must answer
 //   C  rights extension already AGREED           → the settled E2 outcome
-//   D  scope addition proposed by the creator    → Aesop (brand) must answer
+//   D  scope addition proposed by the creator    → Oakmoss (brand) must answer
 //
 // Money discipline: this campaign is `progress: 'production'`, so the
 // aggregate below puts every accepted offer's rate into the creator's
@@ -1896,7 +1896,7 @@ const showcaseAfter: CampaignSeed = {
   // uses: GROSS on the payout row, the two deductions doing real work.
   transactions: rightsUser ? [
     { id: 'tx_after_rights_rel', at: dayAgo(6), userId: 'u_hannah', kind: 'escrow_release', amount: -RIGHTS_EXT_FEE, status: 'cleared', campaignId: SHOWCASE_AFTER_ID, counterpartyUserId: rightsUser, note: 'Usage rights extension · Held Over' },
-    { id: 'tx_after_rights_pay', at: dayAgo(6), userId: rightsUser, kind: 'payout', amount: RIGHTS_EXT_FEE, status: 'cleared', campaignId: SHOWCASE_AFTER_ID, counterpartyUserId: 'u_hannah', note: 'Rights extension from Aesop · Held Over' },
+    { id: 'tx_after_rights_pay', at: dayAgo(6), userId: rightsUser, kind: 'payout', amount: RIGHTS_EXT_FEE, status: 'cleared', campaignId: SHOWCASE_AFTER_ID, counterpartyUserId: 'u_hannah', note: 'Rights extension from Oakmoss · Held Over' },
     { id: 'tx_after_rights_fee', at: dayAgo(6), userId: rightsUser, kind: 'fee', amount: -Math.round(RIGHTS_EXT_FEE * 0.10), status: 'cleared', campaignId: SHOWCASE_AFTER_ID, note: 'Platform fee (10%)' },
     { id: 'tx_after_rights_tax', at: dayAgo(6), userId: rightsUser, kind: 'fee', amount: -Math.round(RIGHTS_EXT_FEE * 0.05), status: 'cleared', campaignId: SHOWCASE_AFTER_ID, note: 'Withholding tax (5%)' },
   ] : [],
@@ -2021,7 +2021,7 @@ const seededAftermathDisputes: Dispute[] = [
     messages: [
       { at: +new Date(dayAgo(3)), userId: 'u_hannah', body: 'Apologies — this sat with someone who has left. Looking at it now.' },
     ],
-    // Waiting on the brand, so the Aesop demo account has a decision too.
+    // Waiting on the brand, so the Oakmoss demo account has a decision too.
     proposal: {
       by: showcaseUser(afterCast.disputeAwaitingBrand),
       at: +new Date(dayAgo(1)),
@@ -2082,7 +2082,7 @@ const demoCampaigns: Campaign[] = [
   {
     id: 'cmp_3', brandId: 'b_aesop', title: 'Studio Notes',
     pitch: 'Quiet, considered home rituals — for our new home line.',
-    brief: 'Design and lifestyle creators only. 1 IG post + 1 Reel showcasing the new Aesop home candle and room spray in their own space.',
+    brief: 'Design and lifestyle creators only. 1 IG post + 1 Reel showcasing the new Oakmoss home candle and room spray in their own space.',
     cover: upx(COVERS[2], 800, 600),
     budget: 5_000, spent: 0, escrowHeld: 0,
     region: 'EU/JP', category: 'Design',
@@ -2120,14 +2120,14 @@ const demoCampaigns: Campaign[] = [
     milestones: [],
     applications: [], offers: ['off_4'],
   },
-  // Phase 59 — Aesop demo campaigns covering every lifecycle stage so
+  // Phase 59 — Oakmoss demo campaigns covering every lifecycle stage so
   // the Campaigns list + CampaignDetail can demo the wizard / pause-
   // resume / archive toggle flows without needing to fabricate state
   // mid-walkthrough.
   {
     id: 'cmp_aesop_draft', brandId: 'b_aesop', title: 'Quiet Objects 2026 — Q3 (draft)',
     pitch: 'Slow-living essentials for late summer.',
-    brief: 'Open-tone editorial: 1 reel + 2 stories + 1 carousel post per creator. Highlight the seasonal hand-cream + the new tinted body lotion in soft natural light. Brand handle + #ad in caption; deliver in 9:16 + 1:1. Aesop pays out same-day on approval.',
+    brief: 'Open-tone editorial: 1 reel + 2 stories + 1 carousel post per creator. Highlight the seasonal hand-cream + the new tinted body lotion in soft natural light. Brand handle + #ad in caption; deliver in 9:16 + 1:1. Oakmoss pays out same-day on approval.',
     cover: upx(COVERS[6], 800, 600),
     budget: 8_000, spent: 0, escrowHeld: 0,
     region: 'EU/UK', category: 'Lifestyle',
@@ -2212,7 +2212,7 @@ const demoOffers: Offer[] = [
   // seeded offer was `accepted` or `expired` so Accept/Counter/Decline
   // had no live data to demo.
   //
-  //  off_pending_1 — Aesop → Sarah on cmp_3 (Studio Notes), brand sent
+  //  off_pending_1 — Oakmoss → Sarah on cmp_3 (Studio Notes), brand sent
   //  an offer, Sarah hasn't responded yet. Creator-side MyCollabs +
   //  StageActionBanner show Accept / Counter / Decline buttons.
   {
@@ -2224,7 +2224,7 @@ const demoOffers: Offer[] = [
       { by: 'brand', at: +new Date(dayAgo(1)), rate: 1650, message: 'We loved your Spring Renewal work — would love you on Studio Notes too. $1,650 flat for the 1 IG post + 1 Reel deliverable, post by the deadline.' },
     ],
   },
-  //  off_countered_1 — Le Creuset → Sarah, Sarah countered up to $2,200,
+  //  off_countered_1 — Kettle & Ember → Sarah, Sarah countered up to $2,200,
   //  brand owes a response. Brand-side kanban shows Accept / Counter
   //  back / Decline buttons.
   {
@@ -2234,10 +2234,10 @@ const demoOffers: Offer[] = [
     applicationId: null, source: 'cold-outreach',
     rounds: [
       { by: 'brand',   at: +new Date(dayAgo(3)), rate: 1800, message: 'Hosting season feature — $1,800 for a Reel + 3 stories.' },
-      { by: 'creator', at: +new Date(dayAgo(1)), rate: 2200, message: 'Excited about Le Creuset! For the scope (Reel + 3 stories + a carousel), my standard is $2,200 — close to your offer. Open to chatting.' },
+      { by: 'creator', at: +new Date(dayAgo(1)), rate: 2200, message: 'Excited about Kettle & Ember! For the scope (Reel + 3 stories + a carousel), my standard is $2,200 — close to your offer. Open to chatting.' },
     ],
   },
-  //  off_pending_2 — Aesop → Yuki on cmp_aesop_draft would be too
+  //  off_pending_2 — Oakmoss → Yuki on cmp_aesop_draft would be too
   //  meta. Use the existing cmp_3 (Studio Notes) to set up another
   //  pending offer waiting on Yuki — gives Hannah a kanban entry
   //  showing "Awaiting reply" in Negotiating, distinct from the
@@ -2440,7 +2440,7 @@ const seededAdvances: import('./types').Advance[] = [
 // ============ DISPUTES (a couple seeded for admin demo) ============
 const seededDisputes: Dispute[] = [];
 {
-  // Pick a production-stage Aesop campaign for a "creator filed against brand" example
+  // Pick a production-stage Oakmoss campaign for a "creator filed against brand" example
   const productionAesop = generatedCampaigns.find((cs) => cs.campaign.brandId === 'b_aesop' && cs.progress === 'production' && acceptedCreatorIdsForCampaign(cs).length > 0);
   if (productionAesop) {
     const cid = acceptedCreatorIdsForCampaign(productionAesop)[0];
@@ -2522,25 +2522,25 @@ const seededDisputes: Dispute[] = [];
 // demo campaigns (cmp_1..cmp_4) — even if those are still 'live' in
 // the seed, the review is dated to suggest a prior cycle.
 const seededReviews: import('./types').Review[] = [
-  // Holiday Tables (cmp_4) — Le Creuset ↔ Amir
+  // Holiday Tables (cmp_4) — Kettle & Ember ↔ Amir
   { id: 'rv_1', campaignId: 'cmp_4', fromUserId: 'u_marcus', reviewType: 'creator', targetId: 'c_amir', rating: 5, text: 'Amir delivered above and beyond. Reels were the highlight of the campaign — natural light, considered shot list. Would book again immediately.', at: dayAgo(85) },
-  { id: 'rv_2', campaignId: 'cmp_4', fromUserId: 'u_amir',   reviewType: 'brand',   targetId: 'b_lecreuset', rating: 5, text: 'Marcus and the Le Creuset team were a dream. Clear brief, fast feedback, escrow released before noon the day after posting.', at: dayAgo(85) },
+  { id: 'rv_2', campaignId: 'cmp_4', fromUserId: 'u_amir',   reviewType: 'brand',   targetId: 'b_lecreuset', rating: 5, text: 'Marcus and the Kettle & Ember team were a dream. Clear brief, fast feedback, escrow released before noon the day after posting.', at: dayAgo(85) },
 
   // Sarah — 4 prior reviews
   { id: 'rv_s1', campaignId: 'cmp_1', fromUserId: 'u_hannah', reviewType: 'creator', targetId: 'c_sarah', rating: 5, text: 'Best collaboration we ran last quarter. Sarah\'s framing and editorial sensibility nailed the Spring Renewal brief on the first take.', at: dayAgo(95) },
   { id: 'rv_s2', campaignId: 'cmp_3', fromUserId: 'u_hannah', reviewType: 'creator', targetId: 'c_sarah', rating: 5, text: 'Sarah responded to feedback faster than my internal team. Two rounds, both shipped on time.', at: dayAgo(140) },
   { id: 'rv_s3', campaignId: 'cmp_2', fromUserId: 'u_marcus', reviewType: 'creator', targetId: 'c_sarah', rating: 4, text: 'Strong visual work. We pushed back twice on tonal direction; she received it gracefully and re-shot. Great communication throughout.', at: dayAgo(170) },
-  { id: 'rv_s4', campaignId: 'cmp_1', fromUserId: 'u_sarah',  reviewType: 'brand',   targetId: 'b_aesop',     rating: 5, text: 'Aesop respects the craft. Brief was clear, no scope creep, payment cleared next business day.', at: dayAgo(95) },
+  { id: 'rv_s4', campaignId: 'cmp_1', fromUserId: 'u_sarah',  reviewType: 'brand',   targetId: 'b_aesop',     rating: 5, text: 'Oakmoss respects the craft. Brief was clear, no scope creep, payment cleared next business day.', at: dayAgo(95) },
 
   // Yuki — 3 prior reviews
   { id: 'rv_y1', campaignId: 'cmp_3', fromUserId: 'u_hannah', reviewType: 'creator', targetId: 'c_yuki', rating: 5, text: 'Yuki\'s Studio Notes work felt like a brand campaign we couldn\'t have produced internally. Already booking the next one.', at: dayAgo(110) },
   { id: 'rv_y2', campaignId: 'cmp_2', fromUserId: 'u_marcus', reviewType: 'creator', targetId: 'c_yuki', rating: 5, text: 'Beautiful daylight footage, on time, exactly the deliverables we briefed. Easiest 5 stars I\'ve ever given.', at: dayAgo(155) },
-  { id: 'rv_y3', campaignId: 'cmp_3', fromUserId: 'u_yuki',   reviewType: 'brand',   targetId: 'b_aesop',     rating: 5, text: 'Editorial-grade brief, generous feedback, prompt payout. Aesop is the bar.', at: dayAgo(110) },
+  { id: 'rv_y3', campaignId: 'cmp_3', fromUserId: 'u_yuki',   reviewType: 'brand',   targetId: 'b_aesop',     rating: 5, text: 'Editorial-grade brief, generous feedback, prompt payout. Oakmoss is the bar.', at: dayAgo(110) },
 
   // Amir — 3 prior reviews (in addition to rv_1/rv_2 above)
   { id: 'rv_a1', campaignId: 'cmp_2', fromUserId: 'u_marcus', reviewType: 'creator', targetId: 'c_amir', rating: 5, text: 'Second campaign with Amir. Reach numbers held up, audience overlap was exactly what we briefed.', at: dayAgo(125) },
   { id: 'rv_a2', campaignId: 'cmp_1', fromUserId: 'u_hannah', reviewType: 'creator', targetId: 'c_amir', rating: 4, text: 'Excellent food framing. Minor delay in Round 2 — flagged it, he fixed promptly. Would happily book again.', at: dayAgo(165) },
-  { id: 'rv_a3', campaignId: 'cmp_2', fromUserId: 'u_amir',   reviewType: 'brand',   targetId: 'b_lecreuset', rating: 5, text: 'Le Creuset gave creative space without micromanaging. The mark of a brand that actually trusts the creator.', at: dayAgo(125) },
+  { id: 'rv_a3', campaignId: 'cmp_2', fromUserId: 'u_amir',   reviewType: 'brand',   targetId: 'b_lecreuset', rating: 5, text: 'Kettle & Ember gave creative space without micromanaging. The mark of a brand that actually trusts the creator.', at: dayAgo(125) },
 ];
 
 // ============ REFERRALS (creator network) ============
@@ -2555,9 +2555,9 @@ const seededReferrals: Referral[] = [];
       fromCreatorId: 'c_sarah',
       toCreatorId: toId,
       noteToReferred: pick([
-        'You\'d be perfect for the Aesop circuit — let me intro you.',
-        'Le Creuset has been great to work with. Strong fit for your aesthetic.',
-        'My contacts at Glossier are looking for creators in your space.',
+        'You\'d be perfect for the Oakmoss circuit — let me intro you.',
+        'Kettle & Ember has been great to work with. Strong fit for your aesthetic.',
+        'My contacts at Petalcourt are looking for creators in your space.',
       ]),
       recommendedBrandId: pick(['b_aesop', 'b_lecreuset']),
       createdAt: dayAgo(range(5, 90)),
@@ -2574,7 +2574,7 @@ const seededReferrals: Referral[] = [];
       id: 'ref_seed_amir',
       fromCreatorId: 'c_amir',
       toCreatorId: amirRefTo,
-      noteToReferred: 'You make the kind of food content Le Creuset loves. Worth applying.',
+      noteToReferred: 'You make the kind of food content Kettle & Ember loves. Worth applying.',
       recommendedBrandId: 'b_lecreuset',
       createdAt: dayAgo(28),
       status: 'active',
@@ -2586,7 +2586,7 @@ const seededReferrals: Referral[] = [];
     id: 'ref_seed_inbound',
     fromCreatorId: 'c_yuki',
     toCreatorId: 'c_sarah',
-    noteToReferred: 'Aesop home line is briefing — your sustainability angle would land.',
+    noteToReferred: 'Oakmoss home line is briefing — your sustainability angle would land.',
     recommendedBrandId: 'b_aesop',
     createdAt: dayAgo(45),
     status: 'bonus_paid',
@@ -2600,9 +2600,9 @@ const seededReferrals: Referral[] = [];
 // Seed: per-user activity over the past 14 days. The most recent are unread.
 const notifications: import('./types').Notification[] = [
   // Hand-curated demo flow
-  { id: 'n_1', userId: 'u_sarah',  text: 'Aesop · Hannah left feedback on Round 2', href: '/creator/inbox', at: dayAgo(2), read: false },
+  { id: 'n_1', userId: 'u_sarah',  text: 'Oakmoss · Hannah left feedback on Round 2', href: '/creator/inbox', at: dayAgo(2), read: false },
   { id: 'n_2', userId: 'u_hannah', text: 'Sarah submitted Round 2 of Spring Renewal', href: '/brand/today', at: dayAgo(2), read: false },
-  { id: 'n_3', userId: 'u_amir',   text: 'New invite from Le Creuset — Slow Sundays', href: '/creator/discover', at: dayAgo(1), read: false },
+  { id: 'n_3', userId: 'u_amir',   text: 'New invite from Kettle & Ember — Slow Sundays', href: '/creator/discover', at: dayAgo(1), read: false },
 ];
 
 // Auto-generate notifications across recent campaign activity for the demo accounts.
@@ -2610,7 +2610,7 @@ let nIdx = 100;
 
 // P1b: branch on `progress` (seed-side internal driver) instead of
 // `Campaign.stage` because the campaign-stage enum was collapsed.
-// Hannah (Aesop) — dense notifications across all her campaigns.
+// Hannah (Oakmoss) — dense notifications across all her campaigns.
 generatedCampaigns
   .filter((cs) => cs.campaign.brandId === 'b_aesop')
   .forEach((cs) => {
@@ -2626,7 +2626,7 @@ generatedCampaigns
     }
   });
 
-// Marcus (Le Creuset) — same treatment.
+// Marcus (Kettle & Ember) — same treatment.
 generatedCampaigns
   .filter((cs) => cs.campaign.brandId === 'b_lecreuset')
   .forEach((cs) => {
@@ -2804,11 +2804,11 @@ const seededTestimonials: import('./types').Testimonial[] = [
   },
   // Phase 52b — expanded testimonials wall.
   // Tier 3.2 (Phase 53) — trimmed 12 → 8 to reduce information density
-  // on the voices wall. Cuts: tm_4 (Anna/Aesop spreadsheets — overlaps
+  // on the voices wall. Cuts: tm_4 (Anna/Oakmoss spreadsheets — overlaps
   // tm_9's agency-cost angle without a hard number), tm_7 (Marcus —
   // storefront-driven inbound covered elsewhere on the page), tm_8
   // (Lena — counter-offer mechanic already in tm_2), tm_12 (Hannah/
-  // Aesop — Aesop already represented in the brand voices, and the
+  // Oakmoss — Oakmoss already represented in the brand voices, and the
   // availability-windows angle is secondary). The 8 that remain each
   // ground a different mechanic: outbound-DM frustration vs platform
   // matching, set-rate-counter, hours-fast match, on-time-payout
@@ -2946,7 +2946,7 @@ const seededTestimonials: import('./types').Testimonial[] = [
 // Demo-account pre-verification
 // =====================================================================
 //
-// The demo world is a showcase: Sarah, Amir, Yuki, Aesop et al. exist so a
+// The demo world is a showcase: Sarah, Amir, Yuki, Oakmoss et al. exist so a
 // visitor can see what a populated, working marketplace looks like. Leaving
 // their metrics half-verified undercut that — Sarah's newsletter read
 // "unverified", the 100+ generated network creators had verification decided

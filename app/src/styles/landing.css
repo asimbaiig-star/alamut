@@ -2111,8 +2111,8 @@ body:has([data-surface="landing-light"]) {
    =====================================================================
    Each placement tile carries:
      · A brand-mood color overlay (subtle, multiply-blended) so the
-       photo carries the brand's signature palette — Le Creuset's
-       blue, Aesop's amber, Hay's sage, etc. — instead of reading as
+       photo carries the brand's signature palette — Kettle & Ember's
+       blue, Oakmoss's amber, Hay's sage, etc. — instead of reading as
        neutral stock
      · A bottom-right deal-stat strip (cleared amount + days +
        creator count) so the tile reads as a marketplace ledger
@@ -2128,7 +2128,7 @@ body:has([data-surface="landing-light"]) {
    the previous 0.30 multiply against a similar-hue brand tint
    washed the photo out almost completely; subjects looked obscured
    behind a flat color panel. 0.18 keeps brand-mood signal while
-   leaving the photo clearly readable. */   /* Aesop, Khaadi spring */  /* Le Creuset signature blue */  /* Hay Scandi */   /* Glossier soft pink */   /* Khaadi heritage warm */  /* Kinfolk cool quiet */  /* Patagonia outdoor earth */   /* Muji minimalism */
+   leaving the photo clearly readable. */   /* Oakmoss, Loomhouse spring */  /* Kettle & Ember signature blue */  /* Hay Scandi */   /* Petalcourt soft pink */   /* Loomhouse heritage warm */  /* Hearth Quarterly cool quiet */  /* Ridgewild Outdoor outdoor earth */   /* Plainday minimalism */
 
 /* Deal-stat strip — bottom-right corner. Compact two-line metric:
    cleared dollars on top (accent-colored), days + creator count

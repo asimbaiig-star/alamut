@@ -271,7 +271,7 @@ export function BrandProfile({ onRoute }: Props) {
                   className="v2-input"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Aesop"
+                  placeholder="Oakmoss"
                 />
               </Field>
               <Field
@@ -394,7 +394,7 @@ export function BrandProfile({ onRoute }: Props) {
                 rows={4}
                 value={about}
                 onChange={(e) => setAbout(e.target.value)}
-                placeholder="Aesop has carefully curated a range of skin, hair and body care formulations."
+                placeholder="What you make, who it's for, and what you look for in a creator."
               />
               <div className="v2-muted" style={{ fontSize: 11, marginTop: 6 }}>
                 {about.length} / 400 characters

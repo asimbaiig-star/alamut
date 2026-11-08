@@ -1,7 +1,7 @@
 // activityTruth.test.ts — panels on one screen must agree.
 //
 // Asim found the stage header reading `Invited` beside an Activity feed
-// claiming "You accepted the offer" and "Aesop funded escrow · $3.6K". The
+// claiming "You accepted the offer" and "Oakmoss funded escrow · $3.6K". The
 // static guards in regressionGuards CLASS 11 stop the specific literals
 // coming back; this file tests the property those literals violated, which
 // is the thing that actually matters:

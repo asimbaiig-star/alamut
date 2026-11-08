@@ -1332,7 +1332,7 @@ function CollabActivityCard({
   // History looked like the obvious source and is the wrong one here: for
   // rows the P1c migrator derived, every entry carries the DERIVATION
   // timestamp and an actor that is whoever ran the migration, so the feed
-  // read "Aesop sent a pitch · just now" on a collab whose stage is
+  // read "Oakmoss sent a pitch · just now" on a collab whose stage is
   // `invited` — a real record, rendered into a false sentence. Pitches are
   // the creator's move and offers are the brand's; the signals say which
   // happened, when, and by whom, without inference.

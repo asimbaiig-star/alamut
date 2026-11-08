@@ -83,7 +83,7 @@ const DEMO_CREATOR_USER_ID = 'u_sarah';     // sarah@alamut.test
  *     can transiently during route changes), return EMPTY so downstream
  *     selectors render an empty workspace. Falling back to the demo
  *     account here would expose another real user's data — the bug
- *     that caused "Sarah teleports to Aesop" when persona auto-flipped.
+ *     that caused "Sarah teleports to Oakmoss" when persona auto-flipped.
  *  3. Only when there is NO session at all do we use the demo fallback
  *     so unauthenticated preview / development still renders.
  */

@@ -115,10 +115,10 @@ describe('hydrateFromSupabase', () => {
     h.email = 'hannah@aesop.test';
     const run = hydrateFromSupabase();
     await vi.waitFor(() => expect(gateFor('hannah@aesop.test')).toBeDefined());
-    gateFor('hannah@aesop.test')!.resolve([aesopRow('Aesop — from Postgres')]);
+    gateFor('hannah@aesop.test')!.resolve([aesopRow('Oakmoss — from Postgres')]);
     await run;
     // A value only the remote row carries, so this cannot pass on the seed.
-    expect(aesop().name).toBe('Aesop — from Postgres'); // remote fields win…
+    expect(aesop().name).toBe('Oakmoss — from Postgres'); // remote fields win…
     expect(aesop().offerTemplates).toEqual(before);    // …local-only ones survive
   });
 
@@ -159,7 +159,7 @@ describe('hydrateFromSupabase', () => {
     h.rows = {};
     const run = hydrateFromSupabase();
     await vi.waitFor(() => expect(gateFor('sarah@alamut.test')).toBeDefined());
-    gateFor('sarah@alamut.test')!.resolve([aesopRow('Aesop')]);
+    gateFor('sarah@alamut.test')!.resolve([aesopRow('Oakmoss')]);
     await run;
     const st = useStore.getState();
     expect(st.db.offers.some((o) => o.id === 'off_hannahs'), 'Hannah\'s row survived Sarah\'s hydration').toBe(false);
@@ -175,7 +175,7 @@ describe('hydrateFromSupabase', () => {
     h.email = 'sarah@alamut.test';
     const run = hydrateFromSupabase();
     await vi.waitFor(() => expect(gateFor('sarah@alamut.test')).toBeDefined());
-    gateFor('sarah@alamut.test')!.resolve([aesopRow('Aesop')]);
+    gateFor('sarah@alamut.test')!.resolve([aesopRow('Oakmoss')]);
     await run;
     const st = useStore.getState();
     expect(st.db.offers.some((o) => o.id === 'off_sarahs')).toBe(true);

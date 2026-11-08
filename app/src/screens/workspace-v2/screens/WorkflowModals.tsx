@@ -652,7 +652,7 @@ interface InviteCreatorsProps {
    *  as disabled rows carrying the reason rather than omitted.
    *
    *  Pre-fix they were filtered out silently, which reads as a bug: on a
-   *  seeded Aesop campaign Sarah Johnson is in flight on 25 of 28
+   *  seeded Oakmoss campaign Sarah Johnson is in flight on 25 of 28
    *  campaigns, so a brand searching for a creator they know exists found
    *  nothing and concluded the picker was broken. Hiding the row hid the
    *  explanation with it. */
