@@ -9,13 +9,16 @@ import { useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import '@/styles/workspace-v2.css';
 import '@/styles/workspace-v2-campaign-mgmt.css';
-import '@/styles/workspace-v2-home.css';
+import '@/styles/portal-home.css';
 import { Icon } from './lib';
 import {
   useV2CurrentBrand, useV2CurrentCreator, useV2Conversations,
   useV2ManagedCreators, v2SetActingForCreator,
 } from './v2Hooks';
 import { v2SweepStaleOffers } from './v2CampaignActions';
+import {
+  useBrandNeedsYou, useCreatorNeedsYou, isBrandCampaignNeed, isCreatorDealNeed,
+} from './needsYou';
 import { useAuth } from '@/lib/auth/useAuth';
 import { useScheduledNotifications } from '@/lib/api/useScheduledNotifications';
 import { api } from '@/lib/api/client';
@@ -65,25 +68,27 @@ type Persona = 'brand' | 'creator';
 // Brand-side routes (per design's BRAND_ROUTES). Note the inbox row has
 // no `count` here — it's computed live in `Sidebar` from useV2Conversations
 // so the badge tracks real unread state instead of a hardcoded literal.
+// Portal canvas Round 2: short names, the work first, Spark moved off the
+// home and down the list.
 const BRAND_ROUTES = [
   { id: 'home', label: 'Home', icon: Icon.home },
-  { id: 'spark', label: 'Spark', icon: Icon.spark, badge: 'AI' },
-  { id: 'discover', label: 'Discover creators', icon: Icon.search },
-  { id: 'campaigns', label: 'My campaigns', icon: Icon.campaign },
+  { id: 'discover', label: 'Discover', icon: Icon.search },
+  { id: 'campaigns', label: 'Campaigns', icon: Icon.campaign },
   { id: 'inbox', label: 'Inbox', icon: Icon.inbox },
   { id: 'calendar', label: 'Calendar', icon: Icon.calendar },
   { id: 'brand-analytics', label: 'Analytics', icon: Icon.chart },
   { id: 'wallet', label: 'Wallet', icon: Icon.wallet },
   { id: 'brand-profile', label: 'Brand profile', icon: Icon.shield },
+  { id: 'spark', label: 'Spark', icon: Icon.spark, badge: 'AI' },
 ] as const;
 
 // Creator-side routes (per design's CREATOR_ROUTES). Same live-count
 // treatment for `creator-inbox` as above.
 const CREATOR_ROUTES = [
   { id: 'creator-home', label: 'Home', icon: Icon.home },
-  { id: 'storefront', label: 'My storefront', icon: Icon.store },
-  { id: 'creator-collabs', label: 'My collaborations', icon: Icon.campaign },
-  { id: 'creator-campaigns', label: 'Browse campaigns', icon: Icon.search },
+  { id: 'storefront', label: 'Storefront', icon: Icon.store },
+  { id: 'creator-collabs', label: 'Deals', icon: Icon.campaign },
+  { id: 'creator-campaigns', label: 'Briefs', icon: Icon.search },
   { id: 'creator-inbox', label: 'Inbox', icon: Icon.inbox },
   { id: 'creator-calendar', label: 'Calendar', icon: Icon.calendar },
   { id: 'analytics', label: 'Analytics', icon: Icon.chart },
@@ -295,6 +300,11 @@ export function WorkspaceV2() {
   // button. Pre-fix mobile users had no way to navigate after sign-in
   // because the sidebar was display:none with no replacement nav.
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  // The sheet scrolls on its own on desktop, so a new page has to reset it;
+  // on a phone the document scrolls and `window.scrollTo` below does it.
+  const mainRef = useRef<HTMLElement>(null);
+  const counts = useNavCounts();
+  const me = useViewer(persona);
 
   function go(next: string) {
     setRouteState(next);
@@ -316,6 +326,7 @@ export function WorkspaceV2() {
     const owner = personaForRoute(next);
     if (owner !== 'shared') setPersonaState(owner);
     window.scrollTo(0, 0);
+    mainRef.current?.scrollTo?.(0, 0);
   }
 
   // Lock body scroll while the mobile drawer is open so the page
@@ -325,7 +336,13 @@ export function WorkspaceV2() {
     if (mobileNavOpen) {
       const prev = document.body.style.overflow;
       document.body.style.overflow = 'hidden';
-      return () => { document.body.style.overflow = prev; };
+      // Escape closes the drawer, as it would any menu.
+      const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMobileNavOpen(false); };
+      window.addEventListener('keydown', onKey);
+      return () => {
+        document.body.style.overflow = prev;
+        window.removeEventListener('keydown', onKey);
+      };
     }
   }, [mobileNavOpen]);
 
@@ -342,7 +359,7 @@ export function WorkspaceV2() {
   if (isHydrating) {
     return (
       <div data-surface="v2">
-        <div className="v2-shell">
+        <div className="v2-shell" data-persona={persona}>
           <aside className="v2-sidebar" aria-busy="true">
             <div className="v2-brand" style={{ pointerEvents: 'none' }}>
               <div className="v2-brand-mark"><BrandMarkSvg /></div>
@@ -351,8 +368,8 @@ export function WorkspaceV2() {
             <nav className="v2-nav" aria-hidden="true">
               {[1,2,3,4,5,6,7].map((i) => (
                 <div key={i} style={{
-                  height: 32, margin: '4px 8px', borderRadius: 6,
-                  background: 'var(--v2-bg-2)', opacity: 0.6,
+                  height: 36, margin: '4px 0', borderRadius: 12,
+                  background: 'var(--v2-on-ground-hover)',
                 }} />
               ))}
             </nav>
@@ -378,33 +395,22 @@ export function WorkspaceV2() {
 
   return (
     <div data-surface="v2">
-      <div className="v2-shell">
-        {/* Phase 54 — mobile-only hamburger. CSS hides this at >880px
-            so desktop is unaffected. Position: fixed top-left so it
-            floats above any page's topbar without per-screen rewires. */}
-        <button
-          type="button"
-          className="v2-mobile-menu-btn"
-          aria-label={mobileNavOpen ? 'Close menu' : 'Open menu'}
-          aria-expanded={mobileNavOpen}
-          aria-controls="v2-sidebar"
-          onClick={() => setMobileNavOpen((v) => !v)}
-        >
-          {mobileNavOpen ? (
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          ) : (
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <line x1="3" y1="6" x2="21" y2="6" />
-              <line x1="3" y1="12" x2="21" y2="12" />
-              <line x1="3" y1="18" x2="21" y2="18" />
-            </svg>
-          )}
-        </button>
+      <div className="v2-shell" data-persona={persona}>
+        {/* Phone only: the ground's top bar (the sidebar is a drawer there). */}
+        <header className="v2-appbar">
+          <button
+            className="v2-brand"
+            type="button"
+            aria-label="Alamut, go to your home"
+            onClick={() => go(persona === 'creator' ? 'creator-home' : 'home')}
+          >
+            <div className="v2-brand-mark" aria-hidden="true"><BrandMarkSvg /></div>
+            <div className="v2-brand-name">Alamut</div>
+          </button>
+          <span className="v2-appbar-me"><Avatar src={me.avatar} name={me.name} size={36} /></span>
+        </header>
 
-        {/* Backdrop — taps dismiss the drawer. Renders only when open. */}
+        {/* Backdrop: a tap outside the drawer closes it. */}
         {mobileNavOpen && (
           <div
             className="v2-mobile-backdrop"
@@ -413,8 +419,8 @@ export function WorkspaceV2() {
           />
         )}
 
-        <Sidebar persona={persona} route={route} onRoute={go} isMobileOpen={mobileNavOpen} />
-        <main className="v2-main">
+        <Sidebar persona={persona} route={route} onRoute={go} isMobileOpen={mobileNavOpen} counts={counts} me={me} />
+        <main className="v2-main" ref={mainRef}>
           {/* F6 — the heavier screens below are lazy-loaded, so the outlet
               needs a Suspense boundary. Sidebar + chrome stay mounted, so
               a chunk fetch reads as the content area filling in rather
@@ -423,8 +429,135 @@ export function WorkspaceV2() {
             <RouteOutlet route={route} onRoute={go} persona={persona} />
           </Suspense>
         </main>
+
+        <TabBar
+          persona={persona}
+          route={route}
+          onRoute={go}
+          counts={counts}
+          moreOpen={mobileNavOpen}
+          onMore={() => setMobileNavOpen((v) => !v)}
+        />
       </div>
     </div>
+  );
+}
+
+// =====================================================================
+// Nav counts: what is waiting on you, from the same list the home shows.
+// =====================================================================
+
+interface NavCounts {
+  inbox: number;
+  /** Creator: deals waiting on you. */
+  deals: number;
+  /** Brand: campaign items waiting on you. */
+  campaigns: number;
+}
+
+function useNavCounts(): NavCounts {
+  const conversations = useV2Conversations();
+  const creatorNeeds = useCreatorNeedsYou();
+  const brandNeeds = useBrandNeedsYou();
+  return {
+    // Per-conversation unread counts for the current viewer, summed.
+    inbox: conversations.reduce((sum, c) => sum + (c.unread ?? 0), 0),
+    deals: creatorNeeds.filter(isCreatorDealNeed).length,
+    campaigns: brandNeeds.filter(isBrandCampaignNeed).length,
+  };
+}
+
+function countFor(id: string, counts: NavCounts): number | undefined {
+  const n = id === 'inbox' || id === 'creator-inbox' ? counts.inbox
+    : id === 'creator-collabs' ? counts.deals
+    : id === 'campaigns' ? counts.campaigns
+    : 0;
+  return n > 0 ? n : undefined;
+}
+
+/** Who is signed in, as the persona being viewed shows them. A brand user
+ *  previewing the creator side sees the creator's chrome; the auth identity
+ *  is unchanged. */
+function useViewer(persona: Persona): { name: string; sub: string; avatar: string } {
+  const brand = useV2CurrentBrand();
+  const creator = useV2CurrentCreator();
+  if (persona === 'creator' && creator) {
+    return {
+      name: creator.name,
+      // Creator.handle already includes the leading "@"; don't double it.
+      sub: `${creator.handle.startsWith('@') ? '' : '@'}${creator.handle}${creator.verified ? ' · Verified' : ''}`,
+      avatar: creator.portrait,
+    };
+  }
+  if (brand) {
+    return {
+      name: brand.name,
+      sub: `${brand.industry}${brand.verified ? ' · Verified' : ''}`,
+      // P65 — the uploaded logo or the initial, never a third-party avatar.
+      avatar: brand.logoUrl ?? '',
+    };
+  }
+  return { name: 'Welcome', sub: 'Loading…', avatar: '' };
+}
+
+// =====================================================================
+// Phone tab bar: the four places people go most, and More for the rest.
+// =====================================================================
+
+const CREATOR_TABS = [
+  { id: 'creator-home', label: 'Home', icon: Icon.home },
+  { id: 'creator-collabs', label: 'Deals', icon: Icon.campaign },
+  { id: 'creator-campaigns', label: 'Briefs', icon: Icon.search },
+  { id: 'creator-inbox', label: 'Inbox', icon: Icon.inbox },
+] as const;
+const BRAND_TABS = [
+  { id: 'home', label: 'Home', icon: Icon.home },
+  { id: 'campaigns', label: 'Campaigns', icon: Icon.campaign },
+  { id: 'discover', label: 'Discover', icon: Icon.search },
+  { id: 'inbox', label: 'Inbox', icon: Icon.inbox },
+] as const;
+
+function TabBar({ persona, route, onRoute, counts, moreOpen, onMore }: {
+  persona: Persona;
+  route: string;
+  onRoute: (r: string) => void;
+  counts: NavCounts;
+  moreOpen: boolean;
+  onMore: () => void;
+}) {
+  const tabs = persona === 'brand' ? BRAND_TABS : CREATOR_TABS;
+  const base = routeBase(route);
+  const onTab = tabs.some((t) => t.id === base);
+  return (
+    <nav className="v2-tabbar" aria-label="Main">
+      {tabs.map((t) => {
+        const n = countFor(t.id, counts);
+        const active = base === t.id;
+        return (
+          <button
+            key={t.id}
+            type="button"
+            className={`v2-tb-item${active ? ' is-active' : ''}`}
+            aria-current={active ? 'page' : undefined}
+            onClick={() => onRoute(t.id)}
+          >
+            {t.icon}
+            <span>{t.label}</span>
+            {n != null && <span className="v2-tb-dot" aria-label={`${n} waiting`}>{n}</span>}
+          </button>
+        );
+      })}
+      <button
+        type="button"
+        className={`v2-tb-item${!onTab || moreOpen ? ' is-active' : ''}`}
+        aria-expanded={moreOpen}
+        aria-controls="v2-sidebar"
+        onClick={onMore}
+      >
+        {Icon.more}
+        <span>More</span>
+      </button>
+    </nav>
   );
 }
 
@@ -575,7 +708,15 @@ function RouteOutlet({ route, onRoute, persona }: { route: string; onRoute: (r: 
   if (route === 'creator-inbox') return <Inbox onRoute={onRoute} persona="creator" />;
   if (route === 'creator-calendar') return <Calendar onRoute={onRoute} />;
   if (route === 'analytics') return <Analytics onRoute={onRoute} />;
-  if (route === 'creator-wallet') return <CreatorWallet onRoute={onRoute} />;
+  if (route === 'creator-wallet' || route.startsWith('creator-wallet?')) {
+    const params = new URLSearchParams(route.split('?')[1] ?? '');
+    return (
+      <CreatorWallet
+        onRoute={onRoute}
+        initialAction={params.get('action') === 'withdraw' ? 'withdraw' : undefined}
+      />
+    );
+  }
   if (route === 'kyc' || route.startsWith('kyc?')) {
     // `kyc?action=next-step` scrolls to the next incomplete step.
     const queryStr = route.includes('?') ? route.split('?')[1] : '';
@@ -606,48 +747,18 @@ interface SidebarProps {
   persona: Persona;
   route: string;
   onRoute: (r: string) => void;
-  /** Phase 54 mobile drawer — when true, the sidebar slides in from
-   *  the left edge on viewports ≤880px. Direct class on the sidebar
-   *  (rather than a shell-level class with a descendant selector)
-   *  avoids a cascade specificity issue where the open→closed
-   *  transform reset wasn't winning reliably. */
+  /** Phone: the sidebar is a drawer, opened by the tab bar's More. The
+   *  class sits on the sidebar itself (not the shell) so open and closed
+   *  have the same specificity (Phase 54). */
   isMobileOpen: boolean;
+  counts: NavCounts;
+  me: { name: string; sub: string; avatar: string };
 }
-function Sidebar({ persona, route, onRoute, isMobileOpen }: SidebarProps) {
+function Sidebar({ persona, route, onRoute, isMobileOpen, counts, me }: SidebarProps) {
   const navigate = useNavigate();
   const routes = persona === 'brand' ? BRAND_ROUTES : CREATOR_ROUTES;
-  const brand = useV2CurrentBrand();
   const creator = useV2CurrentCreator();
   const managedCreators = useV2ManagedCreators();
-  // Live unread badge on the Inbox nav row. Pre-fix the brand sidebar
-  // always read "3" and the creator sidebar always read "2" because the
-  // count came from a literal in BRAND_ROUTES/CREATOR_ROUTES. The Inbox
-  // surface's own topbar crumb showed the real number — so the same
-  // screen disagreed with itself. `useV2Conversations` already returns
-  // per-conversation unread counts for the current viewer; we sum them.
-  const conversations = useV2Conversations();
-  const inboxUnread = conversations.reduce((sum, c) => sum + (c.unread ?? 0), 0);
-  // The "viewer" identity in the sidebar foot reflects the active persona —
-  // not necessarily the auth role. A brand user previewing the creator side
-  // sees the creator's chrome; the actual auth identity is unchanged.
-  const me = persona === 'creator' && creator
-    ? {
-        name: creator.name,
-        // Creator.handle already includes the leading "@"; don't double it.
-        sub: `${creator.handle.startsWith('@') ? '' : '@'}${creator.handle}${creator.verified ? ' · Verified' : ''}`,
-        avatar: creator.portrait,
-      }
-    : brand
-      ? {
-          name: brand.name,
-          sub: `${brand.industry}${brand.verified ? ' · Verified' : ''}`,
-          // P65 — pre-fix this called dicebear.com (an external service)
-          // for the brand sidebar avatar, even when the brand had uploaded
-          // a real logo. Use the actual uploaded logoUrl if present; the
-          // sidebar's Avatar render falls back to the brand's initial.
-          avatar: brand.logoUrl ?? '',
-        }
-      : { name: 'Welcome', sub: 'Loading...', avatar: '' };
 
   const handleSignOut = async () => {
     try { await api.auth.signOut(); } catch { /* ignore */ }
@@ -668,23 +779,24 @@ function Sidebar({ persona, route, onRoute, isMobileOpen }: SidebarProps) {
 
       <nav className="v2-nav" aria-label="Primary">
         {routes.map((r) => {
-          // Inbox count is the only live badge today — computed from
-          // store state (see comment at the top of the component). If
-          // future nav rows ever need badges, add them here.
-          const liveCount = (r.id === 'inbox' || r.id === 'creator-inbox')
-            ? (inboxUnread > 0 ? inboxUnread : undefined)
-            : undefined;
+          // Live counts only: what is waiting on you, from the same list
+          // the home's pile shows (needsYou.ts), plus unread messages.
+          const n = countFor(r.id, counts);
+          const active = routeBase(route) === r.id;
           return (
             <button
               key={r.id}
               type="button"
-              className={`v2-nav-item ${route === r.id ? 'is-active' : ''}`}
+              className={`v2-nav-item ${active ? 'is-active' : ''}`}
+              aria-current={active ? 'page' : undefined}
               onClick={() => onRoute(r.id)}
             >
               <span className="v2-nav-icon">{r.icon}</span>
               <span className="v2-nav-label">{r.label}</span>
               {'badge' in r && r.badge && <span className="v2-nav-badge">{r.badge}</span>}
-              {liveCount != null && <span className="v2-nav-count">{liveCount}</span>}
+              {n != null && (
+                <span className="v2-nav-count" aria-label={`${n} waiting`}>{n}</span>
+              )}
             </button>
           );
         })}
@@ -696,14 +808,8 @@ function Sidebar({ persona, route, onRoute, isMobileOpen }: SidebarProps) {
           they thought they were viewing. Only renders when there is genuinely
           more than one, so an ordinary creator never sees it. */}
       {persona === 'creator' && managedCreators.length > 1 && (
-        <div style={{ padding: '10px 14px', borderTop: '1px solid var(--v2-line)' }}>
-          <label
-            className="v2-eyebrow"
-            htmlFor="v2-acting-for"
-            style={{ display: 'block', marginBottom: 6, fontSize: 10 }}
-          >
-            Acting for
-          </label>
+        <div className="v2-acting-for">
+          <label htmlFor="v2-acting-for">Acting for</label>
           <select
             id="v2-acting-for"
             className="v2-input"

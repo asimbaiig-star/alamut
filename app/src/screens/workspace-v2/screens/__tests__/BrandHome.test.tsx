@@ -1,126 +1,161 @@
 // @vitest-environment jsdom
 //
-// Component smoke test — BrandHome.
+// Component smoke test — BrandHome (portal canvas, Round 2).
 //
-// BrandHome is a heavy dashboard with many hooks + sub-components.
-// We don't try to exhaustively pin every section's render shape —
-// instead we mock the v2 hooks to controlled values and assert the
-// top-level chrome renders + primary CTAs dispatch through onRoute.
-//
-// What we pin:
-//   - Topbar greeting + "New campaign" CTA wires to onRoute('campaign-new')
-//   - Empty-state render doesn't crash (no campaigns, no wallet activity)
-//   - With a populated brand + a campaign, the campaign count appears
-//     in the crumb ("1 live")
-//   - The spark composer's Send CTA dispatches to onRoute('spark')
+// The hooks are mocked to controlled shapes; real-store behaviour is
+// covered by the v2 mutation tests. What we pin:
+//   - the greeting names the brand, and "New campaign" routes to the wizard
+//   - the money strip shows what's held, with the test-mode line beside it
+//   - a pitch on top of the pile is answered in place: Accept calls
+//     v2AcceptPitch with its application, Pass calls v2RejectApplication,
+//     Save toggles the creator, and Counter opens the pipeline
+//   - an empty pile says so instead of rendering an empty card
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
-// P64 — Topbar now mounts the real NotificationsBell which uses
-// useNavigate from react-router. Render through MemoryRouter so the
-// hook has its context. Pre-P64 the stub bell had no router dependency.
+// The greeting row mounts the real NotificationsBell (uses useNavigate).
 function renderWithRouter(ui: React.ReactElement) {
   return render(<MemoryRouter>{ui}</MemoryRouter>);
 }
 
-// Mock all the hooks BrandHome reads. Returning controlled shapes makes
-// the test deterministic + fast. Real-store integration is exercised
-// at the v2 mutation test level.
 const mockBrand = {
-  id: 'b_aesop',
-  userId: 'u_hannah',
-  name: 'Aesop',
+  id: 'b_oak',
+  userId: 'u_oak',
+  name: 'Oakmoss',
   industry: 'Beauty',
-  hq: 'Melbourne',
-  website: 'https://aesop.com',
-  about: 'Skincare from Melbourne.',
-  preferredCategories: ['Beauty'],
-  preferredRegions: ['Global'],
-  walletBalance: 50000,
-  escrowHeld: 0,
   verified: true,
   savedCreators: [],
 };
 
 const mockCampaign = {
   id: 'cmp_1',
-  brand: 'Aesop',
-  brandId: 'b_aesop',
-  name: 'Spring Renewal',
+  brand: 'Oakmoss',
+  name: 'Spring serum launch',
   status: 'Live',
   placement: '1 Reel + 2 Stories',
-  creators: [],
-  budget: 12000,
-  spent: 0,
-  region: 'Global',
+  creators: ['c_ana'],
+  budget: 9000,
+  spent: 4500,
+  live: 2,
 };
+
+const mockCreator = {
+  id: 'c_ana',
+  name: 'Ana Ruiz',
+  avatar: '',
+  channels: [{ platform: 'instagram', handle: '@ana', followers: 48000, engagement: 5.2 }],
+};
+
+let NEEDS: unknown[] = [];
 
 vi.mock('../../v2Hooks', () => ({
   useV2BrandWallet: () => ({
-    available: 50000,
-    reserved: 0,
-    inFlight: 0,
-    currency: 'USD',
-    ledger: [],
+    available: 48200, reserved: 38600, inFlight: 0, currency: 'USD', ledger: [],
+    thisMonth: { topups: 0, released: 9450, fees: 0, adSpend: 0 },
   }),
   useV2Campaigns: () => [mockCampaign],
-  useV2Creators: () => [],
+  useV2Creators: () => [mockCreator],
   useV2CurrentBrand: () => mockBrand,
+  useV2BrandShortlist: () => [],
+  v2ToggleSavedCreator: vi.fn(),
+}));
+
+vi.mock('../../needsYou', () => ({
+  useBrandNeedsYou: () => NEEDS,
+}));
+
+vi.mock('../../v2CampaignActions', () => ({
+  v2AcceptPitch: vi.fn(),
+  v2RejectApplication: vi.fn(),
+}));
+
+vi.mock('@/lib/permissions', () => ({
+  useCapability: () => true,
 }));
 
 vi.mock('@/lib/api/store', () => ({
   useStore: Object.assign(
-    (selector?: (s: { db: Record<string, unknown[]> }) => unknown) => {
-      const state = { db: { users: [{ id: 'u_hannah', brandId: 'b_aesop' }], collaborations: [], notifications: [], transactions: [], reviews: [], submissions: [], offers: [], applications: [], deliverables: [], campaigns: [mockCampaign], brands: [mockBrand], creators: [] } };
+    (selector?: (s: { db: Record<string, unknown[]>; session: null }) => unknown) => {
+      const state = { db: { notifications: [], users: [] }, session: null };
       return selector ? selector(state) : state;
     },
-    { getState: () => ({ db: { users: [{ id: 'u_hannah', brandId: 'b_aesop' }], collaborations: [], notifications: [], transactions: [], reviews: [], submissions: [], offers: [], applications: [], deliverables: [], campaigns: [mockCampaign], brands: [mockBrand], creators: [] } }) },
+    { getState: () => ({ db: { notifications: [], users: [] }, session: null }) },
   ),
   tx: () => undefined,
 }));
 
-vi.mock('../../v2Adapters', () => ({
-  collabsForCampaign: () => [],
-  V2_PIPELINE_STAGES: [],
-}));
-
-vi.mock('../../useRecentActivity', () => ({
-  useRecentActivity: () => [],
-}));
-
 import { BrandHome } from '../BrandHome';
+import { v2AcceptPitch, v2RejectApplication } from '../../v2CampaignActions';
+import { v2ToggleSavedCreator } from '../../v2Hooks';
 
-afterEach(() => cleanup());
+const pitch = {
+  id: 'pitch_x',
+  kind: 'pitch',
+  title: 'Ana Ruiz pitched at $1,400',
+  sub: 'Spring serum launch · your target $1,500',
+  route: 'campaign:cmp_1?tab=pipeline',
+  campaignId: 'cmp_1',
+  campaignName: 'Spring serum launch',
+  creatorId: 'c_ana',
+  creatorName: 'Ana Ruiz',
+  applicationId: 'app_1',
+  pitch: 'Two Reels built around a morning routine.',
+  rate: 1400,
+  target: 1500,
+};
+
+afterEach(() => {
+  cleanup();
+  NEEDS = [];
+  vi.clearAllMocks();
+});
 
 describe('BrandHome (smoke)', () => {
-  it('renders without crashing and shows the brand name in the topbar', () => {
-    renderWithRouter(<BrandHome onRoute={() => undefined} />);
-    expect(screen.getByText(/Welcome back, Aesop/i)).toBeInTheDocument();
-  });
-
-  it('shows the live-campaign count in the topbar crumb', () => {
-    renderWithRouter(<BrandHome onRoute={() => undefined} />);
-    // "1 live" appears in the crumb AND in the Quarter pacing sub-text
-    // ("1 live campaign on plan"). Both renders confirm the mocked
-    // campaign's Live status flowed through to the UI.
-    expect(screen.getAllByText(/1 live/i).length).toBeGreaterThan(0);
-  });
-
-  it('"New campaign" CTA in the topbar dispatches to onRoute("campaign-new")', () => {
+  it('greets the brand and routes "New campaign" to the wizard', () => {
     const onRoute = vi.fn();
     renderWithRouter(<BrandHome onRoute={onRoute} />);
-    fireEvent.click(screen.getByRole('button', { name: /New campaign/i }));
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toMatch(/, Oakmoss\.$/);
+    fireEvent.click(screen.getAllByRole('button', { name: 'New campaign' })[0]!);
     expect(onRoute).toHaveBeenCalledWith('campaign-new');
   });
 
-  it('SparkComposer Send button dispatches to onRoute("spark")', () => {
+  it('shows the money held for creators with the test-mode line beside Top up', () => {
     const onRoute = vi.fn();
     renderWithRouter(<BrandHome onRoute={onRoute} />);
-    // SparkComposer renders a "Send" button with an arrow icon.
-    const sendBtn = screen.getByRole('button', { name: /^Send/i });
-    fireEvent.click(sendBtn);
-    expect(onRoute).toHaveBeenCalledWith('spark');
+    expect(screen.getByText('$38,600')).toBeInTheDocument();
+    expect(screen.getByText(/payments run in test mode/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Top up' }));
+    expect(onRoute).toHaveBeenCalledWith('wallet?action=topup');
+  });
+
+  it('says it is caught up when nothing is waiting', () => {
+    renderWithRouter(<BrandHome onRoute={() => undefined} />);
+    expect(screen.getByText(/all caught up/i)).toBeInTheDocument();
+  });
+
+  it('answers a pitch in place: accept, pass, save and counter', () => {
+    NEEDS = [pitch];
+    const onRoute = vi.fn();
+    renderWithRouter(<BrandHome onRoute={onRoute} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Accept $1,400' }));
+    expect(v2AcceptPitch).toHaveBeenCalledWith('app_1');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pass' }));
+    expect(v2RejectApplication).toHaveBeenCalledWith('app_1');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save creator' }));
+    expect(v2ToggleSavedCreator).toHaveBeenCalledWith('c_ana');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Counter' }));
+    expect(onRoute).toHaveBeenCalledWith('campaign:cmp_1?tab=pipeline');
+  });
+
+  it('lists live campaigns with what they have spent', () => {
+    renderWithRouter(<BrandHome onRoute={() => undefined} />);
+    expect(screen.getByText('Spring serum launch')).toBeInTheDocument();
+    expect(screen.getByText('$4,500')).toBeInTheDocument();
   });
 });

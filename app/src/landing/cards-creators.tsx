@@ -22,9 +22,10 @@ function Stars({ count }: { count: number }) {
 }
 
 export const CREATOR_DEAL: WorkspaceScreen = {
-  nav: ['Home', 'My storefront', 'My collaborations', 'Browse campaigns', 'Inbox', 'Calendar', 'Wallet'],
-  active: 'My collaborations',
-  crumb: `My collaborations · ${BRIEFS[0]!.brand}`,
+  persona: 'creator',
+  nav: ['Home', 'Storefront', 'Deals', 'Briefs', 'Inbox', 'Calendar', 'Wallet'],
+  active: 'Deals',
+  crumb: `Deals · ${BRIEFS[0]!.brand}`,
   title: 'Skincare launch',
   rows: [
     <div className="lx-row" key="storefront">

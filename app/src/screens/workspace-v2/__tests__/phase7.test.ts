@@ -83,12 +83,15 @@ describe('audience demographics carry every bucket the data has', () => {
 });
 
 describe('controls do what their label says', () => {
-  it('BrandHome "Send brief" is not a second "View profile"', () => {
+  it("BrandHome's pitch sheet acts in place, not five ways to the profile", () => {
     const src = code('BrandHome.tsx');
-    // Pre-fix both buttons ran the identical `onRoute(\`creator:${...}\`)`.
-    const profileRoutes = src.match(/onRoute\(`creator:\$\{creator\.id\}`\)/g) ?? [];
+    // Pre-fix two differently-labelled buttons both opened the profile.
+    // The open pitch now accepts, passes and saves where it stands.
+    const profileRoutes = src.match(/`creator:\$\{creator\.id\}`/g) ?? [];
     expect(profileRoutes.length).toBe(1);
-    expect(src).toContain('SendBriefModal');
+    expect(src).toContain('v2AcceptPitch(item.applicationId)');
+    expect(src).toContain('v2RejectApplication(item.applicationId)');
+    expect(src).toContain('v2ToggleSavedCreator(item.creatorId)');
   });
 
   it('Discover cards can shortlist and brief without opening the profile', () => {
@@ -238,15 +241,19 @@ describe('every upload entry point respects the offer gate', () => {
     expect(src).toContain("initialAction === 'upload' && canSubmitContent");
   });
 
-  it("CreatorHome's Today list doesn't offer upload before acceptance", () => {
+  it("the home's Needs-you list doesn't offer upload before acceptance", () => {
     // Same defect, one surface over: the tile generator accepted `pitched`,
     // so a creator who had only applied got a "Submit <deliverable>" tile
     // deep-linking to the modal — under a sub-line claiming their proposed
-    // rate was "in escrow". With the deep link now gated, leaving this in
-    // would have downgraded the error to a tile that silently does nothing.
-    const home = code('CreatorHome.tsx');
-    expect(home).not.toContain("c.stage !== 'confirmed' && c.stage !== 'pitched'");
-    expect(home).toContain("if (c.stage !== 'confirmed') continue;");
+    // rate was "in escrow". The list now lives in needsYou.ts (the home and
+    // the sidebar badges share it); uploads are offered only once confirmed.
+    const needs = read('../needsYou.ts');
+    expect(needs).not.toContain("c.stage !== 'confirmed' && c.stage !== 'pitched'");
+    const gate = needs.indexOf("if (c.stage === 'confirmed') {");
+    const upload = needs.indexOf("kind: 'upload'");
+    expect(gate).toBeGreaterThan(-1);
+    expect(upload).toBeGreaterThan(gate);
+    expect(needs.indexOf("kind: 'upload'", upload + 1)).toBe(-1);
   });
 
   it('the gate is declared before the effect that reads it', () => {

@@ -13,11 +13,11 @@ import { Brand, CheckMark } from './components';
 import { WIDE_MOTION } from './motion';
 
 /** The workspace shell: the sidebar as the portal draws it, and one screen. */
-export function Window({ nav, active, crumb, title, children }: {
-  nav: string[]; active: string; crumb: string; title: string; children: ReactNode;
+export function Window({ persona, nav, active, crumb, title, children }: {
+  persona: 'creator' | 'brand'; nav: string[]; active: string; crumb: string; title: string; children: ReactNode;
 }) {
   return (
-    <div className="lx-window" role="group" aria-label={`Example: the ${active} screen in the workspace`}>
+    <div className="lx-window" data-persona={persona} role="group" aria-label={`Example: the ${active} screen in the workspace`}>
       <aside className="lx-window-side" aria-hidden="true">
         <Brand />
         {nav.map((n) => <span key={n} className={n === active ? 'lx-window-nav on' : 'lx-window-nav'}>{n}</span>)}
@@ -33,7 +33,7 @@ export function Window({ nav, active, crumb, title, children }: {
   );
 }
 
-export interface WorkspaceScreen { nav: string[]; active: string; crumb: string; title: string; rows: ReactNode[] }
+export interface WorkspaceScreen { persona: 'creator' | 'brand'; nav: string[]; active: string; crumb: string; title: string; rows: ReactNode[] }
 
 /** How deals run today, beside how the workspace runs them. Every "now" is
  *  something the product does today; every "was" is the status quo it
@@ -86,7 +86,7 @@ export function DealStory({ id, title, lead, before, steps, screen }: {
                 ))}
               </ol>
             </div>
-            <Window nav={screen.nav} active={screen.active} crumb={screen.crumb} title={screen.title}>
+            <Window persona={screen.persona} nav={screen.nav} active={screen.active} crumb={screen.crumb} title={screen.title}>
               {screen.rows.map((row, i) => <div key={i} className="lx-card lx-step-row" data-state={stateOf(i)}>{row}</div>)}
             </Window>
           </div>

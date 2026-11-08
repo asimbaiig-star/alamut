@@ -1,154 +1,128 @@
 // @vitest-environment jsdom
 //
-// Component smoke test — CreatorHome.
+// Component smoke test — CreatorHome (portal canvas, Round 2).
 //
-// Mirrors the BrandHome smoke pattern: mock the v2 hooks + store
-// to controlled shapes, render, assert chrome + primary CTA dispatch.
-//
-// What we pin:
-//   - Renders the empty state when no creator profile is linked
-//     (`me` falls through to null) — most defensive path
-//   - Renders the greeting with the creator's first name when a creator
-//     IS linked
-//   - Renders the earnings hero when wallet has lifetime > 0
+// Hooks are mocked to controlled shapes. What we pin:
+//   - no creator on the account renders a plain message, not a crash
+//   - the greeting uses the first name; the money strip shows what's ready
+//     to withdraw, with the test-mode line, and Withdraw opens the form
+//   - an offer on top of the pile is accepted in place via v2AcceptOffer,
+//     "You'd keep" is the money module's net (never a local 0.85), and
+//     Counter opens the deal with the counter form
+//   - deals in motion counts each stage from the creator's collabs
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { splitAcrossSlots } from '@/lib/api/money';
 
-// P64 — Topbar now mounts the real NotificationsBell (uses useNavigate).
 function renderWithRouter(ui: React.ReactElement) {
   return render(<MemoryRouter>{ui}</MemoryRouter>);
 }
 
-const mockCreator = {
-  id: 'c_sarah',
-  userId: 'u_sarah',
-  name: 'Sarah Johnson',
-  handle: '@sarahstyle',
-  tagline: 'Beauty + lifestyle',
-  bio: '',
-  city: 'Lahore',
-  country: 'PK',
-  languages: ['en'],
-  categories: ['Beauty'],
-  portrait: '',
-  work: [],
-  platforms: [],
-  reach: 100000,
-  engagement: 4.5,
-  rating: 4.7,
-  tier: 'Specialist' as const,
-  responseHrs: 2,
-  rateCard: { post: '', reel: '', story: '', longform: '' },
-  payout: { method: 'bank', account: '', currency: 'USD' },
-  walletBalance: 4200,
-  pendingBalance: 3400,
-  lifetimeEarnings: 47800,
-  verified: true,
-  pressMentions: [],
-  pastClients: [],
-};
+const mockCreator = { id: 'c_sarah', userId: 'u_sarah', name: 'Sarah Johnson' };
+const mockWallet = { available: 4200, pending: 3400, lifetime: 47800, currency: 'USD' as const, ledger: [] };
 
-const mockWallet = {
-  available: 4200,
-  pending: 3400,
-  lifetime: 47800,
-  currency: 'USD' as const,
-  ledger: [],
-};
-
-// Toggle to test the empty path
 let CURRENT_CREATOR: typeof mockCreator | null = mockCreator;
+let NEEDS: unknown[] = [];
+let COLLABS: { campaignId: string; stage: string }[] = [];
 
 vi.mock('../../v2Hooks', () => ({
   useV2CurrentCreator: () => CURRENT_CREATOR,
-  useV2Creators: () => (CURRENT_CREATOR ? [CURRENT_CREATOR] : []),
   useV2CreatorWallet: () => mockWallet,
   useV2AllCampaigns: () => [],
-  useV2MyCollabs: () => [],
+  useV2MyCollabs: () => COLLABS,
+}));
+
+vi.mock('../../needsYou', () => ({
+  useCreatorNeedsYou: () => NEEDS,
+}));
+
+vi.mock('../../v2CampaignActions', () => ({
+  v2AcceptOffer: vi.fn(),
 }));
 
 vi.mock('@/lib/api/store', () => ({
   useStore: Object.assign(
-    (selector?: (s: { db: Record<string, unknown[]> }) => unknown) => {
-      const state = { db: {
-        users: CURRENT_CREATOR ? [{ id: 'u_sarah', creatorId: CURRENT_CREATOR.id }] : [],
-        collaborations: [], notifications: [], transactions: [], reviews: [],
-        submissions: [], offers: [], applications: [], deliverables: [],
-        campaigns: [], brands: [], creators: CURRENT_CREATOR ? [CURRENT_CREATOR] : [],
-      } };
+    (selector?: (s: { db: Record<string, unknown[]>; session: null }) => unknown) => {
+      const state = { db: { creators: [], campaigns: [], notifications: [], users: [] }, session: null };
       return selector ? selector(state) : state;
     },
-    { getState: () => ({ db: {} }) },
+    { getState: () => ({ db: {}, session: null }) },
   ),
   tx: () => undefined,
 }));
 
-// Spread the REAL module and override only what this suite needs. The old
-// mock enumerated its exports, so every new adapter export broke it — the
-// same drift hazard the stage model itself was fixed for.
-vi.mock('../../v2Adapters', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../v2Adapters')>()),
-  creatorToV2: (c: typeof mockCreator) => ({
-    id: c.id,
-    handle: c.handle,
-    name: c.name,
-    tagline: c.tagline,
-    avatar: c.portrait,
-    cover: '',
-    city: c.city,
-    country: c.country,
-    bio: c.bio,
-    categories: c.categories,
-    score: 85,
-    priceTier: '$$',
-    priceMin: 500,
-    priceMax: 2000,
-    verified: c.verified,
-    channels: [],
-    audience: { female: 60, male: 40, age2534: 35, topCity: c.city },
-    rate: 1500,
-    pastBrands: [],
-  }),
-}));
-
-vi.mock('../../useRecentActivity', () => ({
-  useRecentActivity: () => [],
-}));
-
-// CreatorHome imports RecentActivityCard from BrandHome — stub that too
-vi.mock('../BrandHome', () => ({
-  RecentActivityCard: () => null,
-  BrandHome: () => null,
-}));
-
 import { CreatorHome } from '../CreatorHome';
+import { v2AcceptOffer } from '../../v2CampaignActions';
+
+const offer = {
+  id: 'offer_x',
+  kind: 'offer',
+  title: 'Oakmoss sent an offer',
+  sub: 'Spring serum launch · reply to keep it open',
+  route: 'collab:col_1',
+  brand: 'Oakmoss',
+  campaignName: 'Spring serum launch',
+  collabId: 'col_1',
+  offerId: 'off_1',
+  rate: 1800,
+  asked: 2000,
+  slots: 2,
+  deliverable: '1 Reel + 3 Stories',
+};
 
 afterEach(() => {
   cleanup();
-  CURRENT_CREATOR = mockCreator; // reset to default
+  CURRENT_CREATOR = mockCreator;
+  NEEDS = [];
+  COLLABS = [];
+  vi.clearAllMocks();
 });
 
 describe('CreatorHome (smoke)', () => {
-  it('renders empty state when no creator + no allCreators fallback', () => {
+  it('says so plainly when the account has no creator profile', () => {
     CURRENT_CREATOR = null;
     renderWithRouter(<CreatorHome onRoute={() => undefined} />);
-    expect(screen.getByText(/No creator profile resolved yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/couldn’t find a creator profile/i)).toBeInTheDocument();
   });
 
-  it('renders the creator first name in the topbar when a creator is linked', () => {
-    renderWithRouter(<CreatorHome onRoute={() => undefined} />);
-    // Topbar title is `Hi ${firstName}`
-    expect(screen.getByText(/^Hi Sarah$/)).toBeInTheDocument();
+  it('greets by first name and shows the money ready to withdraw', () => {
+    const onRoute = vi.fn();
+    renderWithRouter(<CreatorHome onRoute={onRoute} />);
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toMatch(/, Sarah\.$/);
+    expect(screen.getByText('$4,200')).toBeInTheDocument();
+    expect(screen.getByText(/payments run in test mode/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Withdraw' }));
+    expect(onRoute).toHaveBeenCalledWith('creator-wallet?action=withdraw');
   });
 
-  it('renders the lifetime earnings number in the hero', () => {
+  it('accepts an offer in place and shows the real net', () => {
+    NEEDS = [offer];
+    const onRoute = vi.fn();
+    renderWithRouter(<CreatorHome onRoute={onRoute} />);
+
+    const net = splitAcrossSlots(1800, 2).net;
+    expect(screen.getByText(`$${net.toLocaleString('en-US')}`)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Accept $1,800' }));
+    expect(v2AcceptOffer).toHaveBeenCalledWith('off_1');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Counter' }));
+    expect(onRoute).toHaveBeenCalledWith('collab:col_1?action=counter');
+  });
+
+  it('counts deals in motion by stage', () => {
+    COLLABS = [
+      { campaignId: 'a', stage: 'invited' },
+      { campaignId: 'b', stage: 'negotiating' },
+      { campaignId: 'c', stage: 'confirmed' },
+      { campaignId: 'd', stage: 'paid' },
+      { campaignId: 'e', stage: 'cancelled' },
+    ];
     renderWithRouter(<CreatorHome onRoute={() => undefined} />);
-    // Wallet lifetime = $47,800 → fmtUSD renders "$47.8K" or similar
-    // Use a flexible matcher — the number could be formatted as "$47.8K"
-    // or in a fmtUSDfull variant.
-    const dollarMatches = screen.queryAllByText(/\$47/);
-    expect(dollarMatches.length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: '2 offers, open your deals' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '1 working, open your deals' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '1 paid, open your deals' })).toBeInTheDocument();
   });
 });

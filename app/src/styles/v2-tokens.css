@@ -38,6 +38,8 @@
   --v2-accent:        #C5552B;
   --v2-accent-2:      #E2784D;
   --v2-accent-soft:   #F4D9C7;
+  /* Terracotta deep enough for paper text on it (5.3:1): filled buttons. */
+  --v2-accent-deep:   #A9482A;
   --v2-moss:          #2D4A35;
   --v2-moss-soft:     #C9D4C0;
   --v2-gold:          #B8902F;

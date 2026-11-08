@@ -36,7 +36,7 @@ interface Props {
   /** §needs-you-direct-jump — when CreatorHome's Today list passes
    *  `?action=upload`, the upload modal opens on mount so the creator
    *  can submit content in one click from the home tile. */
-  initialAction?: 'upload' | 'mark-live';
+  initialAction?: 'upload' | 'mark-live' | 'counter';
 }
 
 /**
@@ -157,6 +157,11 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
     // that couldn't accept a submission, with no button pressed at all.
     if (initialAction === 'upload' && canSubmitContent && nextSlot && !uploadSlot) {
       setUploadSlot(nextSlot);
+      return;
+    }
+    // `?action=counter`: the home's open offer sheet sends "Counter" here.
+    if (initialAction === 'counter' && pendingOffer) {
+      setCounterOpen(true);
       return;
     }
     if (initialAction === 'mark-live' && collab && !markLiveTarget) {

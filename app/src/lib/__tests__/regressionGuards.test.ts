@@ -632,6 +632,11 @@ describe('marketing copy does not outrun the product', () => {
     expect(code('screens/workspace-v2/screens/BrandOnboardingV2.tsx'), 'brand onboarding stopped saying it').toMatch(/simulated/i);
     expect(code('screens/workspace-v2/screens/KycTax.tsx'), 'the identity and payout step stopped saying it').toMatch(/Simulated in this beta/);
     expect(code('screens/legal/LegalPage.tsx'), 'the terms stopped saying it').toMatch(/Payments on Alamut are simulated/);
+    // Both homes show money with Withdraw / Top up beside it; the strip they
+    // share says how payments run, right there.
+    expect(code('screens/workspace-v2/screens/homeParts.tsx'), 'the home money strip stopped saying it').toMatch(/payments run in test mode/);
+    expect(code('screens/workspace-v2/screens/CreatorHome.tsx'), 'the creator home dropped the money strip').toMatch(/<MoneyStrip/);
+    expect(code('screens/workspace-v2/screens/BrandHome.tsx'), 'the brand home dropped the money strip').toMatch(/<MoneyStrip/);
   });
 
   it('does not promise attribution the dashboard does not do', () => {

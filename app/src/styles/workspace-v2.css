@@ -35,38 +35,57 @@ body:has([data-surface="v2"]) {
 }
 
 /* =====================================================================
-   App shell (sidebar + main pane)
+   App shell: the sidebar sits on the persona's ground (creators navy,
+   brands aubergine, the same fields the landing and sign-up use) and
+   the work is one paper sheet laid on it. Portal canvas, Round 2.
    ===================================================================== */
 
 [data-surface="v2"] .v2-shell {
+  --v2-ground: var(--v2-band-navy);
+  --v2-on-ground: var(--v2-paper);
+  --v2-on-ground-2: color-mix(in srgb, var(--v2-paper) 84%, transparent);
+  --v2-on-ground-3: color-mix(in srgb, var(--v2-paper) 72%, transparent);
+  --v2-on-ground-line: color-mix(in srgb, var(--v2-paper) 16%, transparent);
+  --v2-on-ground-hover: color-mix(in srgb, var(--v2-paper) 10%, transparent);
   display: grid;
-  grid-template-columns: 240px 1fr;
+  grid-template-columns: 232px minmax(0, 1fr);
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
+  background: var(--v2-ground);
+}
+[data-surface="v2"] .v2-shell[data-persona="brand"] {
+  --v2-ground: var(--v2-band-aubergine);
 }
 [data-surface="v2"] .v2-main {
+  min-width: 0;
+  margin: 12px 12px 0 0;
   overflow-y: auto;
-  background: var(--v2-bg);
+  background: var(--v2-paper);
+  border-radius: var(--v2-r-xl) var(--v2-r-xl) 0 0;
+  box-shadow: 0 -1px 0 color-mix(in srgb, var(--v2-ink) 8%, transparent);
 }
 
 [data-surface="v2"] .v2-sidebar {
-  background: var(--v2-paper);
-  border-right: 1px solid var(--v2-line);
+  color: var(--v2-on-ground);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  padding: 10px 14px 12px;
 }
 
 [data-surface="v2"] .v2-brand {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 20px 18px 16px;
+  padding: 14px 8px 22px;
   cursor: pointer;
   background: none;
   border: none;
+  border-radius: var(--v2-r-md);
   text-align: left;
   width: 100%;
+  color: inherit;
 }
 [data-surface="v2"] .v2-brand-mark {
   width: 32px;
@@ -85,51 +104,34 @@ body:has([data-surface="v2"]) {
   letter-spacing: -0.02em;
   color: var(--v2-ink);
 }
-
-/* Persona toggle */
-[data-surface="v2"] .v2-persona-toggle {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  margin: 0 14px 14px;
-  padding: 3px;
-  background: var(--v2-bg-2);
-  border-radius: var(--v2-r-md);
-  font-size: 12px;
-}
-[data-surface="v2"] .v2-persona-btn {
-  padding: 7px 4px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--v2-ink-3);
-  font-family: var(--v2-font-sans);
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.12s, box-shadow 0.12s, color 0.12s;
-}
-[data-surface="v2"] .v2-persona-btn.is-on {
+/* On the ground the mark turns over: a paper tile with the ink peak. */
+[data-surface="v2"] .v2-sidebar .v2-brand-mark,
+[data-surface="v2"] .v2-appbar .v2-brand-mark {
   background: var(--v2-paper);
-  color: var(--v2-ink);
-  box-shadow: var(--v2-shadow-sm);
+  --v2-mark-fg: var(--v2-ink);
+}
+[data-surface="v2"] .v2-sidebar .v2-brand-name,
+[data-surface="v2"] .v2-appbar .v2-brand-name {
+  color: var(--v2-on-ground);
 }
 
 /* Nav */
 [data-surface="v2"] .v2-nav {
   flex: 1;
-  padding: 0 10px;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
 }
 [data-surface="v2"] .v2-nav-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 7px 10px;
-  border-radius: var(--v2-r-sm);
-  color: var(--v2-ink-2);
-  font-size: 13.5px;
-  font-weight: 450;
+  gap: 12px;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: var(--v2-r-md);
+  color: var(--v2-on-ground-2);
+  font-size: 15px;
+  font-weight: 500;
   cursor: pointer;
   background: transparent;
   border: none;
@@ -139,47 +141,60 @@ body:has([data-surface="v2"]) {
   transition: background 0.12s, color 0.12s;
 }
 [data-surface="v2"] .v2-nav-item:hover {
-  background: var(--v2-bg-2);
+  background: var(--v2-on-ground-hover);
+  color: var(--v2-on-ground);
 }
 [data-surface="v2"] .v2-nav-item.is-active {
-  background: var(--v2-bg-2);
+  background: var(--v2-paper);
   color: var(--v2-ink);
-  font-weight: 600;
 }
-[data-surface="v2"] .v2-nav-item.is-active .v2-nav-icon {
-  color: var(--v2-accent);
+[data-surface="v2"] .v2-sidebar :focus-visible {
+  outline: 2px solid var(--v2-paper);
+  outline-offset: 2px;
 }
 [data-surface="v2"] .v2-nav-icon {
   display: grid;
   place-items: center;
-  width: 16px;
-  color: var(--v2-ink-3);
+  width: 18px;
+  color: currentColor;
+}
+[data-surface="v2"] .v2-nav-icon svg {
+  width: 18px;
+  height: 18px;
 }
 [data-surface="v2"] .v2-nav-label {
   flex: 1;
 }
+/* A label, not a count (Spark's "AI"): outlined, so it never reads as
+   something waiting for you. */
 [data-surface="v2"] .v2-nav-badge {
-  font-size: 10px;
-  padding: 1px 6px;
+  font-size: 11.5px;
+  padding: 0 7px;
   border-radius: var(--v2-r-pill);
-  background: var(--v2-accent-soft);
-  color: var(--v2-accent);
+  border: 1px solid var(--v2-on-ground-line);
+  color: var(--v2-on-ground-3);
   font-weight: 600;
 }
+[data-surface="v2"] .v2-nav-item.is-active .v2-nav-badge {
+  border-color: var(--v2-line-2);
+  color: var(--v2-ink-3);
+}
+/* Counts are things waiting for you: coral with ink text (4.9:1). */
 [data-surface="v2"] .v2-nav-count {
-  font-size: 10px;
-  padding: 1px 6px;
+  font-size: 12px;
+  padding: 1px 7px;
   border-radius: var(--v2-r-pill);
-  background: var(--v2-ink);
-  color: var(--v2-paper);
+  background: var(--v2-accent-2);
+  color: var(--v2-ink);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
 /* Sidebar foot */
 [data-surface="v2"] .v2-sidebar-foot {
-  padding: 14px;
-  border-top: 1px solid var(--v2-line);
+  margin-top: 12px;
+  padding: 12px 6px 2px;
+  border-top: 1px solid var(--v2-on-ground-line);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -189,19 +204,46 @@ body:has([data-surface="v2"]) {
   min-width: 0;
 }
 [data-surface="v2"] .v2-sidebar-foot-name {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
-  color: var(--v2-ink);
+  color: var(--v2-on-ground);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 [data-surface="v2"] .v2-sidebar-foot-sub {
-  font-size: 11px;
-  color: var(--v2-ink-3);
+  font-size: 12.5px;
+  color: var(--v2-on-ground-3);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+[data-surface="v2"] .v2-sidebar .v2-icon-btn {
+  width: 40px;
+  height: 40px;
+  color: var(--v2-on-ground-2);
+}
+[data-surface="v2"] .v2-sidebar .v2-icon-btn:hover {
+  background: var(--v2-on-ground-hover);
+  color: var(--v2-on-ground);
+}
+[data-surface="v2"] .v2-acting-for {
+  margin-top: 12px;
+  padding: 12px 6px 0;
+  border-top: 1px solid var(--v2-on-ground-line);
+}
+[data-surface="v2"] .v2-acting-for label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--v2-on-ground-3);
+}
+
+/* Phone only: the bar on the ground above the sheet, and the tab bar. */
+[data-surface="v2"] .v2-appbar,
+[data-surface="v2"] .v2-tabbar {
+  display: none;
 }
 
 /* =====================================================================
@@ -211,7 +253,7 @@ body:has([data-surface="v2"]) {
   position: sticky;
   top: 0;
   z-index: 10;
-  background: rgba(246, 241, 232, 0.85);
+  background: color-mix(in srgb, var(--v2-paper) 90%, transparent);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--v2-line);
@@ -223,12 +265,12 @@ body:has([data-surface="v2"]) {
   flex-wrap: wrap;
   gap: 12px;
   row-gap: 6px;
-  padding: 10px 28px;
-  min-height: 56px;
+  padding: 14px 40px;
+  min-height: 64px;
 }
 [data-surface="v2"] .v2-topbar h1 {
   font-family: var(--v2-font-display);
-  font-size: 22px;
+  font-size: 26px;
   font-weight: 500;
   letter-spacing: -0.02em;
   color: var(--v2-ink);
@@ -275,7 +317,7 @@ body:has([data-surface="v2"]) {
    Content
    ===================================================================== */
 [data-surface="v2"] .v2-content {
-  padding: 28px;
+  padding: 32px 40px 56px;
   max-width: 1400px;
 }
 [data-surface="v2"] .v2-content-wide {
@@ -480,17 +522,17 @@ body:has([data-surface="v2"]) {
 /* Section heading */
 [data-surface="v2"] .v2-section-title {
   font-family: var(--v2-font-display);
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 500;
-  letter-spacing: -0.025em;
-  margin: 0 0 6px;
+  letter-spacing: -0.02em;
+  margin: 0 0 4px;
   line-height: 1.1;
   color: var(--v2-ink);
 }
 [data-surface="v2"] .v2-section-sub {
   color: var(--v2-ink-3);
   margin: 0;
-  font-size: 14px;
+  font-size: 13px;
 }
 [data-surface="v2"] .v2-eyebrow {
   text-transform: uppercase;
@@ -690,95 +732,157 @@ body:has([data-surface="v2"]) {
 }
 
 /* =====================================================================
-   Phase 54 — mobile-only hamburger + sidebar drawer
-   =====================================================================
-   Pre-fix the workspace shell collapsed to a single column at ≤880px
-   and hid the sidebar entirely with no replacement, leaving mobile
-   users with no way to navigate after sign-in. The hamburger is a
-   fixed top-left button (visible only ≤880px), and the sidebar
-   becomes a left-edge drawer that slides in when `is-open` is toggled
-   directly on the sidebar element. (Earlier attempts scoped the
-   trigger to the shell and animated via `transform: translateX(...)`,
-   but the close-side transform reset wouldn't win the cascade — even
-   inline `!important` couldn't override what we eventually traced to
-   a stuck WAAPI animation on the property. The fix is to (a) put the
-   toggle class on the sidebar itself for symmetric specificity, and
-   (b) animate `left` instead of `transform` so we sidestep the
-   animation-override path entirely.) */
+   Phone and small tablet: the ground becomes a bar at the top, the sheet
+   runs below it and the page scrolls as a document (so the browser's
+   own bars can collapse). Five tabs at the bottom; "More" opens the
+   full sidebar as a drawer on the ground.
+   ===================================================================== */
 
-[data-surface="v2"] .v2-mobile-menu-btn {
-  display: none;  /* desktop hides; mobile reveals via media query */
-  position: fixed;
-  top: 12px;
-  left: 12px;
-  z-index: 60;
-  width: 40px;
-  height: 40px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  border: 1px solid var(--v2-line);
-  background: var(--v2-paper);
-  color: var(--v2-ink);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-[data-surface="v2"] .v2-mobile-menu-btn:hover {
-  background: var(--v2-bg-2);
-}
-
-[data-surface="v2"] .v2-mobile-backdrop {
-  display: none;  /* desktop hides; mobile reveals via media query */
-  position: fixed;
-  inset: 0;
-  z-index: 45;
-  background: rgba(0, 0, 0, 0.42);
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
-  animation: v2-mobile-backdrop-in 180ms ease-out;
+@media (max-width: 880px) {
+  [data-surface="v2"] .v2-shell {
+    display: block;
+    height: auto;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+  [data-surface="v2"] .v2-appbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px max(16px, env(safe-area-inset-right, 0px)) 14px max(16px, env(safe-area-inset-left, 0px));
+    padding-top: calc(12px + env(safe-area-inset-top, 0px));
+    color: var(--v2-on-ground);
+  }
+  [data-surface="v2"] .v2-appbar .v2-brand {
+    width: auto;
+    padding: 0;
+  }
+  [data-surface="v2"] .v2-appbar .v2-brand-mark {
+    width: 30px;
+    height: 30px;
+  }
+  [data-surface="v2"] .v2-appbar .v2-brand-name {
+    font-size: 21px;
+  }
+  [data-surface="v2"] .v2-appbar-me {
+    margin-left: auto;
+  }
+  [data-surface="v2"] .v2-main {
+    margin: 0;
+    overflow: visible;
+    min-height: calc(100dvh - 60px);
+    border-radius: 22px 22px 0 0;
+    padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  }
+  [data-surface="v2"] .v2-tabbar {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    padding: 6px max(6px, env(safe-area-inset-right, 0px)) calc(8px + env(safe-area-inset-bottom, 0px)) max(6px, env(safe-area-inset-left, 0px));
+    background: var(--v2-paper);
+    border-top: 1px solid var(--v2-line);
+  }
+  [data-surface="v2"] .v2-tb-item {
+    position: relative;
+    display: grid;
+    justify-items: center;
+    align-content: center;
+    gap: 3px;
+    min-height: 52px;
+    padding: 4px 2px 0;
+    border: 0;
+    background: none;
+    font: 500 11.5px/1.2 var(--v2-font-sans);
+    color: var(--v2-ink-3);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  [data-surface="v2"] .v2-tb-item svg {
+    width: 22px;
+    height: 22px;
+  }
+  [data-surface="v2"] .v2-tb-item.is-active {
+    color: var(--v2-ink);
+  }
+  [data-surface="v2"] .v2-tb-item.is-active::before {
+    content: "";
+    position: absolute;
+    top: -7px;
+    width: 28px;
+    height: 3px;
+    border-radius: 0 0 3px 3px;
+    background: var(--v2-ink);
+  }
+  [data-surface="v2"] .v2-tb-dot {
+    position: absolute;
+    top: 2px;
+    left: calc(50% + 6px);
+    min-width: 18px;
+    padding: 0 5px;
+    border-radius: var(--v2-r-pill);
+    background: var(--v2-accent-2);
+    color: var(--v2-ink);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 18px;
+    font-variant-numeric: tabular-nums;
+  }
+  [data-surface="v2"] .v2-tb-item:focus-visible {
+    outline: 2px solid var(--v2-ink);
+    outline-offset: -2px;
+    border-radius: 10px;
+  }
+  [data-surface="v2"] .v2-mobile-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 45;
+    background: color-mix(in srgb, var(--v2-ink) 45%, transparent);
+    animation: v2-mobile-backdrop-in 180ms ease-out;
+  }
+  /* The drawer slides via `left`, not `transform`: a stuck WAAPI
+     animation once held `transform` on this element (Phase 54). */
+  [data-surface="v2"] .v2-sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: calc(-1 * min(86vw, 300px));
+    width: min(86vw, 300px);
+    z-index: 50;
+    background: var(--v2-ground);
+    padding-top: calc(10px + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    visibility: hidden;
+    transition: left 220ms cubic-bezier(0.22, 0.36, 0.24, 1), visibility 0s linear 220ms;
+    box-shadow: 8px 0 32px color-mix(in srgb, var(--v2-ink) 30%, transparent);
+  }
+  [data-surface="v2"] .v2-sidebar.is-open {
+    left: 0;
+    visibility: visible;
+    transition: left 220ms cubic-bezier(0.22, 0.36, 0.24, 1);
+  }
+  [data-surface="v2"] .v2-topbar {
+    padding: 14px 16px 12px;
+    border-radius: 22px 22px 0 0;
+  }
+  [data-surface="v2"] .v2-content {
+    padding: 20px 16px 32px;
+  }
+  [data-surface="v2"] .v2-grid-4 { grid-template-columns: repeat(2, 1fr); }
+  [data-surface="v2"] .v2-grid-3 { grid-template-columns: 1fr; }
+  [data-surface="v2"] .v2-grid-2 { grid-template-columns: 1fr; }
 }
 @keyframes v2-mobile-backdrop-in {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
-
-/* Mobile (desktop-first defensive) */
-@media (max-width: 880px) {
-  [data-surface="v2"] .v2-shell {
-    grid-template-columns: 1fr;
-  }
-  /* Show the hamburger trigger + backdrop on mobile only. */
-  [data-surface="v2"] .v2-mobile-menu-btn { display: flex; }
-  [data-surface="v2"] .v2-mobile-backdrop { display: block; }
-  /* Sidebar becomes a fixed left-edge drawer, off-canvas by default.
-     We slide via `left` (not `transform`) on purpose: earlier passes
-     used `transform: translateX(...)` and ran into a stuck WAAPI-
-     visible animation on the element that wouldn't release the
-     property, so even inline `style.setProperty('transform', ..., '!important')`
-     didn't win. `left` doesn't have that problem and animates just
-     as smoothly. */
-  [data-surface="v2"] .v2-sidebar {
-    display: flex;
-    position: fixed;
-    top: 0;
-    left: calc(-1 * min(80vw, 280px));
-    bottom: 0;
-    width: min(80vw, 280px);
-    z-index: 50;
-    transition: left 220ms cubic-bezier(0.22, 0.36, 0.24, 1);
-    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.12);
-  }
-  [data-surface="v2"] .v2-sidebar.is-open {
-    left: 0;
-  }
-  /* Make room for the hamburger button so it doesn't overlap page
-     content. The topbar already has its own padding — add a left
-     offset only on small screens. */
-  [data-surface="v2"] .v2-topbar { padding-left: 60px; }
-  [data-surface="v2"] .v2-grid-4 { grid-template-columns: repeat(2, 1fr); }
-  [data-surface="v2"] .v2-grid-3 { grid-template-columns: 1fr; }
-  [data-surface="v2"] .v2-grid-2 { grid-template-columns: 1fr; }
+@media (prefers-reduced-motion: reduce) {
+  [data-surface="v2"] .v2-sidebar { transition: none; }
 }
 
 /* =====================================================================
@@ -787,7 +891,9 @@ body:has([data-surface="v2"]) {
 [data-surface="v2"] .v2-inbox {
   display: grid;
   grid-template-columns: 320px 1fr 320px;
-  height: calc(100vh - 56px); /* below the topbar */
+  /* The sheet is the viewport less its 12px top margin, less the 64px topbar. */
+  height: calc(100vh - 76px);
+  height: calc(100dvh - 76px);
   border-top: 1px solid var(--v2-line);
 }
 [data-surface="v2"] .v2-inbox-list {
@@ -3116,3 +3222,28 @@ body:has([data-surface="v2"]) {
   pointer-events: none;
 }
 
+
+/* Phone: toasts clear the tab bar instead of landing on it, and the sheet
+   needs no edge line against the ground. */
+@media (max-width: 880px) {
+  body:has([data-surface="v2"] .v2-tabbar) .toast-host {
+    bottom: calc(84px + env(keyboard-inset-height, 0px));
+  }
+  [data-surface="v2"] .v2-main {
+    box-shadow: none;
+  }
+}
+
+/* Desktop inbox: the sheet becomes a column so the three panes take
+   exactly what the topbar leaves, whatever the topbar's height. */
+@media (min-width: 881px) {
+  [data-surface="v2"] .v2-main:has(> .v2-inbox) {
+    display: flex;
+    flex-direction: column;
+  }
+  [data-surface="v2"] .v2-main:has(> .v2-inbox) > .v2-inbox {
+    flex: 1;
+    min-height: 0;
+    height: auto;
+  }
+}

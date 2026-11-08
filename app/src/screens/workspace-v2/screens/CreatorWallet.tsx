@@ -15,10 +15,12 @@ import { useModalEscape } from '@/lib/utils/useModalEscape';
 
 interface Props {
   onRoute: (r: string) => void;
+  /** `creator-wallet?action=withdraw` (the home's Withdraw) opens the form. */
+  initialAction?: 'withdraw';
 }
 
-export function CreatorWallet({ onRoute }: Props) {
-  const [showWithdraw, setShowWithdraw] = useState(false);
+export function CreatorWallet({ onRoute, initialAction }: Props) {
+  const [showWithdraw, setShowWithdraw] = useState(initialAction === 'withdraw');
   const [showAdvance, setShowAdvance] = useState(false);
   const W = useV2CreatorWallet();
   const creator = useV2CurrentCreator();

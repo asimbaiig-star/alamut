@@ -63,10 +63,12 @@ describe('fit scoring has exactly one implementation', () => {
     expect(src).not.toContain('Sorted by fit-score (highest first).');
   });
 
-  it('BrandHome asks the matcher for its "why this match" reasons', () => {
-    const src = code('screens/BrandHome.tsx');
-    expect(src).toContain('matchCreatorToBrand');
-    expect(src).not.toContain('Audience overlap + fast replies');
+  it('the homes rank by the one matcher, never a fit sentence of their own', () => {
+    // Round 2 took "creator of the week" off the brand home; the creator
+    // home's "Briefs that fit you" is the ranking left, and it must come
+    // from the shared matcher.
+    expect(code('screens/BrandHome.tsx')).not.toContain('Audience overlap + fast replies');
+    expect(code('screens/CreatorHome.tsx')).toContain('matchCreatorToCampaign(');
   });
 });
 
