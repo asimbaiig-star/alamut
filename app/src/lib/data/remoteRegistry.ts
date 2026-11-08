@@ -37,6 +37,8 @@
 
 const remoteCampaignIds = new Set<string>();
 let campaignsHydrated = false;
+let arrived: () => void = () => {};
+let known = new Promise<void>((resolve) => { arrived = resolve; });
 
 /** Called once by the boot hydration with the ids Supabase returned.
  *
@@ -52,6 +54,24 @@ export function recordRemoteCampaigns(ids: Iterable<string>): void {
   if (incoming.length === 0) return;
   for (const id of incoming) remoteCampaignIds.add(id);
   campaignsHydrated = true;
+  arrived();
+}
+
+/**
+ * Resolves once hydration has recorded what Postgres holds, or after
+ * `timeoutMs` if it never does.
+ *
+ * Mirrors await this before asking `mayMirrorForCampaign`. Without it, a
+ * write fired during sign-in (before hydration lands) went through the
+ * fail-open branch and hit the FK: every creator sign-in on production
+ * logged two `409 … collaborations_campaign_id_fkey` errors. Waiting turns
+ * "unknown" into "known" instead of guessing. The timeout keeps the
+ * fail-open promise: if hydration never arms (a failed or empty read), the
+ * write goes ahead exactly as before rather than being held forever.
+ */
+export function campaignsKnown(timeoutMs = 8000): Promise<void> {
+  if (campaignsHydrated) return Promise.resolve();
+  return Promise.race([known, new Promise<void>((resolve) => setTimeout(resolve, timeoutMs))]);
 }
 
 /**
@@ -78,4 +98,5 @@ export function knownRemoteCampaigns(): string[] {
 export function __resetRemoteRegistry(): void {
   remoteCampaignIds.clear();
   campaignsHydrated = false;
+  known = new Promise<void>((resolve) => { arrived = resolve; });
 }

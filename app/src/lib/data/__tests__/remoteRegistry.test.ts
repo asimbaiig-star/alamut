@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import {
   recordRemoteCampaigns,
   mayMirrorForCampaign,
+  campaignsKnown,
   __resetRemoteRegistry,
 } from '../remoteRegistry';
 
@@ -87,11 +88,55 @@ describe('mayMirrorForCampaign', () => {
   });
 });
 
+describe('campaignsKnown — wait for the list instead of guessing', () => {
+  beforeEach(() => __resetRemoteRegistry());
+
+  it('resolves as soon as hydration records what Postgres holds', async () => {
+    let done = false;
+    const wait = campaignsKnown(60_000).then(() => { done = true; });
+    await Promise.resolve();
+    expect(done).toBe(false);
+    recordRemoteCampaigns(['cmp_1']);
+    await wait;
+    expect(done).toBe(true);
+    expect(mayMirrorForCampaign('cmp_g4')).toBe(false);
+  });
+
+  it('an empty read does not release it early', async () => {
+    let done = false;
+    void campaignsKnown(60_000).then(() => { done = true; });
+    recordRemoteCampaigns([]);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(done).toBe(false);
+  });
+
+  it('keeps the fail-open promise: never held forever', async () => {
+    const t0 = Date.now();
+    await campaignsKnown(20);
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(15);
+    expect(mayMirrorForCampaign('cmp_g4')).toBe(true);
+  });
+
+  it('is immediate once known', async () => {
+    recordRemoteCampaigns(['cmp_1']);
+    const t0 = Date.now();
+    await campaignsKnown(60_000);
+    expect(Date.now() - t0).toBeLessThan(15);
+  });
+});
+
 describe('both FK-bearing mirrors consult the guard', () => {
   const read = (p: string) => readFileSync(join(__dirname, '..', '..', 'api', p), 'utf8');
 
   it('the collaboration mirror gates on it', () => {
     expect(read('collabSync.ts')).toContain('mayMirrorForCampaign(collabSnapshot.campaignId)');
+  });
+
+  it('both wait for the list before asking', () => {
+    // Asking before hydration lands falls into the fail-open branch, which
+    // is how two doomed writes per creator sign-in still reached Postgres.
+    expect(read('collabSync.ts')).toMatch(/await campaignsKnown\(\);\s*if \(!mayMirrorForCampaign\(collabSnapshot\.campaignId\)\)/);
+    expect(read('store.ts')).toMatch(/await campaignsKnown\(\);\s*const mirrorable = newTxs\.filter\(\(t\) => mayMirrorForCampaign\(t\.campaignId\)\)/);
   });
 
   it('the transaction mirror filters on it', () => {

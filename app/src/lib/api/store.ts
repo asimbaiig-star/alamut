@@ -264,7 +264,8 @@ export function tx<T>(mutator: (db: Database) => T): T {
         // Same FK as collaborations: `transactions.campaign_id` references
         // `campaigns`, so a row on a local-only campaign is a guaranteed
         // 23503. Filter rather than let Postgres refuse it.
-        const { mayMirrorForCampaign } = await import('@/lib/data/remoteRegistry');
+        const { campaignsKnown, mayMirrorForCampaign } = await import('@/lib/data/remoteRegistry');
+        await campaignsKnown();
         const mirrorable = newTxs.filter((t) => mayMirrorForCampaign(t.campaignId));
         if (mirrorable.length === 0) return;
         const { insertTransactionsBatchInSupabase } = await import('@/lib/data/transactionsRepo');

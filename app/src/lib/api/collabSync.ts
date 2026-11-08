@@ -538,7 +538,8 @@ export function ensureCollabState(
         // came back `23503 Key is not present in table "campaigns"`. The
         // ownership gate above cut ~32 doomed writes per sign-in to 2;
         // these were those 2. See lib/data/remoteRegistry.ts.
-        const { mayMirrorForCampaign } = await import('@/lib/data/remoteRegistry');
+        const { campaignsKnown, mayMirrorForCampaign } = await import('@/lib/data/remoteRegistry');
+        await campaignsKnown();
         if (!mayMirrorForCampaign(collabSnapshot.campaignId)) return;
 
         const { writeCollabInSupabase } = await import('@/lib/data/collaborationsRepo');
