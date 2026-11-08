@@ -20,6 +20,7 @@
 import { type V2Creator, type V2Campaign } from './data';
 import type { Database } from '@/lib/api/types';
 import { matchCreatorToBrand } from './matching';
+import { avgEngagement } from './channels';
 
 // =====================================================================
 // Pool injection — the engine doesn't import store data directly so it
@@ -374,7 +375,7 @@ function handleProject(text: string, context: SparkContext): { reply: SparkMessa
   const creators = shortlistIds.map((id) => pool().creators.find((c) => c.id === id)!).filter(Boolean);
   const totalReach = creators.reduce((s, c) => s + c.channels.reduce((a, ch) => a + ch.followers, 0), 0);
   const avgER = creators.length > 0
-    ? creators.reduce((s, c) => s + c.channels.reduce((a, ch) => a + ch.engagement, 0) / c.channels.length, 0) / creators.length
+    ? creators.reduce((s, c) => s + avgEngagement(c.channels), 0) / creators.length
     : 0;
   const placements = creators.length * 2; // 1 reel + 1 stories bundle per creator (rough)
 

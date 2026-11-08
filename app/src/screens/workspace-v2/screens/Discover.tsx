@@ -21,6 +21,7 @@ import { useV2Creators, useV2BrandShortlist, v2ToggleSavedCreator } from '../v2H
 import { useStore } from '@/lib/api/store';
 import { computeTrustProfile, trustSummary } from '../creatorTrust';
 import { SendBriefModal } from './WorkflowModals';
+import { bestEngagement, topChannel } from '../channels';
 
 interface Props {
   onRoute: (r: string) => void;
@@ -191,7 +192,7 @@ export function Discover({ onRoute }: Props) {
     }
     if (filters.followers.length > 0) {
       r = r.filter((c) => {
-        const max = Math.max(...c.channels.map((ch) => ch.followers));
+        const max = topChannel(c.channels)?.followers ?? 0;
         return filters.followers.includes(followerBucket(max));
       });
     }
@@ -208,7 +209,7 @@ export function Discover({ onRoute }: Props) {
     if (filters.audienceGender === 'male')   r = r.filter((c) => (c.audience?.male   ?? 0) >= 60);
     if (filters.verified) r = r.filter((c) => c.verified);
     if (filters.minER > 0) {
-      r = r.filter((c) => Math.max(...c.channels.map((ch) => ch.engagement)) >= filters.minER);
+      r = r.filter((c) => bestEngagement(c.channels) >= filters.minER);
     }
     if (filters.priceMax < 1_000_000) r = r.filter((c) => c.rate <= filters.priceMax);
 
@@ -218,13 +219,11 @@ export function Discover({ onRoute }: Props) {
     if (sort === 'score') r.sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
     else if (sort === 'followers') {
       r.sort((a, b) =>
-        Math.max(...b.channels.map((ch) => ch.followers)) -
-        Math.max(...a.channels.map((ch) => ch.followers)),
+        (topChannel(b.channels)?.followers ?? 0) - (topChannel(a.channels)?.followers ?? 0),
       );
     } else if (sort === 'er') {
       r.sort((a, b) =>
-        Math.max(...b.channels.map((ch) => ch.engagement)) -
-        Math.max(...a.channels.map((ch) => ch.engagement)),
+        bestEngagement(b.channels) - bestEngagement(a.channels),
       );
     } else if (sort === 'price-low')  r.sort((a, b) => a.rate - b.rate);
     else if (sort === 'price-high')   r.sort((a, b) => b.rate - a.rate);
@@ -1027,10 +1026,7 @@ function CreatorCard({ creator, onClick, onRoute }: {
     return trustSummary(computeTrustProfile(raw, db));
   }, [db, creator.id]);
 
-  const topChannel = creator.channels.reduce(
-    (a, b) => a.followers > b.followers ? a : b,
-    creator.channels[0],
-  );
+  const top = topChannel(creator.channels);
   const totalFollowers = creator.channels.reduce((s, ch) => s + ch.followers, 0);
 
   return (
@@ -1168,9 +1164,11 @@ function CreatorCard({ creator, onClick, onRoute }: {
               </span>
             );
           })}
-          <span style={{ color: 'var(--v2-moss)', fontWeight: 600 }}>
-            · {topChannel.engagement}% ER
-          </span>
+          {top && (
+            <span style={{ color: 'var(--v2-moss)', fontWeight: 600 }}>
+              · {top.engagement}% ER
+            </span>
+          )}
         </div>
 
         {/* Audience — one-line summary + slim gender-split bar. Rendered

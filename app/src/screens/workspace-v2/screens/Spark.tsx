@@ -33,6 +33,7 @@ import {
 import { pushToast } from '@/lib/utils/toast';
 import { useStore } from '@/lib/api/store';
 import type { SparkDraft } from '@/lib/api/types';
+import { avgEngagement } from '../channels';
 
 interface Props {
   onRoute: (r: string) => void;
@@ -334,7 +335,7 @@ export function Spark({ onRoute, initialPrompt }: Props) {
   const shortlistAvgER = shortlistCreators.length > 0
     ? (
         shortlistCreators.reduce(
-          (s, c) => s + c.channels.reduce((a, ch) => a + ch.engagement, 0) / c.channels.length,
+          (s, c) => s + avgEngagement(c.channels),
           0,
         ) / shortlistCreators.length
       ).toFixed(1)
@@ -793,7 +794,7 @@ function ComparisonBlock({ block, onSave, onRoute }: {
     { label: 'City', values: creators.map((c) => c.city) },
     { label: 'Categories', values: creators.map((c) => c.categories.slice(0, 2).join(' · ')) },
     { label: 'Followers', values: creators.map((c) => fmtFollowers(c.channels.reduce((s, ch) => s + ch.followers, 0))) },
-    { label: 'Avg engagement', values: creators.map((c) => `${(c.channels.reduce((s, ch) => s + ch.engagement, 0) / c.channels.length).toFixed(1)}%`) },
+    { label: 'Avg engagement', values: creators.map((c) => `${avgEngagement(c.channels).toFixed(1)}%`) },
     { label: 'Top audience', values: creators.map((c) => (c.audience ? `${c.audience.female}%F · ${c.audience.male}%M · ${c.audience.topCity}` : 'Not shared')) },
     { label: 'Going rate', values: creators.map((c) => fmtUSD(c.rate)) },
     { label: 'Past brands', values: creators.map((c) => c.pastBrands.slice(0, 2).join(' · ')) },
