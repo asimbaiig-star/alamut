@@ -604,7 +604,7 @@ describe('marketing copy does not outrun the product', () => {
     .join('\n');
   const marketing = () => landingFiles().map(code).join('\n') + '\n' + shells();
   /** What the pages CLAIM. A capability that isn't live may be named in a
-   *  page's "Not live yet" list — saying so plainly is what that list is
+   *  page's "Coming next" list — saying so plainly is what that list is
    *  for — so its entries are cut before any claim check runs. */
   const claims = () => marketing().replace(/<NotYet items=\{\[[\s\S]*?\]\} \/>/g, '');
 
@@ -613,12 +613,25 @@ describe('marketing copy does not outrun the product', () => {
     expect(files).toContain('landing/CreatorsPage.tsx');
     expect(files).toContain('landing/BrandsPage.tsx');
     for (const page of ['landing/CreatorsPage.tsx', 'landing/BrandsPage.tsx']) {
-      expect(code(page), `${page} lost its "Not live yet" list`).toMatch(/<NotYet items=\{\[/);
+      expect(code(page), `${page} lost its "Coming next" list`).toMatch(/<NotYet items=\{\[/);
     }
     // The cut must actually cut — or every claim check below is checking a
     // string that still contains the honest list and proves nothing.
     expect(marketing()).toMatch(/Click tracking and revenue attribution/);
     expect(claims()).not.toMatch(/Click tracking and revenue attribution/);
+  });
+
+  it('says how beta payments work where someone commits, not on the pitch', () => {
+    // The landing reads as the product. The disclosure lives where a person
+    // signs up, sets up and handles money, so nobody does real work, or tops
+    // up, expecting real money while payments are simulated. Taking it off
+    // the landing is only fine while every one of these still says it.
+    expect(marketing(), 'the landing talks about simulated payments').not.toMatch(/simulat/i);
+    expect(code('screens/auth/SignUp.tsx'), 'sign-up stopped saying payments are simulated').toMatch(/Payments are simulated/);
+    expect(code('screens/workspace-v2/screens/CreatorOnboardingV2.tsx'), 'creator onboarding stopped saying it').toMatch(/simulated/i);
+    expect(code('screens/workspace-v2/screens/BrandOnboardingV2.tsx'), 'brand onboarding stopped saying it').toMatch(/simulated/i);
+    expect(code('screens/workspace-v2/screens/KycTax.tsx'), 'the identity and payout step stopped saying it').toMatch(/Simulated in this beta/);
+    expect(code('screens/legal/LegalPage.tsx'), 'the terms stopped saying it').toMatch(/Payments on Alamut are simulated/);
   });
 
   it('does not promise attribution the dashboard does not do', () => {
@@ -906,6 +919,19 @@ describe('marketing copy does not outrun the product', () => {
       e.isDirectory() ? (e.name === '__tests__' ? [] : walk(join(dir, e.name))) : /\.(ts|tsx)$/.test(e.name) ? [join(dir, e.name)] : []);
     const holders = walk(SRC).filter((f) => starts.some((p) => readFileSync(f, 'utf8').includes(p)));
     expect(holders.map((f) => f.slice(SRC.length + 1))).toEqual(['lib/platformGlyphs.ts']);
+  });
+
+  it('the landing’s photos are on our own host, at every width it asks for', () => {
+    // They came from images.unsplash.com, and the day that host was
+    // unreachable the pages lost their pictures and never finished loading.
+    const photos = code('landing/photos.ts');
+    const files = [...photos.matchAll(/file: '(\w+)'/g)].map((m) => m[1]!);
+    const widths = /PHOTO_WIDTHS = \[([\d, ]+)\]/.exec(photos)![1]!.split(',').map((w) => w.trim());
+    expect(files.length).toBeGreaterThan(10);
+    for (const f of files) for (const w of widths) {
+      expect(() => readFileSync(join(SRC, '..', 'public', 'photos', `${f}-${w}.webp`)), `public/photos/${f}-${w}.webp is missing`).not.toThrow();
+    }
+    expect(marketing(), 'the landing loads a picture from another host').not.toMatch(/images\.unsplash\.com|plus\.unsplash\.com/);
   });
 
   it('the public pages around the landing sit on the v2 surface too', () => {

@@ -110,7 +110,6 @@ export function BrandsPage() {
               <NotYet items={[
                 'Click tracking and revenue attribution. You see spend, deliverables and posts, not sales.',
                 'Audience data pulled from the platforms. Creator numbers are self-reported.',
-                'Real money. Payments are simulated in the public beta.',
               ]} />
             </div>
           </div>
@@ -122,7 +121,6 @@ export function BrandsPage() {
             <h2 className="lx-h2 md" id="faq-title">Questions</h2>
             <Faq items={[
               { q: 'Are creators’ numbers verified?', a: 'Not yet. Follower counts and engagement are what creators enter, so look at their work before you brief them. Pulling numbers straight from the platforms isn’t live yet.' },
-              { q: 'What does “payments are simulated” mean?', a: 'Alamut is in public beta, so no real money moves yet. Your wallet, escrow and releases work the way they will later. The balances just aren’t real money.' },
               { q: 'What if a post is off-brief or never goes live?', a: 'Ask for revisions, or open a dispute. The escrow freezes and either side can propose a split. Nothing releases without your confirmation or a settlement you agree to.' },
               { q: 'What happens to the brief I write on this page?', a: 'If you post it from here, it’s waiting in New campaign when you sign up, filled in. Until then it stays in this browser and is sent nowhere.' },
               { q: 'Can my team work on the same deals?', a: 'Yes. Every deal has an owner, so it’s clear who answers the creator, and only admin and finance roles can top up the wallet.' },

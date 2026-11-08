@@ -4,7 +4,8 @@
 // holds.
 
 import { useEffect, useId, useState, type CSSProperties } from 'react';
-import { Credits, PhotoImg, photoSrcSet } from './components';
+import { Credits, PhotoImg } from './components';
+import { photoSrcSet } from './photos';
 import { brandEstimate, usd } from './estimate';
 import { PLATFORM_FEE_LABEL, PLATFORM_FORMATS, SIGNUP_HREF } from './facts';
 import { PACKAGE_LABEL } from './listings';
@@ -79,7 +80,7 @@ export function CreatorBrowser() {
       for (const c of CREATORS.slice(1)) {
         const img = new Image();
         img.sizes = SHEET_COVER.sizes;
-        img.srcset = photoSrcSet(c.photo, SHEET_COVER.width, SHEET_COVER.ratio);
+        img.srcset = photoSrcSet(c.photo);
       }
     }, 2500);
     return () => window.clearTimeout(t);

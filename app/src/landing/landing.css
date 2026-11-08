@@ -630,8 +630,8 @@ html:has(.lx) { scroll-padding-top: 88px; }
 .lx-pricing-side { display: grid; gap: 24px; }
 .lx-fee-figure { font-size: clamp(7.5rem, calc((100vw - 540px) / 1.45), 460px); line-height: .84; font-weight: 400; font-variant-numeric: normal; letter-spacing: -.055em; color: var(--v2-moss-deep); margin-left: -.03em; }
 .lx-fee-line { font-size: clamp(1.125rem, 1rem + .4vw, 1.3125rem); line-height: 1.4; color: var(--v2-ink-2); max-width: 36em; text-wrap: pretty; }
-/* What isn't built yet, in the portal's warning gold: each item an open
- * circle, where the hero's promises are checked. */
+/* What's coming next, in the portal's warning gold: each item an open circle,
+ * where the hero's promises are checked. */
 .lx-notyet { padding: 24px; border-radius: var(--v2-r-lg); background: color-mix(in srgb, var(--v2-warning) 10%, var(--v2-paper)); border: 1px solid color-mix(in srgb, var(--v2-warning) 40%, var(--v2-paper)); display: grid; gap: 14px; }
 .lx-notyet-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
 .lx-pill-beta { background: var(--v2-warning); color: var(--v2-ink); font-weight: 600; }
@@ -670,7 +670,7 @@ html:has(.lx) { scroll-padding-top: 88px; }
 /* The pile comes back as prints, rising as the page ends. */
 .lx-fan { position: relative; display: flex; justify-content: center; height: clamp(150px, 19vw, 280px); margin-top: 44px; }
 .lx-fan figure { flex: none; width: clamp(130px, 18.8vw, 270px); margin: 0 clamp(-30px, -1.6vw, -8px); padding: 2.2% 0 0; transform-origin: 50% 130%; transform: rotate(var(--turn)) translateY(calc(var(--i) * 0px)); }
-.lx-fan figure img { width: 100%; height: auto; border: clamp(5px, .7vw, 10px) solid var(--v2-paper); border-bottom-width: clamp(22px, 3vw, 44px); box-shadow: 0 -14px 30px -10px color-mix(in srgb, var(--v2-ink) 50%, transparent); }
+.lx-fan figure img { width: 100%; height: auto; aspect-ratio: 270 / 230; object-fit: cover; border: clamp(5px, .7vw, 10px) solid var(--v2-paper); border-bottom-width: clamp(22px, 3vw, 44px); box-shadow: 0 -14px 30px -10px color-mix(in srgb, var(--v2-ink) 50%, transparent); }
 .lx-final-title { font-size: min(11.6vw, 168px); text-wrap: balance; }
 .lx-final-row { display: grid; gap: 22px; align-items: center; margin-top: 36px; }
 @media (min-width: 1000px) {

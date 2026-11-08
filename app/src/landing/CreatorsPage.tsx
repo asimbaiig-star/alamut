@@ -3,7 +3,7 @@
 // The portal's front door, in the portal's language (v2 tokens, Fraunces and
 // Inter Tight, its tiles, storefront and wallet card). Every sentence is
 // checkable against the code; figures come from facts.ts; what isn't live
-// yet is said in the "Not live yet" list.
+// yet is said in the "Coming next" list.
 //
 // The argument, in order: here are briefs you can pitch at your own price
 // (and the hero lets you price one), brands can find you (and you can build
@@ -113,7 +113,6 @@ export function CreatorsPage() {
               <NotYet items={[
                 'Pulling your follower numbers from Instagram or TikTok. Today they’re what you enter.',
                 'Identity document checks. The identity step is self-completed during the beta.',
-                'Real money. Payments are simulated in the public beta.',
               ]} />
             </div>
           </div>
@@ -126,7 +125,6 @@ export function CreatorsPage() {
             <Faq items={[
               { q: 'Do I need a big following?', a: 'No. There’s no follower minimum. Pitch the briefs that fit you.' },
               { q: 'Can I charge different brands different prices?', a: 'Yes. Your storefront shows your standard packages, and you can counter any offer a brand sends.' },
-              { q: 'What does “payments are simulated” mean?', a: 'Alamut is in public beta, so no real money moves yet. Offers, escrow, releases and your wallet work the way they will later. The balances just aren’t real money.' },
               { q: 'What happens to the storefront I made on this page?', a: 'If you join from it, your name, handle, niche and rates fill in your setup. Until then they stay in this browser and are sent nowhere.' },
               { q: 'Do I have to take every deal through Alamut?', a: 'No. There’s no lock-in and no exclusivity. Take deals anywhere else too.' },
               { q: 'Can I try it first?', a: <>Yes. The <a className="lx-link" href={DEMO_HREF.creator} data-cta="faq-demo">demo account</a> is a full creator workspace with open briefs and sample deals, and needs no sign-up.</> },

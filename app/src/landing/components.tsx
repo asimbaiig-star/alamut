@@ -8,7 +8,7 @@ import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNo
 import { BETA_LINE, SESSION_STORAGE_KEY, SIGNUP_HREF } from './facts';
 import { MARKET_SOURCE_LINE, type MarketFigure } from './market';
 import { FOUNDER } from './founder';
-import { PHOTOS, photoUrl, type Photo as PhotoData } from './photos';
+import { PHOTO_WIDTHS, PHOTOS, photoSrc, photoSrcSet, type Photo as PhotoData } from './photos';
 import { BrandMarkSvg } from '@/screens/workspace-v2/BrandMark';
 
 export type Audience = 'creators' | 'brands';
@@ -175,8 +175,7 @@ export function CheckMark() {
   return <svg className="lx-check" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 8.4 6.7 11 12 5.4" /></svg>;
 }
 
-/** The hero's promises, each one the pricing section and the FAQ keep,
- *  then the beta line under them. */
+/** The hero's promises, each one the pricing section and the FAQ keep. */
 export function Promises({ items }: { items: string[] }) {
   return (
     <div className="lx-promises">
@@ -185,16 +184,13 @@ export function Promises({ items }: { items: string[] }) {
           <li key={t}><CheckMark />{t}</li>
         ))}
       </ul>
-      <p className="lx-hero-small">{BETA_LINE}.</p>
     </div>
   );
 }
 
-export const photoSrcSet = (photo: PhotoData, width: number, ratio: number) =>
-  [1, 2].map((d) => `${photoUrl(photo.id, width * d, ratio)} ${d}x`).join(', ');
-
-/** A credited photograph as an <img>, cropped to `ratio`. The credit sits in
- *  the nearest caption or note; this only draws the picture. */
+/** A credited photograph as an <img>, in a `width` × `width / ratio` box that
+ *  crops it. The credit sits in the nearest caption or note; this only draws
+ *  the picture. */
 export function PhotoImg({ photo, width, ratio, sizes, priority, eager, decorative }: {
   photo: PhotoData; width: number; ratio: number; sizes: string; priority?: boolean; eager?: boolean; decorative?: boolean;
 }) {
@@ -203,8 +199,8 @@ export function PhotoImg({ photo, width, ratio, sizes, priority, eager, decorati
   return (
     <img
       className="lx-photo-grade"
-      src={photoUrl(photo.id, width, ratio)}
-      srcSet={photoSrcSet(photo, width, ratio)}
+      src={photoSrc(photo, PHOTO_WIDTHS.find((w) => w >= width) ?? 1600)}
+      srcSet={photoSrcSet(photo)}
       sizes={sizes}
       width={width}
       height={Math.round(width / ratio)}
@@ -212,6 +208,7 @@ export function PhotoImg({ photo, width, ratio, sizes, priority, eager, decorati
       loading={priority || eager ? 'eager' : 'lazy'}
       decoding="async"
       {...fetchPriority}
+      style={photo.focus ? { objectPosition: `${photo.focus[0]}% ${photo.focus[1]}%` } : undefined}
     />
   );
 }
@@ -338,11 +335,13 @@ export function FounderNote() {
   );
 }
 
+/** What isn't built yet, said as what's next: the honest list of what the
+ *  product doesn't do today. */
 export function NotYet({ items }: { items: string[] }) {
   return (
     <aside className="lx-notyet" aria-labelledby="notyet-title">
       <div className="lx-notyet-head">
-        <h3 className="lx-h3" id="notyet-title">Not live yet</h3>
+        <h3 className="lx-h3" id="notyet-title">Coming next</h3>
         <span className="lx-pill lx-pill-beta">Public beta</span>
       </div>
       <ul>{items.map((t) => <li key={t}>{t}</li>)}</ul>

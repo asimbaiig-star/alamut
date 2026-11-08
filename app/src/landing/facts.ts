@@ -19,8 +19,10 @@ import { STALENESS } from '@/lib/api/staleness';
 /** Unanswered applications close this many days after they're sent. */
 export const APPLICATION_LAPSE_DAYS = STALENESS.applicationLapseDays;
 
-/** Shown wherever money is mentioned. True until real payment rails exist. */
-export const BETA_LINE = 'Public beta. Payments are simulated';
+/** The landing's one word on where the product is. How payments work in the
+ *  beta is said where someone commits: sign-up, onboarding, the wallet and the
+ *  terms (pinned by regressionGuards). */
+export const BETA_LINE = 'Public beta';
 
 /** The demo accounts SignIn.tsx already offers, reachable in one click. */
 export const DEMO_HREF = {
