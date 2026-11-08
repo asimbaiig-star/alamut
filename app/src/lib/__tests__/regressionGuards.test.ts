@@ -1102,6 +1102,121 @@ describe('marketing copy does not outrun the product', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────
+// CLASS 10, continued — the app must not show what nobody wrote
+// ─────────────────────────────────────────────────────────────────────
+//
+// Checking the landing's claims against the product found the same defect
+// inside the product, on the screens a visitor reaches next.
+//
+// BriefDetail, the page a creator reads before pitching, showed every brief
+// the same "Must do" list, the same "Don't" list and "Spark flagged 3
+// clauses": a 2-week beauty exclusivity, 30-day paid-ad usage, and
+// "non-compliance voids escrow release". All literal strings. No brand wrote
+// them, the brief wizard has no field for them, and Spark produced none of
+// them, so a creator would pitch against terms that did not exist. The
+// sign-in page labelled the demo brand "Aesop", a real company that is not
+// a customer. /creators called its list "vetted" and said every creator "has
+// been reviewed before they could apply". That is the claim CLASS 10 took off
+// the landing, and it was still live one link away.
+
+describe('the app shows only terms and claims someone actually made', () => {
+  const brief = () => code('screens/workspace-v2/screens/BriefDetail.tsx');
+
+  it('BriefDetail carries none of the clauses it used to invent', () => {
+    const src = brief();
+    for (const s of [
+      /Must do/i, /Spark flagged/i, /clauses? to review/i, /first 3 seconds/i,
+      /campaign hashtag/i, /AI-generated voiceover/i, /competing brands in the same/i,
+      /exclusivity window/i, /voids escrow/i, /#ad disclosure/i,
+    ]) {
+      expect(src, `BriefDetail hardcodes a brief term again: ${s}`).not.toMatch(s);
+    }
+  });
+
+  it('and has no place to put a new one', () => {
+    // The banned list above only catches the old wording. These catch the
+    // SHAPE: a list of string literals handed to a component as brief terms,
+    // or a clause typed straight into a prop.
+    const src = brief();
+    expect(src, 'a hardcoded list of brief items').not.toMatch(/=\{\[\s*['"`]/);
+    expect(src, 'a hardcoded clause').not.toMatch(/\bdetail="/);
+    // A duration ("2-week", "30 days") may appear only as the label for a
+    // `ContentRights` window, which is rendered from the campaign's own
+    // rights. Anywhere else, it is a term nobody set.
+    const outsideLabels = src.replace(/Record<ContentRights\[[^\]]+\], string> = \{[\s\S]*?\n\};/g, '');
+    expect(outsideLabels, 'a duration hardcoded outside the rights labels')
+      .not.toMatch(/\d+[- ]?(day|week|month)s?\b/i);
+  });
+
+  it('rights appear only when the campaign carries them', () => {
+    // The v2 wizard never sets `Campaign.rights`, so for a real brief the
+    // honest rendering is "none set", not a plausible default.
+    const src = brief();
+    expect(src).toMatch(/rawCampaign\?\.rights\s*\?/);
+    expect(src).toMatch(/rights=\{rawCampaign\.rights\}/);
+  });
+
+  it('shows the brief the brand wrote, not the first 200 characters of it', () => {
+    // The v2 adapter's `brief` is `pitch || brief`, and launch saves `pitch`
+    // as `brief.slice(0, 200)`, so every long brief was cut off mid-word.
+    expect(code('screens/workspace-v2/v2Adapters.ts')).toMatch(/brief:\s*c\.pitch \|\| c\.brief/);
+    expect(brief()).toMatch(/rawCampaign\?\.brief/);
+  });
+
+  it('the sign-in demo buttons name no seed brand', () => {
+    // The seed borrows real companies (Aesop, Glossier, Le Creuset…). Their
+    // names may stay inside the demo data; they must not label a button on a
+    // public page, where they read as customers.
+    const seed = code('lib/api/seed.ts');
+    const names = [...seed.matchAll(/name:\s*'([^']+)',\s*industry:/g)].map((m) => m[1]!);
+    expect(names.length, 'the seed brand pattern stopped matching, so this check is blind').toBeGreaterThan(20);
+
+    const signin = code('screens/auth/SignIn.tsx');
+    const at = signin.indexOf('const DEMO_ACCOUNTS');
+    const labels = [...signin.slice(at, signin.indexOf('};', at)).matchAll(/label:\s*'([^']*)'/g)]
+      .map((m) => m[1]!);
+    expect(labels.length, 'DEMO_ACCOUNTS labels not found, so this check is blind').toBeGreaterThanOrEqual(2);
+    // Labels, plus the buttons themselves, in case text is ever typed into
+    // the JSX instead of read from DEMO_ACCOUNTS. Emails are left out: the
+    // demo account's address is a fixed Supabase login, not a label.
+    const grid = signin.slice(signin.indexOf('auth-airy-demo-grid'));
+    const shown = labels.join('\n') + '\n' + grid.slice(0, grid.indexOf('</div>'));
+    for (const n of names) {
+      const re = new RegExp(`(?<!\\w)${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?!\\w)`, 'i');
+      expect(shown, `seed brand "${n}" on a sign-in demo button`).not.toMatch(re);
+    }
+  });
+
+  it('no public screen claims creators are vetted', () => {
+    // Nothing vets a creator: applying has no gate (see CLASS 10) and
+    // `verified` is a KYC step the creator completes with one click.
+    //
+    // screens/cover and components/illustrations are the pre-revamp landing
+    // (the illustrations are imported only from there). landing-revamp
+    // deletes both and replaces them with src/landing, whose own CLASS 10
+    // check bans these words. Once they are gone this exclusion matches
+    // nothing.
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, e.name);
+        const rel = full.slice(SRC.length + 1);
+        if (e.isDirectory()) {
+          if (e.name !== '__tests__' && rel !== 'screens/cover' && rel !== 'components/illustrations') walk(full);
+        } else if (/\.tsx?$/.test(e.name)) files.push(rel);
+      }
+    };
+    walk(join(SRC, 'screens'));
+    walk(join(SRC, 'components'));
+    expect(files, 'the walk no longer reaches /creators').toContain('screens/tools/CreatorsDirectory.tsx');
+    for (const f of files) {
+      expect(code(f), `${f} claims creators are vetted`)
+        .not.toMatch(/\bvetted\b|hand-?picked|verified creators|reviewed before they (can|could) apply/i);
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
 // CLASS 11 — "X happened" must be read from the record of X happening
 // ─────────────────────────────────────────────────────────────────────
 //

@@ -147,7 +147,10 @@ export function SignIn() {
   // removed. These two are creator + brand demo personas only.
   const DEMO_ACCOUNTS = {
     creator: { email: 'sarah@alamut.test', label: 'Sarah — creator' },
-    brand: { email: 'hannah@aesop.test', label: 'Aesop — brand' },
+    // Not "Aesop — brand": the seed borrows real companies' names, and a
+    // button on the sign-in page reads as one of them being a customer.
+    // Only the label changed; the account behind it is the same.
+    brand: { email: 'hannah@aesop.test', label: 'Demo brand' },
     // NOTE — a third demo account, `nadia@talent.test` (talent manager for
     // Amir and Yuki), exists in the SEED but is deliberately not offered
     // here: it has no Supabase Auth user, so the button returned
