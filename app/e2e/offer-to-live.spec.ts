@@ -33,32 +33,27 @@ async function demoSignIn(page: Page, persona: 'Brand' | 'Creator') {
 test.describe('Spine — offer to live', () => {
   test('brand can sign in and see their workspace', async ({ page }) => {
     await demoSignIn(page, 'Brand');
-    // Topbar carries "Oakmoss · N campaigns total" — assert we land in
-    // the brand persona by checking the sidebar has "My campaigns".
-    await expect(page.getByRole('button', { name: /My campaigns/ })).toBeVisible();
+    // Assert we land in the brand persona: the sidebar has "Campaigns".
+    await expect(page.getByRole('button', { name: /^Campaigns/ }).first()).toBeVisible();
     // Home shows the New campaign CTA — proves BrandHome rendered.
     await expect(page.getByRole('button', { name: /New campaign|Create campaign/ })).toBeVisible({ timeout: 10_000 });
   });
 
   test('brand can open a campaign and see the kanban', async ({ page }) => {
     await demoSignIn(page, 'Brand');
-    // Navigate to My campaigns
-    await page.getByRole('button', { name: /My campaigns/ }).click();
-    // Open the first campaign tile — they're all rendered as buttons or links.
-    // Look for any of the demo campaign titles ("Spring Renewal", "Studio Notes", etc.)
-    // or fall back to clicking the first campaign card visible.
-    const firstCampaign = page.locator('.v2-card').filter({ hasText: /Renewal|Notes|active|Live/i }).first();
-    await firstCampaign.click({ timeout: 10_000 });
+    // Navigate to Campaigns and open the first campaign row.
+    await page.getByRole('button', { name: /^Campaigns/ }).first().click();
+    await page.locator('.v2-ls-row .v2-ls-title').first().click({ timeout: 10_000 });
     // Pipeline / kanban tab should be visible.
     await expect(page.getByText(/Pipeline|Applications|Content review/).first()).toBeVisible({ timeout: 10_000 });
   });
 
   test('creator can sign in and see their workspace', async ({ page }) => {
     await demoSignIn(page, 'Creator');
-    // Creator sidebar has "My collaborations" + "Browse campaigns".
-    await expect(page.getByRole('button', { name: /My collaborations/ })).toBeVisible();
-    // Topbar greeting "Hi <FirstName>" — wait for it to render.
-    await expect(page.getByText(/Hi /)).toBeVisible({ timeout: 10_000 });
+    // Creator sidebar has "Deals" + "Briefs".
+    await expect(page.getByRole('button', { name: /^Deals/ }).first()).toBeVisible();
+    // The home greets by first name: "Good morning, Sarah."
+    await expect(page.getByRole('heading', { level: 1, name: /^Good (morning|afternoon|evening), / })).toBeVisible({ timeout: 10_000 });
   });
 
   test('creator can open the inbox', async ({ page }) => {

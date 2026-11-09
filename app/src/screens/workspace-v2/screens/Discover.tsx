@@ -15,20 +15,23 @@
 //      line. Total reach + price tier drop to the footer.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { fmtUSD, fmtFollowers, Icon, ScoreBadge, PLATFORM_META, Topbar } from '../lib';
+import { fmtUSD, fmtFollowers, Icon, PLATFORM_META } from '../lib';
 import { type V2Creator } from '../data';
-import { useV2Creators, useV2BrandShortlist, v2ToggleSavedCreator } from '../v2Hooks';
+import { useV2Campaigns, useV2Creators, useV2BrandShortlist, v2ToggleSavedCreator } from '../v2Hooks';
 import { useStore } from '@/lib/api/store';
-import { computeTrustProfile, trustSummary } from '../creatorTrust';
 import { SendBriefModal } from './WorkflowModals';
 import { bestEngagement, topChannel } from '../channels';
+import { matchCreatorToCampaign } from '../matching';
+import { brandAccent } from '../brandPalette';
+import { HomeHead, dollars } from './homeParts';
+import { perCreatorOf } from './BrowseBriefs';
 
 interface Props {
   onRoute: (r: string) => void;
 }
 
-type Mode = 'filters' | 'spark';
-type Sort = 'score' | 'followers' | 'er' | 'price-low' | 'price-high';
+type Sort = 'fit' | 'score' | 'followers' | 'er' | 'price-low' | 'price-high';
+const PAGE = 12;
 type AudienceGender = 'all' | 'female' | 'male';
 
 // Multi-select arrays: empty = "all". Brands can stack any combination
@@ -108,31 +111,33 @@ function summariseMulti(label: string, selectedIds: string[], options: { id: str
   return `${first} · +${selectedIds.length - 1}`;
 }
 
-// Spark-mode "quick prompts". Pre-fix these promised NLP-style natural
-// language search ("Find me 5 lifestyle creators in Lahore with mostly
-// female audience"), but the underlying filter is a plain substring
-// match on name/bio/categories — so a long sentence rarely matched
-// anything. Replaced with single-keyword chips that actually fit the
-// substring filter, so clicking a prompt narrows the catalog reliably.
-const SPARK_SUGGESTIONS = [
-  'Lifestyle',
-  'Food',
-  'Karachi',
-  'Lahore',
-  'Verified',
-  'Sustainability',
-];
-
 export function Discover({ onRoute }: Props) {
-  const [mode, setMode] = useState<Mode>('filters');
   const [query, setQuery] = useState('');
-  const [sparkPrompt, setSparkPrompt] = useState('');
   const [filters, setFilters] = useState<FilterState>(INITIAL_FILTERS);
-  const [sort, setSort] = useState<Sort>('score');
   const [showMore, setShowMore] = useState(false);
+  const [openOnly, setOpenOnly] = useState(false);
+  const [savedOnly, setSavedOnly] = useState(false);
+  const [shown, setShown] = useState(PAGE);
   const allCreators = useV2Creators();
+  const savedIds = useV2BrandShortlist();
+  const db = useStore((s) => s.db);
 
-  const isSpark = mode === 'spark';
+  // Rank for one of the brand's live campaigns: the same matcher creators
+  // see on Briefs, run from the brand's side. Defaults to the first live one.
+  const liveCampaigns = useV2Campaigns().filter((c) => c.status === 'Live');
+  const [forCampaign, setForCampaign] = useState<string>('');
+  const campaign = liveCampaigns.find((c) => c.id === forCampaign) ?? liveCampaigns[0];
+  const [sort, setSort] = useState<Sort>(liveCampaigns.length > 0 ? 'fit' : 'score');
+  const fitScores = useMemo(() => {
+    const m = new Map<string, number | null>();
+    if (!campaign) return m;
+    const raw = db.campaigns.find((c) => c.id === campaign.id);
+    const pay = perCreatorOf(campaign);
+    for (const c of allCreators) {
+      m.set(c.id, matchCreatorToCampaign(db.creators.find((x) => x.id === c.id), raw, db, pay).score);
+    }
+    return m;
+  }, [campaign, allCreators, db]);
 
   // Within-dimension OR, across-dimension AND. A bucket helper for
   // followers since each creator has a single max-follower number.
@@ -167,12 +172,12 @@ export function Discover({ onRoute }: Props) {
 
   const results = useMemo(() => {
     let r = allCreators.slice();
-    // Spark prompt or text query — both filter against name/bio/categories.
-    const q = (isSpark ? sparkPrompt : query).toLowerCase().trim();
+    const q = query.toLowerCase().trim();
     if (q) {
       r = r.filter((c) =>
         c.name.toLowerCase().includes(q) ||
         c.bio.toLowerCase().includes(q) ||
+        c.city.toLowerCase().includes(q) ||
         c.categories.some((cat) => cat.toLowerCase().includes(q)),
       );
     }
@@ -212,11 +217,15 @@ export function Discover({ onRoute }: Props) {
       r = r.filter((c) => bestEngagement(c.channels) >= filters.minER);
     }
     if (filters.priceMax < 1_000_000) r = r.filter((c) => c.rate <= filters.priceMax);
+    // Open for briefs: not booked up and not away.
+    if (openOnly) r = r.filter((c) => c.availability?.status !== 'booked' && !c.availability?.vacationMode);
+    if (savedOnly) r = r.filter((c) => savedIds.includes(c.id));
 
     // Unreviewed creators sort last rather than inheriting a default
     // rating. The label for this sort is corrected below too — it ranks
     // by review rating, which is not the same thing as fit (P-10).
-    if (sort === 'score') r.sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+    if (sort === 'fit') r.sort((a, b) => (fitScores.get(b.id) ?? -1) - (fitScores.get(a.id) ?? -1));
+    else if (sort === 'score') r.sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
     else if (sort === 'followers') {
       r.sort((a, b) =>
         (topChannel(b.channels)?.followers ?? 0) - (topChannel(a.channels)?.followers ?? 0),
@@ -228,7 +237,8 @@ export function Discover({ onRoute }: Props) {
     } else if (sort === 'price-low')  r.sort((a, b) => a.rate - b.rate);
     else if (sort === 'price-high')   r.sort((a, b) => b.rate - a.rate);
     return r;
-  }, [allCreators, filters, query, sparkPrompt, isSpark, sort]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allCreators, filters, query, sort, openOnly, savedOnly, savedIds, fitScores]);
 
   const clearAll = () => setFilters(INITIAL_FILTERS);
 
@@ -299,360 +309,194 @@ export function Discover({ onRoute }: Props) {
     });
   }
 
+  const openCount = allCreators.filter((c) => c.availability?.status !== 'booked' && !c.availability?.vacationMode).length;
+  const narrowed = activeChips.length > 0 || openOnly || savedOnly || query.trim() !== '';
+  const resetPage = () => setShown(PAGE);
+
   return (
-    <>
-      <Topbar
-        title="Discover Creators"
-        // P-10 — this used to read "115 creators in network · 115 match",
-        // i.e. it claimed the entire network matched. `results` is just
-        // the filtered list, so say that instead of overclaiming fit.
-        crumb={`${allCreators.length} creators in network · ${results.length} shown`}
-      />
-      <div className="v2-content">
-        {/* ─── Unified search ─────────────────────────────────────── */}
-        <div
-          className="v2-card"
-          // overflow: visible — see BrowseBriefs.tsx note. The card holds
-          // filter dropdowns whose panels need to escape the card bounds.
-          style={{ padding: 14, marginBottom: 16, overflow: 'visible' }}
-        >
-          {/* Search row — input + Spark toggle */}
-          <div className="v2-row" style={{ gap: 8, alignItems: 'stretch' }}>
-            <div
-              className="v2-input-search"
-              style={{
-                flex: 1,
-                borderColor: isSpark ? 'var(--v2-accent)' : 'var(--v2-line)',
-                boxShadow: isSpark ? '0 0 0 3px var(--v2-accent-soft)' : 'none',
-                transition: 'border-color 0.15s, box-shadow 0.15s',
-              }}
-            >
-              <span style={{ color: isSpark ? 'var(--v2-accent)' : 'var(--v2-ink-3)', display: 'flex' }}>
-                {isSpark ? Icon.spark : Icon.search}
-              </span>
-              <input
-                placeholder={isSpark
-                  ? 'Try a category, city, or rate band…'
-                  : 'Search by name, niche, or keyword…'}
-                value={isSpark ? sparkPrompt : query}
-                onChange={(e) => isSpark ? setSparkPrompt(e.target.value) : setQuery(e.target.value)}
-                style={{ fontSize: 15 }}
-                aria-label={isSpark ? 'Quick prompt' : 'Search creators'}
-              />
-            </div>
-            <button
-              type="button"
-              className={isSpark ? 'v2-btn v2-btn-primary' : 'v2-btn v2-btn-outline'}
-              onClick={() => setMode(isSpark ? 'filters' : 'spark')}
-              title={isSpark ? 'Back to filter search' : 'Spark-mode quick prompts'}
-            >
-              <span style={{
-                display: 'flex',
-                color: isSpark ? 'var(--v2-accent-2)' : 'var(--v2-accent)',
-              }}>{Icon.spark}</span>
-              {isSpark ? 'Spark on' : 'Quick prompts'}
-            </button>
-          </div>
+    <div className="v2-hm">
+      <div className="v2-hm-ground">
+        <HomeHead
+          title="Discover"
+          sub={`${allCreators.length} creators with published rates. Brief one directly, or save them for later.`}
+          actions={<button type="button" className="v2-hm-btn is-dark" onClick={() => onRoute('campaign-new')}>New campaign</button>}
+        />
+        <div className="v2-ls-bar v2-ls-ground-bar">
+          <label className="v2-ls-search">
+            {Icon.search}
+            <span className="v2-sr-only">Search creators</span>
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => { setQuery(e.target.value); resetPage(); }}
+              placeholder="Search by name, niche or city"
+            />
+          </label>
+        </div>
+      </div>
 
-          {/* Spark-mode quick prompts — single-keyword chips that
-              substring-match the catalog reliably. Pre-fix these were
-              long English sentences that pretended NLP was happening. */}
-          {isSpark && !sparkPrompt && (
-            <div className="v2-row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 12 }}>
-              <span className="v2-muted" style={{ fontSize: 12, alignSelf: 'center' }}>Try:</span>
-              {SPARK_SUGGESTIONS.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setSparkPrompt(s)}
-                  className="v2-pill"
-                  style={{ cursor: 'pointer', fontSize: 12 }}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Filter chips + Sort — only in filters mode. */}
-          {!isSpark && (
-            <>
-              <div className="v2-row" style={{ gap: 8, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-                <MultiChipDropdown
-                  label="Platform"
-                  values={filters.platforms}
-                  options={PLATFORM_OPTIONS}
-                  onToggle={(id) => toggleMulti('platforms', id)}
-                  onClear={() => setFilters((f) => ({ ...f, platforms: [] }))}
-                  summary={summariseMulti('platforms', filters.platforms, PLATFORM_OPTIONS)}
-                />
-                <MultiChipDropdown
-                  label="Followers"
-                  values={filters.followers}
-                  options={FOLLOWER_OPTIONS}
-                  onToggle={(id) => toggleMulti('followers', id)}
-                  onClear={() => setFilters((f) => ({ ...f, followers: [] }))}
-                  summary={summariseMulti('sizes', filters.followers, FOLLOWER_OPTIONS)}
-                />
-                <MultiChipDropdown
-                  label="Category"
-                  values={filters.categories}
-                  options={CATEGORY_OPTIONS}
-                  onToggle={(id) => toggleMulti('categories', id)}
-                  onClear={() => setFilters((f) => ({ ...f, categories: [] }))}
-                  summary={summariseMulti('categories', filters.categories, CATEGORY_OPTIONS)}
-                />
-                <MultiChipDropdown
-                  label="City"
-                  values={filters.cities}
-                  options={CITY_OPTIONS}
-                  onToggle={(id) => toggleMulti('cities', id)}
-                  onClear={() => setFilters((f) => ({ ...f, cities: [] }))}
-                  summary={summariseMulti('cities', filters.cities, CITY_OPTIONS)}
-                />
-
-                <button
-                  type="button"
-                  onClick={() => setShowMore((v) => !v)}
-                  style={{
-                    cursor: 'pointer',
-                    fontSize: 13,
-                    fontWeight: 500,
-                    padding: '6px 12px',
-                    border: '1px dashed var(--v2-line-2)',
-                    background: showMore || moreCount ? 'var(--v2-bg-1)' : 'transparent',
-                    color: 'var(--v2-ink-2)',
-                    borderRadius: 'var(--v2-r-pill)',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    fontFamily: 'inherit',
-                  }}
-                >
-                  {showMore ? '− Less' : '+ More'}
-                  {moreCount > 0 && (
-                    <span style={{
-                      minWidth: 18,
-                      height: 18,
-                      padding: '0 5px',
-                      borderRadius: 999,
-                      background: 'var(--v2-accent)',
-                      color: 'white',
-                      fontSize: 10.5,
-                      fontWeight: 700,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}>{moreCount}</span>
-                  )}
-                </button>
-
-                <span className="v2-spacer" />
-
-                <select
-                  value={sort}
-                  onChange={(e) => setSort(e.target.value as Sort)}
-                  aria-label="Sort"
-                  style={{
-                    border: '1px solid var(--v2-line)',
-                    background: 'var(--v2-paper)',
-                    color: 'var(--v2-ink)',
-                    padding: '7px 32px 7px 12px',
-                    borderRadius: 'var(--v2-r-pill)',
-                    fontSize: 13,
-                    fontFamily: 'inherit',
-                    cursor: 'pointer',
-                    appearance: 'none',
-                    backgroundImage: 'linear-gradient(45deg, transparent 50%, var(--v2-ink-3) 50%), linear-gradient(135deg, var(--v2-ink-3) 50%, transparent 50%)',
-                    backgroundPosition: 'calc(100% - 14px) 50%, calc(100% - 9px) 50%',
-                    backgroundSize: '5px 5px, 5px 5px',
-                    backgroundRepeat: 'no-repeat',
-                  }}
-                >
-                  <option value="score">Sort · Review rating</option>
-                  <option value="followers">Sort · Followers</option>
-                  <option value="er">Sort · Engagement</option>
-                  <option value="price-low">Sort · Price low → high</option>
-                  <option value="price-high">Sort · Price high → low</option>
-                </select>
-              </div>
-
-              {/* Expandable advanced row */}
-              {showMore && (
-                <div
-                  style={{
-                    marginTop: 12,
-                    paddingTop: 12,
-                    borderTop: '1px solid var(--v2-line)',
-                  }}
-                >
-                  <div className="v2-row" style={{ gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <MultiChipDropdown
-                      label="Age band"
-                      values={filters.ages}
-                      options={AGE_OPTIONS}
-                      onToggle={(id) => toggleMulti('ages', id)}
-                      onClear={() => setFilters((f) => ({ ...f, ages: [] }))}
-                      summary={summariseMulti('age bands', filters.ages, AGE_OPTIONS)}
-                    />
-                    <SingleChipDropdown
-                      label="Gender skew"
-                      value={filters.audienceGender}
-                      options={[
-                        { id: 'all',    label: 'Any gender' },
-                        { id: 'female', label: 'Mostly female (60%+)' },
-                        { id: 'male',   label: 'Mostly male (60%+)' },
-                      ]}
-                      summary={
-                        filters.audienceGender === 'all'  ? 'Any gender' :
-                        filters.audienceGender === 'female' ? 'Mostly female' : 'Mostly male'
-                      }
-                      active={filters.audienceGender !== 'all'}
-                      onChange={(v) => setFilters((f) => ({ ...f, audienceGender: v as AudienceGender }))}
-                    />
-                    <RangeChip
-                      label="Min ER"
-                      value={filters.minER}
-                      min={0}
-                      max={10}
-                      step={0.5}
-                      format={(v) => `${v}%`}
-                      onChange={(v) => setFilters((f) => ({ ...f, minER: v }))}
-                    />
-                    <RangeChip
-                      label="Max rate"
-                      value={filters.priceMax}
-                      min={500}
-                      max={1_000_000}
-                      step={500}
-                      format={(v) => v >= 1_000_000 ? 'Any' : fmtUSD(v)}
-                      onChange={(v) => setFilters((f) => ({ ...f, priceMax: v }))}
-                    />
-                    <ToggleChip
-                      label="Verified only"
-                      checked={filters.verified}
-                      onChange={(v) => setFilters((f) => ({ ...f, verified: v }))}
-                    />
-                    {/* A "Brand-safe" toggle sat here. It was declared in
-                        FilterState, counted in the "+More" badge and given a
-                        dismissible chip in the active-filter bar — and never
-                        referenced in the results memo. `V2Creator` has no
-                        brand-safety field either, so there was nothing it
-                        could have filtered on. A brand toggled it, watched
-                        the UI confirm it in three places, and the results
-                        didn't move. Removed rather than faked. */}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
+      <div className="v2-ls-body">
+        <div className="v2-ls-bar is-scroll" role="group" aria-label="Filter creators">
+          <MultiChipDropdown
+            label="Platform"
+            values={filters.platforms}
+            options={PLATFORM_OPTIONS}
+            onToggle={(id) => { toggleMulti('platforms', id); resetPage(); }}
+            onClear={() => setFilters((f) => ({ ...f, platforms: [] }))}
+            summary={summariseMulti('platforms', filters.platforms, PLATFORM_OPTIONS)}
+          />
+          <MultiChipDropdown
+            label="Followers"
+            values={filters.followers}
+            options={FOLLOWER_OPTIONS}
+            onToggle={(id) => { toggleMulti('followers', id); resetPage(); }}
+            onClear={() => setFilters((f) => ({ ...f, followers: [] }))}
+            summary={summariseMulti('sizes', filters.followers, FOLLOWER_OPTIONS)}
+          />
+          <MultiChipDropdown
+            label="Niche"
+            values={filters.categories}
+            options={CATEGORY_OPTIONS}
+            onToggle={(id) => { toggleMulti('categories', id); resetPage(); }}
+            onClear={() => setFilters((f) => ({ ...f, categories: [] }))}
+            summary={summariseMulti('niches', filters.categories, CATEGORY_OPTIONS)}
+          />
+          <MultiChipDropdown
+            label="City"
+            values={filters.cities}
+            options={CITY_OPTIONS}
+            onToggle={(id) => { toggleMulti('cities', id); resetPage(); }}
+            onClear={() => setFilters((f) => ({ ...f, cities: [] }))}
+            summary={summariseMulti('cities', filters.cities, CITY_OPTIONS)}
+          />
+          <button type="button" className="v2-ls-chip" aria-expanded={showMore} aria-pressed={moreCount > 0} onClick={() => setShowMore((v) => !v)}>
+            More filters{moreCount > 0 && <b>{moreCount}</b>}
+          </button>
+          <span className="v2-ls-sep" aria-hidden="true" />
+          <button type="button" className="v2-ls-chip" aria-pressed={openOnly} onClick={() => { setOpenOnly((v) => !v); resetPage(); }}>
+            Open for briefs <b>{openCount}</b>
+          </button>
+          <button type="button" className="v2-ls-chip" aria-pressed={savedOnly} onClick={() => { setSavedOnly((v) => !v); resetPage(); }}>
+            Saved <b>{savedIds.length}</b>
+          </button>
+          <select className="v2-ls-chip v2-ls-push" aria-label="Sort creators" value={sort} onChange={(e) => { setSort(e.target.value as Sort); resetPage(); }}>
+            {campaign && <option value="fit">Best fit for {campaign.name}</option>}
+            <option value="score">Review rating</option>
+            <option value="followers">Most followers</option>
+            <option value="er">Highest engagement</option>
+            <option value="price-low">Lowest price</option>
+            <option value="price-high">Highest price</option>
+          </select>
         </div>
 
-        {/* Active filter chips — one chip per applied value with × remove.
-            Lets the user see what's narrowed at a glance and drop a single
-            value (e.g. one platform) without nuking the whole dimension. */}
-        {activeChips.length > 0 && !isSpark && (
-          <div
-            className="v2-row"
-            style={{
-              gap: 6,
-              flexWrap: 'wrap',
-              marginBottom: 12,
-              alignItems: 'center',
-            }}
-          >
-            <span className="v2-muted" style={{ fontSize: 12, marginRight: 4 }}>
-              Filtered by:
-            </span>
-            {activeChips.map((chip) => (
-              <button
-                key={chip.key}
-                type="button"
-                onClick={chip.clear}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '4px 6px 4px 10px',
-                  background: 'var(--v2-accent-soft)',
-                  color: 'var(--v2-accent)',
-                  border: '1px solid transparent',
-                  borderRadius: 'var(--v2-r-pill)',
-                  fontSize: 12,
-                  fontWeight: 550,
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                }}
-                aria-label={`Remove ${chip.label}`}
-              >
-                <span>{chip.label}</span>
-                <span
-                  aria-hidden="true"
-                  style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: '50%',
-                    background: 'rgba(0,0,0,0.06)',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 13,
-                    lineHeight: 1,
-                  }}
-                >×</span>
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={clearAll}
-              style={{
-                marginLeft: 4,
-                padding: '4px 8px',
-                background: 'transparent',
-                border: 'none',
-                color: 'var(--v2-ink-2)',
-                fontSize: 12,
-                fontWeight: 550,
-                cursor: 'pointer',
-                textDecoration: 'underline',
-                fontFamily: 'inherit',
-              }}
-            >
-              Clear all
-            </button>
+        {showMore && (
+          <div className="v2-ls-bar" role="group" aria-label="More filters">
+            <MultiChipDropdown
+              label="Audience age"
+              values={filters.ages}
+              options={AGE_OPTIONS}
+              onToggle={(id) => toggleMulti('ages', id)}
+              onClear={() => setFilters((f) => ({ ...f, ages: [] }))}
+              summary={summariseMulti('ages', filters.ages, AGE_OPTIONS)}
+            />
+            <SingleChipDropdown
+              label="Audience"
+              value={filters.audienceGender}
+              options={[
+                { id: 'all',    label: 'Any gender' },
+                { id: 'female', label: 'Mostly female (60%+)' },
+                { id: 'male',   label: 'Mostly male (60%+)' },
+              ]}
+              summary={
+                filters.audienceGender === 'all'  ? 'Any gender' :
+                filters.audienceGender === 'female' ? 'Mostly female' : 'Mostly male'
+              }
+              active={filters.audienceGender !== 'all'}
+              onChange={(v) => setFilters((f) => ({ ...f, audienceGender: v as AudienceGender }))}
+            />
+            <RangeChip
+              label="Min engagement"
+              value={filters.minER}
+              min={0}
+              max={10}
+              step={0.5}
+              format={(v) => `${v}%`}
+              onChange={(v) => setFilters((f) => ({ ...f, minER: v }))}
+            />
+            <RangeChip
+              label="Max price"
+              value={filters.priceMax}
+              min={500}
+              max={1_000_000}
+              step={500}
+              format={(v) => v >= 1_000_000 ? 'Any' : fmtUSD(v)}
+              onChange={(v) => setFilters((f) => ({ ...f, priceMax: v }))}
+            />
+            <ToggleChip
+              label="Verified only"
+              checked={filters.verified}
+              onChange={(v) => setFilters((f) => ({ ...f, verified: v }))}
+            />
           </div>
         )}
 
-        {/* Result count line */}
-        <div className="v2-row" style={{ justifyContent: 'space-between', marginBottom: 12 }}>
-          <div className="v2-muted">
-            {results.length} {results.length === 1 ? 'creator' : 'creators'}
-            {isSpark && sparkPrompt ? ' · Spark match' : ' · matching your filters'}
-          </div>
-          <div className="v2-muted" style={{ fontSize: 12 }}>
-            Showing strongest matches first
-          </div>
-        </div>
-
-        {/* Creator card grid */}
-        {results.length > 0 ? (
-          <div className="v2-grid-3">
-            {results.map((c) => (
-              <CreatorCard
-                key={c.id}
-                creator={c}
-                onRoute={onRoute}
-                onClick={() => onRoute(`creator:${c.id}`)}
-              />
+        {activeChips.length > 0 && (
+          <div className="v2-ls-bar" aria-label="Active filters">
+            {activeChips.map((chip) => (
+              <button key={chip.key} type="button" className="v2-ls-chip" onClick={chip.clear} aria-label={`Remove ${chip.label}`}>
+                {chip.label} <span aria-hidden="true">×</span>
+              </button>
             ))}
+            <button type="button" className="v2-hm-more" style={{ marginLeft: 0 }} onClick={() => { clearAll(); setOpenOnly(false); setSavedOnly(false); setQuery(''); }}>Clear all</button>
           </div>
+        )}
+
+        {campaign && sort === 'fit' && (
+          <div className="v2-dc-for">
+            <span className="v2-ls-tile" style={{ background: brandAccent(campaign.name).bg }} aria-hidden="true">{campaign.name[0]?.toUpperCase()}</span>
+            <span className="v2-dc-for-txt">
+              <b>Ranked for {campaign.name}</b>
+              <small>{campaign.category ? `${campaign.category} · ` : ''}{campaign.placement}{` · ${dollars(perCreatorOf(campaign))} a creator`}</small>
+            </span>
+            {liveCampaigns.length > 1 && (
+              <select className="v2-ls-chip" aria-label="Rank for campaign" value={campaign.id} onChange={(e) => { setForCampaign(e.target.value); resetPage(); }}>
+                {liveCampaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            )}
+          </div>
+        )}
+
+        {results.length > 0 ? (
+          <>
+            <div className="v2-dc-grid">
+              {results.slice(0, shown).map((c) => (
+                <CreatorCard
+                  key={c.id}
+                  creator={c}
+                  saved={savedIds.includes(c.id)}
+                  fit={sort === 'fit' ? fitScores.get(c.id) ?? null : null}
+                  onRoute={onRoute}
+                />
+              ))}
+            </div>
+            <div className="v2-ls-foot">
+              <span>Showing <b>{Math.min(shown, results.length)}</b> of {results.length}{narrowed ? ` matching · ${allCreators.length} in all` : ''}</span>
+              {results.length > shown && (
+                <button type="button" className="v2-hm-btn" onClick={() => setShown((n) => n + PAGE)}>
+                  Show {Math.min(PAGE, results.length - shown)} more
+                </button>
+              )}
+            </div>
+          </>
         ) : (
-          <div className="v2-card v2-card-pad-lg" style={{ textAlign: 'center' }}>
-            <div className="v2-muted">No creators match — try widening your filters.</div>
+          <div className="v2-ls-empty">
+            <b>No creators match.</b>
+            <p>Widen a filter, or clear them all.</p>
+            <button type="button" className="v2-hm-btn is-sm" onClick={() => { clearAll(); setOpenOnly(false); setSavedOnly(false); setQuery(''); }}>Clear filters</button>
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 }
 
@@ -691,28 +535,13 @@ function MultiChipDropdown({
     <div ref={ref} style={{ position: 'relative' }}>
       <button
         type="button"
+        className="v2-ls-chip"
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: '6px 10px 6px 12px',
-          background: active ? 'var(--v2-accent-soft)' : 'var(--v2-paper)',
-          color: active ? 'var(--v2-accent)' : 'var(--v2-ink-2)',
-          border: `1px solid ${active ? 'var(--v2-accent)' : 'var(--v2-line)'}`,
-          borderRadius: 'var(--v2-r-pill)',
-          fontSize: 13,
-          fontWeight: active ? 600 : 500,
-          cursor: 'pointer',
-          fontFamily: 'inherit',
-          transition: 'all 120ms ease',
-        }}
+        aria-pressed={active}
       >
-        <span>{label}</span>
-        <span style={{ fontWeight: 500, opacity: 0.85 }}>·</span>
-        <span style={{ fontWeight: active ? 700 : 500 }}>{summary}</span>
+        <span>{active ? summary : label}</span>
         <span
           aria-hidden="true"
           style={{
@@ -832,6 +661,10 @@ function MultiChipDropdown({
 
 // Single-select variant of the same chip — used for dimensions that
 // are mutually exclusive (e.g. gender skew). Same visual language as
+
+
+// Single-select variant of the same chip — used for dimensions that
+// are mutually exclusive (e.g. gender skew). Same visual language as
 // MultiChipDropdown so the filter bar reads consistently.
 function SingleChipDropdown({
   label, value, options, summary, active, onChange,
@@ -857,28 +690,13 @@ function SingleChipDropdown({
     <div ref={ref} style={{ position: 'relative' }}>
       <button
         type="button"
+        className="v2-ls-chip"
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: '6px 10px 6px 12px',
-          background: active ? 'var(--v2-accent-soft)' : 'var(--v2-paper)',
-          color: active ? 'var(--v2-accent)' : 'var(--v2-ink-2)',
-          border: `1px solid ${active ? 'var(--v2-accent)' : 'var(--v2-line)'}`,
-          borderRadius: 'var(--v2-r-pill)',
-          fontSize: 13,
-          fontWeight: active ? 600 : 500,
-          cursor: 'pointer',
-          fontFamily: 'inherit',
-          transition: 'all 120ms ease',
-        }}
+        aria-pressed={active}
       >
-        <span>{label}</span>
-        <span style={{ fontWeight: 500, opacity: 0.85 }}>·</span>
-        <span style={{ fontWeight: active ? 700 : 500 }}>{summary}</span>
+        <span>{active ? summary : label}</span>
         <span
           aria-hidden="true"
           style={{
@@ -962,7 +780,7 @@ function RangeChip({
   onChange: (v: number) => void;
 }) {
   return (
-    <label className="v2-filter-chip" style={{ flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+    <label className="v2-ls-chip">
       <span className="v2-muted" style={{ fontSize: 11.5, marginRight: 4 }}>{label}</span>
       <input
         type="range"
@@ -989,7 +807,7 @@ function ToggleChip({
   onChange: (v: boolean) => void;
 }) {
   return (
-    <label className="v2-filter-chip" style={{ cursor: 'pointer' }}>
+    <label className="v2-ls-chip">
       <input
         type="checkbox"
         checked={checked}
@@ -1001,294 +819,64 @@ function ToggleChip({
   );
 }
 
-function CreatorCard({ creator, onClick, onRoute }: {
+// One creator, photo first: who they are, where, their two biggest
+// channels, engagement and starting price. Save and Send brief act from the
+// card; the photo and name open the storefront.
+function CreatorCard({ creator, saved, fit, onRoute }: {
   creator: V2Creator;
-  onClick: () => void;
+  saved: boolean;
+  /** The campaign fit when ranking for one; null hides it. */
+  fit: number | null;
   onRoute: (r: string) => void;
 }) {
-  // Shortlisting and briefing used to require opening the profile first:
-  // the whole card was a single link to `creator:<id>`, so a brand
-  // triaging thirty results had to round-trip through a detail screen to
-  // save any of them. Both actions live on the card now; each stops
-  // propagation so the card's own click still opens the profile.
-  const savedIds = useV2BrandShortlist();
-  const isSaved = savedIds.includes(creator.id);
   const [briefOpen, setBriefOpen] = useState(false);
-  // T3.2 — cold start. A creator with no reviews now correctly shows "New"
-  // rather than a defaulted 90 (T1.1), but that left a brand with nothing to
-  // judge them on. Summarise what IS checkable — identity verified, channel
-  // ownership confirmed, profile complete enough to brief against — and say
-  // plainly that's what it is. Returns null once they have a real track
-  // record, since reviews are better evidence by then.
-  const db = useStore((s) => s.db);
-  const trust = useMemo(() => {
-    const raw = db.creators.find((c) => c.id === creator.id);
-    return trustSummary(computeTrustProfile(raw, db));
-  }, [db, creator.id]);
-
-  const top = topChannel(creator.channels);
-  const totalFollowers = creator.channels.reduce((s, ch) => s + ch.followers, 0);
+  const channels = [...creator.channels].sort((a, b) => b.followers - a.followers).slice(0, 2);
+  const er = bestEngagement(creator.channels);
+  const photo = creator.avatar || creator.cover;
+  const open = () => onRoute(`creator:${creator.id}`);
+  const away = creator.availability?.vacationMode || creator.availability?.status === 'booked';
 
   return (
     <>
-    <article
-      className="v2-card v2-card-clickable"
-      onClick={onClick}
-      style={{ overflow: 'hidden' }}
-    >
-      {/* Cover band — slimmer than pre-§refined; fewer overlay pills. */}
-      <div
-        style={{
-          height: 70,
-          background: `url(${creator.cover}) center/cover, var(--v2-bg-2)`,
-          position: 'relative',
-        }}
-      >
-        <div
-          aria-hidden="true"
-          style={{
-            position: 'absolute',
-            inset: 0,
-            background: 'linear-gradient(180deg, transparent, rgba(28, 26, 21, 0.30))',
-          }}
-        />
-        {creator.availability?.vacationMode && (
-          <span
-            className="v2-pill"
-            style={{
-              position: 'absolute',
-              top: 8,
-              left: 8,
-              background: 'var(--v2-accent-soft)',
-              color: 'var(--v2-accent)',
-              border: '1px solid var(--v2-accent)',
-              fontSize: 11,
-            }}
-            title={
-              creator.availability.untilDate
-                ? `Back ${new Date(creator.availability.untilDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
-                : 'Not actively monitoring'
-            }
-          >
-            ✈ Vacation
-          </span>
-        )}
-      </div>
-
-      <div style={{ padding: '0 16px 16px', marginTop: -24, position: 'relative' }}>
-        <div className="v2-row" style={{ justifyContent: 'space-between', alignItems: 'flex-end' }}>
-          <div
-            className="v2-avatar v2-avatar-lg"
-            style={{
-              backgroundImage: `url(${creator.avatar})`,
-              border: '3px solid var(--v2-paper)',
-              width: 52,
-              height: 52,
-              borderRadius: 14,
-            }}
-            aria-label={creator.name}
-          />
-          <div className="v2-row" style={{ gap: 6, alignItems: 'center' }}>
-            {/* Demo accounts are pre-verified for the showcase (seed.ts), so
-                they'd otherwise show strong verification and trust signals
-                that a real creator has to earn — with nothing marking them
-                as sample data. Same pill as demo briefs (F19). */}
-            {creator.isDemo && (
-              <span
-                className="v2-pill v2-pill-draft"
-                title="Sample profile — part of the Alamut demo world. Its verified badges and metrics are illustrative, not earned."
-              >
-                Demo
-              </span>
-            )}
-            <ScoreBadge score={creator.score} />
-          </div>
-        </div>
-
-        {/* Cold-start evidence, shown only for creators without a track
-            record and only when there's something positive to report. */}
-        {trust && (
-          <div
-            className="v2-muted"
-            style={{ fontSize: 11, marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}
-            title="Profile completeness and verification — not a performance rating"
-          >
-            <span aria-hidden="true">◇</span>{trust}
-          </div>
-        )}
-
-        {/* Name + verified glyph + handle/city. */}
-        <div className="v2-row" style={{ marginTop: 8, gap: 6 }}>
-          <h3
-            style={{
-              fontFamily: 'var(--v2-font-display)',
-              fontSize: 17,
-              fontWeight: 500,
-              margin: 0,
-              letterSpacing: '-0.02em',
-              color: 'var(--v2-ink)',
-            }}
-          >
-            {creator.name}
-          </h3>
-          {creator.verified && (
-            <span style={{ color: 'var(--v2-info)', display: 'flex' }} title="Verified">
-              {Icon.check}
-            </span>
-          )}
-        </div>
-        <div className="v2-muted" style={{ fontSize: 11.5, marginBottom: 8 }}>
-          @{creator.handle} · {creator.city}
-        </div>
-
-        {/* Channels + ER on one line — top 3 platforms with follower
-            count, then the dominant channel's ER %. Replaces the older
-            channel-pill row + per-card category-pill cluster. */}
-        <div
-          className="v2-row"
-          style={{ gap: 10, marginBottom: 10, flexWrap: 'wrap', fontSize: 11.5 }}
-        >
-          {creator.channels.slice(0, 3).map((ch, i) => {
-            const meta = PLATFORM_META[ch.platform];
-            // Phase 52 fix — pre-fix this used `key={ch.platform}` and
-            // a creator with two channels on the same platform (e.g.
-            // two newsletters) caused React's "duplicate key" warning
-            // and could render the wrong channel after a sort/filter.
-            // Composite key with the index disambiguates.
-            return (
-              <span key={`${ch.platform}-${i}`} className="v2-row" style={{ gap: 4 }}>
-                <span style={{ color: meta.color, display: 'flex' }}>{meta.icon}</span>
-                <span className="v2-tabular" style={{ fontWeight: 550 }}>
-                  {fmtFollowers(ch.followers)}
-                </span>
-              </span>
-            );
-          })}
-          {top && (
-            <span style={{ color: 'var(--v2-moss)', fontWeight: 600 }}>
-              · {top.engagement}% ER
-            </span>
-          )}
-        </div>
-
-        {/* Audience — one-line summary + slim gender-split bar. Rendered
-            only when the creator's channels actually report demographics;
-            pre-fix an absent breakdown was filled with a fixed
-            60/40 · Lahore placeholder, so every creator without connected
-            channels looked identically well-profiled. */}
-        {creator.audience ? (
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 11.5, color: 'var(--v2-ink-2)', marginBottom: 4 }}>
-              <span style={{ fontWeight: 550 }}>{creator.audience.female}%</span> female ·{' '}
-              <span style={{ fontWeight: 550 }}>{creator.audience.age2534}%</span> 25–34 ·{' '}
-              <span>{creator.audience.topCity}</span>
-            </div>
-            <div style={{
-              display: 'flex',
-              height: 3,
-              borderRadius: 2,
-              overflow: 'hidden',
-              background: 'var(--v2-bg-2)',
-            }}>
-              <div style={{ width: `${creator.audience.female}%`, background: 'var(--v2-accent)' }} />
-              <div style={{ width: `${creator.audience.male}%`,   background: 'var(--v2-moss)'   }} />
-            </div>
-          </div>
-        ) : (
-          <div className="v2-muted" style={{ fontSize: 11.5, marginBottom: 10 }}>
-            Audience breakdown not shared
-          </div>
-        )}
-
-        {/* Past brands — quieter inline line, capped at 2 with "+N more". */}
-        {creator.pastBrands.length > 0 && (
-          <div style={{ fontSize: 11, color: 'var(--v2-ink-3)', marginBottom: 12, lineHeight: 1.5 }}>
-            <span>Worked with </span>
-            <span style={{ color: 'var(--v2-ink-2)', fontWeight: 550 }}>
-              {creator.pastBrands.slice(0, 2).join(', ')}
-              {creator.pastBrands.length > 2 && ` +${creator.pastBrands.length - 2}`}
-            </span>
-          </div>
-        )}
-
-        {/* Footer row: total reach + price tier. */}
-        <div
-          className="v2-row"
-          style={{
-            justifyContent: 'space-between',
-            borderTop: '1px solid var(--v2-line)',
-            paddingTop: 10,
-          }}
-        >
-          <div>
-            <div className="v2-muted" style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
-              Total reach
-            </div>
-            <div
-              className="v2-tabular"
-              style={{
-                fontFamily: 'var(--v2-font-display)',
-                fontSize: 16,
-                fontWeight: 500,
-                letterSpacing: '-0.01em',
-              }}
-            >
-              {fmtFollowers(totalFollowers)}
-            </div>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div className="v2-muted" style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
-              From
-            </div>
-            <div
-              className="v2-tabular"
-              style={{
-                fontFamily: 'var(--v2-font-display)',
-                fontSize: 16,
-                fontWeight: 500,
-                letterSpacing: '-0.01em',
-                color: 'var(--v2-accent)',
-              }}
-            >
-              {fmtUSD(creator.priceMin)}
-            </div>
-          </div>
-        </div>
-
-        {/* Card-level actions */}
-        <div className="v2-row" style={{ gap: 8, marginTop: 10 }}>
-          <button
-            className="v2-btn v2-btn-outline v2-btn-sm"
-            type="button"
-            aria-pressed={isSaved}
-            style={{ flex: 1, justifyContent: 'center' }}
-            onClick={(e) => { e.stopPropagation(); v2ToggleSavedCreator(creator.id); }}
-          >
-            {isSaved ? Icon.check : Icon.plus}
-            <span>{isSaved ? 'Shortlisted' : 'Shortlist'}</span>
+      <article className="v2-dc-card">
+        <div className="v2-dc-photo">
+          <button type="button" className="v2-dc-photo-btn" onClick={open} aria-label={`Open ${creator.name}’s storefront`}>
+            {photo ? <img src={photo} alt="" loading="lazy" /> : <span aria-hidden="true">{creator.name[0]}</span>}
           </button>
+          {/* Seeded demo creators: nobody real will answer a brief. */}
+          {creator.isDemo && <em className="v2-dc-tag">Sample creator</em>}
+          {away && !creator.isDemo && <em className="v2-dc-tag">{creator.availability?.vacationMode ? 'Away' : 'Booked'}</em>}
           <button
-            className="v2-btn v2-btn-outline v2-btn-sm"
             type="button"
-            style={{ flex: 1, justifyContent: 'center' }}
-            onClick={(e) => { e.stopPropagation(); setBriefOpen(true); }}
+            className="v2-dc-save"
+            aria-pressed={saved}
+            aria-label={saved ? `Saved: ${creator.name}` : `Save ${creator.name}`}
+            title={saved ? 'Saved' : 'Save for later'}
+            onClick={() => v2ToggleSavedCreator(creator.id)}
           >
-            {Icon.send}<span>Send brief</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill={saved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true"><path d="M7 4h10v16l-5-4-5 4z" /></svg>
           </button>
         </div>
-      </div>
-    </article>
-    {/* Outside the <article> on purpose: the card is clickable, and a
-        modal nested inside it would bubble its overlay clicks up to
-        the card's own handler — dismissing the modal AND navigating
-        to the profile behind it. */}
-    {briefOpen && (
-      <SendBriefModal
-        creator={creator}
-        onRoute={onRoute}
-        onClose={() => setBriefOpen(false)}
-      />
-    )}
+        <div className="v2-dc-name">
+          <button type="button" onClick={open}>{creator.name}</button>
+          <span className="v2-ls-price">from {dollars(creator.priceMin || creator.rate)}</span>
+        </div>
+        <div className="v2-dc-facts">
+          {creator.city && <span className="v2-dc-city">{creator.city}</span>}
+          {channels.map((ch, i) => (
+            <span key={`${ch.platform}-${i}`}>{PLATFORM_META[ch.platform]?.name ?? ch.platform} <b>{fmtFollowers(ch.followers)}</b></span>
+          ))}
+          {er > 0 && <span>Engagement <b>{er.toFixed(1)}%</b></span>}
+          {fit !== null && <span className="v2-dc-fit"><b>{fit}%</b> fit</span>}
+        </div>
+        <div className="v2-dc-acts">
+          <button type="button" className="v2-hm-btn is-sm" onClick={() => setBriefOpen(true)}>Send brief</button>
+          <button type="button" className="v2-hm-btn is-sm" onClick={open}>Storefront</button>
+        </div>
+      </article>
+      {briefOpen && (
+        <SendBriefModal creator={creator} onRoute={onRoute} onClose={() => setBriefOpen(false)} />
+      )}
     </>
   );
 }

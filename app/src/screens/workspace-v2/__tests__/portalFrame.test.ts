@@ -27,10 +27,24 @@ describe('the portal frame', () => {
     expect(tables).not.toMatch(/count:\s*\d/);
   });
 
-  it('the home stylesheet uses tokens, not colours of its own', () => {
-    const css = stripComments(read(join(STYLES, 'portal-home.css')));
+  it.each(['portal-home.css', 'portal-lists.css'])('%s uses tokens, not colours of its own', (file) => {
+    const css = stripComments(read(join(STYLES, file)));
     expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i);
     expect(css).not.toMatch(/rgba?\(/i);
+  });
+
+  it('Briefs shows dollars and real counts only', () => {
+    const src = stripComments(read(join(V2, 'screens/BrowseBriefs.tsx')));
+    // Rupees came back once through a local formatter; the product decided on USD.
+    expect(src).not.toMatch(/fmtPKR|USD_TO_PKR|Rs\s/);
+    // An invented "N applied" baseline used to fill in for real applications.
+    expect(src).not.toMatch(/totalSpots \* 1\.8/);
+    // "Fits you" means the matcher's score, not "campaigns you're already on".
+    expect(src).toMatch(/s\.score \?\? 0\) >= FIT_FLOOR/);
+  });
+
+  it('Discover shows no review score badge on every card', () => {
+    expect(read(join(V2, 'screens/Discover.tsx'))).not.toMatch(/ScoreBadge/);
   });
 
   it('the phone tab bar does not share class names with page tab strips', () => {

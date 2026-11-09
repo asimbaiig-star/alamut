@@ -1,1191 +1,318 @@
-// BrowseBriefs.tsx — v2 creator-side brief marketplace
+// BrowseBriefs.tsx — the creator's Briefs page (portal canvas, Round 3).
 //
-// The creator counterpart to brand Discover: live campaigns the
-// creator can apply to. Top-of-page search + filter chips
-// (category, budget band, fit-for-me) + sort dropdown over a card
-// grid. Sidebar surfaces this as "Browse campaigns".
+// The open briefs a creator can pitch: the three that fit best as
+// letterheads, then every brief as one row, ten at a time. One row of
+// chips filters (all, open now, fits you, saved, closing this week, opens
+// soon), with category, budget and sort beside them. Dollars only.
+//
+// Fit comes from the one matcher (matching.ts). "Fits you" means the
+// matcher scores the brief at FIT_FLOOR or more; it used to mean "briefs
+// you're already on", which is not what the chip said.
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Icon, Topbar } from '../lib';
+import { useMemo, useState } from 'react';
+import { Icon } from '../lib';
 import { type V2Campaign } from '../data';
 import { useV2AllCampaigns, useV2CurrentCreator, v2ToggleSavedBrief } from '../v2Hooks';
 import { brandAccent } from '../brandPalette';
 import { matchCreatorToCampaign } from '../matching';
 import { useStore } from '@/lib/api/store';
-import type { Creator } from '@/lib/api/types';
+import { HomeHead, dollars } from './homeParts';
 
 interface Props {
   onRoute: (r: string) => void;
-  /** Optional preset filter applied on mount. When the route arrives
-   *  as `creator-campaigns?filter=saved` (from CreatorHome's "Saved
-   *  for later" tile), the saved-only filter starts active so the
-   *  creator lands directly inside their bookmark list. */
+  /** `creator-campaigns?filter=saved` lands inside the saved briefs. */
   initialFilter?: 'saved';
-  /** Pre-applied status pill, from `creator-campaigns?status=Live`.
-   *  BriefDetail sends creators here when the brief they opened isn't
-   *  accepting applications, so landing on "All" would drop them back
-   *  among the briefs they can't apply to. */
-  initialStatus?: Status;
+  /** `creator-campaigns?status=Live`: BriefDetail sends creators here when
+   *  the brief they opened isn't taking pitches, so they land among the
+   *  ones that are. */
+  initialStatus?: 'all' | 'Live' | 'Planned';
 }
 
-type Status = 'all' | 'Live' | 'Planned';
-type BudgetBand = 'under5' | 'mid' | 'over15';
-type SortKey = 'newest' | 'budget' | 'deadline' | 'fit';
+type View = 'all' | 'live' | 'fits' | 'saved' | 'closing' | 'soon';
+type BudgetBand = 'any' | 'under5' | 'mid' | 'over15';
+type SortKey = 'fit' | 'newest' | 'budget' | 'deadline';
 
-const BUDGET_BANDS: { id: BudgetBand; label: string; test: (b: number) => boolean }[] = [
-  { id: 'under5',  label: 'Under $5K',          test: (b) => b < 5_000 },
-  { id: 'mid',     label: '$5K – $15K',         test: (b) => b >= 5_000 && b <= 15_000 },
-  { id: 'over15',  label: 'Over $15K',          test: (b) => b > 15_000 },
+/** A brief "fits you" from this score up. */
+export const FIT_FLOOR = 60;
+const PAGE = 10;
+const DAY = 86_400_000;
+
+const BUDGETS: { id: BudgetBand; label: string; test: (perCreator: number) => boolean }[] = [
+  { id: 'any', label: 'Any budget', test: () => true },
+  { id: 'under5', label: 'Under $5K a creator', test: (b) => b < 5_000 },
+  { id: 'mid', label: '$5K to $15K', test: (b) => b >= 5_000 && b <= 15_000 },
+  { id: 'over15', label: 'Over $15K', test: (b) => b > 15_000 },
 ];
 
-const SORT_OPTIONS: { id: SortKey; label: string }[] = [
-  { id: 'newest',   label: 'Newest first' },
-  { id: 'budget',   label: 'Highest budget' },
-  { id: 'deadline', label: 'Closest deadline' },
-  { id: 'fit',      label: 'Best fit for me' },
+const SORTS: { id: SortKey; label: string }[] = [
+  { id: 'fit', label: 'Best fit first' },
+  { id: 'newest', label: 'Newest first' },
+  { id: 'budget', label: 'Highest pay first' },
+  { id: 'deadline', label: 'Closing soonest' },
 ];
+
+/** Per-creator pay: the budget over the roster, at least four ways, so a
+ *  brief with one confirmed creator doesn't look like it pays the lot. */
+export const perCreatorOf = (c: V2Campaign) => Math.round(c.budget / Math.max(c.creators.length, 4));
+const daysLeft = (c: V2Campaign) => Math.ceil((+new Date(c.deadline) - Date.now()) / DAY);
+
+interface Scored {
+  c: V2Campaign;
+  pay: number;
+  score: number | null;
+  reason?: string;
+  left: number;
+}
 
 export function BrowseBriefs({ onRoute, initialFilter, initialStatus }: Props) {
   const me = useV2CurrentCreator();
-  const allCampaigns = useV2AllCampaigns();
+  const all = useV2AllCampaigns();
   const db = useStore((s) => s.db);
-  // Resolve the raw Creator row so we can read savedBriefs[].
-  // useV2CurrentCreator returns the V2Creator projection.
   const meRaw = me ? db.creators.find((c) => c.id === me.id) : undefined;
+  const saved = useMemo(() => new Set(meRaw?.savedBriefs ?? []), [meRaw?.savedBriefs]);
 
   const [query, setQuery] = useState('');
-  // P1b §1.2: 'Active' was dropped (it conflated per-collab progress with
-  // campaign-level state). 'Live' is the only "currently accepting" filter.
-  const [status, setStatus] = useState<Status>(initialStatus ?? 'all');
-  const [fitOnly, setFitOnly] = useState(false);
-  // Saved-only filter — toggled via the chip in the filter strip, or
-  // pre-set by the `?filter=saved` deep-link from CreatorHome.
-  const [savedOnly, setSavedOnly] = useState(initialFilter === 'saved');
-  // Multi-select filters — empty array means "no filter applied" (so
-  // the user picks ANY combination they want). Replaces the prior
-  // single-select state where 'any' was the no-filter sentinel.
-  const [categories, setCategories] = useState<string[]>([]);
-  const [budgets, setBudgets] = useState<BudgetBand[]>([]);
-  const [sort, setSort] = useState<SortKey>('newest');
+  const [view, setView] = useState<View>(
+    initialFilter === 'saved' ? 'saved' : initialStatus === 'Live' ? 'live' : initialStatus === 'Planned' ? 'soon' : 'all',
+  );
+  const [category, setCategory] = useState('any');
+  const [budget, setBudget] = useState<BudgetBand>('any');
+  const [sort, setSort] = useState<SortKey>('fit');
+  const [shown, setShown] = useState(PAGE);
 
-  // Helpers — toggle a value in/out of the multi-select array.
-  const toggleCategory = (id: string) => {
-    if (id === 'any') { setCategories([]); return; }
-    setCategories((curr) => curr.includes(id) ? curr.filter((c) => c !== id) : [...curr, id]);
+  // Score every open brief once.
+  const open: Scored[] = useMemo(() => all
+    .filter((c) => c.status === 'Live' || c.status === 'Planned')
+    .map((c) => {
+      const pay = perCreatorOf(c);
+      const m = matchCreatorToCampaign(meRaw, db.campaigns.find((x) => x.id === c.id), db, pay);
+      return { c, pay, score: m.score, reason: m.reasons[0], left: daysLeft(c) };
+    }), [all, meRaw, db]);
+
+  const categories = useMemo(() => {
+    const n = new Map<string, number>();
+    for (const { c } of open) if (c.category?.trim()) n.set(c.category.trim(), (n.get(c.category.trim()) ?? 0) + 1);
+    return [...n.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k);
+  }, [open]);
+
+  const inView = (s: Scored, v: View) => {
+    switch (v) {
+      case 'live': return s.c.status === 'Live';
+      case 'fits': return s.c.status === 'Live' && (s.score ?? 0) >= FIT_FLOOR;
+      case 'saved': return saved.has(s.c.id);
+      case 'closing': return s.c.status === 'Live' && s.left >= 0 && s.left <= 7;
+      case 'soon': return s.c.status === 'Planned';
+      default: return true;
+    }
   };
-  const toggleBudget = (id: BudgetBand) => {
-    setBudgets((curr) => curr.includes(id) ? curr.filter((b) => b !== id) : [...curr, id]);
+  const counts: Record<View, number> = {
+    all: open.length,
+    live: open.filter((s) => inView(s, 'live')).length,
+    fits: open.filter((s) => inView(s, 'fits')).length,
+    saved: open.filter((s) => inView(s, 'saved')).length,
+    closing: open.filter((s) => inView(s, 'closing')).length,
+    soon: open.filter((s) => inView(s, 'soon')).length,
   };
+  const rankable = open.some((s) => s.score !== null);
 
-  // Derive category options from the actual campaigns the creator can
-  // see — keeps the filter list honest (no empty-result categories) and
-  // ranks by frequency so the most-active ones lead.
-  const categoryOptions = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const c of allCampaigns) {
-      if (c.status === 'Completed') continue;
-      const cat = c.category?.trim();
-      if (!cat) continue;
-      counts.set(cat, (counts.get(cat) ?? 0) + 1);
-    }
-    return Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([name]) => name);
-  }, [allCampaigns]);
-
-  const briefs = useMemo(() => {
-    let r = allCampaigns.slice();
-    // Hide Completed by default since they're not actionable
-    r = r.filter((c) => c.status !== 'Completed');
-
-    if (status !== 'all') r = r.filter((c) => c.status === status);
-    if (fitOnly && me) {
-      r = r.filter((c) => c.creators.includes(me.id));
-    }
-    if (savedOnly) {
-      const saved = new Set(meRaw?.savedBriefs ?? []);
-      r = r.filter((c) => saved.has(c.id));
-    }
-    if (categories.length > 0) {
-      const catSet = new Set(categories.map((c) => c.toLowerCase()));
-      r = r.filter((c) => catSet.has((c.category ?? '').toLowerCase()));
-    }
-    if (budgets.length > 0) {
-      const activeBands = BUDGET_BANDS.filter((b) => budgets.includes(b.id));
-      r = r.filter((c) => activeBands.some((band) => band.test(c.budget)));
-    }
+  const list = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (q) {
-      r = r.filter((c) =>
-        c.name.toLowerCase().includes(q) ||
-        c.brand.toLowerCase().includes(q) ||
-        (c.brief ?? '').toLowerCase().includes(q) ||
-        (c.category ?? '').toLowerCase().includes(q) ||
-        (c.placement ?? '').toLowerCase().includes(q),
-      );
-    }
-    // Sort
-    switch (sort) {
-      case 'budget':
-        r.sort((a, b) => b.budget - a.budget);
-        break;
-      case 'deadline': {
-        const score = (c: V2Campaign) => {
-          const d = +new Date(c.deadline) - Date.now();
-          // Past deadlines drop to the back; future closer first.
-          return d < 0 ? Number.POSITIVE_INFINITY : d;
-        };
-        r.sort((a, b) => score(a) - score(b));
-        break;
-      }
-      case 'fit':
-        r.sort((a, b) => {
-          const aFit = me && a.creators.includes(me.id) ? 1 : 0;
-          const bFit = me && b.creators.includes(me.id) ? 1 : 0;
-          if (aFit !== bFit) return bFit - aFit;
-          return +new Date(b.createdAt) - +new Date(a.createdAt);
-        });
-        break;
-      case 'newest':
-      default:
-        r.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
-    }
-    return r;
-  }, [allCampaigns, status, fitOnly, savedOnly, meRaw, categories, budgets, query, sort, me]);
-
-  const liveCount = allCampaigns.filter((c) => c.status === 'Live').length;
-
-  // Count active non-default filters — used for the "Clear all" affordance.
-  const activeFilterCount =
-    (status !== 'all' ? 1 : 0) +
-    (fitOnly ? 1 : 0) +
-    (savedOnly ? 1 : 0) +
-    categories.length +
-    budgets.length +
-    (query.trim() ? 1 : 0);
-
-  const savedCount = meRaw?.savedBriefs?.length ?? 0;
-
-  const clearAll = () => {
-    setQuery('');
-    setStatus('all');
-    setFitOnly(false);
-    setSavedOnly(false);
-    setCategories([]);
-    setBudgets([]);
-  };
-
-  // Active filter chips — one chip per selected value for the multi-
-  // select dimensions, so the user can drop a single budget/category
-  // without nuking the whole filter.
-  const activeChips: { key: string; label: string; clear: () => void }[] = [];
-  if (query.trim())     activeChips.push({ key: 'q',   label: `“${query.trim()}”`,                                clear: () => setQuery('') });
-  if (status !== 'all') activeChips.push({ key: 's',   label: status === 'Live' ? 'Live only' : 'Coming soon',     clear: () => setStatus('all') });
-  if (fitOnly)          activeChips.push({ key: 'fit', label: 'Fit for me',                                        clear: () => setFitOnly(false) });
-  if (savedOnly)        activeChips.push({ key: 'sv',  label: 'Saved only',                                        clear: () => setSavedOnly(false) });
-  for (const b of budgets) {
-    const band = BUDGET_BANDS.find((x) => x.id === b);
-    if (band) activeChips.push({
-      key: `b:${b}`, label: band.label, clear: () => toggleBudget(b),
+    const band = BUDGETS.find((b) => b.id === budget)!;
+    const r = open.filter((s) =>
+      inView(s, view)
+      && (category === 'any' || (s.c.category ?? '').toLowerCase() === category.toLowerCase())
+      && band.test(s.pay)
+      && (!q || [s.c.name, s.c.brand, s.c.brief, s.c.category, s.c.placement].some((t) => (t ?? '').toLowerCase().includes(q))));
+    const by = sort === 'fit' && !rankable ? 'newest' : sort;
+    r.sort((a, b) => {
+      if (by === 'fit') return (b.score ?? -1) - (a.score ?? -1);
+      if (by === 'budget') return b.pay - a.pay;
+      if (by === 'deadline') return (a.left < 0 ? Infinity : a.left) - (b.left < 0 ? Infinity : b.left);
+      return +new Date(b.c.createdAt) - +new Date(a.c.createdAt);
     });
-  }
-  for (const c of categories) {
-    activeChips.push({ key: `c:${c}`, label: c, clear: () => toggleCategory(c) });
-  }
+    return r;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, view, category, budget, query, sort, rankable, saved]);
+
+  const filtered = view !== 'all' || category !== 'any' || budget !== 'any' || query.trim() !== '';
+  // The three best fits lead the page only on the unfiltered view.
+  const best = !filtered && rankable
+    ? [...open].filter((s) => s.c.status === 'Live' && s.score !== null).sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).slice(0, 3)
+    : [];
+  const bestIds = new Set(best.map((s) => s.c.id));
+  const rows = list.filter((s) => !bestIds.has(s.c.id));
+
+  const change = <T,>(set: (v: T) => void) => (v: T) => { set(v); setShown(PAGE); };
+  const toggleSave = (id: string) => v2ToggleSavedBrief(id);
 
   return (
-    <>
-      <Topbar
-        title="Browse campaigns"
-        // "matching your audience" claimed every live brief targets this
-        // creator — nothing establishes that, least of all for someone with no
-        // categories or channels yet. The same overclaim was fixed on
-        // CreatorHome and Discover; this sibling was missed then and turned up
-        // in the app-wide QA walk. State the count, not a claim about fit —
-        // per-brief fit is on each card, and says "fit unknown" when it is.
-        crumb={`${liveCount} live brief${liveCount === 1 ? '' : 's'} · newest first`}
-      />
-      <div className="v2-content">
-        {/* Hero search — dominant first-touch element. Soft tinted
-            surface so it reads as the primary affordance and the chip
-            rows underneath stay quiet by comparison. */}
-        <div
-          style={{
-            background: 'linear-gradient(180deg, var(--v2-bg-1) 0%, var(--v2-paper) 100%)',
-            border: '1px solid var(--v2-line)',
-            borderRadius: 'var(--v2-r-lg)',
-            padding: 22,
-            marginBottom: 16,
-          }}
-        >
-          <div style={{ position: 'relative' }}>
-            <span
-              aria-hidden="true"
-              style={{
-                position: 'absolute',
-                left: 18,
-                top: '50%',
-                transform: 'translateY(-50%)',
-                color: 'var(--v2-ink-3)',
-                display: 'flex',
-              }}
-            >
-              {Icon.search}
-            </span>
+    <div className="v2-hm">
+      <div className="v2-hm-ground">
+        <HomeHead
+          title="Briefs"
+          sub={`${counts.all} open brief${counts.all === 1 ? '' : 's'}.${counts.fits ? ` ${counts.fits} fit your channels and niche` : ''}${counts.saved ? `${counts.fits ? ';' : ''} ${counts.saved} saved` : ''}${counts.fits || counts.saved ? '.' : ''}`}
+        />
+        <div className="v2-ls-bar v2-ls-ground-bar">
+          <label className="v2-ls-search">
+            {Icon.search}
+            <span className="v2-sr-only">Search briefs</span>
             <input
               type="search"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={`Search ${allCampaigns.filter((c) => c.status !== 'Completed').length} open briefs by brand, category, platform…`}
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              aria-label="Search briefs"
-              style={{
-                width: '100%',
-                paddingLeft: 48,
-                paddingRight: query ? 44 : 16,
-                fontSize: 15,
-                lineHeight: '1.4',
-                height: 52,
-                background: 'var(--v2-paper)',
-                border: '1px solid var(--v2-line)',
-                borderRadius: 'var(--v2-r-md)',
-                fontFamily: 'inherit',
-                color: 'var(--v2-ink)',
-                boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
-                outline: 'none',
-              }}
-              onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--v2-accent)'; e.currentTarget.style.boxShadow = '0 0 0 3px var(--v2-accent-soft)'; }}
-              onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--v2-line)'; e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.04)'; }}
+              onChange={(e) => { setQuery(e.target.value); setShown(PAGE); }}
+              placeholder="Search briefs, brands or platforms"
             />
-            {query && (
-              <button
-                type="button"
-                onClick={() => setQuery('')}
-                aria-label="Clear search"
-                style={{
-                  position: 'absolute',
-                  right: 12,
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  width: 28,
-                  height: 28,
-                  borderRadius: '50%',
-                  background: 'var(--v2-bg-1)',
-                  border: '1px solid var(--v2-line)',
-                  cursor: 'pointer',
-                  color: 'var(--v2-ink-2)',
-                  fontSize: 16,
-                  lineHeight: 1,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontFamily: 'inherit',
-                  padding: 0,
-                }}
-              >×</button>
-            )}
-          </div>
+          </label>
         </div>
+      </div>
 
-        {/* Filter strip — compact, single visual block, no eyebrows.
-            Status pills get tonal weight (accent for Live, paper for
-            inactive). Budget and Category drop into native-feeling
-            chip-dropdowns (compact buttons with caret) instead of
-            wall-of-chips. Sort sits at the right end so the visual
-            line reads "narrow ← then → reorder". */}
-        <div
-          className="v2-card"
-          style={{
-            padding: 12,
-            marginBottom: activeChips.length > 0 ? 12 : 16,
-            display: 'flex',
-            gap: 8,
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            // .v2-card globally has `overflow: hidden` (for border-radius
-            // clipping on content cards). That clips the Budget/Category
-            // dropdown panels — they only show the first option then get
-            // cut off. Override here since this card only holds filter
-            // chips; nothing inside needs clipping.
-            overflow: 'visible',
-          }}
-        >
-          <Segment
-            options={[
-              { id: 'all',     label: 'All',         count: allCampaigns.filter((c) => c.status !== 'Completed').length },
-              { id: 'Live',    label: 'Live',        count: allCampaigns.filter((c) => c.status === 'Live').length,    dot: 'var(--v2-accent)' },
-              { id: 'Planned', label: 'Coming soon', count: allCampaigns.filter((c) => c.status === 'Planned').length, dot: 'var(--v2-ink-3)' },
-            ]}
-            value={status}
-            onChange={(v) => setStatus(v as Status)}
-          />
-
-          <span style={{ width: 1, height: 22, background: 'var(--v2-line)', margin: '0 4px' }} aria-hidden="true" />
-
-          <MultiChipDropdown
-            label="Budget"
-            values={budgets}
-            options={BUDGET_BANDS.map((b) => ({ id: b.id, label: b.label }))}
-            onToggle={(id) => toggleBudget(id as BudgetBand)}
-            onClear={() => setBudgets([])}
-            summary={
-              budgets.length === 0 ? 'Any'
-              : budgets.length === 1 ? BUDGET_BANDS.find((b) => b.id === budgets[0])?.label ?? ''
-              : `${budgets.length} bands`
-            }
-          />
-
-          {categoryOptions.length > 0 && (
-            <MultiChipDropdown
-              label="Category"
-              values={categories}
-              options={categoryOptions.map((c) => ({ id: c, label: c }))}
-              onToggle={toggleCategory}
-              onClear={() => setCategories([])}
-              summary={
-                categories.length === 0 ? 'All'
-                : categories.length === 1 ? categories[0]
-                : `${categories.length} selected`
-              }
-            />
-          )}
-
-          <ToggleChip
-            label="Fit for me"
-            active={fitOnly}
-            onChange={() => setFitOnly((v) => !v)}
-          />
-
-          {/* Saved-only toggle. Disabled when the creator hasn't saved
-              anything yet (the chip stays inactive + tooltip explains).
-              Active state matches Fit-for-me visually for consistency. */}
-          <ToggleChip
-            label={savedCount > 0 ? `Saved · ${savedCount}` : 'Saved'}
-            active={savedOnly}
-            onChange={() => setSavedOnly((v) => !v)}
-            disabled={savedCount === 0}
-          />
-
-          <span className="v2-spacer" />
-
-          <select
-            value={sort}
-            onChange={(e) => setSort(e.target.value as SortKey)}
-            aria-label="Sort campaigns"
-            style={{
-              border: '1px solid var(--v2-line)',
-              background: 'var(--v2-paper)',
-              color: 'var(--v2-ink)',
-              padding: '7px 32px 7px 12px',
-              borderRadius: 'var(--v2-r-pill)',
-              fontSize: 13,
-              fontFamily: 'inherit',
-              cursor: 'pointer',
-              appearance: 'none',
-              backgroundImage: 'linear-gradient(45deg, transparent 50%, var(--v2-ink-3) 50%), linear-gradient(135deg, var(--v2-ink-3) 50%, transparent 50%)',
-              backgroundPosition: 'calc(100% - 14px) 50%, calc(100% - 9px) 50%',
-              backgroundSize: '5px 5px, 5px 5px',
-              backgroundRepeat: 'no-repeat',
-            }}
-          >
-            {SORT_OPTIONS.map((o) => (
-              <option key={o.id} value={o.id}>Sort · {o.label}</option>
-            ))}
+      <div className="v2-ls-body">
+        <div className="v2-ls-bar is-scroll" role="group" aria-label="Filter briefs">
+          {([
+            ['all', 'All'], ['live', 'Open now'], ['fits', 'Fits you'], ['saved', 'Saved'], ['closing', 'Closing this week'], ['soon', 'Opens soon'],
+          ] as [View, string][]).filter(([v]) => v === 'all' || counts[v] > 0 || v === view).map(([v, label]) => (
+            <button key={v} type="button" className="v2-ls-chip" aria-pressed={view === v} onClick={() => change(setView)(v)}>
+              {label} <b>{counts[v]}</b>
+            </button>
+          ))}
+          <span className="v2-ls-sep" aria-hidden="true" />
+          <select className="v2-ls-chip" aria-label="Category" value={category} onChange={(e) => change(setCategory)(e.target.value)}>
+            <option value="any">Any category</option>
+            {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <select className="v2-ls-chip" aria-label="Pay per creator" value={budget} onChange={(e) => change(setBudget)(e.target.value as BudgetBand)}>
+            {BUDGETS.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
           </select>
         </div>
 
-        {/* Active filter chips — only when something is narrowed.
-            Each chip shows what's applied + a one-click remove. Gives
-            users a clear "what am I looking at" header without making
-            them scan the filter bar. */}
-        {activeChips.length > 0 && (
-          <div
-            className="v2-row"
-            style={{
-              gap: 6,
-              flexWrap: 'wrap',
-              marginBottom: 16,
-              alignItems: 'center',
-            }}
-          >
-            <span className="v2-muted" style={{ fontSize: 12, marginRight: 4 }}>
-              Filtered by:
-            </span>
-            {activeChips.map((chip) => (
-              <button
-                key={chip.key}
-                type="button"
-                onClick={chip.clear}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '4px 6px 4px 10px',
-                  background: 'var(--v2-accent-soft)',
-                  color: 'var(--v2-accent)',
-                  border: '1px solid transparent',
-                  borderRadius: 'var(--v2-r-pill)',
-                  fontSize: 12,
-                  fontWeight: 550,
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                }}
-                aria-label={`Remove filter ${chip.label}`}
-              >
-                <span>{chip.label}</span>
-                <span
-                  aria-hidden="true"
-                  style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: '50%',
-                    background: 'rgba(0,0,0,0.06)',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 13,
-                    lineHeight: 1,
-                  }}
-                >×</span>
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={clearAll}
-              style={{
-                marginLeft: 4,
-                padding: '4px 8px',
-                background: 'transparent',
-                border: 'none',
-                color: 'var(--v2-ink-2)',
-                fontSize: 12,
-                fontWeight: 550,
-                cursor: 'pointer',
-                textDecoration: 'underline',
-                fontFamily: 'inherit',
-              }}
-            >
-              Clear all
-            </button>
-          </div>
+        {best.length > 0 && (
+          <section aria-labelledby="br-best">
+            <h2 className="v2-hm-h2" id="br-best">Fits you best <span>ranked by your niche, channels and past brands</span></h2>
+            <div className="v2-br-best">
+              {best.map((s) => (
+                <BestCard key={s.c.id} s={s} saved={saved.has(s.c.id)} onSave={() => toggleSave(s.c.id)} onOpen={() => onRoute(`brief:${s.c.id}`)} />
+              ))}
+            </div>
+          </section>
         )}
 
-        {/* Result count row */}
-        <div className="v2-row" style={{ justifyContent: 'space-between', marginBottom: 12, alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-          <div className="v2-muted" style={{ fontSize: 13 }}>
-            <strong style={{ color: 'var(--v2-ink)', fontWeight: 600 }}>
-              {briefs.length}
-            </strong>
-            {' '}
-            {briefs.length === 1 ? 'campaign' : 'campaigns'}
-            {' · '}
-            sorted by {SORT_OPTIONS.find((o) => o.id === sort)?.label.toLowerCase()}
-          </div>
-        </div>
-
-        {briefs.length > 0 ? (
-          <div className="v2-grid-2">
-            {briefs.map((c) => (
-              <CampaignTile
-                key={c.id}
-                campaign={c}
-                onOpen={() => onRoute(`brief:${c.id}`)}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="v2-card v2-card-pad-lg" style={{ textAlign: 'center', padding: 48 }}>
-            <div
-              aria-hidden="true"
-              style={{
-                width: 48,
-                height: 48,
-                borderRadius: 999,
-                background: 'var(--v2-bg-1)',
-                color: 'var(--v2-ink-3)',
-                margin: '0 auto 12px',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              {Icon.search}
+        <section aria-labelledby="br-all">
+          <h2 className="v2-hm-h2" id="br-all">
+            {best.length > 0 ? 'Every open brief' : filtered ? 'Matching briefs' : 'Open briefs'}
+            <span>{best.length > 0 ? `${rows.length} more` : `${rows.length}`}</span>
+            <select className="v2-ls-chip v2-ls-push" aria-label="Sort briefs" value={sort} onChange={(e) => change(setSort)(e.target.value as SortKey)}>
+              {SORTS.map((o) => <option key={o.id} value={o.id} disabled={o.id === 'fit' && !rankable}>{o.label}</option>)}
+            </select>
+          </h2>
+          {rows.length === 0 ? (
+            <div className="v2-ls-empty">
+              <b>{view === 'saved' ? 'Nothing saved yet.' : 'No briefs match.'}</b>
+              <p>{view === 'saved' ? 'Save a brief with its bookmark and it waits for you here.' : 'Try another filter, or clear the search.'}</p>
+              {filtered && (
+                <button type="button" className="v2-hm-btn is-sm" onClick={() => { setView('all'); setCategory('any'); setBudget('any'); setQuery(''); setShown(PAGE); }}>
+                  Clear filters
+                </button>
+              )}
             </div>
-            <div style={{ fontSize: 15, fontWeight: 550, marginBottom: 6 }}>
-              No campaigns match your filters
-            </div>
-            <div className="v2-muted" style={{ fontSize: 13, marginBottom: 14 }}>
-              {query.trim() ? `Nothing matches "${query.trim()}". ` : ''}Try widening the filters or clear them to see everything.
-            </div>
-            {activeFilterCount > 0 && (
-              <button type="button" className="v2-btn v2-btn-outline v2-btn-sm" onClick={clearAll}>
-                Clear filters
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-    </>
-  );
-}
-
-// Segmented status control — three exclusive options rendered as a
-// single connected pill cluster (Apple-style segmented control). Counts
-// are baked in for at-a-glance scale. The active option uses the paper
-// surface with an accent underline so it doesn't dominate visually the
-// way a solid-ink fill did before.
-function Segment<T extends string>({ options, value, onChange }: {
-  options: { id: T; label: string; count?: number; dot?: string }[];
-  value: T;
-  onChange: (id: T) => void;
-}) {
-  return (
-    <div
-      role="tablist"
-      style={{
-        display: 'inline-flex',
-        background: 'var(--v2-bg-1)',
-        border: '1px solid var(--v2-line)',
-        borderRadius: 'var(--v2-r-pill)',
-        padding: 3,
-        gap: 2,
-      }}
-    >
-      {options.map((opt) => {
-        const active = opt.id === value;
-        return (
-          <button
-            key={opt.id}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            onClick={() => onChange(opt.id)}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '5px 11px',
-              background: active ? 'var(--v2-paper)' : 'transparent',
-              color: active ? 'var(--v2-ink)' : 'var(--v2-ink-2)',
-              border: 'none',
-              borderRadius: 'var(--v2-r-pill)',
-              fontSize: 13,
-              fontWeight: active ? 600 : 500,
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-              transition: 'background 120ms ease, color 120ms ease',
-              boxShadow: active ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
-            }}
-          >
-            {opt.dot && (
-              <span
-                aria-hidden="true"
-                style={{ width: 6, height: 6, borderRadius: '50%', background: opt.dot }}
-              />
-            )}
-            {opt.label}
-            {typeof opt.count === 'number' && (
-              <span
-                className="v2-tabular"
-                style={{
-                  fontSize: 11,
-                  color: active ? 'var(--v2-ink-3)' : 'var(--v2-ink-3)',
-                  fontWeight: 500,
-                }}
-              >
-                {opt.count}
-              </span>
-            )}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-// Multi-select dropdown chip — same shape as the brand-side Discover
-// MultiChipDropdown. Each option is a checkbox row; click toggles it
-// in/out of `values` without closing the panel. Closed-state shows
-// "<label> · <summary>" where summary is "Any" when empty, the single
-// option's label when one is picked, or "N selected" for many.
-function MultiChipDropdown({ label, values, options, onToggle, onClear, summary }: {
-  label: string;
-  values: string[];
-  options: { id: string; label: string }[];
-  onToggle: (id: string) => void;
-  onClear: () => void;
-  summary: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [open]);
-  const active = values.length > 0;
-  return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: '6px 10px 6px 12px',
-          background: active ? 'var(--v2-accent-soft)' : 'var(--v2-paper)',
-          color: active ? 'var(--v2-accent)' : 'var(--v2-ink-2)',
-          border: `1px solid ${active ? 'var(--v2-accent)' : 'var(--v2-line)'}`,
-          borderRadius: 'var(--v2-r-pill)',
-          fontSize: 13,
-          fontWeight: active ? 600 : 500,
-          cursor: 'pointer',
-          fontFamily: 'inherit',
-          transition: 'all 120ms ease',
-        }}
-      >
-        <span>{label}</span>
-        <span style={{ fontWeight: 500, opacity: 0.85 }}>·</span>
-        <span style={{ fontWeight: active ? 700 : 500 }}>{summary}</span>
-        <span
-          aria-hidden="true"
-          style={{
-            display: 'inline-block',
-            width: 0,
-            height: 0,
-            borderLeft: '4px solid transparent',
-            borderRight: '4px solid transparent',
-            borderTop: `4px solid ${active ? 'var(--v2-accent)' : 'var(--v2-ink-3)'}`,
-            transform: open ? 'rotate(180deg)' : 'none',
-            transition: 'transform 120ms ease',
-            marginLeft: 2,
-          }}
-        />
-      </button>
-      {open && (
-        <div
-          role="listbox"
-          aria-multiselectable="true"
-          style={{
-            position: 'absolute',
-            top: 'calc(100% + 4px)',
-            left: 0,
-            zIndex: 30,
-            minWidth: 220,
-            maxHeight: 340,
-            overflowY: 'auto',
-            background: 'var(--v2-paper)',
-            border: '1px solid var(--v2-line)',
-            borderRadius: 'var(--v2-r-md)',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
-            padding: 4,
-          }}
-        >
-          {options.map((opt) => {
-            const selected = values.includes(opt.id);
-            return (
-              <button
-                key={opt.id}
-                type="button"
-                role="option"
-                aria-selected={selected}
-                onClick={() => onToggle(opt.id)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  textAlign: 'left',
-                  width: '100%',
-                  padding: '8px 10px',
-                  background: selected ? 'var(--v2-accent-soft)' : 'transparent',
-                  color: selected ? 'var(--v2-accent)' : 'var(--v2-ink)',
-                  border: 'none',
-                  borderRadius: 6,
-                  fontSize: 13,
-                  fontWeight: selected ? 600 : 500,
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                }}
-                onMouseEnter={(e) => { if (!selected) e.currentTarget.style.background = 'var(--v2-bg-1)'; }}
-                onMouseLeave={(e) => { if (!selected) e.currentTarget.style.background = 'transparent'; }}
-              >
-                <span
-                  aria-hidden="true"
-                  style={{
-                    width: 16,
-                    height: 16,
-                    borderRadius: 4,
-                    border: `1.5px solid ${selected ? 'var(--v2-accent)' : 'var(--v2-line-2)'}`,
-                    background: selected ? 'var(--v2-accent)' : 'transparent',
-                    color: 'var(--v2-paper)',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 11,
-                    lineHeight: 1,
-                    flexShrink: 0,
-                  }}
-                >
-                  {selected ? '✓' : ''}
-                </span>
-                <span>{opt.label}</span>
-              </button>
-            );
-          })}
-          {active && (
+          ) : (
             <>
-              <hr style={{ border: 'none', borderTop: '1px solid var(--v2-line)', margin: '4px 0' }} />
-              <button
-                type="button"
-                onClick={onClear}
-                style={{
-                  width: '100%',
-                  textAlign: 'left',
-                  padding: '7px 10px',
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--v2-ink-2)',
-                  fontSize: 12.5,
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                  borderRadius: 6,
-                  fontFamily: 'inherit',
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--v2-bg-1)'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-              >
-                Clear {values.length}
-              </button>
+              <div className="v2-ls-table" style={{ ['--cols' as string]: '40px minmax(0,1.5fr) minmax(0,1.1fr) 116px 110px 64px 132px' }}>
+                <div className="v2-ls-head">
+                  <span /><span>Brief</span><span className="v2-ls-hide-md">Deliverables</span><span>Per creator</span><span>Left to pitch</span><span>Fit</span><span />
+                </div>
+                {rows.slice(0, shown).map((s) => (
+                  <BriefRow key={s.c.id} s={s} saved={saved.has(s.c.id)} onSave={() => toggleSave(s.c.id)} onOpen={() => onRoute(`brief:${s.c.id}`)} />
+                ))}
+              </div>
+              <div className="v2-ls-foot">
+                <span>Showing <b>{Math.min(shown, rows.length) + best.length}</b> of {list.length}</span>
+                {rows.length > shown && (
+                  <button type="button" className="v2-hm-btn" onClick={() => setShown((n) => n + 20)}>
+                    Show {Math.min(20, rows.length - shown)} more
+                  </button>
+                )}
+              </div>
             </>
           )}
-        </div>
-      )}
+        </section>
+      </div>
     </div>
   );
 }
 
-// Single-action toggle chip — for binary filters like "Fit for me".
-// Soft-accent fill when on; outline when off. Smaller checkbox-as-pill
-// pattern than the old inline label.
-function ToggleChip({ label, active, onChange, disabled }: {
-  label: string;
-  active: boolean;
-  onChange: () => void;
-  disabled?: boolean;
-}) {
+function leftLabel(s: Scored): { text: string; soon: boolean } {
+  if (s.c.status === 'Planned') return { text: 'Opens soon', soon: false };
+  if (s.left < 0) return { text: 'Closed', soon: false };
+  if (s.left === 0) return { text: 'Closes today', soon: true };
+  return { text: `${s.left} day${s.left === 1 ? '' : 's'}`, soon: s.left <= 7 };
+}
+
+function SaveButton({ saved, onSave, name }: { saved: boolean; onSave: () => void; name: string }) {
   return (
     <button
       type="button"
-      onClick={onChange}
-      disabled={disabled}
-      aria-pressed={active}
-      title={disabled ? 'Save a brief from any tile to enable this filter' : undefined}
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 6,
-        padding: '6px 12px',
-        background: active ? 'var(--v2-accent-soft)' : 'var(--v2-paper)',
-        color: active ? 'var(--v2-accent)' : disabled ? 'var(--v2-ink-3)' : 'var(--v2-ink-2)',
-        border: `1px solid ${active ? 'var(--v2-accent)' : 'var(--v2-line)'}`,
-        borderRadius: 'var(--v2-r-pill)',
-        fontSize: 13,
-        fontWeight: active ? 600 : 500,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.55 : 1,
-        fontFamily: 'inherit',
-        transition: 'all 120ms ease',
-      }}
+      className="v2-ls-ibtn"
+      aria-pressed={saved}
+      aria-label={saved ? `Saved: ${name}` : `Save ${name}`}
+      title={saved ? 'Saved' : 'Save for later'}
+      onClick={(e) => { e.stopPropagation(); onSave(); }}
     >
-      <span
-        aria-hidden="true"
-        style={{
-          width: 14,
-          height: 14,
-          borderRadius: 4,
-          border: `1.5px solid ${active ? 'var(--v2-accent)' : 'var(--v2-ink-3)'}`,
-          background: active ? 'var(--v2-accent)' : 'transparent',
-          color: 'var(--v2-paper)',
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: 10,
-          lineHeight: 1,
-        }}
-      >
-        {active ? '✓' : ''}
-      </span>
-      <span>{label}</span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill={saved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true"><path d="M7 4h10v16l-5-4-5 4z" /></svg>
     </button>
   );
 }
 
-// =====================================================================
-// CampaignTile — editorial brief card per Claude Design handoff
-// =====================================================================
-//
-// Replaces the older minimal BriefCard. Layout:
-//   1. Brand letterhead band  — deterministic brand colour + diagonal
-//      texture + brand mark + "Verified · pays in 3 days" meta on left,
-//      category + posted-N-days-ago on right.
-//   2. Title row              — display-serif title + 2-line brief blurb
-//      on the left, compact match-score card on the right with three
-//      fit reasons.
-//   3. Three-pillar data band — Per-creator price (with subtle gold
-//      wash to anchor the eye), Deliverables (icon + label per
-//      placement), Deadline (Nd left, urgent in red after ≤5d).
-//   4. Footer                  — seat-map dots showing filled/open
-//      spots + applicant avatar stack + applied count, then save chip
-//      and "View brief →" primary CTA.
-//
-// All data comes from V2Campaign + a small set of derived values:
-//   - matchPct, postedDays, applied → deterministic synthesised numbers
-//     keyed off campaign.id (idempotent across renders).
-//   - applicantCount → real count from db.applications.
-//   - applicantAvatars → first three creators on the campaign roster.
-//   - fitReasons → keyed off the campaign's category.
-
-// Brand colour palette — deterministic per-brand letterhead, in
-// ../brandPalette.ts so the public landing's example tiles use the same six.
-// PKR amount formatter — lakh/crore notation per the design philosophy
-// (Pakistan-first product). The data layer carries USD-shaped numbers,
-// so we apply a notional USD→PKR factor at display time. 1 USD ≈ 280
-// PKR puts seed budgets into the lakh range the design renders against
-// ("Rs 4.6L" / "Rs 1.4L") without rewriting every USD-shaped value in
-// the store.
-const USD_TO_PKR = 280;
-function fmtPKR(usd: number): string {
-  const n = Math.round(usd * USD_TO_PKR);
-  if (n >= 10_000_000) return `Rs ${(n / 10_000_000).toFixed(n % 10_000_000 === 0 ? 0 : 1)}Cr`;
-  if (n >= 100_000)    return `Rs ${(n / 100_000).toFixed(n % 100_000 === 0 ? 0 : 1)}L`;
-  if (n >= 1000)       return `Rs ${Math.round(n / 1000)}K`;
-  return `Rs ${n.toLocaleString()}`;
-}
-
-// Pick a deliverable icon glyph from the placement string. Maps to the
-// platforms our launch action's parser recognises (Reel / Story /
-// Carousel / LinkedIn post / TikTok video / Newsletter / generic).
-function deliverableGlyph(placement: string): string {
-  const p = placement.toLowerCase();
-  if (p.includes('reel'))      return '▶';
-  if (p.includes('stor'))      return '○';
-  if (p.includes('linkedin'))  return '▦';
-  if (p.includes('post'))      return '▦';
-  if (p.includes('carousel'))  return '▤';
-  if (p.includes('tiktok') || p.includes('video')) return '▶';
-  if (p.includes('newsletter') || p.includes('article')) return '✎';
-  return '◆';
-}
-
-// Per-category fallback reasons — used when there's no signed-in
-// creator or insufficient data for a personal match score. The real
-// `computeMatch()` below produces creator-specific reasons whenever
-// the viewer is a creator.
-// Match scoring now lives in ../matching.ts as a single shared
-// implementation. The two functions previously here (fallbackReasonsFor +
-// computeMatch) were removed in the product audit: every facet had a floor,
-// so the score could not fall below 71, and the 'why this match' reasons were
-// a lookup keyed only on campaign category — they described the brief, not
-// the creator reading it.
-
-function CampaignTile({ campaign, onOpen }: {
-  campaign: V2Campaign;
-  onOpen: () => void;
-}) {
-  const db = useStore((s) => s.db);
-  const me = useV2CurrentCreator();
-  // Resolve the underlying Creator object to feed into the match
-  // helper. useV2CurrentCreator returns a V2Creator (projection); we
-  // want the raw Creator so we can read platforms/categories/etc.
-  const meRaw: Creator | undefined = me ? db.creators.find((c) => c.id === me.id) : undefined;
-  const isSaved = !!meRaw?.savedBriefs?.includes(campaign.id);
-
-  const accent = brandAccent(campaign.brand);
-  // Per-creator price; min divisor 4 so a tiny roster doesn't inflate.
-  const perCreator = Math.round(campaign.budget / Math.max(campaign.creators.length, 4));
-  // Days until deadline.
-  const daysLeft = Math.max(
-    0,
-    Math.ceil((+new Date(campaign.deadline) - Date.now()) / 86_400_000),
-  );
-  const urgent = daysLeft <= 5;
-
-  // Fit against the creator's real profile signal. Returns score === null
-  // when there isn't enough to judge — see matching.ts for why that's
-  // better than the old floor-based score, which could never fall below
-  // 71 and so displayed "71% match" on every brief in the marketplace.
-  const { score: matchPct, reasons: fitReasons, insufficient } = useMemo(
-    () => matchCreatorToCampaign(
-      meRaw,
-      db.campaigns.find((c) => c.id === campaign.id),
-      db,
-      perCreator,
-    ),
-    [meRaw, campaign.id, db, perCreator],
-  );
-
-  // Posted-days-ago — uses real createdAt if available, otherwise a
-  // small synthesised number (1–5d).
-  const postedDays = (() => {
-    if (!campaign.createdAt) return ((campaign.id.charCodeAt(0) || 0) % 5) + 1;
-    const d = Math.floor((Date.now() - +new Date(campaign.createdAt)) / 86_400_000);
-    return Math.max(1, d);
-  })();
-
-  // Seat map — total spots from roster size + 2 buffer; filled = confirmed.
-  const totalSpots = Math.max(campaign.creators.length + 2, campaign.confirmed + 1);
-  const filledSpots = Math.min(campaign.confirmed, totalSpots);
-
-  // Real applicant count from store + synthesised baseline so freshly-
-  // seeded campaigns still show numbers.
-  const realAppCount = db.applications.filter((a) => a.campaignId === campaign.id).length;
-  const applied = realAppCount > 0
-    ? realAppCount
-    : Math.round(totalSpots * 1.8 + ((campaign.id.charCodeAt(1) || 0) % 5));
-
-  // Avatars — pull from creators who have applied / been accepted on
-  // this campaign. Fall back to the brand's roster.
-  const applicantAvatars: string[] = (() => {
-    const appCreatorIds = db.applications
-      .filter((a) => a.campaignId === campaign.id)
-      .map((a) => a.creatorId)
-      .slice(0, 3);
-    const ids = appCreatorIds.length > 0
-      ? appCreatorIds
-      : campaign.creators.slice(0, 3);
-    return ids
-      .map((id) => db.creators.find((c) => c.id === id)?.portrait)
-      .filter((a): a is string => !!a);
-  })();
-
-  const seats = Array.from({ length: totalSpots }, (_, i) =>
-    i < filledSpots ? 'is-filled' : 'is-open',
-  );
-
-  const placements = (campaign.placement ?? '').split(/\s*\+\s*/).filter(Boolean);
-
-  // Deadline display: "22 May" (Pakistan-friendly DD MMM).
-  const deadlineStr = new Date(campaign.deadline).toLocaleDateString('en-GB', {
-    day: 'numeric',
-    month: 'short',
-  });
-
+function BestCard({ s, saved, onSave, onOpen }: { s: Scored; saved: boolean; onSave: () => void; onOpen: () => void }) {
+  const { c } = s;
+  const band = brandAccent(c.brand);
+  const left = leftLabel(s);
   return (
-    <article
-      className="v2-campaign-tile"
-      onClick={onOpen}
-      role="link"
-      tabIndex={0}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } }}
-    >
-      {/* Brand letterhead band */}
-      <div className="v2-ct-band" style={{ background: accent.bg, color: accent.ink }}>
-        <span className="v2-ct-band-tex" aria-hidden="true" />
-        <div className="v2-row" style={{ gap: 11, alignItems: 'center', minWidth: 0, position: 'relative' }}>
-          {/* Brand mark — uploaded image when set, brand initial otherwise.
-              The image override flips the chip's bg to paper-white (so a
-              dark logo reads) and contains the image to preserve aspect. */}
-          {campaign.brandLogoUrl ? (
-            <div
-              className="v2-ct-mark"
-              style={{ background: 'var(--v2-paper)', color: accent.bg, padding: 2 }}
-              aria-hidden="true"
-            >
-              <img
-                src={campaign.brandLogoUrl}
-                alt=""
-                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-              />
-            </div>
-          ) : (
-            <div className="v2-ct-mark" style={{ color: accent.bg, background: accent.ink }} aria-hidden="true">
-              {campaign.brand[0]}
-            </div>
-          )}
-          <div style={{ minWidth: 0 }}>
-            <div className="v2-row" style={{ gap: 6, alignItems: 'center', minWidth: 0 }}>
-              <div className="v2-ct-brand">{campaign.brand}</div>
-              {/* F19 — a seeded brand won't answer. Say so up front rather
-                  than letting the creator write a pitch for nobody. */}
-              {campaign.brandIsDemo && (
-                <span className="v2-pill v2-pill-draft" title="Sample content — this brand is part of the Alamut demo and won't respond to applications.">
-                  Demo
-                </span>
-              )}
-              {/* Whether this brief is actually open.
-                  `v2ApplyToCampaign` returns null for any campaign that
-                  isn't 'live', and 12 seeded campaigns are drafts — all
-                  browsable, all clickable, with nothing on the card or the
-                  detail page distinguishing them. A creator could write a
-                  full pitch for a brief that could never accept one. The
-                  apply button now refuses (Phase 2); this stops them
-                  starting. */}
-              {campaign.status !== 'Live' && (
-                <span
-                  className="v2-pill v2-pill-draft"
-                  title={campaign.status === 'Paused'
-                    ? 'This campaign is paused — the brand isn’t taking applications right now.'
-                    : 'Not open yet — the brand hasn’t published this brief.'}
-                >
-                  {campaign.status === 'Paused' ? 'Paused' : 'Not open yet'}
-                </span>
-              )}
-            </div>
-            <div className="v2-ct-brand-meta">
-              {campaign.brandIsDemo
-                ? 'Sample brief · no real brand behind it'
-                : campaign.brandVerified
-                  ? 'Verified brand'
-                  : 'Unverified brand · use caution'}
-            </div>
-          </div>
+    <article className="v2-br-card">
+      <div className="v2-br-band" style={{ background: band.bg, color: band.ink }}>
+        <i aria-hidden="true">{c.brandLogoUrl ? <img src={c.brandLogoUrl} alt="" /> : c.brand[0]?.toUpperCase()}</i>
+        <span>{c.brand}</span>
+        {/* F19: a sample brand won't answer a pitch, so say so. */}
+        {c.brandIsDemo && <em title="Sample brief: nobody real will answer a pitch">Sample</em>}
+      </div>
+      <div className="v2-br-body">
+        <h3>{c.name}</h3>
+        {s.score !== null && (
+          <p className="v2-br-why"><b>{s.score}% fit</b>{s.reason ? ` · ${s.reason}` : ''}</p>
+        )}
+        <div className="v2-br-facts">
+          <div><span className="v2-ls-price">{dollars(s.pay)}</span><small>per creator{c.placement ? ` · ${c.placement}` : ''}</small></div>
+          <div className="r"><b className={left.soon ? 'v2-ls-soon' : undefined}>{left.text}</b><small>left to pitch</small></div>
         </div>
-        <div className="v2-ct-band-right">
-          <div className="v2-ct-band-cat">{campaign.category ?? 'Lifestyle'}</div>
-          <div className="v2-ct-band-posted">Posted {postedDays}d ago</div>
+        <div className="v2-br-acts">
+          <button type="button" className="v2-hm-btn is-sm is-dark" onClick={onOpen}>Pitch your rate</button>
+          <SaveButton saved={saved} onSave={onSave} name={c.name} />
         </div>
       </div>
-
-      {/* Body */}
-      <div className="v2-ct-body">
-        {/* Title row with match-reason card */}
-        <div className="v2-ct-titlerow">
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <h3 className="v2-ct-title">{campaign.name}</h3>
-            <p className="v2-ct-blurb">{campaign.brief}</p>
-          </div>
-          {/* When there isn't enough profile signal we say so and name the
-              fix, rather than printing a confident number. */}
-          {matchPct === null ? (
-            <div className="v2-ct-match-card">
-              <div className="v2-ct-match-top">
-                <span className="v2-ct-match-pct v2-tabular">—</span>
-                <span className="v2-ct-match-label">fit unknown</span>
-              </div>
-              <p className="v2-ct-match-hint">{insufficient}</p>
-            </div>
-          ) : (
-            <div className="v2-ct-match-card">
-              <div className="v2-ct-match-top">
-                <span className="v2-ct-match-pct v2-tabular">
-                  {matchPct}
-                  <span className="v2-ct-match-pct-pct">%</span>
-                </span>
-                <span className="v2-ct-match-label">match</span>
-              </div>
-              <ul className="v2-ct-match-reasons">
-                {fitReasons.map((r, i) => (
-                  <li key={i}><span className="v2-ct-check">✓</span>{r}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-
-        {/* Three-pillar data band */}
-        <div className="v2-ct-pillars">
-          <div className="v2-ct-pillar v2-ct-pillar-money">
-            <div className="v2-ct-pillar-label">Per creator</div>
-            <div className="v2-ct-money-val">
-              <span className="v2-ct-money-cur">Rs</span>
-              <span className="v2-tabular">{fmtPKR(perCreator).replace(/^Rs\s*/, '')}</span>
-            </div>
-            <div
-              className="v2-ct-pillar-sub"
-              style={{ color: campaign.escrowHeld > 0 ? 'var(--v2-moss)' : 'var(--v2-ink-3)' }}
-            >
-              ● {campaign.escrowHeld > 0 ? 'Escrow funded' : 'Awaiting funding'}
-            </div>
-          </div>
-          <div className="v2-ct-pillar">
-            <div className="v2-ct-pillar-label">Deliverables</div>
-            <div className="v2-ct-pillar-stack">
-              {placements.length === 0 ? (
-                <div className="v2-ct-pillar-row">
-                  <span className="v2-ct-deliv-mark">◆</span>
-                  <span>{campaign.placement || 'TBD'}</span>
-                </div>
-              ) : placements.map((p, i) => (
-                <div key={i} className="v2-ct-pillar-row">
-                  <span className="v2-ct-deliv-mark">{deliverableGlyph(p)}</span>
-                  <span>{p}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="v2-ct-pillar">
-            <div className="v2-ct-pillar-label">Deadline</div>
-            <div className={`v2-ct-deadline-val v2-tabular ${urgent ? 'is-urgent' : ''}`}>
-              {daysLeft}
-              <span className="v2-ct-deadline-unit">d</span>
-            </div>
-            <div className="v2-ct-pillar-sub">until {deadlineStr}</div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="v2-ct-foot">
-          <div className="v2-ct-spots">
-            <div className="v2-ct-seats">
-              {seats.map((s, i) => (
-                <span key={i} className={`v2-ct-seat ${s}`} aria-hidden="true" />
-              ))}
-              <span className="v2-ct-spots-text">
-                <strong>{filledSpots}</strong> of {totalSpots} filled
-              </span>
-            </div>
-            <div className="v2-ct-applicants">
-              <div className="v2-ct-avstack" aria-hidden="true">
-                {applicantAvatars.map((a, i) => (
-                  <span key={i} className="v2-ct-av" style={{ backgroundImage: `url(${a})` }} />
-                ))}
-              </div>
-              <span className="v2-ct-applicants-text">{applied} applied</span>
-            </div>
-          </div>
-          <div className="v2-row" style={{ gap: 6 }}>
-            <button
-              type="button"
-              className="v2-ct-save"
-              title={isSaved ? 'Saved · click to remove' : 'Save brief for later'}
-              aria-label={isSaved ? 'Remove saved brief' : 'Save brief'}
-              aria-pressed={isSaved}
-              onClick={(e) => {
-                e.stopPropagation();
-                v2ToggleSavedBrief(campaign.id);
-              }}
-              style={isSaved ? {
-                color: 'var(--v2-accent)',
-                borderColor: 'var(--v2-accent)',
-                background: 'var(--v2-accent-soft)',
-              } : undefined}
-            >
-              {/* Bookmark glyph — filled when saved, outlined when not */}
-              <svg width="14" height="14" viewBox="0 0 24 24" fill={isSaved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
-                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              className="v2-btn v2-btn-primary v2-btn-sm v2-ct-cta"
-              onClick={(e) => { e.stopPropagation(); onOpen(); }}
-            >
-              View brief <span className="v2-ct-cta-arrow">→</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Bottom-right corner clip — editorial flourish */}
-      <span className="v2-ct-corner" aria-hidden="true" />
     </article>
+  );
+}
+
+function BriefRow({ s, saved, onSave, onOpen }: { s: Scored; saved: boolean; onSave: () => void; onOpen: () => void }) {
+  const { c } = s;
+  const left = leftLabel(s);
+  return (
+    <div className="v2-ls-row" data-href onClick={onOpen}>
+      <span className="v2-ls-tile" style={{ background: brandAccent(c.brand).bg }} aria-hidden="true">
+        {c.brandLogoUrl ? <img src={c.brandLogoUrl} alt="" /> : c.brand[0]?.toUpperCase()}
+      </span>
+      <div className="v2-ls-main">
+        <a className="v2-ls-title" href={`/v2?tab=${encodeURIComponent(`brief:${c.id}`)}`} onClick={(e) => { e.preventDefault(); e.stopPropagation(); onOpen(); }}>{c.name}</a>
+        <small>{c.brand}{c.brandIsDemo ? ' · sample brief' : ''}</small>
+      </div>
+      <span className="v2-ls-hide-md v2-ls-clamp">{c.placement || '—'}</span>
+      <span className="v2-ls-price v2-ls-hide-sm">{dollars(s.pay)}</span>
+      <span className={`v2-ls-hide-sm${left.soon ? ' v2-ls-soon' : ''}`}>{left.text}</span>
+      <span className="v2-ls-hide-sm v2-br-fit">{s.score === null ? '—' : `${s.score}%`}</span>
+      <span className="v2-ls-sm-sub">{dollars(s.pay)} · {left.text}{s.score !== null ? ` · ${s.score}% fit` : ''}</span>
+      <div className="v2-ls-act">
+        <SaveButton saved={saved} onSave={onSave} name={c.name} />
+        <button type="button" className="v2-hm-btn is-sm v2-ls-hide-sm" onClick={(e) => { e.stopPropagation(); onOpen(); }}>View</button>
+      </div>
+    </div>
   );
 }

@@ -10,6 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import '@/styles/workspace-v2.css';
 import '@/styles/workspace-v2-campaign-mgmt.css';
 import '@/styles/portal-home.css';
+import '@/styles/portal-lists.css';
 import { Icon } from './lib';
 import {
   useV2CurrentBrand, useV2CurrentCreator, useV2Conversations,

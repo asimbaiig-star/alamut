@@ -1,365 +1,350 @@
-// MyCollabs.tsx — v2 creator-side collaboration tracker
+// MyCollabs.tsx — the creator's Deals page (portal canvas, Round 3).
 //
-// Two-section split:
-//   1. Open offers   — pre-acceptance items (invited / pitched / negotiating).
-//                      Cards route to CollabDetail so the creator can act on
-//                      the offer (accept / counter / decline).
-//   2. Collaborations — post-acceptance items (confirmed / submitted /
-//                      approved / live / paid). Same kanban / list views as
-//                      before. Cards route to CollabDetail for content
-//                      submission and tracking.
-//
-// Splitting matches the DB model: a `collaborations` row only exists once
-// an offer is accepted. Pre-acceptance items are projected V2Collabs
-// derived from offers/applications — surfacing them under a separate
-// header keeps the mental model clean.
+// Sorted by whose move it is, not by a seven-column board:
+//   1. Your move    — what needs.ts says waits on the creator, each with the
+//                     button to act (accept in place, resubmit, upload,
+//                     paste the live link).
+//   2. With brands  — everything else in flight; nothing for you to do.
+//   3. Paid         — folded away, with what it earned.
+//   4. Didn't go ahead — folded too: kept as a record, never dropped, so a
+//                     declined pitch doesn't read as the app losing it.
+// The stage tiles on top filter all of it.
 
-import { useState } from 'react';
-import { fmtUSD, Icon, StagePill, Topbar, EmptyState } from '../lib';
+import { useMemo, useState } from 'react';
 import { useV2AllCampaigns, useV2MyCollabs } from '../v2Hooks';
-import { V2_PIPELINE_STAGES, V2_STAGE_META } from '../v2Adapters';
-import type { V2Collab, V2CollabStage } from '../data';
+import { V2_STAGE_META } from '../v2Adapters';
+import { useStore } from '@/lib/api/store';
+import { v2AcceptOffer } from '../v2CampaignActions';
+import { splitAcrossSlots } from '@/lib/api/money';
+import { pushToast } from '@/lib/utils/toast';
+import type { V2Campaign, V2Collab, V2CollabStage } from '../data';
+import { useCreatorNeedsYou, type CreatorNeed } from '../needsYou';
+import { brandAccent } from '../brandPalette';
+import { Icon } from '../lib';
+import { HomeHead, ago, dollars } from './homeParts';
 
 interface Props {
   onRoute: (r: string) => void;
 }
 
-type View = 'kanban' | 'list';
+type Filter = 'all' | 'offers' | 'pitched' | 'working' | 'releasing' | 'paid';
 
-// Derived from V2_STAGE_META rather than re-listed here. Pre-fix these were
-// two hardcoded arrays covering 8 stages, and the state machine's 9th
-// (`cancelled`) matched NEITHER — so a creator whose pitch was declined
-// watched the collab vanish from this page with no record, unable to tell
-// whether the brand passed or the app lost their application.
-const stagesInGroup = (group: 'pre-acceptance' | 'post-acceptance' | 'closed'): V2CollabStage[] =>
-  (Object.keys(V2_STAGE_META) as V2CollabStage[])
-    .filter((s) => V2_STAGE_META[s].activeGroup === group)
-    .sort((a, b) => V2_STAGE_META[a].order - V2_STAGE_META[b].order);
+const FILTERS: { id: Filter; label: string; stages: V2CollabStage[]; tone?: 'hot' | 'done' }[] = [
+  { id: 'all', label: 'All deals', stages: [] },
+  { id: 'offers', label: 'Offers', stages: ['invited', 'negotiating'], tone: 'hot' },
+  { id: 'pitched', label: 'Pitched', stages: ['pitched'] },
+  { id: 'working', label: 'Working', stages: ['confirmed', 'submitted'] },
+  { id: 'releasing', label: 'Releasing', stages: ['approved', 'live'] },
+  { id: 'paid', label: 'Paid', stages: ['paid'], tone: 'done' },
+];
 
-const PRE_ACCEPTANCE_STAGES = stagesInGroup('pre-acceptance');
-const POST_ACCEPTANCE_STAGES = stagesInGroup('post-acceptance');
-const CLOSED_STAGES = stagesInGroup('closed');
+const COLS = '40px minmax(0,1.3fr) 132px minmax(0,1.3fr) 110px 120px 168px';
+const WITH_BRANDS_PAGE = 8;
 
 export function MyCollabs({ onRoute }: Props) {
-  const [view, setView] = useState<View>('kanban');
-  const allCollabs = useV2MyCollabs();
+  const all = useV2MyCollabs();
   const campaigns = useV2AllCampaigns();
+  const needs = useCreatorNeedsYou();
+  const db = useStore((s) => s.db);
+  const [filter, setFilter] = useState<Filter>('all');
+  const [showAllWaiting, setShowAllWaiting] = useState(false);
+  const [showPaid, setShowPaid] = useState(false);
+  const [showClosed, setShowClosed] = useState(false);
 
-  const negotiating = allCollabs.filter((c) => PRE_ACCEPTANCE_STAGES.includes(c.stage));
-  const collabs = allCollabs.filter((c) => POST_ACCEPTANCE_STAGES.includes(c.stage));
-  const closed = allCollabs.filter((c) => CLOSED_STAGES.includes(c.stage));
+  const campaignOf = (c: V2Collab) => campaigns.find((x) => x.id === c.campaignId);
+  const needFor = useMemo(() => {
+    const m = new Map<string, CreatorNeed>();
+    for (const n of needs) if (n.collabId && !m.has(n.collabId)) m.set(n.collabId, n);
+    return m;
+  }, [needs]);
+  // What the creator asked for when they pitched, for rows with no agreed price.
+  const askFor = (c: V2Collab) => db.applications
+    .filter((a) => a.campaignId === c.campaignId && a.creatorId === c.creatorId)
+    .sort((a, b) => +new Date(b.submittedAt) - +new Date(a.submittedAt))[0];
 
-  const pendingReview = collabs.filter((c) =>
-    c.deliverables.some((d) => d.status === 'in_review'),
-  ).length;
+  const live = all.filter((c) => c.stage !== 'cancelled');
+  const closed = all.filter((c) => c.stage === 'cancelled');
+  const stages = FILTERS.find((f) => f.id === filter)!.stages;
+  const inFilter = (c: V2Collab) => stages.length === 0 || stages.includes(c.stage);
 
-  const crumbParts: string[] = [];
-  if (negotiating.length > 0) crumbParts.push(`${negotiating.length} open offer${negotiating.length === 1 ? '' : 's'}`);
-  crumbParts.push(`${collabs.length} active`);
-  if (pendingReview > 0) crumbParts.push(`${pendingReview} pending review`);
-  // Reported separately on purpose — a closed collab is neither an open offer
-  // nor active work, and folding it into either would overstate both.
-  if (closed.length > 0) crumbParts.push(`${closed.length} closed`);
+  // Your move keeps needs.ts's order (most urgent first).
+  const mine = needs
+    .filter((n) => n.collabId)
+    .map((n) => live.find((c) => c.id === n.collabId))
+    .filter((c): c is V2Collab => !!c && inFilter(c));
+  const waiting = live.filter((c) => c.stage !== 'paid' && !needFor.has(c.id) && inFilter(c));
+  const paid = live.filter((c) => c.stage === 'paid' && inFilter(c));
+  const earned = paid.reduce((s, c) => s + (c.price > 0 ? splitAcrossSlots(c.price, Math.max(1, c.deliverables.length)).net : 0), 0);
+
+  const count = (f: (typeof FILTERS)[number]) => f.stages.length === 0 ? live.length : live.filter((c) => f.stages.includes(c.stage)).length;
+  const yourMove = needs.filter((n) => n.collabId).length;
+
+  const row = (c: V2Collab, need?: CreatorNeed) => (
+    <DealRow
+      key={c.id}
+      collab={c}
+      camp={campaignOf(c)}
+      need={need}
+      ask={askFor(c)?.proposedRate}
+      askedAt={askFor(c)?.submittedAt}
+      onRoute={onRoute}
+    />
+  );
 
   return (
-    <>
-      <Topbar
-        title="My collaborations"
-        crumb={crumbParts.join(' · ')}
-        actions={
-          <div
-            className="v2-segmented"
-            role="group"
-            aria-label="View mode"
-          >
-            <button
-              type="button"
-              className={`v2-segmented-btn ${view === 'kanban' ? 'is-on' : ''}`}
-              onClick={() => setView('kanban')}
-              aria-pressed={view === 'kanban'}
-              aria-label="Kanban view"
-            >
-              {Icon.kanban}
-              <span>Kanban</span>
-            </button>
-            <button
-              type="button"
-              className={`v2-segmented-btn ${view === 'list' ? 'is-on' : ''}`}
-              onClick={() => setView('list')}
-              aria-pressed={view === 'list'}
-              aria-label="List view"
-            >
-              {Icon.list}
-              <span>List</span>
-            </button>
-          </div>
-        }
-      />
-      <div className="v2-content">
-        {/* Phase 58 — empty state for fresh creators with no collabs
-            in any direction (no open offers, no active deals). Pre-fix
-            this surface rendered just an empty stage strip with zero
-            counts. Now nudges them toward Browse campaigns. */}
-        {allCollabs.length === 0 && (
-          <EmptyState
-            icon={<>{Icon.campaign}</>}
-            title="No collaborations yet"
-            body="Browse open briefs to apply, or wait for brands to find your storefront. Anything you accept will show up here as it progresses through production."
-            ctaLabel="Browse campaigns"
-            onCta={() => onRoute('creator-campaigns')}
-            secondary={
-              <button
-                type="button"
-                className="v2-btn v2-btn-ghost v2-btn-sm"
-                onClick={() => onRoute('storefront')}
-              >
-                Polish my storefront
-              </button>
-            }
-          />
-        )}
+    <div className="v2-hm">
+      <div className="v2-hm-ground">
+        <HomeHead
+          title="Deals"
+          sub={live.length === 0
+            ? 'No deals yet. Pitch a brief, or let brands find your storefront.'
+            : `${live.length} deal${live.length === 1 ? '' : 's'}. ${yourMove === 0 ? 'Nothing is your move right now' : `${yourMove === 1 ? 'One is' : `${yourMove} are`} your move`}; the rest are with brands, or paid.`}
+          actions={<button type="button" className="v2-hm-btn is-dark" onClick={() => onRoute('creator-campaigns')}>Find briefs</button>}
+        />
+      </div>
 
-        {/* ─── Open offers (pre-acceptance) ──────────────────────────── */}
-        {negotiating.length > 0 && (
-          <section style={{ marginBottom: 32 }}>
-            <SectionHeader
-              eyebrow="Open offers"
-              count={negotiating.length}
-              hint="Brand offers and your pitches still in negotiation. Nothing here is locked in until you accept."
-            />
-            {view === 'kanban' ? (
-              <CollabKanban
-                stages={PRE_ACCEPTANCE_STAGES}
-                items={negotiating}
-                campaigns={campaigns}
-                onRoute={onRoute}
-              />
-            ) : (
-              <CollabsList collabs={negotiating} campaigns={campaigns} onRoute={onRoute} />
+      <div className="v2-ls-body">
+        {all.length === 0 ? (
+          <div className="v2-ls-empty">
+            <b>No deals yet.</b>
+            <p>Pitch an open brief, or let brands find your storefront. Anything you accept shows up here as it moves.</p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button type="button" className="v2-hm-btn is-dark" onClick={() => onRoute('creator-campaigns')}>Find briefs</button>
+              <button type="button" className="v2-hm-btn" onClick={() => onRoute('storefront')}>Polish your storefront</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="v2-ls-stages" role="group" aria-label="Show deals by stage">
+              {FILTERS.map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  aria-pressed={filter === f.id}
+                  data-tone={f.tone && count(f) > 0 ? f.tone : undefined}
+                  onClick={() => setFilter(f.id)}
+                >
+                  <b>{count(f)}</b>
+                  <span>{f.label}</span>
+                </button>
+              ))}
+            </div>
+
+            <section aria-labelledby="dl-mine">
+              <h2 className="v2-hm-h2" id="dl-mine">Your move <span>{mine.length === 0 ? 'nothing waiting on you' : `${mine.length}, most urgent first`}</span></h2>
+              {mine.length > 0 && (
+                <div className="v2-ls-table" style={{ ['--cols' as string]: COLS }}>
+                  <Head />
+                  {mine.map((c) => row(c, needFor.get(c.id)))}
+                </div>
+              )}
+            </section>
+
+            {waiting.length > 0 && (
+              <section aria-labelledby="dl-wait">
+                <h2 className="v2-hm-h2" id="dl-wait">
+                  With brands <span>{waiting.length} · nothing for you to do</span>
+                </h2>
+                <div className="v2-ls-table" style={{ ['--cols' as string]: COLS }}>
+                  {mine.length === 0 && <Head />}
+                  {(showAllWaiting ? waiting : waiting.slice(0, WITH_BRANDS_PAGE)).map((c) => row(c))}
+                </div>
+                {waiting.length > WITH_BRANDS_PAGE && (
+                  <div className="v2-ls-foot">
+                    <span>Showing <b>{showAllWaiting ? waiting.length : WITH_BRANDS_PAGE}</b> of {waiting.length}</span>
+                    <button type="button" className="v2-hm-btn is-sm" onClick={() => setShowAllWaiting((v) => !v)}>
+                      {showAllWaiting ? 'Show fewer' : `Show all ${waiting.length}`}
+                    </button>
+                  </div>
+                )}
+              </section>
             )}
-          </section>
-        )}
 
-        {/* ─── Collaborations (post-acceptance) ──────────────────────── */}
-        {collabs.length > 0 && negotiating.length > 0 && (
-          <SectionHeader
-            eyebrow="Collaborations"
-            count={collabs.length}
-            hint="Locked-in deals — escrow held, deliverables on the way."
-          />
-        )}
-
-        {collabs.length > 0 && view === 'kanban' && (
-          <CollabKanban
-            stages={POST_ACCEPTANCE_STAGES}
-            items={collabs}
-            campaigns={campaigns}
-            onRoute={onRoute}
-          />
-        )}
-
-        {collabs.length > 0 && view === 'list' && (
-          <CollabsList collabs={collabs} campaigns={campaigns} onRoute={onRoute} />
-        )}
-
-        {/* ─── Closed (terminal) ─────────────────────────────────────
-            Shown rather than dropped. A declined pitch used to disappear
-            from this page entirely, which reads as data loss: the creator
-            can't tell whether the brand passed on them or the app lost the
-            application. Inert by design — nothing here is actionable. */}
-        {closed.length > 0 && (
-          <section style={{ marginTop: 32 }}>
-            <SectionHeader
-              eyebrow="Closed"
-              count={closed.length}
-              hint="Didn't go ahead — the brand passed, or the offer was withdrawn. Kept here so you have the record; your storefront is unaffected."
-            />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {closed.map((c) => {
-                const camp = campaigns.find((x) => x.id === c.campaignId);
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => onRoute(`collab:${c.id}`)}
-                    className="v2-row"
-                    style={{
-                      gap: 10, alignItems: 'center', padding: '10px 12px', borderRadius: 10,
-                      border: '1px solid var(--v2-border)', background: 'transparent',
-                      cursor: 'pointer', textAlign: 'left', width: '100%', opacity: 0.75,
-                    }}
-                  >
-                    <span
-                      className="v2-kanban-dot"
-                      style={{ background: V2_STAGE_META[c.stage].color, flexShrink: 0 }}
-                    />
-                    <span style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ fontSize: 13, fontWeight: 550 }}>
-                        {camp?.name ?? 'Campaign'}
-                      </span>
-                      <span className="v2-muted" style={{ fontSize: 11.5, display: 'block' }}>
-                        {camp?.brand ?? ''}
-                      </span>
-                    </span>
-                    <span className="v2-muted" style={{ fontSize: 11.5 }}>
-                      {V2_STAGE_META[c.stage].label}
-                    </span>
+            {paid.length > 0 && (
+              <section aria-label="Paid deals">
+                <div className="v2-ls-fold">
+                  <span>Paid · {paid.length} deal{paid.length === 1 ? '' : 's'} · {dollars(earned)} after fees</span>
+                  <button type="button" className="v2-hm-btn is-sm" aria-expanded={showPaid} onClick={() => setShowPaid((v) => !v)}>
+                    {showPaid ? 'Hide paid deals' : 'Show paid deals'}
                   </button>
-                );
-              })}
-            </div>
-          </section>
+                </div>
+                {showPaid && (
+                  <div className="v2-ls-table" style={{ ['--cols' as string]: COLS }}>
+                    {paid.map((c) => row(c))}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {closed.length > 0 && filter === 'all' && (
+              <section aria-label="Deals that didn't go ahead">
+                <div className="v2-ls-fold" style={{ borderTop: paid.length > 0 ? 0 : undefined }}>
+                  <span>Didn’t go ahead · {closed.length} · the brand passed or the offer was withdrawn</span>
+                  <button type="button" className="v2-hm-btn is-sm" aria-expanded={showClosed} onClick={() => setShowClosed((v) => !v)}>
+                    {showClosed ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+                {showClosed && (
+                  <div className="v2-ls-table" style={{ ['--cols' as string]: COLS }}>
+                    {closed.map((c) => row(c))}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {mine.length === 0 && waiting.length === 0 && paid.length === 0 && (
+              <p className="v2-hm-empty">No deals at this stage.</p>
+            )}
+          </>
         )}
-
-        {/* P-9b — a second, bespoke empty state used to render here on the
-            same `allCollabs.length === 0` condition as the shared
-            <EmptyState> above, so a creator with no collabs saw both
-            "No collaborations yet" and "No active collaborations yet"
-            stacked. Removed; the shared component (two CTAs) wins. */}
       </div>
-    </>
-  );
-}
-
-function SectionHeader({ eyebrow, count, hint }: { eyebrow: string; count: number; hint: string }) {
-  return (
-    <div style={{ marginBottom: 14 }}>
-      <div className="v2-row" style={{ alignItems: 'baseline', gap: 12, marginBottom: 4 }}>
-        <h2 style={{
-          fontFamily: 'var(--v2-font-display)',
-          fontSize: 22,
-          fontWeight: 500,
-          letterSpacing: '-0.02em',
-          margin: 0,
-        }}>
-          {eyebrow}
-        </h2>
-        <span className="v2-muted" style={{ fontSize: 13 }}>{count}</span>
-      </div>
-      <p className="v2-muted" style={{ fontSize: 13, margin: 0, maxWidth: 600 }}>{hint}</p>
     </div>
   );
 }
 
-function CollabKanban({ stages, items, campaigns, onRoute }: {
-  stages: V2CollabStage[];
-  items: V2Collab[];
-  campaigns: ReturnType<typeof useV2AllCampaigns>;
+function Head() {
+  return (
+    <div className="v2-ls-head">
+      <span />
+      <span>Deal</span>
+      <span>Stage</span>
+      <span className="v2-ls-hide-md">What’s next</span>
+      <span>When</span>
+      <span className="r">Money</span>
+      <span />
+    </div>
+  );
+}
+
+const TONE: Partial<Record<V2CollabStage, 'hot' | 'moss' | 'gold' | 'muted'>> = {
+  invited: 'hot', negotiating: 'hot', approved: 'moss', live: 'moss', paid: 'moss', cancelled: 'muted',
+};
+
+function DealRow({ collab: c, camp, need, ask, askedAt, onRoute }: {
+  collab: V2Collab;
+  camp?: V2Campaign;
+  need?: CreatorNeed;
+  ask?: number;
+  askedAt?: string;
   onRoute: (r: string) => void;
 }) {
-  const stageMetas = stages
-    .map((id) => V2_PIPELINE_STAGES.find((s) => s.id === id))
-    .filter((s): s is NonNullable<typeof s> => !!s);
+  const brand = camp?.brand ?? 'Brand';
+  const href = `collab:${c.id}`;
+  const slots = Math.max(1, c.deliverables.length);
+  const revision = need?.kind === 'revision';
+  const label = revision ? 'Changes asked' : V2_STAGE_META[c.stage].label;
+  const tone = revision ? 'gold' : TONE[c.stage];
+
+  // What happens next, in one line.
+  const next = need ? nextForNeed(need) : nextForStage(c, ask, askedAt);
+
+  // When. Before a deal is agreed the date is when the brief closes.
+  const agreed = !['invited', 'pitched', 'negotiating', 'cancelled'].includes(c.stage);
+  const when = need?.due ? `Due ${need.due}` : c.deadline ? `${agreed ? 'Due' : 'Closes'} ${c.deadline}` : '—';
+  const soon = !!need && (need.kind === 'offer' || need.kind === 'revision');
+
+  // Money: once a price is agreed, what the creator keeps after fees; while
+  // an offer is open, what they'd keep if they accept; before that, what
+  // they asked for. Never "you keep" on a number nobody has agreed to.
+  const askNow = ask ?? (c.price > 0 ? c.price : undefined);
+  const money = agreed && c.price > 0
+    ? { v: dollars(splitAcrossSlots(c.price, slots).net), sub: c.stage === 'paid' ? 'paid to you' : 'you keep' }
+    : need?.kind === 'offer' && need.offerId && need.rate
+      ? { v: dollars(splitAcrossSlots(need.rate, slots).net), sub: 'you’d keep' }
+      : askNow
+        ? { v: dollars(askNow), sub: 'your ask' }
+        : { v: '—', sub: c.stage === 'invited' ? 'pitch your rate' : '' };
+
+  const accept = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!need?.offerId) return;
+    try {
+      v2AcceptOffer(need.offerId);
+      pushToast(`Offer accepted. ${brand} has been told.`, 'good');
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : 'Couldn’t accept the offer', 'bad');
+    }
+  };
+  const go = (route: string) => (e: React.MouseEvent) => { e.stopPropagation(); onRoute(route); };
+
+  let action: React.ReactNode = <span className="v2-ls-chev" aria-hidden="true">{Icon.arrow}</span>;
+  if (need) {
+    if (need.kind === 'offer' && need.offerId && need.rate) {
+      action = <button type="button" className="v2-hm-btn is-sm is-dark" onClick={accept}>Accept {dollars(need.rate)}</button>;
+    } else if (need.kind === 'offer') {
+      action = <button type="button" className="v2-hm-btn is-sm" onClick={go(need.route)}>Pitch</button>;
+    } else if (need.kind === 'revision') {
+      action = <button type="button" className="v2-hm-btn is-sm is-dark" onClick={go(need.route)}>Resubmit</button>;
+    } else if (need.kind === 'upload') {
+      action = <button type="button" className="v2-hm-btn is-sm is-dark" onClick={go(need.route)}>Upload</button>;
+    } else if (need.kind === 'live') {
+      action = <button type="button" className="v2-hm-btn is-sm" onClick={go(need.route)}>Paste link</button>;
+    }
+  }
+
   return (
-    <div className="v2-kanban">
-      {stageMetas.map((stage) => {
-        const stageItems = items.filter((c) => c.stage === stage.id);
-        return (
-          <div key={stage.id} className="v2-kanban-col">
-            <div className="v2-kanban-col-head">
-              <span className="v2-kanban-dot" style={{ background: stage.color }} />
-              <span className="v2-kanban-col-label">{stage.label}</span>
-              <span className="v2-kanban-col-count">{stageItems.length}</span>
-            </div>
-            <div className="v2-kanban-list">
-              {stageItems.map((collab) => {
-                const camp = campaigns.find((c) => c.id === collab.campaignId);
-                if (!camp) return null;
-                return (
-                  <article
-                    key={collab.id}
-                    className="v2-kanban-card"
-                    onClick={() => onRoute(`collab:${collab.id}`)}
-                    // F26 — see CampaignDetail: click-only cards were
-                    // unreachable by keyboard and invisible to assistive tech.
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`Open collaboration with ${camp.brand} — ${camp.name}`}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        onRoute(`collab:${collab.id}`);
-                      }
-                    }}
-                  >
-                    <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 4 }}>
-                      {camp.brand}
-                    </div>
-                    <div className="v2-muted" style={{
-                      fontSize: 11.5,
-                      marginBottom: 8,
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}>
-                      {camp.name}
-                    </div>
-                    {collab.price > 0 && (
-                      <div className="v2-row" style={{ justifyContent: 'space-between', fontSize: 12 }}>
-                        <span className="v2-muted">Due {collab.deadline}</span>
-                        <span className="v2-tabular" style={{ fontWeight: 550 }}>
-                          {fmtUSD(collab.price)}
-                        </span>
-                      </div>
-                    )}
-                  </article>
-                );
-              })}
-              {stageItems.length === 0 && <div className="v2-kanban-empty">—</div>}
-            </div>
-          </div>
-        );
-      })}
+    <div
+      className="v2-ls-row"
+      data-href={href}
+      onClick={() => onRoute(href)}
+    >
+      <span className="v2-ls-tile" style={{ background: brandAccent(brand).bg }} aria-hidden="true">
+        {camp?.brandLogoUrl ? <img src={camp.brandLogoUrl} alt="" /> : brand[0]?.toUpperCase()}
+      </span>
+      <div className="v2-ls-main">
+        {/* The row's link for keyboards and screen readers; the row itself is a mouse target. */}
+        <a className="v2-ls-title" href={`/v2?tab=${encodeURIComponent(href)}`} onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRoute(href); }}>
+          {camp?.name ?? 'Deal'}
+        </a>
+        <small>{brand}</small>
+      </div>
+      <span className="v2-ls-pill v2-ls-hide-sm" data-tone={tone}>{label}</span>
+      <span className="v2-ls-hide-md v2-ls-clamp">{next}</span>
+      <span className={`v2-ls-hide-sm${soon ? ' v2-ls-soon' : ''}`}>{when}</span>
+      <div className="v2-ls-money v2-ls-hide-sm"><b>{money.v}</b>{money.sub && <small>{money.sub}</small>}</div>
+      <span className="v2-ls-sm-sub">{label} · {next}</span>
+      <div className="v2-ls-act">{action}</div>
     </div>
   );
 }
 
-function CollabsList({ collabs, campaigns, onRoute }: {
-  collabs: V2Collab[];
-  campaigns: ReturnType<typeof useV2AllCampaigns>;
-  onRoute: (r: string) => void;
-}) {
-  return (
-    <div className="v2-card" style={{ overflow: 'hidden' }}>
-      <table className="v2-table">
-        <thead>
-          <tr>
-            <th>Brand</th>
-            <th>Campaign</th>
-            <th>Stage</th>
-            <th>Deliverables</th>
-            <th>Due</th>
-            <th style={{ textAlign: 'right' }}>Price</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {collabs.map((collab) => {
-            const camp = campaigns.find((c) => c.id === collab.campaignId);
-            if (!camp) return null;
-            const stageMeta = V2_PIPELINE_STAGES.find((s) => s.id === collab.stage);
-            return (
-              <tr
-                key={collab.id}
-                className="v2-table-clickable"
-                onClick={() => onRoute(`collab:${collab.id}`)}
-              >
-                <td style={{ fontWeight: 550 }}>{camp.brand}</td>
-                <td>{camp.name}</td>
-                <td><StagePill stage={stageMeta?.label ?? collab.stage} /></td>
-                <td style={{ fontSize: 13, color: 'var(--v2-ink-2)' }}>
-                  {camp.placement || `${collab.deliverables.length} item${collab.deliverables.length === 1 ? '' : 's'}`}
-                </td>
-                <td className="v2-muted" style={{ fontSize: 12 }}>{collab.deadline}</td>
-                <td className="v2-tabular" style={{ textAlign: 'right', fontWeight: 550 }}>
-                  {collab.price > 0 ? fmtUSD(collab.price) : '—'}
-                </td>
-                <td>{Icon.arrow}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
+function nextForNeed(n: CreatorNeed): string {
+  switch (n.kind) {
+    case 'offer':
+      return n.offerId && n.rate
+        ? `They offered ${dollars(n.rate)}. Accept, or counter at your rate.`
+        : 'Invited you to pitch. Open it to send your rate.';
+    case 'revision':
+      return n.note ? `“${n.note}” Resubmit the ${n.deliverable ?? 'post'}.` : `Resubmit the ${n.deliverable ?? 'post'}.`;
+    case 'upload':
+      return `Submit your ${n.deliverable ?? 'content'}.`;
+    case 'live':
+      return 'Post it, then paste the live link to get paid.';
+    default:
+      return n.sub;
+  }
+}
+
+function nextForStage(c: V2Collab, ask?: number, askedAt?: string): string {
+  switch (c.stage) {
+    case 'pitched':
+      return `Your pitch${ask ? ` at ${dollars(ask)}` : ''}${askedAt ? ` · sent ${ago(askedAt)}` : ''}`;
+    case 'negotiating':
+      return 'Your counter is with the brand.';
+    case 'invited':
+      return 'Invited · open it to pitch.';
+    case 'confirmed':
+    case 'submitted':
+      return 'Your content is with the brand for review.';
+    case 'approved':
+      return 'Live link sent · the brand confirms it, then releases.';
+    case 'live':
+      return 'Live · the brand is releasing your payment.';
+    case 'paid':
+      return 'Paid. Leave the brand a review if you haven’t.';
+    case 'cancelled':
+      return 'Didn’t go ahead.';
+    default:
+      return '';
+  }
 }

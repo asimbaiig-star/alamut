@@ -322,7 +322,9 @@ export function useBrandNeedsYou(): BrandNeed[] {
             creatorName: who,
           });
         }
-        if (c.stage === 'pitched') {
+        // A closed campaign takes no more creators, so its open pitches
+        // aren't waiting on anyone.
+        if (c.stage === 'pitched' && camp.status !== 'Completed') {
           const app = db.applications
             .filter((a) => a.campaignId === camp.id && a.creatorId === c.creatorId && (a.status === 'submitted' || a.status === 'shortlisted'))
             .sort((a, b) => +new Date(b.submittedAt) - +new Date(a.submittedAt))[0];
