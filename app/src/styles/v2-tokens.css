@@ -32,6 +32,13 @@
   --v2-ink-3:     #6B6759;
   --v2-ink-4:     #9C9685;
   --v2-line:      #E4DCC8;
+  /* Aliases older screens used without anyone defining them. An undefined
+     var() voids its whole declaration, so a creator's portfolio images
+     (background: url(...), var(--v2-bg-1)) rendered as blank tiles, and
+     borders and fills across 17 files silently fell away. */
+  --v2-bg-1:      var(--v2-bg);
+  --v2-border:    var(--v2-line);
+  --v2-rule:      var(--v2-line);
   --v2-line-2:    #D7CCB1;
 
   /* Accents */

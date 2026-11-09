@@ -1265,7 +1265,8 @@ function WorkBlock({ creator, editing, onEdit, onClose }: {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+            // Three across: six samples make two even rows, not five and one.
+            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
             gap: 10,
           }}
         >

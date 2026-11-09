@@ -139,7 +139,11 @@ export const useStore = create<StoreState>()(
       // Le Creuset, Patagonia…) presented as Alamut customers. They are
       // invented now; bumping drops every visitor's cached copy of the old
       // names so nobody keeps seeing them.
-      version: 17,
+      //
+      // v18 (whole-portal pass) — sample data changed: the draft brief lost
+      // "(draft)" and a same-day-payout promise, HBL became a wire top-up,
+      // and the demo creator's portfolio fits her niche.
+      version: 18,
       // Forward-only data migrations layered on top of Zustand's persist
       // versioning. After rehydration, walk `db.migrationVersion + 1` to
       // CURRENT_MIGRATION_VERSION and run each migrator. Idempotent;

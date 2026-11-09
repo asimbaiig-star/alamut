@@ -495,9 +495,11 @@ const DEMO_CREATORS: Creator[] = [
     // Phase 59 — Sarah's storefront portfolio (was getting nuked by
     // Supabase overlay; overlay now preserves local). 6 representative
     // shots that mirror what a fashion creator would publish.
+    // Fashion and slow-living stills, to match her niche (the first six
+    // covers put a man holding a fish in a fashion portfolio).
     work: [
-      upx(COVERS[0], 600, 600), upx(COVERS[1], 600, 600), upx(COVERS[2], 600, 600),
-      upx(COVERS[3], 600, 600), upx(COVERS[4], 600, 600), upx(COVERS[5], 600, 600),
+      upx(COVERS[4], 600, 600), upx(COVERS[5], 600, 600), upx(COVERS[6], 600, 600),
+      upx(COVERS[12], 600, 600), upx(COVERS[2], 600, 600), upx(COVERS[0], 600, 600),
     ],
     // Phase 59 — top 3 reviews pinned to Sarah's public storefront so
     // the "Featured" carousel renders something on first paint.
