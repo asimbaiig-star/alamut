@@ -64,6 +64,8 @@ interface Scored {
   score: number | null;
   reason?: string;
   left: number;
+  /** Already yours: a deal in play, or a pitch waiting on the brand. */
+  mine?: 'deal' | 'pitched';
 }
 
 export function BrowseBriefs({ onRoute, initialFilter }: Props) {
@@ -91,7 +93,12 @@ export function BrowseBriefs({ onRoute, initialFilter }: Props) {
     .map((c) => {
       const pay = perCreatorOf(c);
       const m = matchCreatorToCampaign(meRaw, db.campaigns.find((x) => x.id === c.id), db, pay);
-      return { c, pay, score: m.score, reason: m.reasons[0], left: daysLeft(c) };
+      // A pitch makes a collaboration at stage 'pitched', so the stage says
+      // which: still a pitch, or a deal under way.
+      const collab = meRaw ? db.collaborations.find((x) => x.campaignId === c.id && x.creatorId === meRaw.id && x.stage !== 'cancelled') : undefined;
+      const pitched = !!meRaw && db.applications.some((a) => a.campaignId === c.id && a.creatorId === meRaw.id && (a.status === 'submitted' || a.status === 'shortlisted'));
+      const mine: Scored['mine'] = collab && collab.stage !== 'pitched' ? 'deal' : collab || pitched ? 'pitched' : undefined;
+      return { c, pay, score: m.score, reason: m.reasons[0], left: daysLeft(c), mine };
     }), [all, meRaw, db]);
 
   const categories = useMemo(() => {
@@ -131,6 +138,9 @@ export function BrowseBriefs({ onRoute, initialFilter }: Props) {
       if (by === 'deadline') return (a.left < 0 ? Infinity : a.left) - (b.left < 0 ? Infinity : b.left);
       return +new Date(b.c.createdAt) - +new Date(a.c.createdAt);
     });
+    // Briefs you're already in go last: this page is for finding new work.
+    // (Saved shows them in place; you saved them to come back to.)
+    if (view !== 'saved') return [...r.filter((s) => !s.mine), ...r.filter((s) => s.mine)];
     return r;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, view, category, budget, query, sort, rankable, saved]);
@@ -138,7 +148,8 @@ export function BrowseBriefs({ onRoute, initialFilter }: Props) {
   const filtered = view !== 'all' || category !== 'any' || budget !== 'any' || query.trim() !== '';
   // The three best fits lead the page only on the unfiltered view.
   const best = !filtered && rankable
-    ? [...open].filter((s) => s.score !== null).sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).slice(0, 3)
+    // New openings only: a brief already in your deals isn't a lead.
+    ? [...open].filter((s) => s.score !== null && !s.mine).sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).slice(0, 3)
     : [];
   const bestIds = new Set(best.map((s) => s.c.id));
   const rows = list.filter((s) => !bestIds.has(s.c.id));
@@ -310,8 +321,14 @@ function BriefRow({ s, saved, onSave, onOpen }: { s: Scored; saved: boolean; onS
       <span className="v2-ls-hide-sm v2-br-fit">{s.score === null ? '—' : `${s.score}%`}</span>
       <span className="v2-ls-sm-sub">{dollars(s.pay)} · {left.text}{s.score !== null ? ` · ${s.score}% fit` : ''}</span>
       <div className="v2-ls-act">
-        <SaveButton saved={saved} onSave={onSave} name={c.name} />
-        <button type="button" className="v2-hm-btn is-sm v2-ls-hide-sm" onClick={(e) => { e.stopPropagation(); onOpen(); }}>View</button>
+        {s.mine ? (
+          <span className="v2-ls-dot" data-tone={s.mine === 'deal' ? 'moss' : undefined}>{s.mine === 'deal' ? 'In your deals' : 'You pitched'}</span>
+        ) : (
+          <>
+            <SaveButton saved={saved} onSave={onSave} name={c.name} />
+            <button type="button" className="v2-hm-btn is-sm v2-ls-hide-sm" onClick={(e) => { e.stopPropagation(); onOpen(); }}>View</button>
+          </>
+        )}
       </div>
     </div>
   );

@@ -1089,6 +1089,18 @@ function PayoutTimelineCard({
     ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     : null;
 
+  // A deal that didn't go ahead has no terms to offer. This card used to
+  // say "If you accept... You'd keep $2,685" on it, with the escrow steps.
+  if (collab.stage === 'cancelled') {
+    return (
+      <section className="v2-card v2-dl-money" aria-label="This deal's money">
+        <span className="v2-wl-eyebrow">This deal</span>
+        <p>It didn’t go ahead, so nothing was held and nothing is owed{gross > 0 ? `. The last price on the table was ${dollars(gross)}` : ''}.</p>
+        <span className="v2-hm-test"><i aria-hidden="true" />Beta: payments run in test mode</span>
+      </section>
+    );
+  }
+
   if (gross <= 0) {
     return (
       <section className="v2-card v2-dl-money" aria-label="This deal's money">
@@ -1258,9 +1270,10 @@ function CollabActivityCard({
     const decided = a.decidedAt ? +new Date(a.decidedAt) : NaN;
     if (Number.isFinite(decided)) {
       if (a.status === 'withdrawn') {
-        // Subject-less: nobody DID this, it timed out. `who: ''` renders the
-        // sentence alone — "You pitch lapsed" was the first cut.
-        events.push({ at: decided, who: '', what: 'Your pitch lapsed with no reply', icon: '×', color: 'var(--v2-ink-3)' });
+        // A lapse (scheduler.ts) and the creator withdrawing store the same
+        // row, so this says what is known: the pitch closed. It used to say
+        // "lapsed with no reply" for both. Subject-less on purpose.
+        events.push({ at: decided, who: '', what: 'Your pitch closed', icon: '×', color: 'var(--v2-ink-3)' });
       } else if (a.status === 'rejected') {
         events.push({ at: decided, who: brand, what: 'passed on your pitch', icon: '×', color: 'var(--v2-ink-3)' });
       }

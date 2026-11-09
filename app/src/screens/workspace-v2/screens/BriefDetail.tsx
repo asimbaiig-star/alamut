@@ -12,6 +12,7 @@
 //   4. Sidebar rows lose the emoji icons in favor of clean key/value.
 
 import { perCreatorTarget } from '../campaignTarget';
+import { dollars } from './homeParts';
 import { useEffect, useMemo, useState } from 'react';
 import { fmtUSD, Icon, Topbar } from '../lib';
 import { useV2CampaignById, useV2CurrentCreator } from '../v2Hooks';
@@ -57,18 +58,29 @@ export function BriefDetail({ campaignId, onRoute }: Props) {
   //
   // Keyed by `db` (entire store) so the detection re-fires whenever
   // an offer arrives mid-session.
+  // Only a deal still in play takes over the brief. A cancelled one (the
+  // brand passed, the pitch lapsed) used to redirect here too, so the brief
+  // could never be pitched again although v2ApplyToCampaign allows it.
   const existingCollab = useMemo(() => {
     if (!me) return null;
     return db.collaborations.find(
-      (c) => c.campaignId === campaignId && c.creatorId === me.id,
+      (c) => c.campaignId === campaignId && c.creatorId === me.id && c.stage !== 'cancelled',
     ) ?? null;
   }, [db.collaborations, campaignId, me]);
   const existingApplication = useMemo(() => {
     if (!me) return null;
     return db.applications.find(
-      (a) => a.campaignId === campaignId && a.creatorId === me.id,
+      (a) => a.campaignId === campaignId && a.creatorId === me.id
+        && (a.status === 'submitted' || a.status === 'shortlisted'),
     ) ?? null;
   }, [db.applications, campaignId, me]);
+  // A pitch here that didn't go ahead, to say so above the form.
+  const pastPitch = useMemo(() => {
+    if (!me || existingApplication) return null;
+    return db.applications
+      .filter((a) => a.campaignId === campaignId && a.creatorId === me.id)
+      .sort((a, b) => +new Date(b.submittedAt) - +new Date(a.submittedAt))[0] ?? null;
+  }, [db.applications, campaignId, me, existingApplication]);
 
   // Route to CollabDetail when a collab already exists. Wrapped in an
   // effect so the router transition runs after render rather than during
@@ -372,8 +384,15 @@ export function BriefDetail({ campaignId, onRoute }: Props) {
                   margin: '0 0 16px',
                   letterSpacing: '-0.02em',
                 }}>
-                  Apply with a pitch
+                  {pastPitch ? 'Pitch again' : 'Apply with a pitch'}
                 </h3>
+                {pastPitch && (
+                  <p className="v2-muted" style={{ fontSize: 13.5, margin: '-6px 0 16px', lineHeight: 1.55 }}>
+                    Your last pitch here{pastPitch.proposedRate ? `, at ${dollars(pastPitch.proposedRate)},` : ''} didn’t go ahead
+                    {pastPitch.status === 'rejected' ? `: ${campaign.brand} passed` : ''}.
+                    The brief is still open, so you can send a new one.
+                  </p>
+                )}
                 <div style={{ marginBottom: 18 }}>
                   <label className="v2-eyebrow" style={{ display: 'block', marginBottom: 6 }}>
                     Your pitch (why you're a fit)
