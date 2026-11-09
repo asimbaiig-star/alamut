@@ -257,8 +257,13 @@ export interface BrandNeed {
  * approved submission used to count, and every row read "Confirm Sarah
  * Johnson's post is live". `releases` is what confirming moves out of
  * escrow, from slotReleaseGross, the sum the release itself uses.
+ *
+ * Only posts confirming can pay: not on a cancelled deal, and not without
+ * an accepted offer (the release refuses both). The live demo asked the
+ * brand to confirm two posts on Sarah's cancelled Studio Notes deal, and
+ * confirming failed with "no accepted offer found".
  */
-export interface PostToConfirm { sub: Submission; what: string; releases: number | null }
+export interface PostToConfirm { sub: Submission; what: string; releases: number }
 
 export function postsToConfirm(db: Database, campIds: Set<string>): PostToConfirm[] {
   const latest = new Map<string, Submission>();
@@ -272,9 +277,13 @@ export function postsToConfirm(db: Database, campIds: Set<string>): PostToConfir
   for (const s of latest.values()) {
     if (s.status !== 'approved' || !s.permalink) continue;
     if (s.feedback?.some((f) => f.text?.startsWith('LIVE: '))) continue;
+    const row = db.collaborations?.find((c) => c.campaignId === s.campaignId && c.creatorId === s.creatorId);
+    if (row?.stage === 'cancelled') continue;
+    const releases = slotReleaseGross(s, db);
+    if (releases === null) continue;
     const delId = deliverableIdForSubmission(s, db);
     const del = delId ? db.deliverables.find((d) => d.id === delId) : undefined;
-    out.push({ sub: s, what: del ? deliverableLabel(del, db).split(' · ')[0] : 'post', releases: slotReleaseGross(s, db) });
+    out.push({ sub: s, what: del ? deliverableLabel(del, db).split(' · ')[0] : 'post', releases });
   }
   return out;
 }
@@ -307,7 +316,7 @@ export function useBrandNeedsYou(): BrandNeed[] {
         campaignName: camp.name,
         creatorId: s.creatorId,
         creatorName: who,
-        releases: releases ?? undefined,
+        releases,
       });
     }
 

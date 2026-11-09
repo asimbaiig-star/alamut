@@ -12,8 +12,10 @@
 //   - confirmed posts and other brands' campaigns stay out
 //   - each row carries what confirming releases, from slotReleaseGross
 //     (the sum the release itself moves): the post's share of the agreed
-//     rate, shares summing to the rate, nothing for a slot already paid,
-//     null with no accepted offer
+//     rate, shares summing to the rate, nothing for a slot already paid
+//   - no row confirming can't pay: no accepted offer, or a cancelled deal
+//     (the live demo asked to confirm posts on a cancelled deal, and the
+//     release failed with "no accepted offer found")
 
 import { describe, it, expect } from 'vitest';
 import { postsToConfirm } from '../needsYou';
@@ -35,10 +37,11 @@ const offer = (rate: number): Offer => ({
   sentAt: '2026-10-20T10:00:00Z', respondedAt: '2026-10-21T10:00:00Z', rounds: [],
 } as unknown as Offer);
 
-const db = (submissions: Submission[], offers: Offer[] = [], deliverables = [del('d_reel', 'reel', 0), del('d_story', 'story', 1)]): Database => ({
+const db = (submissions: Submission[], offers: Offer[] = [offer(1200)], deliverables = [del('d_reel', 'reel', 0), del('d_story', 'story', 1)], collaborations: { campaignId: string; creatorId: string; stage: string }[] = []): Database => ({
   submissions,
   offers,
   deliverables,
+  collaborations,
 } as unknown as Database);
 
 const camps = new Set(['cmp_1']);
@@ -82,8 +85,18 @@ describe('what confirming releases', () => {
     expect(slotReleaseGross(again, db([paid, again], [offer(1200)]))).toBe(0);
   });
 
-  it('is null with no accepted offer, and the row says nothing', () => {
-    const out = postsToConfirm(db([sub('s1', 'd_reel', 1)]), camps);
-    expect(out[0].releases).toBeNull();
+  it('is null with no accepted offer', () => {
+    expect(slotReleaseGross(sub('s1', 'd_reel', 1), db([sub('s1', 'd_reel', 1)], []))).toBeNull();
+  });
+});
+
+describe("posts confirming can't pay", () => {
+  it('leaves out a deal with no accepted offer', () => {
+    expect(postsToConfirm(db([sub('s1', 'd_reel', 1)], []), camps)).toEqual([]);
+  });
+
+  it('leaves out a cancelled deal', () => {
+    const cancelled = [{ campaignId: 'cmp_1', creatorId: 'c_sarah', stage: 'cancelled' }];
+    expect(postsToConfirm(db([sub('s1', 'd_reel', 1)], [offer(1200)], undefined, cancelled), camps)).toEqual([]);
   });
 });
