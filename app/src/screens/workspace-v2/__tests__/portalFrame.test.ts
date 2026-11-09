@@ -53,4 +53,29 @@ describe('the portal frame', () => {
     const css = read(join(STYLES, 'workspace-v2.css'));
     expect(css).not.toMatch(/\.v2-tab[\s.:{]/);
   });
+
+  it('screens never work out the fee or withholding themselves', () => {
+    // money.ts rounds per deliverable; a screen's own `price * 0.10` can
+    // disagree with what the ledger pays (the deal page did exactly that).
+    for (const f of ['screens/CollabDetail.tsx', 'screens/StageActionBanner.tsx', 'screens/CreatorWallet.tsx', 'screens/BrandWallet.tsx', 'screens/Inbox.tsx']) {
+      const src = stripComments(read(join(V2, f)));
+      expect(src, f).not.toMatch(/\*\s*0\.(10|1|05|85)\b/);
+    }
+  });
+
+  it('no screen says money moved at approval, or promises a timing nobody measured', () => {
+    // Escrow is released in v2MarkContentLive; approval moves nothing.
+    const banner = stripComments(read(join(V2, 'screens/StageActionBanner.tsx')));
+    expect(banner).not.toMatch(/payout is in your wallet|funds released, post it/i);
+    const deal = stripComments(read(join(V2, 'screens/CollabDetail.tsx')));
+    expect(deal).not.toMatch(/funds released to wallet|Instant withdrawal/i);
+    const panel = stripComments(read(join(V2, '../../components/inbox/CollabSidePanel.tsx')));
+    expect(panel).not.toMatch(/24–48h|~24h after publish|Funds clear/i);
+  });
+
+  it('both wallets say how payments run, beside Withdraw and Top up', () => {
+    for (const f of ['screens/CreatorWallet.tsx', 'screens/BrandWallet.tsx']) {
+      expect(read(join(V2, f)), f).toMatch(/<MoneyStrip/);
+    }
+  });
 });

@@ -76,7 +76,7 @@ export function CreatorHome({ onRoute }: Props) {
           tone="moss"
           rows={[
             { label: 'Held in escrow for your deals', value: wallet.pending },
-            { label: 'Earned on Alamut so far', value: wallet.lifetime },
+            { label: 'Earned so far, before fees', value: wallet.lifetime },
           ]}
           action={
             <button

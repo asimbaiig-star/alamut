@@ -156,7 +156,8 @@ describe('StageActionBanner', () => {
       expect(screen.getByText(/best we can do/i)).toBeInTheDocument();
       // Both CTAs
       expect(screen.getByRole('button', { name: /^Counter$/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Accept \(/i })).toBeInTheDocument();
+      // Whole dollars, not "$2K".
+      expect(screen.getByRole('button', { name: /Accept \$2,000/i })).toBeInTheDocument();
     });
 
     it('acknowledges a sent counter when there is no pending offer', () => {
@@ -232,14 +233,17 @@ describe('StageActionBanner', () => {
   });
 
   describe('approved stage', () => {
-    it('renders moss-tone funds-released copy + Message brand (P67 honest-copy)', () => {
-      // P67 — escrow releases AT approve (v2ApproveContent). The old
-      // banner promised "Funds will release ... once it's marked live",
-      // which contradicted the wallet the creator was looking at.
+    it('says approval moves no money: the post going live does', () => {
+      // P67 released escrow AT approve, and this test pinned "your payout is
+      // in your wallet". Escrow has since moved to v2MarkContentLive (the
+      // brand confirms the post is up), and v2ApproveContent says "NO MONEY
+      // MOVES HERE", so that line told a creator they'd been paid when they
+      // hadn't.
       const h = buildHandlers();
       render(<StageActionBanner {...baseProps({ stage: 'approved', ...h })} />);
-      expect(screen.getByText(/Approved — funds released, post it/i)).toBeInTheDocument();
-      expect(screen.getByText(/payout is in your wallet/i)).toBeInTheDocument();
+      expect(screen.getByText(/Approved: now post it/i)).toBeInTheDocument();
+      expect(screen.getByText(/confirms it’s up, that post’s share is released/i)).toBeInTheDocument();
+      expect(screen.queryByText(/payout is in your wallet/i)).toBeNull();
       fireEvent.click(screen.getByRole('button', { name: /Message brand/i }));
       expect(h.onMessageBrand).toHaveBeenCalledTimes(1);
     });

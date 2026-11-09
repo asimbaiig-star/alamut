@@ -110,7 +110,8 @@ describe('controls do what their label says', () => {
   it('CollabDetail gates "Submit content" on an accepted offer', () => {
     const src = code('CollabDetail.tsx');
     expect(src).toContain('canSubmitContent');
-    expect(src).toContain('disabled={!canSubmitContent || !nextSlot}');
+    // The button only exists when there's something to submit (Round 4).
+    expect(src).toContain('canSubmitContent && nextSlot && (');
   });
 
   it('the calendar "+N more" opens the day rather than only counting it', () => {

@@ -22,14 +22,17 @@ export const dollars = (n: number) => `$${Math.round(n).toLocaleString('en-US')}
  *  account's own housekeeping (verification, storefront, wallet). */
 export const bandFor = (brand?: string) => (brand ? brandAccent(brand).bg : 'var(--v2-band-ink)');
 
-export function HomeHead({ title, sub, actions }: {
+export function HomeHead({ title, sub, actions, crumb }: {
   title: string;
   sub?: ReactNode;
   actions?: ReactNode;
+  /** A trail above the title on detail pages ("Deals · Oakmoss"). */
+  crumb?: ReactNode;
 }) {
   return (
     <header className="v2-hm-head">
       <div>
+        {crumb && <p className="v2-hm-crumb">{crumb}</p>}
         <h1 className="v2-hm-hello">{title}</h1>
         {sub && <p className="v2-hm-sub">{sub}</p>}
       </div>

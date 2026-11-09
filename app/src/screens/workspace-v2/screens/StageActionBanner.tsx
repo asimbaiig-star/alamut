@@ -18,7 +18,7 @@
 //     terminal / waiting-on-other-side states.
 
 import type React from 'react';
-import { fmtUSD, Icon } from '../lib';
+import { fmtUSDfull as fmtUSD, Icon } from '../lib';
 import { netOf } from '@/lib/api/money';
 import { offerStaleness, applicationLapse, reviewOverdue } from '@/lib/api/staleness';
 import type { V2CollabStage } from '../data';
@@ -207,7 +207,7 @@ export function StageActionBanner({
           Counter
         </button>
         <button className="v2-btn v2-btn-primary v2-btn-sm" type="button" onClick={onAccept}>
-          {Icon.check} Accept ({fmtUSD(pendingOffer.rate)})
+          {Icon.check} Accept {fmtUSD(pendingOffer.rate)}
         </button>
       </>
     );
@@ -276,8 +276,11 @@ export function StageActionBanner({
     // P67 — honest copy: v2ApproveContent releases escrow to the wallet
     // in the same mutation as the approval. Pre-fix this banner promised
     // the release would happen later, "once it's marked live."
-    title = 'Approved — funds released, post it';
-    body = `${campaignBrand} approved your work and your payout is in your wallet. Post the content, then paste the live URL on the deliverable below so ${campaignBrand} can confirm.`;
+    // Approval moves no money: escrow is released per post when the brand
+    // confirms it live (v2MarkContentLive). This used to say the payout was
+    // already in the wallet.
+    title = 'Approved: now post it';
+    body = `${campaignBrand} approved your work. Post it on your channel, then paste the live link on the deliverable below. Once ${campaignBrand} confirms it’s up, that post’s share is released to your wallet.`;
     tone = 'moss';
     // The banner told the creator to paste the live URL and then offered
     // only "Message brand" — the actual move had no CTA at the exact moment
@@ -326,42 +329,20 @@ export function StageActionBanner({
 
   if (!title) return null;
 
-  const bg = tone === 'moss' ? 'var(--v2-moss-soft)' : 'var(--v2-accent-soft)';
-  const accentColor = tone === 'moss' ? 'var(--v2-moss)' : 'var(--v2-accent)';
-
+  // The open sheet on the deal page: a letterhead naming whose move it is,
+  // then what happens and the buttons to do it.
+  const yours = !!actions;
   return (
-    <div
-      className="v2-card v2-card-pad"
-      style={{
-        marginTop: 18,
-        background: bg,
-        borderColor: bg,
-      }}
-    >
-      <div className="v2-row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-        <div style={{ flex: 1, minWidth: 240 }}>
-          <div className="v2-eyebrow" style={{ marginBottom: 4, color: accentColor }}>
-            What's next
-          </div>
-          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>{title}</div>
-          {body && (
-            <p className="v2-muted" style={{ margin: 0, fontSize: 13, lineHeight: 1.5 }}>
-              {body}
-            </p>
-          )}
-          {/* Time-based context — a waiting count, a lapse warning, or the
-              note that a payout is sitting in escrow because the brand
-              hasn't reviewed. Set by the stage branches above. */}
-          {extraNote && (
-            <p style={{ margin: '6px 0 0', fontSize: 12.5, lineHeight: 1.5, fontWeight: 500 }}>
-              {extraNote}
-            </p>
-          )}
-        </div>
-        <div className="v2-row" style={{ gap: 8 }}>
-          {actions}
-        </div>
+    <article className="v2-sab" data-tone={tone}>
+      <div className="v2-sab-lh">{yours ? 'Your move' : 'What’s happening'}</div>
+      <div className="v2-sab-body">
+        <h3>{title}</h3>
+        {body && <p>{body}</p>}
+        {/* Time-based context: a waiting count, a lapse warning, or a note
+            that a payout sits in escrow because the brand hasn't reviewed. */}
+        {extraNote && <p className="v2-sab-note">{extraNote}</p>}
+        {actions && <div className="v2-sab-acts">{actions}</div>}
       </div>
-    </div>
+    </article>
   );
 }

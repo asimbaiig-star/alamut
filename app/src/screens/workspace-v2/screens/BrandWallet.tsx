@@ -4,9 +4,11 @@
 // hero balance card (gradient ink→accent), ledger table, payment-
 // methods sidebar, this-month rollup, top-up modal.
 
-import { useEffect, useMemo, useState } from 'react';
-import { fmtUSD, fmtUSDfull, Icon, Topbar } from '../lib';
-import { useV2BrandWallet, useV2CurrentBrand } from '../v2Hooks';
+import { useEffect, useState } from 'react';
+import { fmtUSD, fmtUSDfull, Icon } from '../lib';
+import { HomeHead, MoneyStrip, dollars } from './homeParts';
+import { LedgerList } from './walletParts';
+import { useV2BrandWallet } from '../v2Hooks';
 import { api } from '@/lib/api/client';
 import { pushToast } from '@/lib/utils/toast';
 import { downloadCSV } from '@/lib/utils/csv';
@@ -30,7 +32,6 @@ export function BrandWallet({ onRoute, initialAction }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialAction]);
   const W = useV2BrandWallet();
-  const brand = useV2CurrentBrand();
   // P5 gating — admin + finance hold `wallet.topup`. Ops + viewer see
   // the buttons but can't activate them. The button stays visible so
   // the user knows top-up exists; the disabled state + tooltip explains
@@ -41,297 +42,109 @@ export function BrandWallet({ onRoute, initialAction }: Props) {
   // Ledger type filter — narrows the visible rows by type. 'all' keeps
   // every entry. The set of available types is derived from the live
   // ledger so the dropdown stays honest if the data shape evolves.
-  const [typeFilter, setTypeFilter] = useState<string>('all');
-  const availableTypes = useMemo(
-    () => Array.from(new Set(W.ledger.map((l) => l.type).filter((t): t is NonNullable<typeof t> => !!t))).sort(),
-    [W.ledger],
-  );
-  const filteredLedger = useMemo(
-    () => typeFilter === 'all' ? W.ledger : W.ledger.filter((l) => l.type === typeFilter),
-    [W.ledger, typeFilter],
-  );
+
+
+  const exportStatement = () => {
+    const rows = W.ledgerAll ?? W.ledger;
+    if (rows.length === 0) {
+      pushToast('No wallet activity to export yet');
+      return;
+    }
+    downloadCSV(
+      `alamut-brand-statement-${new Date().toISOString().slice(0, 10)}`,
+      rows.map((l) => ({ date: l.date, description: l.desc, status: l.status, amount: l.amount, type: l.type ?? '' })),
+    );
+    pushToast(`Statement exported · ${rows.length} rows`);
+  };
 
   return (
     <>
-      <Topbar
-        title="Wallet"
-        crumb={`${brand?.name ?? 'Brand'} · USD account`}
-        actions={
-          <>
-            <button
-              className="v2-btn v2-btn-outline"
-              type="button"
-              onClick={() => {
-                downloadCSV(
-                  `alamut-wallet-statement-${new Date().toISOString().slice(0, 10)}`,
-                  // `ledgerAll`, not the 10-row display slice.
-                  W.ledgerAll.map((l) => ({
-                    date: l.date,
-                    description: l.desc,
-                    status: l.status,
-                    amount: l.amount,
-                    type: l.type ?? '',
-                  })),
-                );
-                pushToast(`Wallet statement exported · ${W.ledgerAll.length} rows`);
-              }}
-            >
-              Download statement
-            </button>
-            <button
-              className="v2-btn v2-btn-accent"
-              type="button"
-              onClick={() => setShowTopup(true)}
-              disabled={!canTopup}
-              title={!canTopup ? 'Top-up requires admin or finance role' : undefined}
-            >
-              {Icon.plus}<span>{canTopup ? 'Top up' : 'Admin/finance only'}</span>
-            </button>
-          </>
-        }
-      />
-      <div className="v2-content">
-        {/* Hero balance card */}
-        <div className="v2-wallet-hero">
-          <div className="v2-wallet-hero-glow" aria-hidden="true" />
-          <div className="v2-eyebrow" style={{ color: 'rgba(251,247,238,0.6)', marginBottom: 12 }}>
-            Available balance
-          </div>
-          <div className="v2-wallet-hero-amount v2-tabular">
-            {fmtUSDfull(W.available)}
-          </div>
-          <div className="v2-row v2-wallet-hero-stats">
-            <div>
-              <div className="v2-wallet-hero-stat-label">In escrow</div>
-              <div className="v2-wallet-hero-stat-value v2-tabular">{fmtUSD(W.reserved)}</div>
-            </div>
-            <div>
-              <div className="v2-wallet-hero-stat-label">In flight</div>
-              <div className="v2-wallet-hero-stat-value v2-tabular">{fmtUSD(W.inFlight)}</div>
-            </div>
-            <span className="v2-spacer" />
-            <button
-              className="v2-btn"
-              type="button"
-              style={{ background: 'var(--v2-paper)', color: 'var(--v2-ink)' }}
-              onClick={() => setShowTopup(true)}
-              disabled={!canTopup}
-              title={!canTopup ? 'Top-up requires admin or finance role' : undefined}
-            >
-              {Icon.plus}<span>{canTopup ? 'Top up wallet' : 'Admin/finance only'}</span>
-            </button>
-          </div>
+      <div className="v2-hm">
+        <div className="v2-hm-ground">
+          <HomeHead
+            title="Wallet"
+            sub="Your balance, what’s held for creators, and every movement."
+            actions={<button type="button" className="v2-hm-btn" onClick={exportStatement}>Download statement</button>}
+          />
+          <MoneyStrip
+            label="Available to spend"
+            figure={W.available}
+            rows={[
+              { label: 'Held for your creators', value: W.reserved },
+              { label: 'Released this month', value: W.thisMonth.released },
+            ]}
+            action={
+              <button
+                type="button"
+                className="v2-hm-btn is-fill"
+                onClick={() => setShowTopup(true)}
+                disabled={!canTopup}
+                title={!canTopup ? 'Only admins and finance on your team can top up' : undefined}
+              >Top up</button>
+            }
+          />
         </div>
 
-        <div className="v2-wallet-grid">
-          {/* Ledger */}
-          <div className="v2-card" style={{ overflow: 'hidden' }}>
-            <div
-              className="v2-card-pad"
-              style={{ borderBottom: '1px solid var(--v2-line)' }}
-            >
-              <div className="v2-row" style={{ justifyContent: 'space-between' }}>
-                <h3 className="v2-section-title" style={{ fontSize: 22, margin: 0 }}>
-                  Recent activity
-                </h3>
-                <select
-                  className="v2-select v2-btn-sm"
-                  value={typeFilter}
-                  onChange={(e) => setTypeFilter(e.target.value)}
-                  style={{
-                    fontFamily: 'inherit', fontSize: 12.5,
-                    padding: '4px 8px', borderRadius: 'var(--v2-r-pill)',
-                    border: '1px solid var(--v2-line)',
-                    background: 'var(--v2-paper)', color: 'var(--v2-ink-2)',
-                  }}
-                  aria-label="Filter ledger by type"
-                >
-                  <option value="all">All types ({W.ledger.length})</option>
-                  {availableTypes.map((t) => (
-                    <option key={t} value={t}>
-                      {t} ({W.ledger.filter((l) => l.type === t).length})
-                    </option>
-                  ))}
-                </select>
+        <div className="v2-hm-cols">
+          <section aria-labelledby="wl-moves">
+            <h2 className="v2-hm-h2" id="wl-moves">Every movement</h2>
+            <LedgerList
+              label="movements"
+              entries={W.ledgerAll ?? W.ledger}
+              filters={[
+                { id: 'held', label: 'Held', test: (e) => e.type === 'reserve' },
+                { id: 'released', label: 'Released', test: (e) => e.type === 'release' },
+                { id: 'topup', label: 'Top-ups', test: (e) => e.type === 'topup' },
+                { id: 'fee', label: 'Fees and rights', test: (e) => e.type === 'fee' },
+              ]}
+              emptyTitle="Nothing here yet."
+              emptyBody="Top up to fund your first offer. Accepting an offer holds its full amount here until each post goes live."
+            />
+          </section>
+
+          <aside className="v2-hm-right">
+            <section className="v2-wl-card" aria-labelledby="wl-month">
+              <span className="v2-wl-eyebrow" id="wl-month">This month</span>
+              <div className="v2-hm-ledger">
+                <div className="v2-hm-lrow"><span>Top-ups</span><b>{dollars(W.thisMonth.topups)}</b></div>
+                <div className="v2-hm-lrow"><span>Released to creators</span><b>{dollars(W.thisMonth.released)}</b></div>
+                <div className="v2-hm-lrow"><span>Platform fees to you</span><b>{dollars(W.thisMonth.fees)}</b></div>
               </div>
-            </div>
-            {/* Same as the creator ledger: no wrapper meant the whole
-                page scrolled sideways on a narrow viewport. */}
-            <div style={{ overflowX: 'auto' }}>
-            <table className="v2-table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Description</th>
-                  <th>Status</th>
-                  <th style={{ textAlign: 'right' }}>Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredLedger.map((l, i) => {
-                  const isPositive = l.amount > 0;
-                  const dotColor = isPositive
-                    ? 'var(--v2-moss)'
-                    : l.type === 'tax'
-                      ? 'var(--v2-gold)'
-                      : l.type === 'fee'
-                        ? 'var(--v2-ink-3)'
-                        : 'var(--v2-accent)';
-                  return (
-                    <tr key={i}>
-                      <td className="v2-muted" style={{ fontSize: 12.5 }}>{l.date}</td>
-                      <td>
-                        <div className="v2-row" style={{ gap: 8 }}>
-                          <span style={{
-                            width: 4, height: 4, borderRadius: 2,
-                            background: dotColor,
-                          }} />
-                          <span style={{ fontSize: 13.5 }}>{l.desc}</span>
-                        </div>
-                      </td>
-                      <td>
-                        <span className="v2-muted" style={{ fontSize: 12 }}>{l.status}</span>
-                      </td>
-                      <td
-                        className="v2-tabular"
-                        style={{
-                          textAlign: 'right',
-                          fontWeight: 550,
-                          color: isPositive ? 'var(--v2-moss)' : 'var(--v2-ink)',
-                        }}
-                      >
-                        {isPositive ? '+' : ''}{fmtUSD(l.amount).replace('$', '$')}
-                      </td>
-                    </tr>
-                  );
-                })}
-                {filteredLedger.length === 0 && (
-                  <tr>
-                    <td colSpan={4} style={{ padding: '28px 16px', textAlign: 'center' }}>
-                      <div style={{ fontSize: 13.5, marginBottom: 4 }}>
-                        {W.ledger.length === 0 ? 'No wallet activity yet' : 'Nothing matches this filter'}
-                      </div>
-                      <div className="v2-muted" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
-                        {W.ledger.length === 0
-                          ? 'Top-ups, escrow reserves, and creator payouts all appear here.'
-                          : 'Pick a different type to see the rest of the ledger.'}
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-            </div>
-          </div>
-
-          {/* Sidebar */}
-          <div>
-            <div className="v2-card v2-card-pad" style={{ marginBottom: 16 }}>
-              <div className="v2-eyebrow" style={{ marginBottom: 12 }}>Top-up methods on file</div>
-              {/* Methods shown are seed data — there's no self-service
-                  add/remove flow yet (would need a real payment-
-                  processor integration). Footnote sets accurate
-                  expectations rather than implying an "Add method" CTA
-                  that doesn't exist. */}
-              <PaymentMethod name="Wire transfer" sub="Chase ••• 4291" color="#1B3D88" />
-              <PaymentMethod name="ACH" sub="Bank ••• 8830" color="#00B14F" />
-              <PaymentMethod name="JazzCash" sub="0345 ••• 4291" color="#F7941D" />
-              <PaymentMethod name="Card on file" sub="Visa ending 4242" color="#635BFF" last />
-              <p className="v2-muted" style={{ fontSize: 11.5, lineHeight: 1.5, marginTop: 10, marginBottom: 0 }}>
-                To add, replace, or remove a method, contact your ops manager.
-              </p>
-            </div>
-
-            <div className="v2-card v2-card-pad">
-              <div className="v2-eyebrow" style={{ marginBottom: 8 }}>This month</div>
-              {/* Pre-fix these four rows were hardcoded ($23k / $8.4k /
-                  $890 / $445). They now sum the brand's cleared txns in
-                  the current month, computed in `brandWalletV2`. The
-                  withholding-tax row is removed because `Transaction.kind`
-                  has no `'tax'` member — the seed never wrote that
-                  category in the first place. */}
-              <SidebarRow label="Top-ups" value={fmtUSD(W.thisMonth.topups)} />
-              <SidebarRow label="Released to creators" value={fmtUSD(W.thisMonth.released)} />
-              <SidebarRow label="Platform fees" value={fmtUSD(W.thisMonth.fees)} muted />
-              {W.thisMonth.adSpend > 0 && (
-                <SidebarRow label="Ad spend" value={fmtUSD(W.thisMonth.adSpend)} muted />
-              )}
-              <hr style={{ height: 1, background: 'var(--v2-line)', margin: '14px 0', border: 'none' }} />
+              <p>You pay the rate you agree. The platform fee comes off the creator’s side, never yours.</p>
               <button
-                className="v2-btn v2-btn-outline"
                 type="button"
-                style={{ width: '100%', justifyContent: 'center' }}
+                className="v2-hm-btn is-sm"
                 onClick={() => {
-                  // Tax report = every fee + withholding row in the account's
-                  // FULL history. This read the 10-row display slice, so the
-                  // report covered whatever happened to be recent — and the
-                  // "no entries in current ledger window" message quietly
-                  // admitted it while still being labelled a tax report.
-                  const taxRows = W.ledgerAll
+                  // Every fee and withholding row in the full history, not the
+                  // recent slice.
+                  const taxRows = (W.ledgerAll ?? W.ledger)
                     .filter((l) => l.type === 'fee' || l.type === 'tax')
-                    .map((l) => ({
-                      date: l.date,
-                      description: l.desc,
-                      type: l.type ?? '',
-                      amount: l.amount,
-                    }));
+                    .map((l) => ({ date: l.date, description: l.desc, type: l.type ?? '', amount: l.amount }));
                   if (taxRows.length === 0) {
                     pushToast('No fee or withholding entries on this account yet');
                     return;
                   }
-                  downloadCSV(
-                    `alamut-tax-report-${new Date().toISOString().slice(0, 10)}`,
-                    taxRows,
-                  );
+                  downloadCSV(`alamut-tax-report-${new Date().toISOString().slice(0, 10)}`, taxRows);
                   pushToast(`Tax report exported · ${taxRows.length} rows`);
                 }}
-              >
-                Download tax report
-              </button>
-            </div>
-          </div>
+              >Download tax report</button>
+            </section>
+            <section className="v2-wl-card" aria-labelledby="wl-methods">
+              <span className="v2-wl-eyebrow" id="wl-methods">Top up from</span>
+              {/* Seeded methods: there's no self-service add or remove yet
+                  (it needs a real payment processor), so say who to ask. */}
+              <div className="v2-wl-method"><i aria-hidden="true">WIRE</i><div><b>Wire transfer</b><small>Account ending 4291</small></div></div>
+              <div className="v2-wl-method"><i aria-hidden="true">ACH</i><div><b>ACH</b><small>Account ending 8830</small></div></div>
+              <div className="v2-wl-method"><i aria-hidden="true">JC</i><div><b>JazzCash</b><small>0345 ••• 4291</small></div></div>
+              <div className="v2-wl-method"><i aria-hidden="true">CARD</i><div><b>Card</b><small>Ending 4242</small></div></div>
+              <p>To add or remove a method, ask your account manager.</p>
+            </section>
+          </aside>
         </div>
       </div>
 
       {showTopup && <TopupModal onClose={() => setShowTopup(false)} />}
     </>
-  );
-}
-
-function SidebarRow({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
-  return (
-    <div className="v2-row" style={{ justifyContent: 'space-between', marginBottom: 4, fontSize: 13 }}>
-      <span className={muted ? 'v2-muted' : ''}>{label}</span>
-      <span className={`v2-tabular ${muted ? 'v2-muted' : ''}`}>{value}</span>
-    </div>
-  );
-}
-
-function PaymentMethod({ name, sub, color, last }: {
-  name: string; sub: string; color: string; last?: boolean;
-}) {
-  return (
-    <div
-      className="v2-row"
-      style={{
-        padding: '8px 0',
-        borderBottom: last ? 'none' : '1px solid var(--v2-line)',
-        gap: 10,
-      }}
-    >
-      <div
-        style={{
-          width: 32, height: 32, borderRadius: 8,
-          background: color, color: 'white',
-          display: 'grid', placeItems: 'center',
-          fontWeight: 700, fontSize: 11,
-        }}
-      >{name.slice(0, 2).toUpperCase()}</div>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 13, fontWeight: 550 }}>{name}</div>
-        <div className="v2-muted" style={{ fontSize: 11 }}>{sub}</div>
-      </div>
-    </div>
   );
 }
 
@@ -372,7 +185,7 @@ function TopupModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="v2-modal-overlay" onClick={onClose}>
+    <div className="v2-modal-overlay" role="dialog" aria-modal="true" aria-label="Top up your wallet" onClick={onClose}>
       <div
         className="v2-card v2-card-pad-lg v2-modal"
         onClick={(e) => e.stopPropagation()}

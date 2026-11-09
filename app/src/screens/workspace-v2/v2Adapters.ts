@@ -518,12 +518,18 @@ export function creatorWalletV2(creator: Creator, db: Database) {
   const lifetime = ledgerLifetime > 0
     ? ledgerLifetime
     : grossFromNet(creator.lifetimeEarnings);
+  // Every movement, newest first, for the wallet's full list ("Show more").
+  const ledgerAll = mineAll
+    .slice()
+    .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+    .map((t) => transactionToV2(t, db));
   return {
     available: creator.walletBalance,
     pending: creator.pendingBalance,
     lifetime,
     currency: 'USD' as const,
     ledger,
+    ledgerAll,
   };
 }
 

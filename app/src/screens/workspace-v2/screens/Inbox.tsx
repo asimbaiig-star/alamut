@@ -19,7 +19,7 @@
 // to drift against.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { fmtUSD, fmtFollowers, Icon, Topbar } from '../lib';
+import { fmtUSDfull, fmtFollowers, Icon } from '../lib';
 import {
   type V2Conversation,
   type V2Creator,
@@ -35,6 +35,7 @@ import { useStore } from '@/lib/api/store';
 import { getViewerUserId } from '../v2Hooks';
 import { pushToast } from '@/lib/utils/toast';
 import { CollabSidePanel } from '@/components/inbox/CollabSidePanel';
+import { HomeHead } from './homeParts';
 import { Avatar } from '@/components/ui/Avatar';
 
 interface Props {
@@ -219,30 +220,24 @@ export function Inbox({ onRoute, persona, forceThreadId, forcePanelMode }: Props
 
   return (
     <>
-      <Topbar
-        title="Inbox"
-        crumb={`${conversations.length} conversations · ${totalUnread} unread`}
-        actions={
-          <select
-            className="v2-select"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value as 'all' | 'unread' | 'archived')}
-            aria-label="Filter conversations"
-            style={{
-              fontFamily: 'inherit', fontSize: 13,
-              padding: '6px 12px', borderRadius: 'var(--v2-r-pill)',
-              border: `1px solid ${filter === 'all' ? 'var(--v2-line)' : 'var(--v2-accent)'}`,
-              background: filter === 'all' ? 'var(--v2-paper)' : 'var(--v2-accent-soft)',
-              color: filter === 'all' ? 'var(--v2-ink-2)' : 'var(--v2-accent)',
-              fontWeight: filter === 'all' ? 500 : 600,
-            }}
-          >
-            <option value="all">All conversations</option>
-            <option value="unread">Unread only</option>
-            <option value="archived">Archived</option>
-          </select>
-        }
-      />
+      <div className="v2-hm v2-ib-top">
+        <div className="v2-hm-ground">
+          <HomeHead
+            title="Inbox"
+            sub={`${conversations.length} conversation${conversations.length === 1 ? '' : 's'}, one per deal. ${totalUnread === 0 ? 'Nothing unread.' : `${totalUnread} unread.`}`}
+            actions={
+              <div className="v2-ls-bar" role="group" aria-label="Show conversations">
+                {(['all', 'unread', 'archived'] as const).map((f) => (
+                  <button key={f} type="button" className="v2-ls-chip" aria-pressed={filter === f} onClick={() => setFilter(f)}>
+                    {f === 'all' ? 'All' : f === 'unread' ? 'Unread' : 'Archived'}
+                    {f === 'unread' && totalUnread > 0 && <b>{totalUnread}</b>}
+                  </button>
+                ))}
+              </div>
+            }
+          />
+        </div>
+      </div>
       {/* Mobile-only floating toggle to open the conversation list.
           Pre-fix the list was `display: none` at <760px, leaving the
           creator stuck on the current thread with no way to pick a
@@ -586,14 +581,16 @@ function Thread({
         />
       )}
       <header className="v2-inbox-thread-head">
-        <div
-          className="v2-avatar v2-avatar-md"
-          style={{ backgroundImage: `url(${counterparty.avatar})` }}
-        />
+        {/* A brand's "avatar" can be its one-letter mark, which isn't an
+            image; Avatar falls back to the initial. */}
+        <Avatar src={counterparty.avatar.length > 2 ? counterparty.avatar : ''} name={counterparty.name} size={44} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="v2-inbox-thread-head-name">{counterparty.name}</div>
           <div className="v2-inbox-thread-head-sub">
-            @{counterparty.handle} · {fmtFollowers(counterparty.channels.reduce((s, ch) => s + ch.followers, 0))} reach
+            {/* A brand has no handle or reach: this read "@@oakmoss · 0 reach". */}
+            {persona === 'creator'
+              ? (counterparty.tagline || 'Brand')
+              : `@${counterparty.handle.replace(/^@/, '')} · ${fmtFollowers(counterparty.channels.reduce((s, ch) => s + ch.followers, 0))} followers`}
           </div>
         </div>
         {persona === 'brand' ? (
@@ -743,7 +740,7 @@ function Thread({
                 {contextHint(collab.stage, persona)}
                 {collab.price > 0 && (
                   <span className="v2-muted" style={{ marginLeft: 8 }}>
-                    · {fmtUSD(collab.price)}
+                    · {fmtUSDfull(collab.price)}
                   </span>
                 )}
               </div>

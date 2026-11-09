@@ -4,7 +4,10 @@
 // ledger of cleared payouts + withdrawals, withdraw flow modal.
 
 import { useState } from 'react';
-import { fmtUSD, fmtUSDfull, Icon, Topbar } from '../lib';
+import { fmtUSDfull } from '../lib';
+import { HomeHead, MoneyStrip, dollars } from './homeParts';
+import { LedgerList } from './walletParts';
+import { PLATFORM_FEE_LABEL, WHT_LABEL } from '@/lib/api/money';
 import { useV2CreatorWallet, useV2CurrentCreator, v2RequestWithdrawal, v2CanWithdraw, withdrawalRejectionMessage } from '../v2Hooks';
 import { useStore } from '@/lib/api/store';
 import { api } from '@/lib/api/client';
@@ -44,245 +47,98 @@ export function CreatorWallet({ onRoute, initialAction }: Props) {
     : 0;
   const canRequestAdvance = !!creator && !activeAdvance && advanceCapacity >= 100;
 
+  const exportStatement = () => {
+    const rows = W.ledgerAll ?? W.ledger;
+    if (rows.length === 0) {
+      pushToast('No wallet activity to export yet');
+      return;
+    }
+    downloadCSV(
+      `alamut-creator-statement-${new Date().toISOString().slice(0, 10)}`,
+      rows.map((l) => ({ date: l.date, description: l.desc, status: l.status, amount: l.amount, type: l.type ?? '' })),
+    );
+    pushToast(`Statement exported · ${rows.length} rows`);
+  };
+
   return (
     <>
-      <Topbar
-        title="Wallet"
-        crumb={`${creator?.name ?? 'Creator'} · USD account`}
-        actions={
-          <div className="v2-row" style={{ gap: 8 }}>
-            {canRequestAdvance && (
-              <button
-                className="v2-btn v2-btn-outline"
-                type="button"
-                onClick={() => setShowAdvance(true)}
-                title={`Borrow up to ${fmtUSD(advanceCapacity)} against pending escrow · 3% fee · auto-repays`}
-              >
-                {Icon.spark}<span>Request advance</span>
+      <div className="v2-hm">
+        <div className="v2-hm-ground">
+          <HomeHead
+            title="Wallet"
+            sub="Money from your deals, after fees, and where it goes."
+            actions={<button type="button" className="v2-hm-btn" onClick={exportStatement}>Download statement</button>}
+          />
+          <MoneyStrip
+            label="Ready to withdraw"
+            figure={W.available}
+            tone="moss"
+            rows={[
+              { label: 'Held in escrow for your deals', value: W.pending },
+              // Gross: what deals paid before the fee and withholding rows.
+              { label: 'Earned so far, before fees', value: W.lifetime },
+            ]}
+            action={
+              <button type="button" className="v2-hm-btn is-fill" onClick={() => setShowWithdraw(true)} disabled={W.available === 0}>
+                Withdraw
               </button>
-            )}
-            <button
-              className="v2-btn v2-btn-accent"
-              type="button"
-              onClick={() => setShowWithdraw(true)}
-              disabled={W.available === 0}
-            >
-              {Icon.send}<span>Withdraw</span>
-            </button>
-          </div>
-        }
-      />
-      <div className="v2-content">
-        {/* Hero balance card — moss-gradient variant per the design.
-            The brand wallet uses the terracotta ink→accent gradient
-            (money flowing OUT to creators); the creator wallet uses
-            moss green (money flowing IN as earnings). Both share
-            the same shape so the wallet pattern reads consistently. */}
-        <div className="v2-wallet-hero is-creator" style={{ marginBottom: 24 }}>
-          <div className="v2-wallet-hero-glow" aria-hidden="true" />
-          <div className="v2-eyebrow" style={{ color: 'rgba(251,247,238,0.6)', marginBottom: 12 }}>
-            Available to withdraw
-          </div>
-          <div className="v2-wallet-hero-amount v2-tabular">{fmtUSDfull(W.available)}</div>
-          <div className="v2-row v2-wallet-hero-stats">
-            <div>
-              <div className="v2-wallet-hero-stat-label">In escrow</div>
-              <div className="v2-wallet-hero-stat-value v2-tabular">{fmtUSD(W.pending)}</div>
-            </div>
-            <div>
-              <div
-                className="v2-wallet-hero-stat-label"
-                title="Gross across every cleared payout, before the platform fee and withholding itemised in your ledger."
-              >Lifetime earned</div>
-              <div className="v2-wallet-hero-stat-value v2-tabular">{fmtUSD(W.lifetime)}</div>
-            </div>
-            <span className="v2-spacer" />
-            <button
-              className="v2-btn"
-              type="button"
-              style={{ background: 'var(--v2-paper)', color: 'var(--v2-ink)' }}
-              onClick={() => setShowWithdraw(true)}
-              disabled={W.available === 0}
-            >
-              {Icon.send}<span>Withdraw to bank</span>
-            </button>
-          </div>
+            }
+          />
         </div>
 
-        <div className="v2-wallet-grid">
-          {/* Ledger */}
-          <div className="v2-card" style={{ overflow: 'hidden' }}>
-            <div className="v2-card-pad" style={{ borderBottom: '1px solid var(--v2-line)' }}>
-              <h3 className="v2-section-title" style={{ fontSize: 22, margin: 0 }}>Recent payouts</h3>
-              <p className="v2-muted" style={{ margin: '6px 0 0', fontSize: 13 }}>
-                Each deal posts at its agreed rate, with the platform fee and
-                withholding as their own rows underneath. The rows sum to your
-                balance.
-              </p>
-            </div>
-            {/* The table has fixed-ish column content (date, description,
-                amount, status) and no wrapper — below ~700px it pushed the
-                card, and the page, into a horizontal scroll. Scrolling the
-                table inside its own box keeps the rest of the layout put. */}
-            <div style={{ overflowX: 'auto' }}>
-            <table className="v2-table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Description</th>
-                  <th style={{ textAlign: 'right' }}>Amount</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {W.ledger.map((l, i) => {
-                  const isPositive = l.amount > 0;
-                  return (
-                    <tr key={i}>
-                      <td className="v2-muted" style={{ fontSize: 12.5 }}>{l.date}</td>
-                      <td style={{ fontSize: 13.5 }}>{l.desc}</td>
-                      <td
-                        className="v2-tabular"
-                        style={{
-                          textAlign: 'right',
-                          fontWeight: 600,
-                          color: isPositive ? 'var(--v2-moss)' : 'var(--v2-ink)',
-                        }}
-                      >
-                        {isPositive ? '+' : ''}{fmtUSD(l.amount)}
-                      </td>
-                      <td>
-                        <span
-                          className={`v2-pill ${l.status === 'Paid' ? 'v2-pill-moss' : 'v2-pill-draft'}`}
-                          style={{ fontSize: 10.5 }}
-                        >
-                          {l.status}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {W.ledger.length === 0 && (
-                  <tr>
-                    <td colSpan={4} style={{ padding: '28px 16px', textAlign: 'center' }}>
-                      <div style={{ fontSize: 13.5, marginBottom: 4 }}>No payouts yet</div>
-                      <div className="v2-muted" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
-                        Once a brand approves your content, the net amount lands
-                        here and in your available balance.
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-            </div>
-          </div>
+        <div className="v2-hm-cols">
+          <section aria-labelledby="wl-moves">
+            <h2 className="v2-hm-h2" id="wl-moves">Money in and out</h2>
+            <LedgerList
+              label="movements"
+              entries={W.ledgerAll ?? W.ledger}
+              filters={[
+                { id: 'in', label: 'Released to you', test: (e) => e.amount > 0 },
+                { id: 'fees', label: 'Fees and tax', test: (e) => e.type === 'fee' || e.type === 'tax' },
+                // Withdrawals are payouts out of the wallet: negative, not fees.
+                { id: 'out', label: 'Withdrawals', test: (e) => e.amount < 0 && e.type === 'release' },
+              ]}
+              emptyTitle="Nothing here yet."
+              emptyBody="When a brand confirms a post, its share lands here after fees, with the fee and withholding as their own lines."
+            />
+          </section>
 
-          {/* Sidebar */}
-          <div>
-            <div className="v2-card v2-card-pad" style={{ marginBottom: 16 }}>
-              <div className="v2-eyebrow" style={{ marginBottom: 12 }}>Payout method</div>
+          <aside className="v2-hm-right">
+            <section className="v2-wl-card" aria-labelledby="wl-method">
+              <span className="v2-wl-eyebrow" id="wl-method">Paid out to</span>
               {hasPayoutAccount ? (
-                <div className="v2-row" style={{ gap: 10 }}>
-                  <div style={{
-                    width: 40, height: 40, borderRadius: 8,
-                    background: '#1B3D88', color: 'white',
-                    display: 'grid', placeItems: 'center',
-                    fontWeight: 700, fontSize: 12,
-                  }}>BA</div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 600 }}>
-                      {payoutMethod || 'Bank transfer'}
-                    </div>
-                    <div className="v2-muted" style={{ fontSize: 11.5 }}>
-                      Account ending {payoutLast4}
-                    </div>
-                  </div>
-                  <button
-                    className="v2-btn v2-btn-sm v2-btn-ghost"
-                    type="button"
-                    onClick={() => onRoute('kyc')}
-                    title="Manage payout methods in KYC settings"
-                  >
-                    Edit
-                  </button>
+                <div className="v2-wl-method">
+                  <i aria-hidden="true">{(payoutMethod || 'Bank').slice(0, 4).toUpperCase()}</i>
+                  <div><b>Bank account ending {payoutLast4}</b><small>Withdrawals arrive in 1–2 business days</small></div>
                 </div>
               ) : (
-                <div className="v2-row" style={{ gap: 10, alignItems: 'flex-start' }}>
-                  <div style={{
-                    width: 40, height: 40, borderRadius: 8,
-                    background: 'var(--v2-bg-2)',
-                    color: 'var(--v2-ink-3)',
-                    border: '1px dashed var(--v2-line)',
-                    display: 'grid', placeItems: 'center',
-                    fontWeight: 700, fontSize: 18,
-                  }}>+</div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 600 }}>
-                      No payout method yet
-                    </div>
-                    <div className="v2-muted" style={{ fontSize: 11.5, lineHeight: 1.4 }}>
-                      Add a bank account in KYC settings before your first withdrawal.
-                    </div>
-                  </div>
-                  <button
-                    className="v2-btn v2-btn-sm v2-btn-primary"
-                    type="button"
-                    onClick={() => onRoute('kyc')}
-                  >
-                    Add
-                  </button>
+                <div className="v2-wl-method">
+                  <i aria-hidden="true">+</i>
+                  <div><b>No bank account yet</b><small>Add one before your first withdrawal</small></div>
                 </div>
               )}
-              <hr style={{ height: 1, background: 'var(--v2-line)', margin: '12px 0', border: 'none' }} />
-              <p className="v2-muted" style={{ fontSize: 12, lineHeight: 1.5, margin: 0 }}>
-                {/* Named four rails; the bank-account form offers ACH,
-                    Wire, SEPA and Local bank. JazzCash and Easypaisa are
-                    not selectable anywhere, so a creator following this
-                    instruction couldn't do what it told them to. */}
-                Add a bank account in KYC settings to receive payouts.
-              </p>
-            </div>
-
-            <div className="v2-card v2-card-pad">
-              <div className="v2-eyebrow" style={{ marginBottom: 8 }}>Tax docs</div>
-              <p className="v2-muted" style={{ fontSize: 12.5, lineHeight: 1.5, margin: '0 0 12px' }}>
-                {/* P-7 — this promised "Tax certificates auto-generated
-                    quarterly", which isn't built (year-end form generation
-                    is a known-deferred item needing real payment infra).
-                    Withholding genuinely is applied per payout in the
-                    simulated ledger, and the export below is real, so those
-                    stay. */}
-                Withholding is deducted on each payout and itemised in your ledger.
-                Formal tax certificates aren't issued yet — export a statement below
-                for your records.
-              </p>
-              <button
-                className="v2-btn v2-btn-outline"
-                type="button"
-                style={{ width: '100%', justifyContent: 'center' }}
-                onClick={() => {
-                  if (W.ledger.length === 0) {
-                    pushToast('No wallet activity to export yet');
-                    return;
-                  }
-                  downloadCSV(
-                    `alamut-creator-statement-${new Date().toISOString().slice(0, 10)}`,
-                    W.ledger.map((l) => ({
-                      date: l.date,
-                      description: l.desc,
-                      status: l.status,
-                      amount: l.amount,
-                      type: l.type ?? '',
-                    })),
-                  );
-                  pushToast(`Statement exported · ${W.ledger.length} rows`);
-                }}
-              >
-                Download statement
+              <button type="button" className="v2-hm-btn is-sm" onClick={() => onRoute('kyc')}>
+                {hasPayoutAccount ? 'Change in KYC & Tax' : 'Add one in KYC & Tax'}
               </button>
-            </div>
-          </div>
+            </section>
+
+            <section className="v2-wl-card" aria-labelledby="wl-fees">
+              <span className="v2-wl-eyebrow" id="wl-fees">How fees work</span>
+              <div className="v2-hm-ledger">
+                <div className="v2-hm-lrow"><span>Platform fee</span><b>{PLATFORM_FEE_LABEL}</b></div>
+                <div className="v2-hm-lrow"><span>Withholding tax</span><b>{WHT_LABEL}</b></div>
+              </div>
+              <p>Both come off each release, never off what you withdraw. Withdrawals are free. Formal tax certificates aren’t issued yet; the statement lists every deduction.</p>
+            </section>
+
+            {canRequestAdvance && (
+              <section className="v2-wl-card" aria-labelledby="wl-adv">
+                <span className="v2-wl-eyebrow" id="wl-adv">Advance</span>
+                <p>Borrow up to {dollars(advanceCapacity)} against money held in escrow. 3% fee, repaid automatically as your posts release.</p>
+                <button type="button" className="v2-hm-btn is-sm" onClick={() => setShowAdvance(true)}>Request an advance</button>
+              </section>
+            )}
+          </aside>
         </div>
       </div>
 
@@ -438,7 +294,7 @@ function WithdrawModal({ available, payoutLabel, onClose, onConfirm }: {
   const [amount, setAmount] = useState(available);
 
   return (
-    <div className="v2-modal-overlay" onClick={onClose}>
+    <div className="v2-modal-overlay" role="dialog" aria-modal="true" aria-label="Withdraw to your bank" onClick={onClose}>
       <div
         className="v2-card v2-card-pad-lg v2-modal"
         onClick={(e) => e.stopPropagation()}

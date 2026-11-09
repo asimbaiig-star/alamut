@@ -17,10 +17,10 @@
 //                  Visually richer but ALL the data is the same — the
 //                  detailed mode just shows more of it. No drift possible.
 
-import { fmtUSD } from '@/screens/workspace-v2/lib';
+import { fmtUSDfull as fmtUSD } from '@/screens/workspace-v2/lib';
 import { Icon } from '@/screens/workspace-v2/lib';
 import type { V2Campaign, V2Creator, V2Collab } from '@/screens/workspace-v2/data';
-import { netOf, splitGross, PLATFORM_FEE_LABEL, WHT_LABEL } from '@/lib/api/money';
+import { splitAcrossSlots, PLATFORM_FEE_LABEL, WHT_LABEL } from '@/lib/api/money';
 
 export interface CollabSidePanelProps {
   campaign: V2Campaign;
@@ -36,31 +36,21 @@ export interface CollabSidePanelProps {
 export function CollabSidePanel({
   campaign, counterparty, collab, persona, mode, onRoute,
 }: CollabSidePanelProps) {
-  // Synthesize milestone state from campaign progress fields. Both
-  // modes use the same source of truth — the difference is just how
-  // much detail we surface alongside it.
-  const milestones: { label: string; state: 'done' | 'active' | 'pending'; detail?: string }[] = [
-    {
-      label: 'Brief approved',
-      state: campaign.confirmed > 0 ? 'done' : 'active',
-      detail: 'Both sides agreed on scope and deliverables.',
-    },
-    {
-      label: 'Content submitted',
-      state: campaign.submitted > 0 ? 'done' : campaign.confirmed > 0 ? 'active' : 'pending',
-      detail: 'Creator delivers the first cut for review.',
-    },
-    {
-      label: 'Live on platform',
-      state: campaign.live > 0 ? 'done' : campaign.submitted > 0 ? 'active' : 'pending',
-      detail: 'Posted to creator channels with the agreed handles.',
-    },
-    {
-      label: 'Payment cleared',
-      state: campaign.paid > 0 ? 'done' : campaign.live > 0 ? 'active' : 'pending',
-      detail: 'Net amount transferred to creator wallet.',
-    },
-  ];
+  // Where THIS deal is. These steps used to read the campaign's counters
+  // (any creator's post going live), so a deal still in review showed
+  // "Live on platform" as current. They follow the deal's own stage now.
+  const ORDER = ['invited', 'pitched', 'negotiating', 'confirmed', 'submitted', 'approved', 'live', 'paid'];
+  const at = collab ? ORDER.indexOf(collab.stage) : -1;
+  const step = (doneFrom: string, activeAt: string) =>
+    at >= ORDER.indexOf(doneFrom) ? 'done' as const : at === ORDER.indexOf(activeAt) ? 'active' as const : 'pending' as const;
+  const milestones: { label: string; state: 'done' | 'active' | 'pending'; detail?: string }[] = collab && collab.stage !== 'cancelled' ? [
+    { label: 'Agreed, money held', state: at >= ORDER.indexOf('confirmed') ? 'done' : 'active', detail: 'The offer is accepted and the full amount is held in escrow.' },
+    { label: 'Content submitted', state: step('submitted', 'confirmed'), detail: 'The creator sends the work for review.' },
+    { label: 'Approved', state: step('approved', 'submitted'), detail: 'The brand approves it, or asks for changes.' },
+    { label: 'Live and confirmed', state: step('live', 'approved'), detail: 'The creator posts it; the brand confirms the link and that post’s share is released.' },
+    { label: 'Paid', state: step('paid', 'live'), detail: 'Every post is released to the creator’s wallet.' },
+  ] : [];
+  void campaign;
 
   return (
     <aside className="v2-inbox-side" aria-label="Collaboration details">
@@ -193,8 +183,9 @@ export function CollabSidePanel({
           <div className="v2-inbox-side-section-title">This deal</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <Row label="Rate"                              value={fmtUSD(collab.price)} />
-            <Row label={`Platform fee (${PLATFORM_FEE_LABEL})`} value={fmtUSD(splitGross(collab.price).fee)} muted />
-            <Row label={`Tax (${WHT_LABEL})`}                   value={fmtUSD(splitGross(collab.price).tax)} muted />
+            {/* Per slot, as the ledger moves it (money.ts). */}
+            <Row label={`Platform fee (${PLATFORM_FEE_LABEL})`} value={fmtUSD(splitAcrossSlots(collab.price, Math.max(1, collab.deliverables.length)).fee)} muted />
+            <Row label={`Tax (${WHT_LABEL})`}                   value={fmtUSD(splitAcrossSlots(collab.price, Math.max(1, collab.deliverables.length)).tax)} muted />
             <div
               className="v2-row"
               style={{
@@ -208,7 +199,7 @@ export function CollabSidePanel({
                 className="v2-tabular v2-accent-text"
                 style={{ fontWeight: 700, fontSize: 14 }}
               >
-                {fmtUSD(netOf(collab.price))}
+                {fmtUSD(splitAcrossSlots(collab.price, Math.max(1, collab.deliverables.length)).net)}
               </span>
             </div>
           </div>
@@ -253,16 +244,16 @@ function detailedStageHint(stage: string, persona: 'brand' | 'creator', firstNam
     if (stage === 'confirmed')   return `Deal confirmed. ${firstName} is preparing the first draft — funds are reserved in escrow.`;
     if (stage === 'submitted')   return `${firstName} submitted a draft. Review and approve, or request a revision (one round included).`;
     if (stage === 'approved')    return `Approved. Awaiting ${firstName} to mark the content live with the public URL.`;
-    if (stage === 'live')        return `Live on platform. Funds clear ~24h after publish.`;
+    if (stage === 'live')        return `Live. Each post you confirm releases its share to ${firstName}.`;
     if (stage === 'paid')        return `Closed. Payment cleared to ${firstName}'s wallet — leave a review when ready.`;
   } else {
     if (stage === 'pitched')     return `Pitch sent — awaiting brand response.`;
     if (stage === 'invited')     return `The brand invited you. If they named a rate, accept or counter; otherwise message back to align on scope and price.`;
     if (stage === 'negotiating') return `Offer received — accept the terms or send a counter.`;
     if (stage === 'confirmed')   return `Deal confirmed. Time to upload your first draft.`;
-    if (stage === 'submitted')   return `Draft submitted — awaiting brand review (typically 24–48h).`;
+    if (stage === 'submitted')   return `Draft submitted. Waiting for the brand’s review.`;
     if (stage === 'approved')    return `Approved. Post the content and attach the live URL to release the funds.`;
-    if (stage === 'live')        return `Live on platform. Funds clear shortly.`;
+    if (stage === 'live')        return `Live. Each post’s share is released once the brand confirms it.`;
     if (stage === 'paid')        return `Paid — all done. Leave the brand a review when ready.`;
   }
   return '';

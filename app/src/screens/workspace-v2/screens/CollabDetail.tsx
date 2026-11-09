@@ -6,7 +6,7 @@
 //   right: compensation breakdown (gross → fees → net) · brand contact
 
 import { useEffect, useState } from 'react';
-import { fmtUSD, Icon, StagePill, Topbar } from '../lib';
+import { fmtUSD, Icon, Topbar } from '../lib';
 import { useV2AllCampaigns, useV2CollabById, useV2CurrentCreator, v2EnsureThreadFor } from '../v2Hooks';
 import { V2_STAGE_META } from '../v2Adapters';
 import type { V2Collab, V2CollabStage, V2Deliverable } from '../data';
@@ -29,6 +29,8 @@ import { pushToast } from '@/lib/utils/toast';
 import { LeaveReviewModal } from './LeaveReviewModal';
 import { RaiseDisputeModal } from './RaiseDisputeModal';
 import { StageActionBanner } from './StageActionBanner';
+import { HomeHead, dollars } from './homeParts';
+import { PLATFORM_FEE_LABEL, WHT_LABEL, slotGross, splitAcrossSlots, splitGross } from '@/lib/api/money';
 
 interface Props {
   collabId: string;
@@ -267,9 +269,13 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
   // v2CampaignActions); pre-fix this card used 5%+5% so "You'll
   // receive" overstated the payout by 5 points vs what v2ApproveContent
   // actually credits the wallet.
-  const platformFee = Math.round(collab.price * 0.10);
-  const wht = Math.round(collab.price * 0.05);
-  const net = collab.price - platformFee - wht;
+  // The fee and withholding as the ledger will actually move them: per
+  // deliverable, rounded per slot (money.ts). They used to be worked out
+  // here with their own rounding, which can disagree with what's paid.
+  const split = splitAcrossSlots(collab.price, Math.max(1, collab.deliverables.length));
+  const platformFee = split.fee;
+  const wht = split.tax;
+  const net = split.net;
 
   // Pending mutual-cancel request from the brand. Pre-fix the creator
   // had no UI affordance to respond; the brand's v2RequestCollabCancel
@@ -315,54 +321,29 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
 
   return (
     <>
-      <Topbar
-        title={camp.name}
-        crumb={
-          <span>
-            <button
-              type="button"
-              className="v2-link-btn"
-              onClick={() => onRoute('creator-collabs')}
-            >Collaborations</button>
-            {' · '}{camp.brand}
-          </span>
-        }
-        actions={
-          <>
-            <button
-              className="v2-btn v2-btn-outline"
-              type="button"
-              onClick={openConversationForCollab}
-            >
-              {Icon.inbox} Message brand
-            </button>
-            {/* Enabled at every stage pre-fix, including `invited` and
-                `pitched` — where `v2SubmitContent` throws, because
-                nothing has been agreed yet. Clicking it from a brand
-                invite you hadn't accepted produced an upload modal that
-                could only fail. It also stayed enabled once every slot
-                was filled, with `nextSlot` undefined, so the click did
-                nothing at all. Both cases are now stated on the button
-                instead of discovered by pressing it. */}
-            <button
-              className="v2-btn v2-btn-primary"
-              type="button"
-              disabled={!canSubmitContent || !nextSlot}
-              title={
-                !canSubmitContent
-                  ? 'Available once the offer is accepted'
-                  : !nextSlot
-                    ? 'Every deliverable has been submitted'
-                    : undefined
-              }
-              onClick={() => nextSlot && setUploadSlot(nextSlot)}
-            >
-              {Icon.plus} Submit content
-            </button>
-          </>
-        }
-      />
-      <div className="v2-content">
+      <div className="v2-hm v2-dl">
+      <div className="v2-hm-ground">
+        <HomeHead
+          crumb={<><button type="button" className="v2-hm-crumb-link" onClick={() => onRoute('creator-collabs')}>Deals</button> · {camp.brand}</>}
+          title={camp.name}
+          sub={`${camp.placement ? `${camp.placement} · ` : ''}${stageMeta.label}`}
+          actions={
+            <>
+              <button type="button" className="v2-hm-btn" onClick={openConversationForCollab}>Message {camp.brand}</button>
+              {/* Only when there is something to submit: before an offer is
+                  accepted v2SubmitContent refuses, and once every slot is in
+                  there's nothing left to send. */}
+              {canSubmitContent && nextSlot && (
+                <button type="button" className="v2-hm-btn is-dark" onClick={() => setUploadSlot(nextSlot)}>
+                  {nextSlot.isResubmit ? 'Resubmit' : 'Submit'} {nextSlot.label}
+                </button>
+              )}
+            </>
+          }
+        />
+        {!isClosed && <CollabTimeline stage={collab.stage} />}
+      </div>
+      <div className="v2-ls-body">
         {cancelRequest && collabRow && currentCreator && (
           <div
             className="v2-card v2-card-pad"
@@ -412,21 +393,16 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
             </div>
           </div>
         )}
-        <div className="v2-row" style={{ gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-          <div style={{ flex: '2 1 480px', minWidth: 0 }}>
-            {/* Status hero with timeline */}
-            <section className="v2-card v2-card-pad-lg" style={{ marginBottom: 16 }}>
-              <div className="v2-row" style={{ justifyContent: 'space-between', marginBottom: 16 }}>
-                <div className="v2-eyebrow">Current stage</div>
-                <StagePill stage={stageMeta.label} />
-              </div>
+        <div className="v2-dl-cols">
+          <div className="v2-dl-main">
+            {/* What's next: the open sheet. The stage track sits in the header. */}
+            <section className="v2-dl-next">
               {/* A stage timeline is meaningless for a terminal collab — it
                   would render progress through a pipeline this pair has left.
                   Suppressed rather than replaced: StageActionBanner directly
                   below already explains the outcome, and it serves four
                   surfaces, so duplicating the message here just said the same
                   thing twice in one card. */}
-              {!isClosed && <CollabTimeline stage={collab.stage} />}
 
               <StageActionBanner
                 stage={collab.stage}
@@ -602,13 +578,14 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
           </div>
 
           {/* Sidebar */}
-          <aside style={{ flex: '1 1 280px' }}>
+          <aside className="v2-dl-side">
             {/* Payout timeline — dark hero card with the net amount,
                 then 4-step milestone river: Escrow → Submitted →
                 Approved → Wallet release, each with an ETA or actual
                 date. Replaces the older Compensation block; the
                 breakdown rows live above the milestone river. */}
             <PayoutTimelineCard
+              brand={camp.brand}
               collab={collab}
               escrowFundedAt={escrowFundedAt}
               gross={collab.price}
@@ -648,6 +625,7 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
             </div>
           </aside>
         </div>
+      </div>
       </div>
 
       {uploadSlot && (
@@ -757,26 +735,17 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
 // =====================================================================
 
 function CollabTimeline({ stage }: { stage: V2CollabStage }) {
-  // Position by the stage's own `order`, so every stage — including
-  // `invited` and `live`, which the old array omitted and remapped
-  // respectively — lands somewhere real.
+  // Position by the stage's own `order`, so every stage lands somewhere real.
   const currentIdx = TIMELINE_STAGES.indexOf(stage);
   return (
-    <div className="v2-collab-timeline">
-      {TIMELINE_STAGES.map((s, i) => {
-        const done = i < currentIdx;
-        const active = i === currentIdx;
-        return (
-          <div key={s} className={`v2-collab-timeline-step ${done ? 'is-done' : ''} ${active ? 'is-active' : ''}`}>
-            {i > 0 && <div className="v2-collab-timeline-line" />}
-            <div className="v2-collab-timeline-dot">{done ? Icon.check : i + 1}</div>
-            <div className="v2-collab-timeline-label">
-              {V2_STAGE_META[s].label}
-            </div>
-          </div>
-        );
-      })}
-    </div>
+    <ol className="v2-dl-track" aria-label="Where this deal is">
+      {TIMELINE_STAGES.map((s, i) => (
+        <li key={s} data-state={i < currentIdx ? 'done' : i === currentIdx ? 'now' : 'next'} aria-current={i === currentIdx ? 'step' : undefined}>
+          <i aria-hidden="true" />
+          {V2_STAGE_META[s].label}
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -1105,8 +1074,9 @@ function DeliverableProgressSummary({ deliverables }: { deliverables: V2Delivera
 // =====================================================================
 
 function PayoutTimelineCard({
-  collab, escrowFundedAt, gross, platformFee, wht, net,
+  brand, collab, escrowFundedAt, gross, platformFee, wht, net,
 }: {
+  brand: string;
   collab: V2Collab;
   /** ISO date of the real `escrow_hold` row, or null when none exists. */
   escrowFundedAt: string | null;
@@ -1115,134 +1085,65 @@ function PayoutTimelineCard({
   wht: number;
   net: number;
 }) {
-  type Milestone = { id: string; label: string; date: string; done: boolean };
-  const submittedReached = ['submitted', 'approved', 'live', 'paid'].includes(collab.stage);
-  const approvedReached  = ['approved', 'live', 'paid'].includes(collab.stage);
-  const paidReached      = collab.stage === 'paid';
-  const submittedAt = collab.deliverables.find((d) => d.submittedAt)?.submittedAt;
-  const approvedAt  = collab.deliverables.find((d) => d.approvedAt)?.approvedAt;
+  const short = (iso?: string | null) => iso
+    ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : null;
 
-  // P67 — funds hit the wallet AT approve (v2ApproveContent releases the
-  // full escrow in the same mutation). Pre-fix this river showed a
-  // separate "Wallet release · ETA 48h after approval" milestone gated
-  // on the 'paid' stage, telling the creator money was still pending
-  // after approval when it was already withdrawable.
-  const milestones: Milestone[] = [
-    // `done: collab.price > 0` marked escrow FUNDED whenever a price
-    // existed — including on an `invited` collab whose only "price" is the
-    // rate the brand suggested. The creator was shown money locked up that
-    // nobody had moved, and the date shown was their application date. Money
-    // events come from the ledger, never from a stage or a price.
-    {
-      id: 'escrow',
-      label: 'Escrow funded',
-      date: escrowFundedAt ?? 'On offer accept',
-      done: !!escrowFundedAt,
-    },
-    { id: 'submit',   label: 'Draft submitted', date: submittedAt ?? (submittedReached ? 'Recently' : 'Pending submit'), done: submittedReached },
-    { id: 'approve',  label: 'Approved · funds released to wallet', date: approvedAt ?? (approvedReached ? 'Recently' : 'ETA on approve'), done: approvedReached },
-    { id: 'closed',   label: 'Deal closed',     date: paidReached ? 'Complete' : 'On campaign close', done: paidReached },
-  ];
+  if (gross <= 0) {
+    return (
+      <section className="v2-card v2-dl-money" aria-label="This deal's money">
+        <span className="v2-wl-eyebrow">This deal</span>
+        <p>No price agreed yet. Once you accept an offer, or {brand} accepts your counter, the rate, the fees and what you keep show here.</p>
+        <span className="v2-hm-test"><i aria-hidden="true" />Beta: payments run in test mode</span>
+      </section>
+    );
+  }
 
+  const n = Math.max(1, collab.deliverables.length);
+  // Until an offer is accepted the price is on the table, not agreed.
+  const agreed = !['invited', 'pitched', 'negotiating', 'cancelled'].includes(collab.stage);
   return (
-    <div className="v2-card" style={{ padding: 0, overflow: 'hidden', marginBottom: 16 }}>
-      <div style={{ padding: '16px 18px 14px', background: 'var(--v2-ink)', color: 'var(--v2-paper)' }}>
-        <div className="v2-eyebrow" style={{ color: 'rgba(255,255,255,.7)', marginBottom: 6 }}>
-          You'll receive
+    <>
+      <section className="v2-card v2-dl-money" aria-label="This deal's money">
+        <span className="v2-wl-eyebrow">{agreed ? 'This deal' : 'If you accept'}</span>
+        <div className="v2-hm-ledger">
+          <div className="v2-hm-lrow"><span>{agreed ? 'Agreed rate' : 'On the table'}</span><b>{dollars(gross)}</b></div>
+          <div className="v2-hm-lrow" data-neg><span>Platform fee ({PLATFORM_FEE_LABEL})</span><b>−{dollars(platformFee)}</b></div>
+          <div className="v2-hm-lrow" data-neg><span>Withholding tax ({WHT_LABEL})</span><b>−{dollars(wht)}</b></div>
+          <div className="v2-hm-lrow v2-dl-keep"><span>{agreed ? 'You keep' : 'You’d keep'}</span><b>{dollars(net)}</b></div>
         </div>
-        <div className="v2-row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <div
-            className="v2-tabular"
-            style={{
-              fontFamily: 'var(--v2-font-display)',
-              fontSize: 28,
-              fontWeight: 500,
-              letterSpacing: '-0.02em',
-            }}
-          >
-            {fmtUSD(net)}
-          </div>
-          <div style={{ fontSize: 11, opacity: 0.7 }}>net of fees &amp; WHT</div>
-        </div>
-        <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>
-          {fmtUSD(gross)} gross · −{fmtUSD(platformFee)} fee · −{fmtUSD(wht)} WHT
-        </div>
-      </div>
+        <span className="v2-hm-test"><i aria-hidden="true" />Beta: payments run in test mode</span>
+      </section>
 
-      <div style={{ padding: '16px 18px' }}>
-        <div className="v2-eyebrow" style={{ marginBottom: 12 }}>Payout timeline</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-          {milestones.map((m, i) => {
-            const isLast = i === milestones.length - 1;
+      <section className="v2-card v2-dl-money" aria-labelledby="dl-paid">
+        <h3 id="dl-paid">When you get paid</h3>
+        <ol className="v2-dl-steps">
+          <li data-done={escrowFundedAt ? true : undefined}>
+            <i aria-hidden="true" />
+            <div><b>Held in escrow</b><small>{escrowFundedAt ? `${short(escrowFundedAt)} · the full ${dollars(gross)}` : 'When you accept, the full amount is held'}</small></div>
+          </li>
+          {collab.deliverables.map((d, i) => {
+            // Money moves when the brand confirms the post is live
+            // (v2MarkContentLive), not at approval.
+            const released = d.status === 'live';
             return (
-              <div key={m.id} style={{ display: 'flex', gap: 10, position: 'relative' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  <div
-                    style={{
-                      width: 14,
-                      height: 14,
-                      borderRadius: '50%',
-                      background: m.done ? 'var(--v2-moss)' : 'var(--v2-bg-2)',
-                      border: m.done ? 'none' : '1.5px dashed var(--v2-line-2)',
-                      display: 'grid',
-                      placeItems: 'center',
-                      color: 'var(--v2-paper)',
-                      fontSize: 9,
-                      fontWeight: 700,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {m.done ? '✓' : ''}
-                  </div>
-                  {!isLast && (
-                    <div
-                      style={{
-                        width: 1.5,
-                        flex: 1,
-                        minHeight: 22,
-                        background: m.done ? 'var(--v2-moss)' : 'var(--v2-line-2)',
-                        marginTop: 2,
-                      }}
-                    />
-                  )}
+              <li key={d.id} data-done={released || undefined}>
+                <i aria-hidden="true" />
+                <div>
+                  <b>{d.label} goes live</b>
+                  <small>{released ? `Released${d.liveAt ? ` ${d.liveAt}` : ''}` : `${brand} confirms the link`}</small>
                 </div>
-                <div style={{ paddingBottom: isLast ? 0 : 14, flex: 1 }}>
-                  <div
-                    style={{
-                      fontSize: 12.5,
-                      fontWeight: m.done ? 600 : 500,
-                      color: m.done ? 'var(--v2-ink)' : 'var(--v2-ink-2)',
-                    }}
-                  >
-                    {m.label}
-                  </div>
-                  <div className="v2-muted" style={{ fontSize: 11 }}>{m.date}</div>
-                </div>
-              </div>
+                <em>{dollars(splitGross(slotGross(gross, n, i)).net)}</em>
+              </li>
             );
           })}
-        </div>
-        <div
-          style={{
-            marginTop: 12,
-            padding: '8px 10px',
-            background: 'var(--v2-bg)',
-            borderRadius: 'var(--v2-r-md)',
-            fontSize: 11.5,
-            color: 'var(--v2-ink-2)',
-          }}
-        >
-          ⚡ Instant withdrawal to your bank on release
-        </div>
-      </div>
-    </div>
+        </ol>
+        <p>Each post releases its share, after fees, when {brand} confirms it’s live. Withdraw from your wallet whenever you like; banks take 1–2 business days.</p>
+      </section>
+    </>
   );
 }
 
-// =====================================================================
-// CollapsibleBrief — wraps the brief in a tap-to-expand block. Default
-// closed with the hint "already approved when you applied" so the
-// creator isn't re-reading the brief on every visit.
 // =====================================================================
 
 function CollapsibleBrief({ brief }: { brief: string }) {

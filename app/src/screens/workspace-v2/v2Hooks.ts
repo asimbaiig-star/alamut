@@ -300,7 +300,7 @@ export function useV2CreatorWallet() {
   const creator = useV2CurrentCreator();
   return useMemo(() => {
     if (!creator) {
-      return { available: 0, pending: 0, lifetime: 0, currency: 'USD' as const, ledger: [] };
+      return { available: 0, pending: 0, lifetime: 0, currency: 'USD' as const, ledger: [] as V2WalletLedgerEntry[], ledgerAll: [] as V2WalletLedgerEntry[] };
     }
     return creatorWalletV2(creator, db);
   }, [creator, db]);

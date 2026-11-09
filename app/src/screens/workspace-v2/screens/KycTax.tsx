@@ -666,7 +666,7 @@ function BankAccountModal({ onClose, initial, onSave }: {
   const [currency, setCurrency] = useState(initial.currency ?? 'USD');
   const valid = account.trim().length >= 4;
   return (
-    <div className="v2-modal-overlay" onClick={onClose}>
+    <div className="v2-modal-overlay" role="dialog" aria-modal="true" aria-label="Add bank account" onClick={onClose}>
       <div className="v2-card v2-card-pad-lg v2-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
         <h2 style={{
           fontFamily: 'var(--v2-font-display)', fontSize: 22, fontWeight: 500,
