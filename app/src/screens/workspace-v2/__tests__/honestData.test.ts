@@ -256,10 +256,12 @@ describe('creator analytics shows nothing it did not measure', () => {
     // "Reach over time" was submission counts × followers "for realistic
     // feel"; "Top performing posts" gave every post followers × (0.4 + round
     // × 0.1) and the channel's average ER. Both were labelled as measured.
-    const src = readFileSync(join(__dirname, '..', 'screens', 'Analytics.tsx'), 'utf8');
+    const raw = readFileSync(join(__dirname, '..', 'screens', 'Analytics.tsx'), 'utf8');
+    // Code only: the comments explain what used to be here.
+    const src = raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
     expect(src).not.toMatch(/realistic feel/);
     expect(src).not.toMatch(/followers \?\? 50_000\)/);
     expect(src).not.toMatch(/Synthetic reach/);
-    expect(src).toContain('Reach per post isn’t measured yet');
+    expect(raw).toContain('Reach per post isn’t measured yet');
   });
 });
