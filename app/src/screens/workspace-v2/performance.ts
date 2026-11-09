@@ -119,9 +119,18 @@ export function aggregatePerformance(
     shares: sum((p) => p.shares),
     profileVisits: sum((p) => p.profileVisits),
     weeklySeries,
-    byCreator: rows.flatMap((r) => r.perf.byCreator),
+    // One row per creator across campaigns. This concatenated each
+    // campaign's rows, so a creator on twelve campaigns was listed twelve
+    // times on the brand's "top performers".
+    byCreator: [...rows.flatMap((r) => r.perf.byCreator).reduce((m, x) => {
+      const cur = m.get(x.creatorId);
+      m.set(x.creatorId, cur
+        ? { creatorId: x.creatorId, impressions: cur.impressions + x.impressions, engagement: cur.engagement + x.engagement }
+        : { ...x });
+      return m;
+    }, new Map<string, { creatorId: string; impressions: number; engagement: number }>()).values()],
     er: impressions > 0 ? Number(((engagement / impressions) * 100).toFixed(1)) : 0,
     cpm: impressions > 0 && spent > 0 ? Math.round((spent / impressions) * 1000) : null,
-    cpe: engagement > 0 && spent > 0 ? Math.round(spent / engagement) : null,
+    cpe: engagement > 0 && spent > 0 ? Number((spent / engagement).toFixed(2)) : null,
   };
 }

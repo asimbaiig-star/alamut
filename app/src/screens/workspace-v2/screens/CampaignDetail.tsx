@@ -20,7 +20,7 @@
 // into the creator profile.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { fmtUSD, fmtUSDfull, fmtFollowers, Icon, StagePill, Topbar } from '../lib';
+import { fmtUSDfull, fmtFollowers, Icon, StagePill, Topbar } from '../lib';
 import { HomeHead, Pile, dollars, ago } from './homeParts';
 import { BrandSheet } from './BrandHome';
 import { useBrandNeedsYou } from '../needsYou';
@@ -2659,7 +2659,10 @@ export function TopPerformersTable({
   creators: V2Creator[];
   byCreator: { creatorId: string; impressions: number; engagement: number }[];
 }) {
-  const priceByCreator = new Map(collabs.map((c) => [c.creatorId, c.price]));
+  // Spend is every deal with the creator, not whichever came last.
+  const priceByCreator = new Map<string, number>();
+  for (const c of collabs) priceByCreator.set(c.creatorId, (priceByCreator.get(c.creatorId) ?? 0) + (c.price || 0));
+  const [showAll, setShowAll] = useState(false);
   const rows = byCreator
     .map((row) => {
       const cr = creators.find((c) => c.id === row.creatorId);
@@ -2672,7 +2675,9 @@ export function TopPerformersTable({
         er: (row.engagement / Math.max(1, row.impressions) * 100).toFixed(1),
         // Real money over a reported count. Null when either is missing,
         // rather than a $0 that reads as free.
-        cpe: row.engagement > 0 && price > 0 ? Math.round(price / row.engagement) : null,
+        // In cents: most engagements cost under a dollar, which whole
+        // dollars rounded to "$0".
+        cpe: row.engagement > 0 && price > 0 ? price / row.engagement : null,
       };
     })
     .filter((r): r is NonNullable<typeof r> => Boolean(r))
@@ -2686,7 +2691,10 @@ export function TopPerformersTable({
     );
   }
 
+  const LIMIT = 10;
+  const shown = showAll ? rows : rows.slice(0, LIMIT);
   return (
+    <>
     <table className="v2-table" style={{ width: '100%' }}>
       <thead>
         <tr>
@@ -2700,7 +2708,7 @@ export function TopPerformersTable({
         </tr>
       </thead>
       <tbody>
-        {rows.map((r, i) => (
+        {shown.map((r, i) => (
           <tr key={r.cr.id}>
             <td>
               <div
@@ -2750,14 +2758,20 @@ export function TopPerformersTable({
                 {r.er}%
               </span>
             </td>
-            <td className="v2-tabular" style={{ textAlign: 'right' }}>{r.cpe !== null ? `$${r.cpe}` : '—'}</td>
+            <td className="v2-tabular" style={{ textAlign: 'right' }}>{r.cpe !== null ? `$${r.cpe.toFixed(2)}` : '—'}</td>
             <td className="v2-tabular" style={{ textAlign: 'right' }}>
-              {fmtUSD(priceByCreator.get(r.cr.id) ?? 0)}
+              {fmtUSDfull(priceByCreator.get(r.cr.id) ?? 0)}
             </td>
           </tr>
         ))}
       </tbody>
     </table>
+    {rows.length > LIMIT && (
+      <button type="button" className="v2-cal-more" aria-expanded={showAll} onClick={() => setShowAll((v) => !v)}>
+        {showAll ? 'Show the top 10' : `Show all ${rows.length} creators`}
+      </button>
+    )}
+    </>
   );
 }
 

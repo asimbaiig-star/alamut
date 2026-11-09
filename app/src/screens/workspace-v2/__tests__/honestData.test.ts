@@ -65,6 +65,24 @@ describe('readPerformance', () => {
 });
 
 describe('aggregatePerformance', () => {
+  it('lists each creator once across campaigns, summed', () => {
+    // The brand's "top performers" listed a creator once per campaign
+    // (twelve rows for one person) because these were concatenated.
+    const db = { campaignPerformance: [
+      perfRow({ campaignId: 'cmp_1', byCreator: [{ creatorId: 'c_a', impressions: 1000, engagement: 50 }, { creatorId: 'c_b', impressions: 400, engagement: 30 }] }),
+      perfRow({ campaignId: 'cmp_2', byCreator: [{ creatorId: 'c_a', impressions: 2000, engagement: 70 }] }),
+    ] };
+    const agg = aggregatePerformance([{ id: 'cmp_1', spent: 100 }, { id: 'cmp_2', spent: 100 }], db)!;
+    expect(agg.byCreator).toHaveLength(2);
+    expect(agg.byCreator.find((r) => r.creatorId === 'c_a')).toEqual({ creatorId: 'c_a', impressions: 3000, engagement: 120 });
+  });
+
+  it('keeps cost per engagement in cents', () => {
+    const db = { campaignPerformance: [perfRow({ engagement: 10_000 })] };
+    // $300 over 10,000 engagements is $0.03, not "$0".
+    expect(aggregatePerformance([{ id: 'cmp_1', spent: 300 }], db)!.cpe).toBe(0.03);
+  });
+
   it('returns null when no campaign in the set reports anything', () => {
     const db = { campaignPerformance: [] };
     expect(aggregatePerformance([{ id: 'cmp_1', spent: 500 }], db)).toBeNull();
@@ -230,5 +248,18 @@ describe('no surface reintroduces a fabricated constant', () => {
       .filter((f) => f.endsWith('.tsx'))
       .filter((f) => stripComments(readFileSync(join(SCREENS, f), 'utf8')).includes(needle));
     expect(offenders, `still present in: ${offenders.join(', ')}`).toEqual([]);
+  });
+});
+
+describe('creator analytics shows nothing it did not measure', () => {
+  it('no reach built from follower counts, no copied channel ER per post', () => {
+    // "Reach over time" was submission counts × followers "for realistic
+    // feel"; "Top performing posts" gave every post followers × (0.4 + round
+    // × 0.1) and the channel's average ER. Both were labelled as measured.
+    const src = readFileSync(join(__dirname, '..', 'screens', 'Analytics.tsx'), 'utf8');
+    expect(src).not.toMatch(/realistic feel/);
+    expect(src).not.toMatch(/followers \?\? 50_000\)/);
+    expect(src).not.toMatch(/Synthetic reach/);
+    expect(src).toContain('Reach per post isn’t measured yet');
   });
 });

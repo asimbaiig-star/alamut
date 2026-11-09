@@ -9,12 +9,12 @@
 // "Window" filter (7d/30d/90d/1y) clamps payouts to that range.
 
 import { useMemo, useState } from 'react';
-import { fmtFollowers, fmtUSD, Icon, PLATFORM_META, Topbar } from '../lib';
+import { fmtFollowers, fmtUSD, fmtUSDfull, Icon, PLATFORM_META, Topbar } from '../lib';
 import {
   useV2Creators, useV2CurrentCreator, useV2MyCollabs, useV2AllCampaigns,
 } from '../v2Hooks';
 import { creatorToV2 } from '../v2Adapters';
-import { netOf } from '@/lib/api/money';
+import { splitAcrossSlots } from '@/lib/api/money';
 import { useStore } from '@/lib/api/store';
 
 interface Props {
@@ -55,8 +55,10 @@ export function Analytics({ onRoute }: Props) {
   }
 
   const totalReach = me.channels.reduce((s, ch) => s + ch.followers, 0);
-  const avgER = me.channels.length > 0
-    ? (me.channels.reduce((s, ch) => s + ch.engagement, 0) / me.channels.length).toFixed(1)
+  // Weighted by followers. A plain average let a small newsletter's open
+  // rate (42%) count as much as a 142K Instagram's 5.2%, and read 18.1%.
+  const avgER = totalReach > 0
+    ? (me.channels.reduce((s, ch) => s + ch.engagement * ch.followers, 0) / totalReach).toFixed(1)
     : '0.0';
 
   // ─── Earnings within the selected window ───
@@ -81,28 +83,28 @@ export function Analytics({ onRoute }: Props) {
     ? Math.round((myAccepted.length / myApps.length) * 100)
     : 0;
 
-  // ─── Reach trail: bucket payouts/submissions per day or per month
-  const reachTrail = useMemo(() => {
+  // ─── Released to you over time: the ledger's inflows, bucketed.
+  // This was "Reach over time": submission counts weighted 30/12/8 and
+  // multiplied by the follower count "for realistic feel" — a chart of a
+  // made-up quantity labelled as daily impressions. Nothing measures a
+  // creator's reach per day; the ledger does record every release.
+  const releasedTrail = useMemo(() => {
     const days = RANGE_DAYS[range];
     const bucketCount = RANGE_BUCKETS[range];
     const bucketSize = days / bucketCount;
     const now = Date.now();
     const buckets = new Array(bucketCount).fill(0) as number[];
-    db.submissions
-      .filter((s) => s.creatorId === creator.id)
-      .forEach((s) => {
-        const submittedAt = new Date(s.submittedAt).getTime();
-        const ageDays = (now - submittedAt) / 86_400_000;
-        if (ageDays < 0 || ageDays > days) return;
+    db.transactions
+      .filter((t) => t.userId === myUserId && (t.kind === 'payout' || t.kind === 'escrow_release') && t.status === 'cleared' && t.amount > 0)
+      .forEach((t) => {
+        const ageDays = (now - new Date(t.at).getTime()) / 86_400_000;
+        if (!(ageDays >= 0 && ageDays <= days)) return;
         const idx = Math.min(bucketCount - 1, Math.floor((days - ageDays) / bucketSize));
-        // Each submission contributes proxy "reach" — favoring approved / live
-        const weight = s.status === 'approved' ? 30 : s.status === 'in_review' ? 12 : 8;
-        buckets[idx] += weight;
+        buckets[idx] += t.amount;
       });
-    // Smooth and amplify by current follower base for realistic feel
-    const base = Math.max(1, Math.round(totalReach / 1000));
-    return buckets.map((b) => Math.max(1, b * base));
-  }, [db.submissions, creator.id, range, totalReach]);
+    return buckets;
+  }, [db.transactions, myUserId, range]);
+  const releasedTotal = releasedTrail.reduce((n, v) => n + v, 0);
 
   // ─── Brand mix donut: derive from real accepted collab categories
   const brandMix = useMemo(() => {
@@ -136,32 +138,36 @@ export function Analytics({ onRoute }: Props) {
     [myCollabs],
   );
 
-  // ─── Top performing posts: derive from approved/live submissions
-  const topPosts = useMemo(() => {
-    const live = db.submissions
-      .filter((s) => s.creatorId === creator.id && (s.status === 'approved'))
+  // ─── Your recent posts, with what each one earned.
+  // This was "Top performing posts" with a reach of followers × (0.4 +
+  // round × 0.1) and the channel's average ER on every row, so every post
+  // "performed" the same, and each was credited with the whole deal's net.
+  // Nothing measures per-post reach here; the post's share of the deal is
+  // real (money.ts, the same split the ledger uses).
+  const recentPosts = useMemo(() => {
+    return db.submissions
+      .filter((s) => s.creatorId === creator.id && s.status === 'approved')
+      .sort((a, b) => +new Date(b.submittedAt) - +new Date(a.submittedAt))
+      .slice(0, 6)
       .map((s) => {
         const camp = db.campaigns.find((c) => c.id === s.campaignId);
         const offer = db.offers.find((o) => o.campaignId === s.campaignId && o.creatorId === creator.id && o.status === 'accepted');
-        const earned = offer ? netOf(offer.rate) : 0;
-        // Synthetic reach + engagement based on creator's main channel
-        const main = me.channels[0];
-        const reach = Math.round((main?.followers ?? 50_000) * (0.4 + (s.round * 0.1)));
-        const engagement = main?.engagement ?? 5;
+        // One slot per post: "3 stories + 1 post" is four, as the ledger
+        // splits it (deliverable rows carry a quantity).
+        const slots = Math.max(1, db.deliverables.filter((d) => d.campaignId === s.campaignId).reduce((n, d) => n + Math.max(1, d.quantity || 1), 0));
+        const share = offer ? splitAcrossSlots(offer.rate, slots).net : 0;
+        const del = db.deliverables.find((d) => d.id === s.deliverableId);
         return {
           id: s.id,
-          platform: main?.platform ?? 'instagram',
-          title: `${camp?.title ?? 'Untitled'} — round ${s.round}`,
-          reach,
-          engagement,
+          platform: (del?.platform ?? me.channels[0]?.platform ?? 'instagram') as keyof typeof PLATFORM_META,
+          title: camp?.title ?? 'Untitled',
+          what: del ? `${del.format}${del.quantity > 1 ? ` ×${del.quantity}` : ''}` : `round ${s.round}`,
+          status: s.permalink && !s.postDownAt ? 'Live' : 'Approved',
           date: new Date(s.submittedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-          earned,
+          share,
         };
-      })
-      .sort((a, b) => b.reach - a.reach)
-      .slice(0, 4);
-    return live;
-  }, [db.submissions, db.campaigns, db.offers, creator.id, me.channels]);
+      });
+  }, [db.submissions, db.campaigns, db.offers, db.deliverables, creator.id, me.channels]);
 
   // P-3 — every delta on this screen used to be a hardcoded string
   // ("+8.2%", "+0.6pt", "+12pt"/"−4pt", "+18%"), so a creator with zero
@@ -239,14 +245,14 @@ export function Analytics({ onRoute }: Props) {
         {/* KPI strip — derived from real data */}
         <div className="v2-row" style={{ gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
           <KpiTile
-            label="Total reach"
+            label="Followers"
             value={fmtFollowers(totalReach)}
             sub={`across ${me.channels.length} channel${me.channels.length === 1 ? '' : 's'}`}
           />
           <KpiTile
-            label="Avg engagement"
+            label="Engagement"
             value={`${avgER}%`}
-            sub="across connected channels"
+            sub="weighted by followers"
           />
           <KpiTile
             label="Deal close rate"
@@ -267,16 +273,20 @@ export function Analytics({ onRoute }: Props) {
           <section className="v2-card v2-card-pad" style={{ flex: '2 1 480px' }}>
             <div className="v2-row" style={{ justifyContent: 'space-between', marginBottom: 18, alignItems: 'flex-end' }}>
               <div>
-                <div className="v2-eyebrow">Reach over time</div>
+                <div className="v2-eyebrow">Released to you</div>
                 <p className="v2-muted" style={{ margin: '4px 0 0', fontSize: 12.5 }}>
-                  Daily impressions, all channels combined. Last {range}.
+                  Money released from your deals, last {range}: {fmtUSDfull(releasedTotal)}.
                 </p>
               </div>
               <div className="v2-row" style={{ gap: 14, fontSize: 11.5 }}>
-                <LegendDot color="var(--v2-accent)" label="Reach" />
+                <LegendDot color="var(--v2-accent)" label="Released" />
               </div>
             </div>
-            <BarChart values={reachTrail} />
+            {releasedTotal > 0 ? <BarChart values={releasedTrail} /> : (
+              <div className="v2-muted" style={{ padding: '40px 0', textAlign: 'center', fontSize: 13 }}>
+                Nothing released in this window. Each post’s share is released when the brand confirms it’s live.
+              </div>
+            )}
             <div className="v2-row" style={{ justifyContent: 'space-between', marginTop: 10, fontSize: 11.5, color: 'var(--v2-ink-3)' }}>
               <span>{range === '1y' ? '1 year ago' : `${RANGE_DAYS[range]} days ago`}</span>
               <span>{range === '1y' || range === '90d' ? 'Mid-window' : `${Math.round(RANGE_DAYS[range] / 2)} days ago`}</span>
@@ -371,19 +381,19 @@ export function Analytics({ onRoute }: Props) {
         <section className="v2-card v2-card-pad" style={{ marginBottom: 24 }}>
           <div className="v2-row" style={{ justifyContent: 'space-between', marginBottom: 14, alignItems: 'flex-end' }}>
             <div>
-              <div className="v2-eyebrow">Top performing posts</div>
+              <div className="v2-eyebrow">Your recent posts</div>
               <p className="v2-muted" style={{ margin: '4px 0 0', fontSize: 12.5 }}>
-                Sorted by reach. {range} window.
+                Approved and live, newest first, with each post’s share of its deal after fees. Reach per post isn’t measured yet.
               </p>
             </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {topPosts.length === 0 ? (
+            {recentPosts.length === 0 ? (
               <div className="v2-muted" style={{ padding: 32, textAlign: 'center', fontSize: 13 }}>
                 No approved content yet. Once your posts go live, they'll show up here.
               </div>
-            ) : topPosts.map((post, i) => {
-              const meta = PLATFORM_META[post.platform];
+            ) : recentPosts.map((post, i) => {
+              const meta = PLATFORM_META[post.platform] ?? PLATFORM_META.instagram;
               return (
                 <div
                   key={post.id}
@@ -401,12 +411,11 @@ export function Analytics({ onRoute }: Props) {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 2 }}>{post.title}</div>
                     <div className="v2-muted" style={{ fontSize: 11.5 }}>
-                      {meta.name} · {post.date}
+                      {meta.name} · {post.what} · {post.date}
                     </div>
                   </div>
-                  <ChannelStat label="Reach" value={fmtFollowers(post.reach)} />
-                  <ChannelStat label="ER" value={`${post.engagement}%`} />
-                  <ChannelStat label="Earned" value={post.earned > 0 ? fmtUSD(post.earned) : '—'} />
+                  <ChannelStat label="Status" value={post.status} />
+                  <ChannelStat label="Your share" value={post.share > 0 ? fmtUSDfull(post.share) : '—'} />
                 </div>
               );
             })}
