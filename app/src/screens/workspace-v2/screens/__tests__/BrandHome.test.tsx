@@ -165,8 +165,9 @@ describe('BrandHome (smoke)', () => {
     expect(screen.getByRole('heading', { name: /Needs you/ })).toHaveTextContent('2');
     // The asks, summarised on the row.
     expect(screen.getByText(/Asks from \$1,400 to \$2,600/)).toBeInTheDocument();
-    // Who pitched, on request.
-    fireEvent.click(screen.getByRole('button', { name: /Show details: 3 pitches on Spring serum launch/ }));
+    // Who pitched, open from the start: the counter above it has no detail,
+    // so the pitches are the first row with something to show.
+    expect(screen.queryByRole('button', { name: /Show details: 3 pitches on Spring serum launch/ })).toBeNull();
     expect(screen.getByRole('list', { name: 'Who pitched' })).toHaveTextContent('Noor');
     fireEvent.click(screen.getByRole('button', { name: 'Compare 3' }));
     expect(onRoute).toHaveBeenCalledWith('campaign:cmp_1?tab=pipeline');

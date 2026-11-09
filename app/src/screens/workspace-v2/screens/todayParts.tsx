@@ -34,12 +34,15 @@ export function TaskList({ items, label, onRoute, limit = 8 }: {
   /** Rows shown before "Show all N". */
   limit?: number;
 }) {
-  // The most urgent is open from the start; any other opens on request.
-  // Derived, not stored: the list can fill after the first render (live
-  // data arrives) or lose the open item when it's answered, and a stored
-  // id then left nothing open.
+  // The most urgent row with something to show is open from the start; any
+  // other opens on request. Derived, not stored: the list can fill after
+  // the first render (live data arrives) or lose the open item when it's
+  // answered, and a stored id then left nothing open. Rows without a detail
+  // can't open, so they're skipped: a counter at the top of the brand's
+  // list left every row shut.
   const [chosen, setOpen] = useState<string | null>(null);
-  const open = chosen && items.some((i) => i.id === chosen) ? chosen : items[0]?.id ?? null;
+  const openable = items.filter((i) => i.detail);
+  const open = chosen && openable.some((i) => i.id === chosen) ? chosen : openable[0]?.id ?? null;
   const [all, setAll] = useState(false);
   const shown = all ? items : items.slice(0, limit);
   return (
