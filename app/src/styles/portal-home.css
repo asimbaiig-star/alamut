@@ -647,6 +647,22 @@
   [data-surface="v2"] .v2-hm-track span { font-size: 11.5px; }
 }
 
+/* ---- The older screens' head (lib.tsx Topbar), on the same frame -------- */
+[data-surface="v2"] .v2-tb { padding: 34px 40px 0; max-width: 1400px; }
+[data-surface="v2"] .v2-tb + .v2-content { padding-top: 28px; }
+@media (max-width: 880px) {
+  /* Same breathing room as the newer heads: the sheet below overlaps 22px. */
+  [data-surface="v2"] .v2-tb { max-width: none; padding: 4px 16px 46px; }
+  /* The page under the head is the sheet, as on the newer screens. */
+  [data-surface="v2"] .v2-tb + * {
+    position: relative;
+    margin-top: -22px;
+    background: var(--v2-paper);
+    border-radius: 22px 22px 0 0;
+  }
+  [data-surface="v2"] .v2-tb + .v2-content { padding-top: 22px; }
+}
+
 /* A campaign's pitches, gathered (BrandHome PitchGroupSheet). */
 [data-surface="v2"] .v2-hm-faces-row { display: flex; flex-wrap: wrap; gap: 14px 18px; margin: 0; padding: 0; list-style: none; }
 [data-surface="v2"] .v2-hm-faces-row li { display: grid; justify-items: center; gap: 3px; min-width: 56px; font-size: 13px; color: var(--v2-ink-2); }

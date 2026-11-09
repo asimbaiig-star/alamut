@@ -114,10 +114,14 @@ describe('controls do what their label says', () => {
     expect(src).toContain('canSubmitContent && nextSlot && (');
   });
 
-  it('the calendar "+N more" opens the day rather than only counting it', () => {
+  it('the calendar never counts what it can't show: groups open, days narrow the list', () => {
+    // Was a "+N more" chip on the month grid; the agenda (Round 7) keeps the
+    // promise: every group's "Show N more" opens it, and a picked day lists
+    // everything due then.
     const src = code('Calendar.tsx');
-    expect(src).toContain('setExpandedDay(key)');
-    expect(src).toContain('expandedDay === key ? dayEntries : dayEntries.slice(0, 3)');
+    expect(src).toContain('opened[id] ? list : list.slice(0, LIMIT)');
+    expect(src).toContain("rows('picked', pickedEntries");
+    expect(src).toContain('setPicked(picked === key ? null : key)');
   });
 
   it('BriefDetail refuses the pitch form on a brief that cannot accept it', () => {

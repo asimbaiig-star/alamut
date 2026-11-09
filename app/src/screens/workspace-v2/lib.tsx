@@ -7,7 +7,7 @@
 
 import type { CSSProperties, ReactNode } from 'react';
 import type { V2Channel, V2Campaign } from './data';
-import { NotificationsBell } from '@/components/layout/NotificationsBell';
+import { HomeHead } from './screens/homeParts';
 import { PLATFORM_GLYPH } from '@/lib/platformGlyphs';
 import { fmtFollowers } from '@/lib/followers';
 
@@ -291,35 +291,29 @@ export function CampaignCard({ campaign, onClick }: {
 }
 
 export function Topbar({
-  title, crumb, actions,
+  title, crumb, sub, actions,
 }: {
   title: string;
+  /** A trail above the title ("Campaigns · Draft"), when it's a link. */
   crumb?: ReactNode;
+  /** A line under the title. */
+  sub?: ReactNode;
   actions?: ReactNode;
 }) {
-  // Phase 58 — `search` prop removed. Pre-fix it rendered a
-  // decorative input with no value/onChange — typing did nothing.
-  // No call site actually passed it (all Topbar usages route their
-  // own search through `actions`), so killing the prop entirely is
-  // safer than leaving a tempting-but-broken affordance.
-  //
-  // P64 — the v2 topbar previously rendered a stub bell button that
-  // toasted "You're all caught up — no new notifications" regardless
-  // of actual db.notifications state. Every v2*Action pushes
-  // notifications to db.notifications, but they had no surface in v2.
-  // Now mounts the real NotificationsBell which reads from the store,
-  // shows an unread badge, and deep-links into the right surface on
-  // click (its resolver knows about `?tab=collab:` / `?tab=campaign:` etc).
+  // Round 7: the older screens' header, rebuilt as the portal's page head
+  // (homeParts HomeHead) so every page has the same title, on the persona's
+  // ground on a phone with the page as a sheet below. Plain-text "crumbs"
+  // were always a description ("8 overdue · 28 due in next 7 days"), so they
+  // read under the title now; a crumb that's a link stays above it.
+  const isText = typeof crumb === 'string';
   return (
-    <div className="v2-topbar">
-      <div>
-        {crumb && <div className="v2-crumb">{crumb}</div>}
-        <h1>{title}</h1>
-      </div>
-      <div className="v2-topbar-actions">
-        {actions}
-        <NotificationsBell />
-      </div>
+    <div className="v2-hm-ground v2-tb">
+      <HomeHead
+        title={title}
+        crumb={isText ? undefined : crumb}
+        sub={sub ?? (isText ? crumb : undefined)}
+        actions={actions}
+      />
     </div>
   );
 }

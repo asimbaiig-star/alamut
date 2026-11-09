@@ -1,9 +1,12 @@
-// Calendar.tsx — persona-aware deadline calendar (Phase 50)
+// Calendar.tsx — persona-aware deadline calendar (Round 7).
 //
-// Pulls every active collab's deliverables and renders them in a
-// month-grid with day chips. Brand sees deliverables from their
-// campaigns; creator sees the deliverables they owe. Click a chip
-// → routes into the corresponding collab.
+// What's due comes first, as a list: overdue, this week, next week, later,
+// each with the move it needs (upload, resubmit, paste the link; for a
+// brand, review). The month sits beside it, small, with a dot per thing
+// due; picking a day narrows the list to it. The full grid of truncated
+// chips it replaced answered "what's next" badly and was unreadable on a
+// phone. Brand sees deliverables on their campaigns; creator sees the ones
+// they owe.
 //
 // Reads:
 //   - useV2AllCampaigns / useV2AllCreators
@@ -14,7 +17,7 @@
 // vanilla and we want to keep dependencies thin.
 
 import { useMemo, useState } from 'react';
-import { Icon, Topbar } from '../lib';
+import { Topbar } from '../lib';
 import {
   useV2CurrentBrand, useV2CurrentCreator,
   useV2Campaigns, useV2Creators,
@@ -59,7 +62,7 @@ function parseDue(del: { due?: string; dueAt?: string }): Date | null {
   const due = del.due;
   if (!due) return null;
   if (/^today$/i.test(due)) return TODAY;
-  if (/^tomorrow$/i.test(due)) return new Date(TODAY.getTime() + DAY_MS);
+  if (/^tomorrow$/i.test(due)) return addDays(TODAY, 1);
   // Legacy rows only: "Mon DD" with the current year. If that lands in the
   // past it IS in the past — we don't roll it forward.
   const tryFull = new Date(`${due}, ${TODAY.getFullYear()}`);
@@ -77,19 +80,24 @@ function monthLabel(month: Date): string {
 }
 
 function startOfMonth(d: Date): Date { return new Date(d.getFullYear(), d.getMonth(), 1); }
+/** Calendar days, not 24-hour blocks: adding 24h across the end of
+ *  daylight saving (Nov 1 2026 in the US) lands on the same date, which
+ *  printed "1" twice and put every later day one column off. */
+export function addDays(d: Date, n: number): Date { return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n); }
+/** Whole days from a to b, rounded so a DST hour can't make it 6.96. */
+function daysBetween(a: Date, b: Date): number { return Math.round((+b - +a) / DAY_MS); }
 function addMonths(d: Date, n: number): Date { return new Date(d.getFullYear(), d.getMonth() + n, 1); }
 
 /** Build the 6×7 grid of dates that cover the month (with leading/trailing
  *  days from the neighbouring months so weeks line up). */
-function monthGrid(month: Date): Date[] {
+export function monthGrid(month: Date): Date[] {
   const first = startOfMonth(month);
   const firstWeekday = first.getDay();              // 0 = Sun
-  const start = new Date(first.getTime() - firstWeekday * DAY_MS);
+  const start = addDays(first, -firstWeekday);
   const grid: Date[] = [];
-  for (let i = 0; i < 42; i++) {
-    grid.push(new Date(start.getTime() + i * DAY_MS));
-  }
-  return grid;
+  for (let i = 0; i < 42; i++) grid.push(addDays(start, i));
+  // Drop a sixth row that is all next month.
+  return grid[35].getMonth() !== first.getMonth() ? grid.slice(0, 35) : grid;
 }
 
 export function Calendar({ onRoute }: Props) {
@@ -103,8 +111,11 @@ export function Calendar({ onRoute }: Props) {
   const db = useStore((s) => s.db);
 
   const [cursor, setCursor] = useState<Date>(startOfMonth(TODAY));
-  // Which day is expanded to show every entry, via the "+N more" control.
-  const [expandedDay, setExpandedDay] = useState<string | null>(null);
+  // A day picked on the month narrows the list to it.
+  const [picked, setPicked] = useState<string | null>(null);
+  // Each group shows its first few; the rest open on request, so a brand
+  // with dozens of creators doesn't get a page of hundreds of rows.
+  const [opened, setOpened] = useState<Record<string, boolean>>({});
 
   /** Flatten every (collab × deliverable) into a single calendar entry. */
   const entries = useMemo<CalendarEntry[]>(() => {
@@ -183,254 +194,177 @@ export function Calendar({ onRoute }: Props) {
     && e.deliverable.status !== 'approved'
     && e.deliverable.status !== 'live';
 
-  /** Counts for the topbar crumb. */
+  /** Counts for the head. */
   const overdueCount = entries.filter(isOverdueEntry).length;
-  const next7 = entries.filter((e) => {
-    const days = (+e.date - +TODAY) / DAY_MS;
-    return days >= 0 && days <= 7;
-  }).length;
-
+  const thisWeek = entries.filter((e) => !isOverdueEntry(e) && daysBetween(TODAY, e.date) <= 6);
+  const nextWeek = entries.filter((e) => { const n = daysBetween(TODAY, e.date); return n >= 7 && n <= 13; });
+  const later = entries.filter((e) => daysBetween(TODAY, e.date) >= 14);
+  const late = entries.filter(isOverdueEntry);
   const grid = monthGrid(cursor);
   const empty = entries.length === 0;
+  const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+  const row = (e: CalendarEntry) => (
+    <AgendaRow key={`${e.collab.id}-${e.deliverable.id}`} e={e} persona={persona} overdue={isOverdueEntry(e)} onRoute={onRoute} />
+  );
+  const LIMIT = 6;
+  const rows = (id: string, list: CalendarEntry[], noun: string) => (
+    <>
+      {(opened[id] ? list : list.slice(0, LIMIT)).map(row)}
+      {list.length > LIMIT && (
+        <button type="button" className="v2-cal-more" aria-expanded={!!opened[id]} onClick={() => setOpened((o) => ({ ...o, [id]: !o[id] }))}>
+          {opened[id] ? 'Show fewer' : `Show ${list.length - LIMIT} more ${noun}`}
+        </button>
+      )}
+    </>
+  );
+  const pickedEntries = picked ? byDay.get(picked) ?? [] : [];
+  const pickedDate = picked ? grid.find((d) => dayKey(d) === picked) : undefined;
 
   return (
     <>
       <Topbar
         title="Calendar"
-        crumb={
+        sub={
           empty
-            ? 'Deadlines from your active collabs will appear here'
-            : `${overdueCount} overdue · ${next7} due in next 7 days`
-        }
-        actions={
-          <>
-            <button
-              className="v2-btn v2-btn-outline"
-              type="button"
-              onClick={() => setCursor(addMonths(cursor, -1))}
-              aria-label="Previous month"
-            >
-              ‹
-            </button>
-            <button
-              className="v2-btn v2-btn-outline"
-              type="button"
-              onClick={() => setCursor(startOfMonth(TODAY))}
-            >
-              Today
-            </button>
-            <button
-              className="v2-btn v2-btn-outline"
-              type="button"
-              onClick={() => setCursor(addMonths(cursor, 1))}
-              aria-label="Next month"
-            >
-              ›
-            </button>
-          </>
+            ? (persona === 'brand' ? 'Deadlines from your creators’ deals appear here.' : 'Deadlines from your deals appear here.')
+            : [
+                overdueCount > 0 ? `${overdueCount} overdue` : null,
+                `${thisWeek.length} due this week`,
+              ].filter(Boolean).join('. ') + '.'
         }
       />
-      <div className="v2-content">
-        <div className="v2-card v2-card-pad" style={{ marginBottom: 16 }}>
-          <h2 style={{
-            fontFamily: 'var(--v2-font-display)',
-            fontSize: 24, fontWeight: 500, margin: '0 0 4px', letterSpacing: '-0.02em',
-          }}>
-            {monthLabel(cursor)}
-          </h2>
-          <div className="v2-muted" style={{ fontSize: 12.5, marginBottom: 14 }}>
-            {persona === 'brand'
-              ? 'Deliverables owed by creators on your campaigns.'
-              : 'Deliverables you owe across your active collabs.'}
-          </div>
-
-          {/* Weekday header */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(7, 1fr)',
-              fontSize: 11,
-              fontWeight: 600,
-              color: 'var(--v2-ink-3)',
-              textTransform: 'uppercase',
-              letterSpacing: '.1em',
-              padding: '6px 0',
-              borderBottom: '1px solid var(--v2-line)',
-            }}
-          >
-            {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((d) => (
-              <div key={d} style={{ textAlign: 'center' }}>{d}</div>
-            ))}
-          </div>
-
-          {/* 6 × 7 grid */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(7, 1fr)',
-              gridAutoRows: 'minmax(96px, auto)',
-            }}
-          >
-            {grid.map((d, i) => {
-              const key = dayKey(d);
-              const sameMonth = d.getMonth() === cursor.getMonth();
-              const isToday = key === dayKey(TODAY);
-              const dayEntries = byDay.get(key) ?? [];
-              return (
-                <div
-                  key={i}
-                  style={{
-                    border: '1px solid var(--v2-line)',
-                    borderRight: (i % 7 === 6) ? '1px solid var(--v2-line)' : '0',
-                    borderBottom: '0',
-                    padding: '6px 6px 8px',
-                    background: isToday
-                      ? 'rgba(206, 90, 70, 0.05)'
-                      : sameMonth ? 'transparent' : 'rgba(0,0,0,0.025)',
-                    minHeight: 96,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 4,
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 11.5,
-                      fontWeight: isToday ? 700 : 500,
-                      color: isToday ? 'var(--v2-accent)' : sameMonth ? 'var(--v2-ink-2)' : 'var(--v2-ink-3)',
-                    }}
-                  >
-                    {d.getDate()}
-                    {isToday && <span style={{ fontSize: 10, marginLeft: 4 }}>· today</span>}
-                  </div>
-                  {(expandedDay === key ? dayEntries : dayEntries.slice(0, 3)).map((e) => {
-                    // Same predicate as the crumb count above.
-                    const overdue = !isToday && isOverdueEntry(e);
-                    return (
-                      <button
-                        key={e.deliverable.id}
-                        type="button"
-                        onClick={() => onRoute(`collab:${e.collab.id}`)}
-                        title={`${e.campaignTitle} · ${e.deliverable.label} · ${e.counterpartyName}`}
-                        style={{
-                          display: 'block',
-                          fontSize: 10.5,
-                          padding: '3px 6px',
-                          borderRadius: 4,
-                          background: overdue ? 'rgba(206, 90, 70, 0.12)' : 'var(--v2-bg-2)',
-                          color: overdue ? 'var(--v2-accent)' : 'var(--v2-ink-2)',
-                          border: '0',
-                          textAlign: 'left',
-                          cursor: 'pointer',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          fontWeight: 500,
-                        }}
-                      >
-                        {overdue ? '⚠ ' : ''}{e.deliverable.label.slice(0, 18)}
-                      </button>
-                    );
-                  })}
-                  {expandedDay === key && dayEntries.length > 3 && (
-                    <button
-                      type="button"
-                      className="v2-link-btn v2-muted"
-                      style={{ fontSize: 10, padding: 0, textAlign: 'left' }}
-                      onClick={(ev) => { ev.stopPropagation(); setExpandedDay(null); }}
-                    >
-                      Show less
-                    </button>
-                  )}
-                  {expandedDay !== key && dayEntries.length > 3 && (
-                    // Was plain text — a count with no way to reach what it
-                    // counted. Opens the day so the rest are reachable.
-                    <button
-                      type="button"
-                      className="v2-link-btn v2-muted"
-                      style={{ fontSize: 10, padding: 0, textAlign: 'left' }}
-                      onClick={(ev) => { ev.stopPropagation(); setExpandedDay(key); }}
-                    >
-                      +{dayEntries.length - 3} more
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Upcoming list */}
-        <div className="v2-card v2-card-pad">
-          <h3 style={{
-            fontFamily: 'var(--v2-font-display)',
-            fontSize: 18, fontWeight: 500, margin: '0 0 10px', letterSpacing: '-0.02em',
-          }}>
-            Upcoming
-          </h3>
+      <div className="v2-content v2-cal">
+        <div className="v2-cal-list">
           {empty && (
-            <div className="v2-muted" style={{ fontSize: 13 }}>
-              No active deliverables. Once a collab is in motion, deadlines show up here.
+            <div className="v2-ls-empty">
+              <b>Nothing due.</b>
+              <p>{persona === 'brand'
+                ? 'When a creator agrees a deal, each post’s deadline shows up here.'
+                : 'When you agree a deal, each post’s deadline shows up here.'}</p>
             </div>
           )}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {entries.slice(0, 12).map((e) => {
-              // The shared predicate — not a third inline copy. This one
-              // omitted the `approved`/`live` exclusion, so an approved but
-              // past-deadline deliverable read correctly in the header and
-              // the grid and `⚠ overdue` in this list, on the same screen.
-              // I fixed this predicate in two places and never grepped for
-              // the third.
-              const overdue = isOverdueEntry(e);
-              return (
-                <button
-                  key={e.deliverable.id}
-                  type="button"
-                  onClick={() => onRoute(`collab:${e.collab.id}`)}
-                  className="v2-row"
-                  style={{
-                    justifyContent: 'space-between',
-                    padding: '10px 12px',
-                    background: 'var(--v2-bg-2)',
-                    border: '1px solid var(--v2-line)',
-                    borderRadius: 'var(--v2-r-md)',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    gap: 12,
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
-                    {e.counterpartyAvatar && (
-                      <div
-                        className="v2-avatar v2-avatar-sm"
-                        style={{ backgroundImage: `url(${e.counterpartyAvatar})` }}
-                        aria-hidden="true"
-                      />
-                    )}
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600 }}>{e.deliverable.label}</div>
-                      <div className="v2-muted" style={{ fontSize: 11.5 }}>
-                        {e.campaignTitle}{persona === 'brand' ? ` · ${e.counterpartyName}` : ''}
-                      </div>
-                    </div>
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 11.5,
-                      color: overdue ? 'var(--v2-accent)' : 'var(--v2-ink-2)',
-                      fontWeight: overdue ? 600 : 500,
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {overdue ? '⚠ overdue · ' : ''}{e.deliverable.due}
-                    <span style={{ marginLeft: 8 }}>{Icon.arrow}</span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+          {picked && pickedDate && (
+            <section className="v2-cal-grp" aria-labelledby="cal-picked">
+              <h2 className="v2-hm-h2" id="cal-picked">
+                {pickedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                <span>{pickedEntries.length === 0 ? 'nothing due' : `${pickedEntries.length} due`}</span>
+                <button type="button" className="v2-hm-more" onClick={() => setPicked(null)}>Show everything</button>
+              </h2>
+              {rows('picked', pickedEntries, 'that day')}
+            </section>
+          )}
+          {!picked && late.length > 0 && (
+            <section className="v2-cal-grp" aria-labelledby="cal-late">
+              <h2 className="v2-hm-h2" id="cal-late" data-tone="late">
+                Overdue <span>{late.length} · {persona === 'brand' ? 'creators are behind' : 'the brand is waiting'}</span>
+              </h2>
+              {rows('late', late, 'overdue')}
+            </section>
+          )}
+          {!picked && thisWeek.length > 0 && (
+            <section className="v2-cal-grp" aria-labelledby="cal-week">
+              <h2 className="v2-hm-h2" id="cal-week">This week <span>{fmt(TODAY)} to {fmt(addDays(TODAY, 6))} · {thisWeek.length}</span></h2>
+              {rows('week', thisWeek, 'this week')}
+            </section>
+          )}
+          {!picked && nextWeek.length > 0 && (
+            <section className="v2-cal-grp" aria-labelledby="cal-next">
+              <h2 className="v2-hm-h2" id="cal-next">Next week <span>{fmt(addDays(TODAY, 7))} to {fmt(addDays(TODAY, 13))} · {nextWeek.length}</span></h2>
+              {rows('next', nextWeek, 'next week')}
+            </section>
+          )}
+          {!picked && later.length > 0 && (
+            <section className="v2-cal-grp" aria-labelledby="cal-later">
+              <h2 className="v2-hm-h2" id="cal-later">Later <span>{later.length}</span></h2>
+              {rows('later', later, 'later')}
+            </section>
+          )}
         </div>
+
+        <aside className="v2-cal-side">
+          <div className="v2-cal-month">
+            <header>
+              <h2>{monthLabel(cursor)}</h2>
+              <div>
+                <button type="button" onClick={() => setCursor(addMonths(cursor, -1))} aria-label="Previous month">‹</button>
+                <button type="button" onClick={() => { setCursor(startOfMonth(TODAY)); setPicked(null); }} aria-label="This month">•</button>
+                <button type="button" onClick={() => setCursor(addMonths(cursor, 1))} aria-label="Next month">›</button>
+              </div>
+            </header>
+            <div className="v2-cal-grid" role="group" aria-label={`${monthLabel(cursor)}: pick a day`}>
+              {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => <span key={i} aria-hidden="true">{d}</span>)}
+              {grid.map((d) => {
+                const key = dayKey(d);
+                const list = byDay.get(key) ?? [];
+                const lateN = list.filter(isOverdueEntry).length;
+                const label = `${d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}${list.length ? `, ${list.length} due${lateN ? `, ${lateN} overdue` : ''}` : ''}`;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-label={label}
+                    aria-pressed={picked === key}
+                    data-out={d.getMonth() !== cursor.getMonth() || undefined}
+                    data-today={key === dayKey(TODAY) || undefined}
+                    onClick={() => setPicked(picked === key ? null : key)}
+                  >
+                    {d.getDate()}
+                    {list.length > 0 && (
+                      <i aria-hidden="true">
+                        {list.slice(0, 3).map((e, j) => <em key={j} data-late={isOverdueEntry(e) || undefined} />)}
+                      </i>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="v2-cal-key"><span><i /> Due</span><span><i data-late /> Overdue</span></p>
+          </div>
+          <p className="v2-cal-note">Pick a day to see only what’s due then. Dates are the deals’ deadlines; they change when both sides agree a new one.</p>
+        </aside>
       </div>
     </>
+  );
+}
+
+function AgendaRow({ e, persona, overdue, onRoute }: {
+  e: CalendarEntry;
+  persona: 'brand' | 'creator';
+  overdue: boolean;
+  onRoute: (r: string) => void;
+}) {
+  const days = daysBetween(TODAY, e.date);
+  const st = e.deliverable.status;
+  const href = `collab:${e.collab.id}`;
+  const when = days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : days > 1 ? `In ${days} days` : `${-days} day${days === -1 ? '' : 's'} late`;
+  let status = when;
+  let action: { label: string; route: string; dark?: boolean } = { label: 'Open', route: href };
+  if (persona === 'creator') {
+    if (st === 'revision') { status = 'Changes asked'; action = { label: 'Resubmit', route: `${href}?action=upload`, dark: true }; }
+    else if (st === 'in_review') { status = 'With the brand'; }
+    else if (st === 'approved') { status = 'Approved, post it'; action = { label: 'Paste link', route: `${href}?action=mark-live` }; }
+    else if (overdue) { action = { label: 'Upload', route: `${href}?action=upload`, dark: true }; }
+  } else {
+    if (st === 'in_review') { status = 'Waiting for your review'; action = { label: 'Review', route: `campaign:${e.collab.campaignId}?tab=content`, dark: true }; }
+    else if (st === 'revision') { status = 'Changes asked, with the creator'; }
+    else if (st === 'approved') { status = 'Approved, waiting for the post'; }
+  }
+  const dateTop = days < 0 || days > 13
+    ? e.date.toLocaleDateString('en-US', { month: 'short' })
+    : e.date.toLocaleDateString('en-US', { weekday: 'short' });
+  return (
+    <div className="v2-cal-row" data-late={overdue || undefined}>
+      <div className="v2-cal-date" aria-hidden="true"><b>{e.date.getDate()}</b><small>{dateTop}</small></div>
+      <div className="v2-cal-what">
+        <button type="button" className="v2-cd-name" onClick={() => onRoute(href)}>
+          {e.deliverable.label}
+          <span className="v2-sr-only">, due {e.date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}</span>
+        </button>
+        <small>{e.campaignTitle} · {e.counterpartyName}</small>
+      </div>
+      <span className="v2-cal-st" data-late={overdue || undefined}>{status}</span>
+      <button type="button" className={`v2-hm-btn is-sm${action.dark ? ' is-dark' : ''}`} onClick={() => onRoute(action.route)}>{action.label}</button>
+    </div>
   );
 }
