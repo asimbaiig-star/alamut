@@ -424,8 +424,8 @@ const DEMO_USERS: User[] = [
   // `managesCreatorIds[0]` for so long.
   { id: 'u_nadia',  email: 'nadia@talent.test',  passwordHash: 'demo1234', role: 'creator', status: 'active', createdAt: dayAgo(75),  managesCreatorIds: ['c_amir', 'c_yuki'] },
   { id: 'u_hannah', email: 'hannah@aesop.test',  passwordHash: 'demo1234', role: 'brand',   status: 'active', createdAt: dayAgo(180), brandId: 'b_aesop',     teamRole: 'admin' },
-  { id: 'u_thom',   email: 'thom@aesop.test',    passwordHash: 'demo1234', role: 'brand',   status: 'active', createdAt: dayAgo(60),  brandId: 'b_aesop',     teamRole: 'ops',    invitedAt: dayAgo(60) },
-  { id: 'u_finn',   email: 'finance@aesop.test', passwordHash: 'demo1234', role: 'brand',   status: 'active', createdAt: dayAgo(45),  brandId: 'b_aesop',     teamRole: 'finance', invitedAt: dayAgo(45) },
+  { id: 'u_thom',   email: 'thom@oakmoss.test',  passwordHash: 'demo1234', role: 'brand',   status: 'active', createdAt: dayAgo(60),  brandId: 'b_aesop',     teamRole: 'ops',    invitedAt: dayAgo(60) },
+  { id: 'u_finn',   email: 'finance@oakmoss.test', passwordHash: 'demo1234', role: 'brand',   status: 'active', createdAt: dayAgo(45),  brandId: 'b_aesop',     teamRole: 'finance', invitedAt: dayAgo(45) },
   { id: 'u_marcus', email: 'marcus@lecreuset.test', passwordHash: 'demo1234', role: 'brand', status: 'active', createdAt: dayAgo(140), brandId: 'b_lecreuset', teamRole: 'admin' },
   // P5 §4.2 — platform admin gets the 'super' role explicitly so the
   // permissions module's seed-time check resolves to all capabilities.
