@@ -582,16 +582,9 @@ export const COVER_PICKER_OPTIONS: { id: string; url: string; label: string }[] 
   { id: 'finance',   url: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=1200&h=400&fit=crop',     label: 'Finance' },
 ];
 
-export const AVATAR_PICKER_OPTIONS: { id: string; url: string }[] = [
-  { id: 'a1', url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop' },
-  { id: 'a2', url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&h=200&fit=crop' },
-  { id: 'a3', url: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&h=200&fit=crop' },
-  { id: 'a4', url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop' },
-  { id: 'a5', url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=200&h=200&fit=crop' },
-  { id: 'a6', url: 'https://images.unsplash.com/photo-1531123897727-8f129e1688ce?w=200&h=200&fit=crop' },
-  { id: 'a7', url: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200&h=200&fit=crop' },
-  { id: 'a8', url: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=200&h=200&fit=crop' },
-];
+// AVATAR_PICKER_OPTIONS (eight stock photos of real people, offered as a
+// creator's own avatar) was removed: the storefront uploads the creator's
+// photo instead (Storefront.tsx, 044).
 
 export const ALL_PLATFORMS: Platform['name'][] = [
   'Instagram', 'TikTok', 'YouTube', 'LinkedIn', 'X', 'Newsletter', 'Substack',

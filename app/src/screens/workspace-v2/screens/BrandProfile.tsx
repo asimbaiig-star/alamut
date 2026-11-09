@@ -23,38 +23,9 @@ import { pushToast } from '@/lib/utils/toast';
 // inline base64 for the local-only dev setup.
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { uploadBrandLogo, removeBrandLogo } from '@/lib/data/brandsRepo';
+import { downscaleToDataUrl } from '@/lib/utils/image';
 
-// Downscale + encode an uploaded image to a data URL. Demo app has no
-// backend, so logos live inline in localStorage — 256×256 JPEG @ 0.85
-// quality keeps a typical logo under 50 KB and well clear of the 5 MB
-// localStorage budget.
-async function downscaleToDataUrl(file: File, maxDim = 256): Promise<string> {
-  const buf = await file.arrayBuffer();
-  const blob = new Blob([buf], { type: file.type });
-  const bitmap = await createImageBitmap(blob);
-  // Preserve aspect ratio while fitting into a max×max box.
-  const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
-  const w = Math.round(bitmap.width * scale);
-  const h = Math.round(bitmap.height * scale);
-  const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('Canvas 2D context unavailable');
-  // Prefer JPEG (smaller) for photos; PNG if alpha matters (transparent
-  // backgrounds common on logos). Decide via file type — PNG / WEBP →
-  // PNG output; everything else → JPEG.
-  const wantsAlpha = /png|webp|svg/i.test(file.type);
-  if (!wantsAlpha) {
-    // White paint behind to flatten transparency for JPEG.
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(0, 0, w, h);
-  }
-  ctx.drawImage(bitmap, 0, 0, w, h);
-  const mime = wantsAlpha ? 'image/png' : 'image/jpeg';
-  return canvas.toDataURL(mime, 0.85);
-}
-
+// Logos are shrunk in the browser before they're stored (utils/image.ts).
 interface Props {
   onRoute: (r: string) => void;
 }

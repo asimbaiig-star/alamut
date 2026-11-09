@@ -36,3 +36,12 @@ describe('global defaults', () => {
     }
   });
 });
+
+describe("a creator's photo is their own", () => {
+  it('no screen offers stock photos of real people as an avatar', () => {
+    // The storefront's only avatar choice was eight stock faces, the demo
+    // creators' among them; two live accounts wore Sarah's (044).
+    for (const f of files) expect(code(f), f).not.toMatch(/AVATAR_PICKER_OPTIONS/);
+    expect(code('screens/Storefront.tsx')).toContain('uploadCreatorPortrait(creator.id');
+  });
+});

@@ -1452,3 +1452,8 @@
   [data-surface="v2"] .v2-sf-nav a { border: 1px solid var(--v2-line-2); border-radius: var(--v2-r-pill); padding: 6px 12px 6px 8px; }
   [data-surface="v2"] .v2-sf-nav a small { display: none; }
 }
+
+/* The creator's own photo, in the storefront editor. */
+[data-surface="v2"] .v2-sf-photo { display: flex; align-items: center; gap: 16px; }
+[data-surface="v2"] .v2-sf-photo > div { display: grid; gap: 6px; }
+[data-surface="v2"] .v2-sf-photo small { font-size: 12.5px; color: var(--v2-ink-3); }

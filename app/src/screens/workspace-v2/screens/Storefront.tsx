@@ -11,7 +11,7 @@
 //   - Cancel reverts; Save fires the relevant mutation
 //   - The read-only view re-renders from the live store after save
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { fmtUSD, fmtFollowers, Icon, PLATFORM_META, Topbar } from '../lib';
 import {
   useV2AllCampaigns, useV2Creators, useV2CurrentCreator,
@@ -24,11 +24,14 @@ import {
   v2AddWorkSample, v2RemoveWorkSample,
   v2AddPressMention, v2UpdatePressMention, v2RemovePressMention,
   v2PinReview, v2UnpinReview,
-  COVER_PICKER_OPTIONS, AVATAR_PICKER_OPTIONS, WORK_PICKER_OPTIONS,
+  COVER_PICKER_OPTIONS, WORK_PICKER_OPTIONS,
   ALL_PLATFORMS, ALL_CATEGORIES, COMMON_PRESS_OUTLETS,
 } from '../v2CreatorActions';
 import { useStore } from '@/lib/api/store';
 import { Avatar } from '@/components/ui/Avatar';
+import { downscaleToDataUrl, dataUrlToFile } from '@/lib/utils/image';
+import { uploadCreatorPortrait } from '@/lib/data/creatorsRepo';
+import { isSupabaseConfigured } from '@/lib/supabase';
 import { pushToast } from '@/lib/utils/toast';
 import { SwapFeaturedReviewModal } from './SwapFeaturedReviewModal';
 import type { Creator, Platform, Availability, Review } from '@/lib/api/types';
@@ -303,6 +306,36 @@ function IdentityBlock({ creator, v2, editing, onEdit, onClose }: {
   const [country, setCountry] = useState(creator.country);
   const [categories, setCategories] = useState<string[]>(creator.categories);
   const [portrait, setPortrait] = useState(creator.portrait);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
+  // Shrink in the browser, then store: in the creator-portraits bucket when
+  // the backend is there (004 made it; writes are owner-only), inline when
+  // it isn't or the upload is refused, so the photo still saves.
+  const onPickPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!/image\/(jpeg|png|webp)/i.test(file.type)) { pushToast('Use a JPEG, PNG or WEBP photo', 'bad'); return; }
+    if (file.size > 8 * 1024 * 1024) { pushToast('That photo is over 8 MB. Pick a smaller one.', 'bad'); return; }
+    setPhotoUploading(true);
+    try {
+      const dataUrl = await downscaleToDataUrl(file, 480);
+      if (isSupabaseConfigured()) {
+        try {
+          const shrunk = await dataUrlToFile(dataUrl, file.name);
+          setPortrait(await uploadCreatorPortrait(creator.id, shrunk));
+          return;
+        } catch {
+          // Fall through to inline: the photo still saves with the profile.
+        }
+      }
+      setPortrait(dataUrl);
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : 'Could not read that photo', 'bad');
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
   const [cover, setCover] = useState(creator.cover ?? v2.cover);
 
   // Reset local form whenever we re-enter edit mode (so cancel reverts)
@@ -440,22 +473,40 @@ function IdentityBlock({ creator, v2, editing, onEdit, onClose }: {
                 </div>
               </FormField>
 
-              <FormField label="Avatar">
-                <div className="v2-row" style={{ gap: 8, flexWrap: 'wrap' }}>
-                  {AVATAR_PICKER_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      className="v2-storefront-avatar-pick"
-                      onClick={() => setPortrait(opt.url)}
-                      style={{
-                        backgroundImage: `url(${opt.url})`,
-                        borderColor: portrait === opt.url ? 'var(--v2-accent)' : 'var(--v2-line)',
-                        borderWidth: portrait === opt.url ? 3 : 1,
-                      }}
-                      aria-label="Pick this avatar"
+              {/* The creator's own photo. This was a picker of eight stock
+                  photos of real people, Sarah's, Amir's and Yuki's among
+                  them, so a creator's storefront could wear a stranger's
+                  face (two live accounts did). */}
+              <FormField label="Your photo">
+                <div className="v2-sf-photo">
+                  <Avatar src={portrait} name={name || creator.name} size={72} />
+                  <div>
+                    <div className="v2-row" style={{ gap: 8, flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className="v2-hm-btn is-sm"
+                        onClick={() => photoInputRef.current?.click()}
+                        disabled={photoUploading}
+                      >
+                        {photoUploading ? 'Uploading…' : portrait ? 'Replace photo' : 'Upload a photo'}
+                      </button>
+                      {portrait && (
+                        <button type="button" className="v2-hm-btn is-sm" onClick={() => setPortrait('')}>
+                          Use my initials
+                        </button>
+                      )}
+                    </div>
+                    <small>A real photo of you, face visible. JPEG, PNG or WEBP up to 8 MB; we shrink it.</small>
+                    <input
+                      ref={photoInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="v2-sr-only"
+                      tabIndex={-1}
+                      aria-hidden="true"
+                      onChange={onPickPhoto}
                     />
-                  ))}
+                  </div>
                 </div>
               </FormField>
 
