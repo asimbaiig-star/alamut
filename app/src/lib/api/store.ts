@@ -143,7 +143,10 @@ export const useStore = create<StoreState>()(
       // v18 (whole-portal pass) — sample data changed: the draft brief lost
       // "(draft)" and a same-day-payout promise, HBL became a wire top-up,
       // and the demo creator's portfolio fits her niche.
-      version: 18,
+      //
+      // v19 — sample creators' portraits match their names, and the
+      // non-faces (a road, a flat-lay, broken images) are gone.
+      version: 19,
       // Forward-only data migrations layered on top of Zustand's persist
       // versioning. After rehydration, walk `db.migrationVersion + 1` to
       // CURRENT_MIGRATION_VERSION and run each migrator. Idempotent;

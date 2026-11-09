@@ -164,6 +164,50 @@ const upx = (id: string, w = 800, h = 600) => {
   return `https://images.unsplash.com/${id}?w=${w}&h=${h}&fit=crop&auto=format`;
 };
 
+// Who is in each portrait, checked by eye against a contact sheet
+// (2026-11-09). Generated creators used to take PORTRAITS[idx] whatever
+// their name, so "Arjun Reddy" wore a woman's face on Discover, and seven
+// entries weren't faces at all: a product flat-lay (27), an empty road (33),
+// distant figures (31, 34, 36) and three that no longer load (42, 44, 47).
+// The duplicates of 2 (49) and of 41 (50), and the far-off 8, are left out too,
+// as are 0, 1 and 2: Sarah, Amir and Yuki wear those, and nobody else should.
+const WOMEN_PORTRAITS = [4, 6, 9, 10, 12, 14, 16, 17, 18, 19, 20, 22, 24, 26, 29, 32, 35, 37, 38, 39, 41, 43, 46, 48, 51, 53, 56].map((i) => PORTRAITS[i]);
+// Sixteen men's faces for about half of 115 creators repeated one every
+// few cards on Discover; these 21 (checked on a contact sheet the same day)
+// widen the pool.
+const MORE_MEN_PORTRAITS = [
+  'photo-1472099645785-5658abf4ff4e', 'photo-1560250097-0b93528c311a', 'photo-1557862921-37829c790f19',
+  'photo-1566492031773-4f4e44671857', 'photo-1570295999919-56ceb5ecca61', 'photo-1599566150163-29194dcaad36',
+  'photo-1633332755192-727a05c4013d', 'photo-1531384441138-2736e62e0919', 'photo-1504257432389-52343af06ae3',
+  'photo-1522529599102-193c0d76b5b6', 'photo-1528892952291-009c663ce843', 'photo-1547037579-f0fc020ac3be',
+  'photo-1564564244660-5d73c057f2d2', 'photo-1568602471122-7832951cc4c5', 'photo-1590086782792-42dd2350140d',
+  'photo-1542909168-82c3e7fdca5c', 'photo-1500048993953-d23a436266cf', 'photo-1552058544-f2b08422138a',
+  'photo-1534030347209-467a5b0ad3e6', 'photo-1583195764036-6dc248ac07d9', 'photo-1618077360395-f3068be8e001',
+];
+const MEN_PORTRAITS = [
+  ...[3, 5, 7, 11, 13, 15, 21, 23, 25, 28, 30, 40, 45, 52, 54, 55].map((i) => PORTRAITS[i]),
+  ...MORE_MEN_PORTRAITS,
+];
+// First names read as men's; every other name in FIRST_NAMES is a woman's
+// (Lin and Nour are given to women here, Wei to men).
+const MEN_FIRST_NAMES = new Set([
+  'Imran', 'Hassan', 'Bilal', 'Usman', 'Farhan', 'Kamran', 'Ahsan', 'Saad', 'Tariq', 'Asim',
+  'Rohan', 'Vikram', 'Arjun', 'Karan', 'Devansh', 'Hiroshi', 'Min-jun', 'Wei', 'Kenji', 'Haruki',
+  'Liam', 'Oliver', 'Noah', 'Lucas', 'Mateo', 'Carlos', 'Diego', 'Mateus', 'Sebastián', 'Tomás',
+  'Omar', 'Khalid', 'Adam', 'Ziad', 'Kwame', 'Tunde', 'Kofi',
+]);
+export const PORTRAIT_POOLS = { women: WOMEN_PORTRAITS, men: MEN_PORTRAITS, menNames: MEN_FIRST_NAMES };
+/** A face that fits the name. Each pool keeps its own count, so the next
+ *  man or woman gets the next photo: a repeat comes only after the whole
+ *  pool (by global index, two neighbours on Discover shared a face). */
+const portraitTurn = { men: 0, women: 0 };
+function portraitFor(name: string, _i: number): string {
+  const man = MEN_FIRST_NAMES.has(name.split(/\s+/)[0]);
+  const pool = man ? MEN_PORTRAITS : WOMEN_PORTRAITS;
+  const k = man ? portraitTurn.men++ : portraitTurn.women++;
+  return pool[k % pool.length];
+}
+
 // ============ NAME / BRAND POOLS ============
 const FIRST_NAMES = [
   // Pakistani / South Asian
@@ -737,7 +781,7 @@ function genCreator(idx: number, name: string, tier: 'Rising' | 'Specialist' | '
   const platforms = genPlatforms(tier, country);
   const reach = platforms.reduce((s, p) => s + p.followers, 0);
   const engagement = +(platforms.reduce((s, p) => s + p.engagement, 0) / platforms.length).toFixed(1);
-  const portrait = upx(PORTRAITS[idx % PORTRAITS.length], 600, 750);
+  const portrait = upx(portraitFor(name, idx), 600, 750);
   const workCount = tier === 'Rising' ? range(1, 3) : tier === 'Specialist' ? range(3, 5) : range(4, 6);
   const work = Array.from({ length: workCount }, (_, i) => upx(COVERS[(idx + i) % COVERS.length], 600, 600));
   const rateBase = tier === 'Rising' ? 250 : tier === 'Specialist' ? 700 : 1500;
@@ -2721,7 +2765,7 @@ const pendingApplications: { user: User; creator: Creator }[] = PENDING_NAMES.ma
       bio: 'Just joined Alamut. Awaiting profile review.',
       city, country, languages: ['English'],
       categories: cats,
-      portrait: upx(PORTRAITS[(i * 7) % PORTRAITS.length], 600, 750),
+      portrait: upx(portraitFor(name, i * 7), 600, 750),
       work: [upx(COVERS[i % COVERS.length], 600, 600), upx(COVERS[(i + 3) % COVERS.length], 600, 600)],
       platforms,
       reach, engagement: +(platforms[0].engagement).toFixed(1),
