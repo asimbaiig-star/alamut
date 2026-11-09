@@ -58,8 +58,11 @@ export function Inbox({ onRoute, persona, forceThreadId, forcePanelMode }: Props
   const db = useStore((s) => s.db);
   const [activeId, setActiveId] = useState<string>(forceThreadId ?? conversations[0]?.id ?? '');
   const [draft, setDraft] = useState('');
-  // Mobile-only — drives the conversation-list slide-in drawer at <760px.
-  const [mobileListOpen, setMobileListOpen] = useState(false);
+  // Phones show one pane at a time, as messaging apps do: the list first,
+  // a thread once you pick one, with a back button to the list. (This was a
+  // slide-in drawer behind a small floating button that was easy to miss.)
+  // A deep link to a thread opens on the thread.
+  const [phoneThread, setPhoneThread] = useState<boolean>(!!forceThreadId);
 
   // If the conversation list refreshes (e.g. after a tx) keep activeId valid.
   useEffect(() => {
@@ -81,10 +84,13 @@ export function Inbox({ onRoute, persona, forceThreadId, forcePanelMode }: Props
     }
   }, [forceThreadId, conversations]);
 
-  // Mark active thread as read on selection.
+  // Mark active thread as read on selection. On a phone's list view the
+  // first thread is "active" without being open, so it isn't read yet.
   useEffect(() => {
-    if (activeId) v2MarkThreadRead(activeId);
-  }, [activeId]);
+    if (!activeId) return;
+    const phoneList = typeof window !== 'undefined' && window.matchMedia?.('(max-width: 760px)').matches && !phoneThread;
+    if (!phoneList) v2MarkThreadRead(activeId);
+  }, [activeId, phoneThread]);
 
   // Filter: 'all' (hides archived) / 'unread' (subset of all) /
   // 'archived' (the inverse — only shows archived). Archived threads
@@ -238,52 +244,21 @@ export function Inbox({ onRoute, persona, forceThreadId, forcePanelMode }: Props
           />
         </div>
       </div>
-      {/* Mobile-only floating toggle to open the conversation list.
-          Pre-fix the list was `display: none` at <760px, leaving the
-          creator stuck on the current thread with no way to pick a
-          different one. CSS hides this on desktop. */}
-      <button
-        type="button"
-        className="v2-inbox-mobile-toggle"
-        aria-label={mobileListOpen ? 'Close conversations' : 'Open conversations'}
-        aria-expanded={mobileListOpen}
-        onClick={() => setMobileListOpen((v) => !v)}
-      >
-        {mobileListOpen ? (
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        ) : (
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <line x1="3" y1="6" x2="21" y2="6" />
-            <line x1="3" y1="12" x2="21" y2="12" />
-            <line x1="3" y1="18" x2="21" y2="18" />
-          </svg>
-        )}
-      </button>
-      {mobileListOpen && (
-        <div
-          className="v2-inbox-mobile-backdrop"
-          aria-hidden="true"
-          onClick={() => setMobileListOpen(false)}
-        />
-      )}
       {/* `is-detailed` exists purely for the narrow-viewport rule: the
           right-hand panel this mode expands is `display: none` below
           1080px, so "Detail view" navigated and nothing on screen
           changed. Under 1080 the class hands the panel the thread's
           column instead of hiding it. */}
-      <div className={`v2-inbox${panelMode === 'detailed' ? ' is-detailed' : ''}`}>
+      <div className={`v2-inbox${panelMode === 'detailed' ? ' is-detailed' : ''}`} data-phone={phoneThread ? 'thread' : 'list'}>
         <ConversationList
           conversations={filteredConversations}
           activeId={activeId}
-          onSelect={(id) => { setActiveId(id); setMobileListOpen(false); }}
+          onSelect={(id) => { setActiveId(id); setPhoneThread(true); }}
           creators={creators}
           campaigns={campaigns}
           persona={persona}
           brands={db.brands}
-          mobileOpen={mobileListOpen}
+          mobileOpen={false}
         />
         {active && counterparty ? (
           <Thread
@@ -301,6 +276,7 @@ export function Inbox({ onRoute, persona, forceThreadId, forcePanelMode }: Props
             }
             attachUploading={attachUploading}
             panelMode={panelMode}
+            onBack={() => setPhoneThread(false)}
           />
         ) : (
           <div className="v2-inbox-empty v2-inbox-thread">
@@ -496,7 +472,7 @@ function ConversationList({
 // =====================================================================
 function Thread({
   conversation, counterparty, persona, draft, setDraft, onRoute, onSend,
-  pendingAttachments, onPickFiles, onRemoveAttachment, attachUploading, panelMode,
+  pendingAttachments, onPickFiles, onRemoveAttachment, attachUploading, panelMode, onBack,
 }: {
   conversation: V2Conversation;
   counterparty: V2Creator;
@@ -512,6 +488,8 @@ function Thread({
   /** When 'detailed' the right pane is already expanded — the
    *  "Detail view" button hides itself to avoid being a no-op. */
   panelMode: 'compact' | 'detailed';
+  /** Phones: back to the list of conversations. */
+  onBack: () => void;
 }) {
   // Ref the hidden file input so the visible button can dispatch a click.
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -581,10 +559,13 @@ function Thread({
         />
       )}
       <header className="v2-inbox-thread-head">
+        <button type="button" className="v2-inbox-back" onClick={onBack} aria-label="All conversations">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
+        </button>
         {/* A brand's "avatar" can be its one-letter mark, which isn't an
             image; Avatar falls back to the initial. */}
         <Avatar src={counterparty.avatar.length > 2 ? counterparty.avatar : ''} name={counterparty.name} size={44} />
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="v2-inbox-thread-head-who" style={{ flex: 1, minWidth: 0 }}>
           <div className="v2-inbox-thread-head-name">{counterparty.name}</div>
           <div className="v2-inbox-thread-head-sub">
             {/* A brand has no handle or reach: this read "@@oakmoss · 0 reach". */}
@@ -627,7 +608,7 @@ function Thread({
             type="button"
             onClick={() => onRoute(`deal:${conversation.id}`)}
           >
-            Detail view
+            Deal details
           </button>
         )}
         <div ref={moreRef} style={{ position: 'relative' }}>

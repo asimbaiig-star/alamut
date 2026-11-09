@@ -943,6 +943,9 @@
 }
 @media (max-width: 880px) {
   [data-surface="v2"] .v2-ib-top { padding-bottom: 0; }
+  /* Centre-aligned for the desktop row; in the phone's column it centred
+     the title block, indenting "Inbox" 47px. */
+  [data-surface="v2"] .v2-ib-top .v2-hm-head { align-items: stretch; }
   [data-surface="v2"] .v2-inbox {
     position: relative;
     margin-top: -22px;
@@ -1343,4 +1346,50 @@
   [data-surface="v2"] .v2-cal-st { grid-column: 2; grid-row: 2; font-size: 13px; margin-top: -6px; }
   [data-surface="v2"] .v2-cal-row > .v2-hm-btn { grid-column: 3; grid-row: 1 / span 2; }
   [data-surface="v2"] .v2-cal-grid button { height: 44px; }
+}
+
+/* ---- Inbox thread head on a phone: the name gets its own line, the
+   buttons wrap under it (they squeezed "Sarah Johnson" into two lines
+   over "View profile"). ------------------------------------------------- */
+@media (max-width: 880px) {
+  [data-surface="v2"] .v2-inbox-thread-head { flex-wrap: wrap; row-gap: 10px; padding: 12px 16px; }
+  [data-surface="v2"] .v2-inbox-thread-head-who { flex-basis: calc(100% - 60px) !important; }
+  [data-surface="v2"] .v2-inbox-thread-head-name { font-size: 20px; }
+  [data-surface="v2"] .v2-inbox-thread-head .v2-btn { min-height: 40px; }
+  [data-surface="v2"] .v2-inbox-thread-head-who ~ .v2-btn:first-of-type { margin-left: 56px; }
+}
+
+/* ---- Inbox on a phone: the list, or a thread with a way back ------------ */
+[data-surface="v2"] .v2-inbox-back { display: none; }
+@media (max-width: 760px) {
+  [data-surface="v2"] .v2-inbox-list {
+    position: static;
+    width: auto;
+    transform: none;
+    box-shadow: none;
+    transition: none;
+    z-index: auto;
+  }
+  [data-surface="v2"] .v2-inbox[data-phone="list"] .v2-inbox-thread,
+  [data-surface="v2"] .v2-inbox[data-phone="list"] .v2-inbox-side { display: none; }
+  [data-surface="v2"] .v2-inbox[data-phone="thread"] .v2-inbox-list { display: none; }
+  [data-surface="v2"] .v2-inbox-mobile-toggle,
+  [data-surface="v2"] .v2-inbox-mobile-backdrop { display: none; }
+  [data-surface="v2"] .v2-inbox-back {
+    display: inline-grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    margin-left: -8px;
+    border: 0;
+    border-radius: 50%;
+    background: none;
+    color: var(--v2-ink);
+    cursor: pointer;
+  }
+  [data-surface="v2"] .v2-inbox-back:hover { background: var(--v2-bg); }
+  /* The head's buttons line up under the name, past the back arrow. */
+  /* Back, face and name on one line; the buttons under the name. */
+  [data-surface="v2"] .v2-inbox-thread-head-who { flex-basis: calc(100% - 120px) !important; }
+  [data-surface="v2"] .v2-inbox-thread-head-who ~ .v2-btn:first-of-type { margin-left: 92px; }
 }
