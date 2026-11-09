@@ -9,6 +9,7 @@
 //
 // The list comes from needsYou.ts, which also feeds the menu's badges.
 
+import { useMemo } from 'react';
 import {
   useV2BrandWallet, useV2Campaigns, useV2Conversations, useV2Creators,
   useV2CurrentBrand, v2ToggleSavedCreator,
@@ -97,7 +98,9 @@ export function BrandHome({ onRoute }: Props) {
       ? conversations.filter((c) => c.campaignId === it.campaignId && c.creatorId === it.creatorId).reduce((n, c) => n + c.unread, 0)
       : 0,
   }));
-  const due = brandDue(live, db);
+  // Every live campaign's collabs: only when campaigns or the store change.
+  // (`live` is a new array each render, so it's derived inside.)
+  const due = useMemo(() => brandDue(campaigns.filter((c) => c.status === 'Live'), db), [campaigns, db]);
 
   return (
     <div className="v2-hm v2-td">
@@ -206,12 +209,12 @@ function brandTask(it: PileEntry, ctx: {
   if (it.kind === 'pitch') {
     const accept = () => {
       if (!it.applicationId) return;
-      try { v2AcceptPitch(it.applicationId); pushToast(`Accepted ${it.creatorName?.split(' ')[0] ?? 'the'} pitch. It's held from your wallet.`, 'good'); }
+      try { v2AcceptPitch(it.applicationId); pushToast(`Accepted ${it.creatorName ? `${it.creatorName.split(' ')[0]}’s` : 'the'} pitch. It's held from your wallet.`, 'good'); }
       catch (err) { pushToast(err instanceof Error ? err.message : 'Could not accept the pitch', 'bad'); }
     };
     const pass = () => {
       if (!it.applicationId) return;
-      try { v2RejectApplication(it.applicationId); pushToast(`Passed on ${it.creatorName?.split(' ')[0] ?? 'the'} pitch`, 'good'); }
+      try { v2RejectApplication(it.applicationId); pushToast(`Passed on ${it.creatorName ? `${it.creatorName.split(' ')[0]}’s` : 'the'} pitch`, 'good'); }
       catch (err) { pushToast(err instanceof Error ? err.message : 'Could not pass on the pitch', 'bad'); }
     };
     return {
@@ -264,7 +267,7 @@ function brandDue(campaigns: V2Campaign[], db: Database): DueItem[] {
     }
   }
   out.sort((x, y) => +x.date - +y.date);
-  return out.slice(0, 5);
+  return out;
 }
 
 // =====================================================================

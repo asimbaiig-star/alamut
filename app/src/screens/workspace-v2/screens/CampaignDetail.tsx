@@ -889,14 +889,27 @@ function CreatorPanel({ collab, creator, campaign, onClose, onRoute, onSendOffer
   const pitched = collab.stage === 'pitched';
   const hasReview = collab.deliverables.some((d) => d.status === 'in_review');
 
-  // Focus the panel, close on Escape, give focus back on close.
+  // Focus the panel once, close on Escape, keep Tab inside, give focus back
+  // on close. onClose is read through a ref: it's a new function on every
+  // parent render, and as a dependency it re-ran this on each store update,
+  // pulling focus out of the message box after every send.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null;
     panelRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { closeRef.current(); return; }
+      if (e.key !== 'Tab' || !panelRef.current) return;
+      const f = [...panelRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], textarea, input, select, [tabindex]:not([tabindex="-1"])')];
+      if (f.length === 0) return;
+      const first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && (document.activeElement === first || document.activeElement === panelRef.current)) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
     document.addEventListener('keydown', onKey);
     return () => { document.removeEventListener('keydown', onKey); before?.focus?.(); };
-  }, [onClose]);
+  }, []);
 
   const pass = () => {
     if (!app) return;

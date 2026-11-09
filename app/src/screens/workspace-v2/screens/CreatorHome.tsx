@@ -221,7 +221,9 @@ function creatorTask(item: CreatorNeed, unread: number, onRoute: (r: string) => 
 function dueThisWeek(collabs: V2Collab[], campaigns: V2Campaign[]): DueItem[] {
   const out: DueItem[] = [];
   for (const c of collabs) {
-    if (c.stage === 'paid' || c.stage === 'cancelled' || c.stage === 'pitched' || c.stage === 'invited') continue;
+    // Only agreed work has deadlines. 'negotiating' was let through and
+    // offered "Upload" on a deal nobody had accepted.
+    if (!['confirmed', 'submitted', 'approved', 'live'].includes(c.stage)) continue;
     const camp = campaigns.find((x) => x.id === c.campaignId);
     for (const d of c.deliverables) {
       if (d.status === 'live' || d.status === 'approved') continue;
@@ -241,7 +243,7 @@ function dueThisWeek(collabs: V2Collab[], campaigns: V2Campaign[]): DueItem[] {
     }
   }
   out.sort((x, y) => +x.date - +y.date);
-  return out.slice(0, 5);
+  return out;
 }
 
 // =====================================================================

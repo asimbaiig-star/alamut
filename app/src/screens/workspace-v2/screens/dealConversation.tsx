@@ -27,14 +27,28 @@ export function DealConversation({ campaignId, creatorId, persona, name, avatar,
   const conv = useV2Conversations().find((c) => c.campaignId === campaignId && c.creatorId === creatorId);
   const [draft, setDraft] = useState('');
   const listRef = useRef<HTMLDivElement>(null);
+  const boxRef = useRef<HTMLElement>(null);
+  const [seen, setSeen] = useState(false);
   // threadToV2 tags the viewer's own messages 'brand' ("me"), whoever the
   // viewer is: a position, not a role.
   const mine = 'brand';
 
-  // Reading it here counts as reading it.
+  // Reading it here counts as reading it, but only once it's on screen:
+  // on a phone it mounts hidden behind the deal's Messages switch, and
+  // marking it read there emptied the switch's unread count unseen.
   useEffect(() => {
-    if (conv && conv.unread > 0) v2MarkThreadRead(conv.id);
-  }, [conv]);
+    const el = boxRef.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === 'undefined') { setSeen(true); return; }
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) setSeen(true);
+    });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  useEffect(() => {
+    if (seen && conv && conv.unread > 0) v2MarkThreadRead(conv.id);
+  }, [seen, conv]);
   // Newest at the bottom, in view.
   useEffect(() => {
     const el = listRef.current;
@@ -48,7 +62,7 @@ export function DealConversation({ campaignId, creatorId, persona, name, avatar,
   };
 
   return (
-    <section className="v2-dc" aria-label={`Conversation with ${name}`}>
+    <section className="v2-dc" aria-label={`Conversation with ${name}`} ref={boxRef}>
       <header className="v2-dc-head">
         {title ? null : persona === 'creator'
           ? <span className="v2-dc-mark" style={{ background: brandAccent(name).bg }} aria-hidden="true">{name[0]?.toUpperCase()}</span>

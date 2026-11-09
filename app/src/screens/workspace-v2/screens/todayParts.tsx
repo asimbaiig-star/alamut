@@ -35,7 +35,11 @@ export function TaskList({ items, label, onRoute, limit = 8 }: {
   limit?: number;
 }) {
   // The most urgent is open from the start; any other opens on request.
-  const [open, setOpen] = useState<string | null>(items[0]?.id ?? null);
+  // Derived, not stored: the list can fill after the first render (live
+  // data arrives) or lose the open item when it's answered, and a stored
+  // id then left nothing open.
+  const [chosen, setOpen] = useState<string | null>(null);
+  const open = chosen && items.some((i) => i.id === chosen) ? chosen : items[0]?.id ?? null;
   const [all, setAll] = useState(false);
   const shown = all ? items : items.slice(0, limit);
   return (
@@ -92,6 +96,9 @@ export function TaskTerms({ cells }: { cells: { label: string; value: string; to
   );
 }
 
+/** Rows shown under "Due this week"; the heading counts them all. */
+const SHOWN_DUE = 5;
+
 export interface DueItem {
   id: string;
   date: Date;
@@ -115,8 +122,9 @@ export function DueSoon({ items, onRoute, calendarRoute, empty }: {
         <button type="button" className="v2-hm-more" onClick={() => onRoute(calendarRoute)}>Calendar</button>
       </h2>
       {items.length === 0 ? <p className="v2-hm-note">{empty}</p> : (
+        <>
         <ul className="v2-td-due">
-          {items.map((d) => (
+          {items.slice(0, SHOWN_DUE).map((d) => (
             <li key={d.id} data-late={d.late || undefined}>
               <span className="v2-td-day" aria-hidden="true">
                 <b>{d.date.getDate()}</b>
@@ -127,6 +135,12 @@ export function DueSoon({ items, onRoute, calendarRoute, empty }: {
             </li>
           ))}
         </ul>
+        {items.length > SHOWN_DUE && (
+          <button type="button" className="v2-cal-more" onClick={() => onRoute(calendarRoute)}>
+            {items.length - SHOWN_DUE} more in the calendar
+          </button>
+        )}
+        </>
       )}
     </section>
   );
