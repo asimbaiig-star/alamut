@@ -83,3 +83,15 @@ describe('the portal frame', () => {
     }
   });
 });
+
+describe('whose message is whose', () => {
+  it("reads threadToV2's 'brand' as \"me\" for every viewer, creators included", () => {
+    // threadToV2 tags the viewer's own messages 'brand' (a position, not a
+    // role). Inbox read it as a role, so a creator saw the brand's messages
+    // as their own.
+    const inbox = stripComments(read(join(V2, 'screens/Inbox.tsx')));
+    expect(inbox).toMatch(/const youAreFrom = 'brand';/);
+    expect(inbox).not.toMatch(/persona === 'brand' \? 'brand' : 'creator'/);
+    expect(stripComments(read(join(V2, 'screens/dealConversation.tsx')))).toMatch(/const mine = 'brand';/);
+  });
+});

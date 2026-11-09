@@ -10,6 +10,7 @@ import { fmtUSD, Icon, Topbar } from '../lib';
 import { useV2AllCampaigns, useV2CollabById, useV2CurrentCreator, v2EnsureThreadFor } from '../v2Hooks';
 import { V2_STAGE_META } from '../v2Adapters';
 import type { V2Collab, V2CollabStage, V2Deliverable } from '../data';
+import { DealConversation } from './dealConversation';
 import { ContentUploadModal } from './ContentUploadModal';
 import { CounterOfferModal, CreatorMarkLiveModal } from './WorkflowModals';
 import {
@@ -74,7 +75,13 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
   function openConversationForCollab() {
     if (!collab) { onRoute('creator-inbox'); return; }
     const threadId = v2EnsureThreadFor(collab.campaignId, collab.creatorId);
-    onRoute(threadId ? `deal:${threadId}` : 'creator-inbox');
+    if (!threadId) { onRoute('creator-inbox'); return; }
+    // The conversation is on this page now (Round 8): go to it, not away.
+    setTimeout(() => {
+      const box = document.querySelector<HTMLTextAreaElement>('.v2-dc textarea');
+      if (box) { box.scrollIntoView({ block: 'center', behavior: 'smooth' }); box.focus({ preventScroll: true }); }
+      else onRoute(`deal:${threadId}`);
+    }, 50);
   }
   // P1d §1.5 — track which deliverable is being uploaded as the FK id
   // (was a numeric slot index pre-P1d). The label is computed by the
@@ -579,6 +586,16 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
 
           {/* Sidebar */}
           <aside className="v2-dl-side">
+            {/* Round 8 (B): the deal's conversation, beside "Your move".
+                It replaces a "Brand contact" card whose one button took you
+                to Inbox to talk about the deal you were looking at. */}
+            <DealConversation
+              campaignId={collab.campaignId}
+              creatorId={collab.creatorId}
+              persona="creator"
+              name={camp.brand}
+              onRoute={onRoute}
+            />
             {/* Payout timeline — dark hero card with the net amount,
                 then 4-step milestone river: Escrow → Submitted →
                 Approved → Wallet release, each with an ETA or actual
@@ -594,35 +611,6 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
               net={net}
             />
 
-            {/* Brand contact — upgraded with reply-time + approval-rate
-                stats so the creator knows what to expect. */}
-            <div className="v2-card v2-card-pad">
-              <div className="v2-eyebrow" style={{ marginBottom: 12 }}>Brand contact</div>
-              <div className="v2-row" style={{ gap: 10, marginBottom: 12 }}>
-                <div className="v2-brand-mark-lg" style={{ width: 40, height: 40, fontSize: 18 }}>
-                  {camp.brand[0]?.toUpperCase()}
-                </div>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: 13.5 }}>{camp.brand}</div>
-                  <div className="v2-muted" style={{ fontSize: 11 }}>Marketing team</div>
-                </div>
-              </div>
-              {/* "Replies in ~28h" and "Approval rate 92%" used to sit here
-                  as literal JSX — identical for every brand, on every collab,
-                  forever. `Brand` has no response-time or approval-rate field
-                  at all, so there was nothing behind them and nothing to
-                  compute them from. Removed rather than relabelled: a creator
-                  deciding whether to accept an offer was reading invented
-                  reliability signals about the counterparty. */}
-              <button
-                className="v2-btn v2-btn-sm v2-btn-outline"
-                type="button"
-                style={{ width: '100%' }}
-                onClick={openConversationForCollab}
-              >
-                {Icon.inbox} Open conversation
-              </button>
-            </div>
           </aside>
         </div>
       </div>

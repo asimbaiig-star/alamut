@@ -493,11 +493,13 @@ function Thread({
 }) {
   // Ref the hidden file input so the visible button can dispatch a click.
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  // Bubble alignment: when you (the viewer) are the brand, "brand" messages
-  // are yours (right-aligned dark); when you're the creator, "creator"
-  // messages are yours (right-aligned dark) and "brand" messages are
-  // counterparty (left-aligned light).
-  const youAreFrom = persona === 'brand' ? 'brand' : 'creator';
+  // Bubble alignment. threadToV2 tags a message 'brand' when the VIEWER
+  // sent it ("me") and 'creator' when the other side did; it's a position,
+  // not a role (its test says so). This read it as a role, which is right
+  // for a brand and backwards for a creator: a creator saw the brand's
+  // messages as their own. 'brand' is "you" for everyone.
+  const youAreFrom = 'brand';
+  void persona;
 
   // Resolve the collab for this conversation so we can show stage context
   const db = useStore((s) => s.db);
