@@ -903,7 +903,7 @@ function BrandsBlock({ creator, pastCollabs, editing, onEdit, onClose }: {
         <div className="v2-row" style={{ gap: 8, marginTop: 12 }}>
           <input
             className="v2-input"
-            placeholder="Brand name (e.g., Sapphire)"
+            placeholder="Brand name"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {

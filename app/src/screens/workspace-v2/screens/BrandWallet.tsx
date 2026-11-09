@@ -135,7 +135,6 @@ export function BrandWallet({ onRoute, initialAction }: Props) {
                   (it needs a real payment processor), so say who to ask. */}
               <div className="v2-wl-method"><i aria-hidden="true">WIRE</i><div><b>Wire transfer</b><small>Account ending 4291</small></div></div>
               <div className="v2-wl-method"><i aria-hidden="true">ACH</i><div><b>ACH</b><small>Account ending 8830</small></div></div>
-              <div className="v2-wl-method"><i aria-hidden="true">JC</i><div><b>JazzCash</b><small>0345 ••• 4291</small></div></div>
               <div className="v2-wl-method"><i aria-hidden="true">CARD</i><div><b>Card</b><small>Ending 4242</small></div></div>
               <p>To add or remove a method, ask your account manager.</p>
             </section>
@@ -170,9 +169,8 @@ function TopupModal({ onClose }: { onClose: () => void }) {
       const methodLabel = ({
         wire: 'Wire transfer',
         ach: 'ACH transfer',
-        jazzcash: 'JazzCash',
         card: 'Card payment',
-      } as const)[method as 'wire' | 'ach' | 'jazzcash' | 'card'] ?? 'Top-up';
+      } as const)[method as 'wire' | 'ach' | 'card'] ?? 'Top-up';
       await api.wallet.topUp(amount, methodLabel);
       pushToast(`Top-up of ${fmtUSDfull(amount)} cleared · available now`, 'good');
       onClose();
@@ -245,7 +243,6 @@ function TopupModal({ onClose }: { onClose: () => void }) {
           {[
             ['wire',     'Wire transfer',   'T+1 settlement · 0% fee',     '#1B3D88'],
             ['ach',      'ACH (US bank)',   '2–3 business days · 0% fee',  '#00B14F'],
-            ['jazzcash', 'JazzCash',        'Instant · 0% fee · PK',       '#F7941D'],
             ['card',     'Debit / Credit',  'Instant · 1.5% fee',          '#635BFF'],
           ].map(([id, label, sub, color]) => {
             const isOn = method === id;

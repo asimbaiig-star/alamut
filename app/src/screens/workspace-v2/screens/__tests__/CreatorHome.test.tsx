@@ -25,7 +25,7 @@ const mockWallet = { available: 4200, pending: 3400, lifetime: 47800, currency: 
 
 let CURRENT_CREATOR: typeof mockCreator | null = mockCreator;
 let NEEDS: unknown[] = [];
-let COLLABS: { campaignId: string; stage: string }[] = [];
+let COLLABS: { campaignId: string; stage: string; price?: number; deliverables?: { id: string; status: string }[] }[] = [];
 
 vi.mock('../../v2Hooks', () => ({
   useV2CurrentCreator: () => CURRENT_CREATOR,
@@ -45,7 +45,7 @@ vi.mock('../../v2CampaignActions', () => ({
 vi.mock('@/lib/api/store', () => ({
   useStore: Object.assign(
     (selector?: (s: { db: Record<string, unknown[]>; session: null }) => unknown) => {
-      const state = { db: { creators: [], campaigns: [], notifications: [], users: [] }, session: null };
+      const state = { db: { creators: [], campaigns: [], notifications: [], users: [], offers: [], applications: [] }, session: null };
       return selector ? selector(state) : state;
     },
     { getState: () => ({ db: {}, session: null }) },
@@ -112,17 +112,19 @@ describe('CreatorHome (smoke)', () => {
     expect(onRoute).toHaveBeenCalledWith('collab:col_1?action=counter');
   });
 
-  it('counts deals in motion by stage', () => {
+  it('shows deals in motion as money by stage, net of fees once agreed', () => {
+    const d = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `d${i}`, status: 'pending' }));
     COLLABS = [
-      { campaignId: 'a', stage: 'invited' },
-      { campaignId: 'b', stage: 'negotiating' },
-      { campaignId: 'c', stage: 'confirmed' },
-      { campaignId: 'd', stage: 'paid' },
-      { campaignId: 'e', stage: 'cancelled' },
+      { campaignId: 'a', stage: 'invited', price: 0, deliverables: d(1) },
+      { campaignId: 'b', stage: 'negotiating', price: 0, deliverables: d(1) },
+      { campaignId: 'c', stage: 'confirmed', price: 1000, deliverables: d(1) },
+      { campaignId: 'd', stage: 'paid', price: 2000, deliverables: d(2) },
+      { campaignId: 'e', stage: 'cancelled', price: 500, deliverables: d(1) },
     ];
     renderWithRouter(<CreatorHome onRoute={() => undefined} />);
-    expect(screen.getByRole('button', { name: '2 offers, open your deals' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '1 working, open your deals' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '1 paid, open your deals' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Offers: 2 deals, \$0 you’d keep/ })).toBeInTheDocument();
+    // $1,000 less the 10% fee and 5% withholding.
+    expect(screen.getByRole('button', { name: /^Working: 1 deal, \$850 held, you keep/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Paid: 1 deal, \$1,700 after fees/ })).toBeInTheDocument();
   });
 });

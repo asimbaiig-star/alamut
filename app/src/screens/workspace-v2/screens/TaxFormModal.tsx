@@ -181,7 +181,7 @@ export function TaxFormModal({ initial, onClose }: Props) {
                       className="v2-input"
                       value={country}
                       onChange={(e) => setCountry(e.target.value)}
-                      placeholder="e.g. Pakistan, United Kingdom, Brazil"
+                      placeholder="e.g. United Kingdom, Brazil, India"
                     />
                   </div>
                   <div>

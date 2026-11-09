@@ -62,7 +62,7 @@ const usedCampaignTitles = new Set<string>(
     'b_lecreuset::Holiday Tables',
     'b_aesop::Quiet Hours',
     'b_aesop::Second Light',
-    'b_aesop::Quiet Objects 2026 — Q3 (draft)',
+    'b_aesop::Quiet Objects 2026 — Q3',
     'b_aesop::Reset Skincare — Spring',
     'b_aesop::Hand-care kit · launch teaser',
   ],
@@ -2125,9 +2125,9 @@ const demoCampaigns: Campaign[] = [
   // resume / archive toggle flows without needing to fabricate state
   // mid-walkthrough.
   {
-    id: 'cmp_aesop_draft', brandId: 'b_aesop', title: 'Quiet Objects 2026 — Q3 (draft)',
+    id: 'cmp_aesop_draft', brandId: 'b_aesop', title: 'Quiet Objects 2026 — Q3',
     pitch: 'Slow-living essentials for late summer.',
-    brief: 'Open-tone editorial: 1 reel + 2 stories + 1 carousel post per creator. Highlight the seasonal hand-cream + the new tinted body lotion in soft natural light. Brand handle + #ad in caption; deliver in 9:16 + 1:1. Oakmoss pays out same-day on approval.',
+    brief: 'Open-tone editorial: 1 reel + 2 stories + 1 carousel post per creator. Highlight the seasonal hand-cream + the new tinted body lotion in soft natural light. Brand handle + #ad in caption; deliver in 9:16 + 1:1.',
     cover: upx(COVERS[6], 800, 600),
     budget: 8_000, spent: 0, escrowHeld: 0,
     region: 'EU/UK', category: 'Lifestyle',
@@ -2691,7 +2691,7 @@ allBrands.forEach((b) => {
       kind: 'topup',
       amount,
       status: 'cleared',
-      note: pick(['Bank top-up · Wise', 'Bank top-up · ACH', 'Bank top-up · HBL', 'Wire transfer', 'Stripe top-up']),
+      note: pick(['Bank top-up · Wise', 'Bank top-up · ACH', 'Bank top-up · Wire', 'Wire transfer', 'Stripe top-up']),
     });
   }
 });

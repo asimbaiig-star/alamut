@@ -3231,7 +3231,7 @@ export function v2SaveCampaignDraft(input: LaunchCampaignInput, existingId?: str
       budget: input.budget,
       spent: existing?.spent ?? 0,
       escrowHeld: existing?.escrowHeld ?? 0,
-      region: input.audienceCity.join(', ') || 'Pakistan',
+      region: input.audienceCity.join(', ') || 'Global',
       category: input.categories[0] ?? 'Lifestyle',
       categories: input.categories,
       objective: input.objective,
@@ -3275,7 +3275,7 @@ export function v2LaunchCampaign(input: LaunchCampaignInput): Campaign {
       budget: input.budget,
       spent: 0,
       escrowHeld: 0,
-      region: input.audienceCity.join(', ') || 'Pakistan',
+      region: input.audienceCity.join(', ') || 'Global',
       category: input.categories[0] ?? 'Lifestyle',
       // The brand confirmed these on the review step; keep all of them.
       // `categories` used to be truncated to its first entry and the other

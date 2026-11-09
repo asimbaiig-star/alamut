@@ -1152,3 +1152,99 @@
   border-radius: 16px;
   box-shadow: none;
 }
+
+/* ---- Deals: the money pipeline (dealPipeline.tsx) ------------------------- */
+[data-surface="v2"] .v2-pipe-wrap { display: grid; gap: 8px; }
+[data-surface="v2"] .v2-pipe {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  border: 1px solid var(--v2-line);
+  border-radius: 18px;
+  background: var(--v2-paper);
+  overflow: hidden;
+}
+[data-surface="v2"] .v2-pipe button {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  padding: 16px 18px 16px 22px;
+  border: 0;
+  border-left: 1px solid var(--v2-line);
+  background: var(--v2-paper);
+  font-family: var(--v2-font-sans);
+  color: var(--v2-ink);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+[data-surface="v2"] .v2-pipe button:first-child { border-left: 0; }
+/* The chevron between stages: deals move left to right. */
+[data-surface="v2"] .v2-pipe button:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: -9px;
+  z-index: 1;
+  width: 16px;
+  height: 16px;
+  margin-top: -8px;
+  transform: rotate(45deg);
+  background: inherit;
+  border-top: 1px solid var(--v2-line);
+  border-right: 1px solid var(--v2-line);
+}
+[data-surface="v2"] .v2-pipe button:hover { background: var(--v2-bg); }
+[data-surface="v2"] .v2-pipe span { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 500; color: var(--v2-ink-2); }
+[data-surface="v2"] .v2-pipe em {
+  padding: 1px 8px;
+  border-radius: var(--v2-r-pill);
+  background: var(--v2-bg-2);
+  font-style: normal;
+  font-size: 12px;
+  color: var(--v2-ink-2);
+  font-variant-numeric: tabular-nums;
+}
+[data-surface="v2"] .v2-pipe b { font: 400 30px/1 var(--v2-font-display); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+[data-surface="v2"] .v2-pipe small { font-size: 12.5px; color: var(--v2-ink-3); }
+[data-surface="v2"] .v2-pipe button[data-tone="hot"] { background: color-mix(in srgb, var(--v2-accent-soft) 60%, var(--v2-paper)); }
+[data-surface="v2"] .v2-pipe button[data-tone="hot"] em { background: var(--v2-accent-2); color: var(--v2-ink); }
+[data-surface="v2"] .v2-pipe button[data-tone="done"] b { color: var(--v2-moss); }
+[data-surface="v2"] .v2-pipe button[aria-pressed="true"] { background: var(--v2-bg); box-shadow: inset 0 -3px 0 var(--v2-ink); }
+[data-surface="v2"] .v2-pipe button:focus-visible { outline: 2px solid var(--v2-ink); outline-offset: -4px; }
+[data-surface="v2"] .v2-pipe-note { margin: 0; font-size: 13px; color: var(--v2-ink-3); }
+/* Stacked: a ledger of stages for a narrow column. */
+[data-surface="v2"] .v2-pipe.is-list { grid-template-columns: minmax(0, 1fr); }
+[data-surface="v2"] .v2-pipe.is-list button {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 0 12px;
+  padding: 12px 16px;
+  border-left: 0;
+  border-top: 1px solid var(--v2-line);
+}
+[data-surface="v2"] .v2-pipe.is-list button:first-child { border-top: 0; }
+[data-surface="v2"] .v2-pipe.is-list button::after { display: none; }
+[data-surface="v2"] .v2-pipe.is-list b { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: 22px; }
+[data-surface="v2"] .v2-pipe.is-list small { grid-column: 1; }
+
+[data-surface="v2"] .v2-dl-subhead { display: grid; gap: 2px; margin: 18px 0 6px; }
+[data-surface="v2"] .v2-dl-subhead b { font: 500 18px var(--v2-font-display); color: var(--v2-ink); }
+[data-surface="v2"] .v2-dl-subhead small { font-size: 13px; color: var(--v2-ink-3); }
+[data-surface="v2"] .v2-ls-dot { display: inline-flex; align-items: center; gap: 5px; font-weight: 500; color: var(--v2-ink-3); }
+[data-surface="v2"] .v2-ls-dot::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+[data-surface="v2"] .v2-ls-dot[data-tone="hot"] { color: var(--v2-accent-deep); }
+[data-surface="v2"] .v2-ls-dot[data-tone="gold"] { color: color-mix(in srgb, var(--v2-gold) 80%, var(--v2-ink)); }
+[data-surface="v2"] .v2-ls-dot[data-tone="moss"] { color: var(--v2-moss); }
+
+@media (max-width: 880px) {
+  /* Five stages side by side don't fit a phone: scroll them, snapping. */
+  [data-surface="v2"] .v2-pipe:not(.is-list) {
+    grid-template-columns: repeat(5, minmax(150px, 1fr));
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+  }
+  [data-surface="v2"] .v2-pipe:not(.is-list) button { scroll-snap-align: start; padding: 14px 16px 14px 20px; }
+  [data-surface="v2"] .v2-pipe:not(.is-list) b { font-size: 26px; }
+}

@@ -291,7 +291,7 @@ export function SignUp() {
                   </div>
                   <div className="field">
                     <label htmlFor="signup-country" className="field-label">Country</label>
-                    <input id="signup-country" autoComplete="country-name" value={country} onChange={(e) => setCountry(e.target.value)} placeholder="Pakistan" />
+                    <input id="signup-country" autoComplete="country-name" value={country} onChange={(e) => setCountry(e.target.value)} placeholder="United States" />
                   </div>
                 </>
               )}

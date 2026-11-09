@@ -104,7 +104,7 @@ export interface SparkContext {
   region: string | null;
   budget: number | null;
   campaignName: string | null;
-  brand: string;                // current brand acting (default Sapphire)
+  brand: string;                // the brand Spark is planning for
 }
 
 export function emptyContext(): SparkContext {
@@ -154,7 +154,13 @@ const CATEGORY_MAP: Record<string, string[]> = {
   Lifestyle:  ['lifestyle', 'daily', 'vlog'],
 };
 
-const CITY_KEYWORDS = ['Lahore', 'Karachi', 'Islamabad', 'Rawalpindi'];
+// Cities Spark recognises in a request: where the sample roster lives.
+const CITY_KEYWORDS = [
+  'New York', 'Los Angeles', 'Brooklyn', 'Austin', 'Portland', 'Toronto', 'Montreal', 'Mexico City',
+  'São Paulo', 'Buenos Aires', 'London', 'Manchester', 'Berlin', 'Paris', 'Amsterdam', 'Milan', 'Lisbon',
+  'Stockholm', 'Copenhagen', 'Dubai', 'Abu Dhabi', 'Mumbai', 'Delhi', 'Bangalore', 'Karachi', 'Lahore',
+  'Islamabad', 'Tokyo', 'Kyoto', 'Seoul', 'Singapore', 'Bangkok', 'Jakarta', 'Sydney', 'Melbourne',
+];
 
 function extractCategory(text: string): string | null {
   const t = text.toLowerCase();
@@ -257,7 +263,7 @@ function handlePlan(text: string, context: SparkContext): { reply: SparkMessage;
   if (creators.length === 0) {
     blocks.push({
       kind: 'text',
-      body: `I couldn't find creators matching ${criteria.length ? criteria.join(' + ') : 'those criteria'}. Want me to widen the search? Try "show me Pakistani lifestyle creators" or "find creators under $500".`,
+      body: `I couldn't find creators matching ${criteria.length ? criteria.join(' + ') : 'those criteria'}. Want me to widen the search? Try "show me lifestyle creators in London" or "find creators under $500".`,
     });
   } else {
     const ctxLabel = criteria.length ? criteria.join(' + ') : 'top picks';
@@ -283,7 +289,7 @@ function handlePlan(text: string, context: SparkContext): { reply: SparkMessage;
       ts: Date.now(),
       suggestions: creators.length > 0
         ? ['Compare top 2', 'Show cheaper options', 'Save all to shortlist', 'Project reach']
-        : ['Lifestyle creators in Lahore', 'Karachi food micros', 'B2B LinkedIn voices'],
+        : ['Lifestyle creators in London', 'Food creators in Toronto', 'B2B LinkedIn voices'],
     },
     newContext,
   };
@@ -313,7 +319,7 @@ function handleFind(text: string, context: SparkContext): { reply: SparkMessage;
           body: `Nothing matched. Try widening the criteria — drop the city, or ask for a different category.`,
         }],
         ts: Date.now(),
-        suggestions: ['Show all fashion creators', 'Show Karachi creators', 'Show me everything'],
+        suggestions: ['Show all fashion creators', 'Show New York creators', 'Show me everything'],
       },
       newContext,
     };
@@ -478,7 +484,7 @@ function handleSave(_text: string, context: SparkContext): { reply: SparkMessage
         from: 'spark',
         blocks: [{ kind: 'text', body: `Nothing to save yet — show me some creators first.` }],
         ts: Date.now(),
-        suggestions: ['Plan a fashion campaign', 'Find Karachi creators'],
+        suggestions: ['Plan a fashion campaign', 'Find London creators'],
       },
       newContext: context,
     };
@@ -509,7 +515,7 @@ function handleClear(_text: string, _context: SparkContext): { reply: SparkMessa
         body: `Cleared your shortlist. Fresh start — what do you want to plan?`,
       }],
       ts: Date.now(),
-      suggestions: ['Eid lawn campaign for Sapphire', 'Karachi food micros', 'B2B LinkedIn voices'],
+      suggestions: ['Holiday gifting campaign', 'Food creators in Toronto', 'B2B LinkedIn voices'],
     },
     newContext: emptyContext(),
   };
@@ -522,10 +528,10 @@ function handleHelp(_text: string, _context: SparkContext): { reply: SparkMessag
       from: 'spark',
       blocks: [{
         kind: 'text',
-        body: `I can plan a campaign end-to-end. Try one of these:\n\n• "Plan an Eid campaign for Sapphire under $20K"\n• "Find Karachi food creators under $500"\n• "Compare Hira and Mahnoor"\n• "Project reach for $5K"\n• "Send brief to Bilal"\n\nI'll draft creator lists, project metrics, and prepare briefs you can send through Inbox.`,
+        body: `I can plan a campaign end-to-end. Try one of these:\n\n• "Plan a holiday gifting campaign under $20K"\n• "Find Toronto food creators under $500"\n• "Compare Hira and Mahnoor"\n• "Project reach for $5K"\n• "Send brief to Bilal"\n\nI'll draft creator lists, project metrics, and prepare briefs you can send through Inbox.`,
       }],
       ts: Date.now(),
-      suggestions: ['Plan an Eid campaign', 'Find Karachi food creators', 'Show me LinkedIn B2B'],
+      suggestions: ['Plan a holiday campaign', 'Find food creators in Toronto', 'Show me LinkedIn B2B'],
     },
     newContext: _context,
   };
@@ -541,7 +547,7 @@ function handleDefault(_text: string, context: SparkContext): { reply: SparkMess
         body: `Got it. Want me to plan a campaign, find creators, or project reach? Tell me the brand + audience + budget and I'll draft a shortlist.`,
       }],
       ts: Date.now(),
-      suggestions: ['Plan a fashion push', 'Find food creators in Karachi', 'Compare two creators'],
+      suggestions: ['Plan a fashion push', 'Find food creators in Toronto', 'Compare two creators'],
     },
     newContext: context,
   };
@@ -674,9 +680,9 @@ export function welcomeMessage(): SparkMessage {
     }],
     ts: Date.now(),
     suggestions: [
-      'Plan an Eid campaign for Sapphire',
-      'Find Karachi food creators under $500',
-      'B2B LinkedIn voices in Pakistan',
+      'Plan a holiday gifting campaign under $20K',
+      'Find food creators in Toronto under $500',
+      'B2B LinkedIn voices in London',
       'How does Spark work?',
     ],
   };

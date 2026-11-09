@@ -237,7 +237,7 @@ export function ContentUploadModal({ collab, campaign, deliverableId, deliverabl
                 rows={5}
                 value={caption}
                 onChange={(e) => setCaption(e.target.value)}
-                placeholder="Eid is finally here ✨ Wearing the new Sapphire lawn... #SapphireEid26 #ad"
+                placeholder="Morning routine, take three. The new serum lives by the window now. #ad"
               />
               <div className="v2-muted" style={{ fontSize: 11, marginTop: 6 }}>
                 {/* Was "Spark recommends 60–120 words for Reels". Reasonable
@@ -266,7 +266,7 @@ export function ContentUploadModal({ collab, campaign, deliverableId, deliverabl
                       back as a revision request. Nothing inspects file
                       dimensions, so the check is gone. */}
                   <CheckRow ok={hasHashtag} warn={!hasHashtag} label="Campaign hashtag" />
-                  <CheckRow ok={hasAdDisclosure} warn={!hasAdDisclosure} label="#ad disclosure (FTC + Pakistan PCA)" />
+                  <CheckRow ok={hasAdDisclosure} warn={!hasAdDisclosure} label="#ad disclosure (FTC and local ad rules)" />
                 </div>
               </div>
             </>

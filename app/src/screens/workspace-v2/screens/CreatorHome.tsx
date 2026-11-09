@@ -9,6 +9,7 @@
 // which also feeds the sidebar badges, so the two always agree.
 
 import { perCreatorTarget } from '../campaignTarget';
+import { DealPipeline } from './dealPipeline';
 import { useMemo } from 'react';
 import {
   useV2AllCampaigns, useV2CreatorWallet, useV2CurrentCreator, useV2MyCollabs,
@@ -18,7 +19,7 @@ import { matchCreatorToCampaign } from '../matching';
 import { v2AcceptOffer } from '../v2CampaignActions';
 import { splitAcrossSlots } from '@/lib/api/money';
 import { pushToast } from '@/lib/utils/toast';
-import type { V2Campaign, V2Collab, V2CollabStage } from '../data';
+import type { V2Campaign, V2Collab } from '../data';
 import { useCreatorNeedsYou, type CreatorNeed } from '../needsYou';
 import {
   HomeHead, Letterhead, MoneyStrip, Pile, Terms, bandFor, dollars, greeting,
@@ -223,39 +224,20 @@ function CreatorSheet({ item, onRoute }: { item: CreatorNeed; onRoute: (r: strin
 }
 
 // =====================================================================
-// Deals in motion: every deal, counted by where it stands.
+// Deals in motion: where the money is, stage by stage (dealPipeline.tsx,
+// the same strip the Deals page filters with).
 // =====================================================================
 
-const MOTION: { label: string; stages: V2CollabStage[]; tone?: 'hot' | 'done' }[] = [
-  { label: 'Offers', stages: ['invited', 'negotiating'], tone: 'hot' },
-  { label: 'Pitched', stages: ['pitched'] },
-  { label: 'Working', stages: ['confirmed', 'submitted'] },
-  { label: 'Releasing', stages: ['approved', 'live'] },
-  { label: 'Paid', stages: ['paid'], tone: 'done' },
-];
-
 function DealsInMotion({ collabs, onRoute }: { collabs: V2Collab[]; onRoute: (r: string) => void }) {
-  const total = collabs.filter((c) => c.stage !== 'cancelled').length;
+  const db = useStore((s) => s.db);
+  const live = collabs.filter((c) => c.stage !== 'cancelled');
   return (
     <section aria-labelledby="hm-motion">
-      <h2 className="v2-hm-h2" id="hm-motion">Deals in motion {total > 0 && <span>{total}</span>}</h2>
-      <div className="v2-hm-track">
-        {MOTION.map((m) => {
-          const n = collabs.filter((c) => m.stages.includes(c.stage)).length;
-          return (
-            <button
-              key={m.label}
-              type="button"
-              data-tone={n > 0 ? m.tone : undefined}
-              onClick={() => onRoute('creator-collabs')}
-              aria-label={`${n} ${m.label.toLowerCase()}, open your deals`}
-            >
-              <b>{n}</b>
-              <span>{m.label}</span>
-            </button>
-          );
-        })}
-      </div>
+      <h2 className="v2-hm-h2" id="hm-motion">
+        Deals in motion {live.length > 0 && <span>{live.length}</span>}
+        <button type="button" className="v2-hm-more" onClick={() => onRoute('creator-collabs')}>All deals</button>
+      </h2>
+      <DealPipeline collabs={live} db={db} list onOpen={() => onRoute('creator-collabs')} />
     </section>
   );
 }

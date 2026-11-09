@@ -47,7 +47,7 @@ const INDUSTRIES = ['Fashion / Apparel', 'Beauty / Skincare', 'Food / Beverage',
 
 const CATEGORIES = ['Fashion', 'Beauty', 'Food', 'Tech', 'Travel', 'Fitness', 'Parenting', 'Finance', 'B2B', 'Lifestyle'];
 
-const REGIONS = ['Lahore', 'Karachi', 'Islamabad', 'Pakistan-wide', 'GCC region', 'International English'];
+const REGIONS = ['North America', 'Europe', 'UK', 'Middle East', 'South Asia', 'Southeast Asia', 'Latin America', 'Global'];
 
 const TIERS: { id: NonNullable<State['creatorTier']>; label: string; range: string; sub: string }[] = [
   { id: '$',    label: 'Nano',  range: '$80–$300',     sub: 'Best engagement, niche audiences. Multi-creator burst plays.' },
@@ -65,7 +65,7 @@ export function BrandOnboardingV2({ onRoute }: Props) {
     // after a partial fill should not blank everything out).
     companyName: currentBrand?.name ?? '',
     industry: currentBrand?.industry ?? '',
-    hq: currentBrand?.hq || 'Lahore',
+    hq: currentBrand?.hq || '',
     website: currentBrand?.website ?? '',
     about: currentBrand?.about ?? '',
     categories: currentBrand?.preferredCategories ?? [],
@@ -217,7 +217,7 @@ export function BrandOnboardingV2({ onRoute }: Props) {
                   <label className="v2-onboarding-field-label">Company name</label>
                   <input
                     type="text"
-                    placeholder="Sapphire Fashion"
+                    placeholder="Your brand name"
                     value={s.companyName}
                     onChange={(e) => update({ companyName: e.target.value })}
                   />
@@ -234,7 +234,7 @@ export function BrandOnboardingV2({ onRoute }: Props) {
                   <div className="v2-onboarding-field">
                     <label className="v2-onboarding-field-label">HQ city</label>
                     <select value={s.hq} onChange={(e) => update({ hq: e.target.value })}>
-                      {['Lahore', 'Karachi', 'Islamabad', 'Dubai', 'London', 'New York', 'Other'].map((c) => (
+                      {['New York', 'Los Angeles', 'London', 'Toronto', 'Sydney', 'Melbourne', 'Dubai', 'Singapore', 'Other'].map((c) => (
                         <option key={c} value={c}>{c}</option>
                       ))}
                     </select>
@@ -258,7 +258,7 @@ export function BrandOnboardingV2({ onRoute }: Props) {
                   </div>
                   <textarea
                     rows={4}
-                    placeholder="Pakistani luxury lawn for everyday wear. Modern silhouettes, hand-block prints, fair pricing for women 25–40."
+                    placeholder="Small-batch skincare made in Melbourne. Simple formulas, refillable bottles."
                     value={s.about}
                     onChange={(e) => update({ about: e.target.value })}
                   />

@@ -87,13 +87,10 @@ const CATEGORY_OPTIONS: { id: string; label: string }[] = [
   { id: 'parenting',  label: 'Parenting' },
   { id: 'wellness',   label: 'Wellness' },
 ];
-const CITY_OPTIONS: { id: string; label: string }[] = [
-  { id: 'Karachi',     label: 'Karachi' },
-  { id: 'Lahore',      label: 'Lahore' },
-  { id: 'Islamabad',   label: 'Islamabad' },
-  { id: 'Rawalpindi',  label: 'Rawalpindi' },
-  { id: 'Faisalabad',  label: 'Faisalabad' },
-];
+// Cities come from where the creators are (see cityOptions below). This
+// was five Pakistani cities, left from the first, Pakistan-only version,
+// so the filter matched almost nobody in a global roster.
+const CITY_LIMIT = 12;
 const AGE_OPTIONS: { id: string; label: string }[] = [
   { id: 'young',        label: 'Gen Z · 18–24' },
   { id: 'primeworking', label: 'Millennial · 25–34' },
@@ -119,6 +116,13 @@ export function Discover({ onRoute }: Props) {
   const [savedOnly, setSavedOnly] = useState(false);
   const [shown, setShown] = useState(PAGE);
   const allCreators = useV2Creators();
+  // The most common creator cities, most creators first.
+  const cityOptions = useMemo(() => {
+    const n = new Map<string, number>();
+    for (const c of allCreators) if (c.city?.trim()) n.set(c.city.trim(), (n.get(c.city.trim()) ?? 0) + 1);
+    return [...n.entries()].sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0])).slice(0, CITY_LIMIT)
+      .map(([city]) => ({ id: city, label: city }));
+  }, [allCreators]);
   const savedIds = useV2BrandShortlist();
   const db = useStore((s) => s.db);
 
@@ -364,10 +368,10 @@ export function Discover({ onRoute }: Props) {
           <MultiChipDropdown
             label="City"
             values={filters.cities}
-            options={CITY_OPTIONS}
+            options={cityOptions}
             onToggle={(id) => { toggleMulti('cities', id); resetPage(); }}
             onClear={() => setFilters((f) => ({ ...f, cities: [] }))}
-            summary={summariseMulti('cities', filters.cities, CITY_OPTIONS)}
+            summary={summariseMulti('cities', filters.cities, cityOptions)}
           />
           <button type="button" className="v2-ls-chip" aria-expanded={showMore} aria-pressed={moreCount > 0} onClick={() => setShowMore((v) => !v)}>
             More filters{moreCount > 0 && <b>{moreCount}</b>}

@@ -1,18 +1,19 @@
 // MyCollabs.tsx — the creator's Deals page (portal canvas, Round 3).
 //
-// Sorted by whose move it is, not by a seven-column board:
-//   1. Your move    — what needs.ts says waits on the creator, each with the
-//                     button to act (accept in place, resubmit, upload,
-//                     paste the live link).
-//   2. With brands  — everything else in flight; nothing for you to do.
-//   3. Paid         — folded away, with what it earned.
-//   4. Didn't go ahead — folded too: kept as a record, never dropped, so a
-//                     declined pitch doesn't read as the app losing it.
-// The stage tiles on top filter all of it.
+// One way of sorting: by whose move it is (Round 6). The page used to carry
+// stage tiles AND whose-move sections, two taxonomies over the same deals.
+//   - The money pipeline on top says where the money is, stage by stage,
+//     and each stage filters the list (dealPipeline.tsx).
+//   1. Your move    — what needsYou.ts says waits on the creator, each with
+//                     the button to act (accept, resubmit, upload, paste link).
+//   2. Waiting on brands — split into "with the brand" (in review, your
+//                     counter) and "pitches out", which are many and quiet.
+//   3. Paid, and Didn't go ahead — folded, kept as a record.
 
 import { useMemo, useState } from 'react';
 import { useV2AllCampaigns, useV2MyCollabs } from '../v2Hooks';
 import { V2_STAGE_META } from '../v2Adapters';
+import { DealPipeline, STAGE_GROUPS, stageTotals, type StageGroup } from './dealPipeline';
 import { useStore } from '@/lib/api/store';
 import { v2AcceptOffer } from '../v2CampaignActions';
 import { splitAcrossSlots } from '@/lib/api/money';
@@ -27,27 +28,17 @@ interface Props {
   onRoute: (r: string) => void;
 }
 
-type Filter = 'all' | 'offers' | 'pitched' | 'working' | 'releasing' | 'paid';
-
-const FILTERS: { id: Filter; label: string; stages: V2CollabStage[]; tone?: 'hot' | 'done' }[] = [
-  { id: 'all', label: 'All deals', stages: [] },
-  { id: 'offers', label: 'Offers', stages: ['invited', 'negotiating'], tone: 'hot' },
-  { id: 'pitched', label: 'Pitched', stages: ['pitched'] },
-  { id: 'working', label: 'Working', stages: ['confirmed', 'submitted'] },
-  { id: 'releasing', label: 'Releasing', stages: ['approved', 'live'] },
-  { id: 'paid', label: 'Paid', stages: ['paid'], tone: 'done' },
-];
-
-const COLS = '40px minmax(0,1.3fr) 132px minmax(0,1.3fr) 110px 120px 168px';
-const WITH_BRANDS_PAGE = 8;
+const COLS = '40px minmax(0,1.05fr) minmax(0,1.7fr) 112px 120px 156px';
+const PITCHES_PAGE = 6;
+const PITCH_STAGES: V2CollabStage[] = ['pitched', 'invited'];
 
 export function MyCollabs({ onRoute }: Props) {
   const all = useV2MyCollabs();
   const campaigns = useV2AllCampaigns();
   const needs = useCreatorNeedsYou();
   const db = useStore((s) => s.db);
-  const [filter, setFilter] = useState<Filter>('all');
-  const [showAllWaiting, setShowAllWaiting] = useState(false);
+  const [filter, setFilter] = useState<StageGroup | null>(null);
+  const [showAllPitches, setShowAllPitches] = useState(false);
   const [showPaid, setShowPaid] = useState(false);
   const [showClosed, setShowClosed] = useState(false);
 
@@ -64,7 +55,7 @@ export function MyCollabs({ onRoute }: Props) {
 
   const live = all.filter((c) => c.stage !== 'cancelled');
   const closed = all.filter((c) => c.stage === 'cancelled');
-  const stages = FILTERS.find((f) => f.id === filter)!.stages;
+  const stages = filter ? STAGE_GROUPS.find((g) => g.id === filter)!.stages : [];
   const inFilter = (c: V2Collab) => stages.length === 0 || stages.includes(c.stage);
 
   // Your move keeps needs.ts's order (most urgent first).
@@ -73,11 +64,15 @@ export function MyCollabs({ onRoute }: Props) {
     .map((n) => live.find((c) => c.id === n.collabId))
     .filter((c): c is V2Collab => !!c && inFilter(c));
   const waiting = live.filter((c) => c.stage !== 'paid' && !needFor.has(c.id) && inFilter(c));
+  const withBrand = waiting.filter((c) => !PITCH_STAGES.includes(c.stage));
+  const pitchesOut = waiting.filter((c) => PITCH_STAGES.includes(c.stage));
   const paid = live.filter((c) => c.stage === 'paid' && inFilter(c));
   const earned = paid.reduce((s, c) => s + (c.price > 0 ? splitAcrossSlots(c.price, Math.max(1, c.deliverables.length)).net : 0), 0);
 
-  const count = (f: (typeof FILTERS)[number]) => f.stages.length === 0 ? live.length : live.filter((c) => f.stages.includes(c.stage)).length;
   const yourMove = needs.filter((n) => n.collabId).length;
+  // Money already agreed and on its way: working plus releasing.
+  const totals = stageTotals(live, db);
+  const onWay = totals.filter((t) => t.id === 'working' || t.id === 'releasing').reduce((n, t) => n + t.amount, 0);
 
   const row = (c: V2Collab, need?: CreatorNeed) => (
     <DealRow
@@ -98,7 +93,7 @@ export function MyCollabs({ onRoute }: Props) {
           title="Deals"
           sub={live.length === 0
             ? 'No deals yet. Pitch a brief, or let brands find your storefront.'
-            : `${live.length} deal${live.length === 1 ? '' : 's'}. ${yourMove === 0 ? 'Nothing is your move right now' : `${yourMove === 1 ? 'One is' : `${yourMove} are`} your move`}; the rest are with brands, or paid.`}
+            : `${yourMove === 0 ? 'Nothing needs you right now' : `${yourMove} need${yourMove === 1 ? 's' : ''} you`}.${onWay > 0 ? ` ${dollars(onWay)} is on its way to you as posts go live.` : ''}`}
           actions={<button type="button" className="v2-hm-btn is-dark" onClick={() => onRoute('creator-campaigns')}>Find briefs</button>}
         />
       </div>
@@ -115,19 +110,13 @@ export function MyCollabs({ onRoute }: Props) {
           </div>
         ) : (
           <>
-            <div className="v2-ls-stages" role="group" aria-label="Show deals by stage">
-              {FILTERS.map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  aria-pressed={filter === f.id}
-                  data-tone={f.tone && count(f) > 0 ? f.tone : undefined}
-                  onClick={() => setFilter(f.id)}
-                >
-                  <b>{count(f)}</b>
-                  <span>{f.label}</span>
-                </button>
-              ))}
+            <div className="v2-pipe-wrap">
+              <DealPipeline collabs={live} db={db} selected={filter} onPick={(g) => { setFilter(g); setShowAllPitches(false); }} />
+              <p className="v2-pipe-note">
+                {filter
+                  ? <>Showing {STAGE_GROUPS.find((g) => g.id === filter)!.label.toLowerCase()} only. <button type="button" className="v2-hm-link" onClick={() => setFilter(null)}>Show every deal</button></>
+                  : 'Each stage filters the list. What you keep is after the platform fee and withholding.'}
+              </p>
             </div>
 
             <section aria-labelledby="dl-mine">
@@ -143,19 +132,38 @@ export function MyCollabs({ onRoute }: Props) {
             {waiting.length > 0 && (
               <section aria-labelledby="dl-wait">
                 <h2 className="v2-hm-h2" id="dl-wait">
-                  With brands <span>{waiting.length} · nothing for you to do</span>
+                  Waiting on brands <span>{waiting.length} · nothing for you to do</span>
                 </h2>
-                <div className="v2-ls-table" style={{ ['--cols' as string]: COLS }}>
-                  {mine.length === 0 && <Head />}
-                  {(showAllWaiting ? waiting : waiting.slice(0, WITH_BRANDS_PAGE)).map((c) => row(c))}
-                </div>
-                {waiting.length > WITH_BRANDS_PAGE && (
-                  <div className="v2-ls-foot">
-                    <span>Showing <b>{showAllWaiting ? waiting.length : WITH_BRANDS_PAGE}</b> of {waiting.length}</span>
-                    <button type="button" className="v2-hm-btn is-sm" onClick={() => setShowAllWaiting((v) => !v)}>
-                      {showAllWaiting ? 'Show fewer' : `Show all ${waiting.length}`}
-                    </button>
-                  </div>
+                {withBrand.length > 0 && (
+                  <>
+                    <div className="v2-dl-subhead">
+                      <b>With the brand</b>
+                      <small>Your content is in review, your counter is with them, or a post is waiting to be confirmed.</small>
+                    </div>
+                    <div className="v2-ls-table" style={{ ['--cols' as string]: COLS }}>
+                      {mine.length === 0 && <Head />}
+                      {withBrand.map((c) => row(c))}
+                    </div>
+                  </>
+                )}
+                {pitchesOut.length > 0 && (
+                  <>
+                    <div className="v2-dl-subhead">
+                      <b>Pitches out</b>
+                      <small>{pitchesOut.length} · the brand answers, or the brief closes. Nothing is held until they accept.</small>
+                    </div>
+                    <div className="v2-ls-table" style={{ ['--cols' as string]: COLS }}>
+                      {(showAllPitches ? pitchesOut : pitchesOut.slice(0, PITCHES_PAGE)).map((c) => row(c))}
+                    </div>
+                    {pitchesOut.length > PITCHES_PAGE && (
+                      <div className="v2-ls-foot">
+                        <span>Showing <b>{showAllPitches ? pitchesOut.length : PITCHES_PAGE}</b> of {pitchesOut.length} pitches</span>
+                        <button type="button" className="v2-hm-btn is-sm" onClick={() => setShowAllPitches((v) => !v)}>
+                          {showAllPitches ? 'Show fewer' : `Show all ${pitchesOut.length}`}
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
               </section>
             )}
@@ -176,7 +184,7 @@ export function MyCollabs({ onRoute }: Props) {
               </section>
             )}
 
-            {closed.length > 0 && filter === 'all' && (
+            {closed.length > 0 && !filter && (
               <section aria-label="Deals that didn't go ahead">
                 <div className="v2-ls-fold" style={{ borderTop: paid.length > 0 ? 0 : undefined }}>
                   <span>Didn’t go ahead · {closed.length} · the brand passed or the offer was withdrawn</span>
@@ -207,7 +215,6 @@ function Head() {
     <div className="v2-ls-head">
       <span />
       <span>Deal</span>
-      <span>Stage</span>
       <span className="v2-ls-hide-md">What’s next</span>
       <span>When</span>
       <span className="r">Money</span>
@@ -232,11 +239,15 @@ function DealRow({ collab: c, camp, need, ask, askedAt, onRoute }: {
   const href = `collab:${c.id}`;
   const slots = Math.max(1, c.deliverables.length);
   const revision = need?.kind === 'revision';
-  const label = revision ? 'Changes asked' : V2_STAGE_META[c.stage].label;
+  // Named from the creator's side: an offer waiting on them is an "Offer",
+  // not "Negotiating".
+  const label = revision ? 'Changes asked'
+    : need?.kind === 'offer' && need.offerId ? 'Offer'
+    : V2_STAGE_META[c.stage].label;
   const tone = revision ? 'gold' : TONE[c.stage];
 
   // What happens next, in one line.
-  const next = need ? nextForNeed(need) : nextForStage(c, ask, askedAt);
+  const next = need ? nextForNeed(need) : nextForStage(c, brand, ask, askedAt);
 
   // When. Before a deal is agreed the date is when the brief closes.
   const agreed = !['invited', 'pitched', 'negotiating', 'cancelled'].includes(c.stage);
@@ -296,13 +307,13 @@ function DealRow({ collab: c, camp, need, ask, askedAt, onRoute }: {
         <a className="v2-ls-title" href={`/v2?tab=${encodeURIComponent(href)}`} onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRoute(href); }}>
           {camp?.name ?? 'Deal'}
         </a>
-        <small>{brand}</small>
+        {/* The stage sits with the deal; the next step gets the room. */}
+        <small>{brand} · <span className="v2-ls-dot" data-tone={tone}>{label}</span></small>
       </div>
-      <span className="v2-ls-pill v2-ls-hide-sm" data-tone={tone}>{label}</span>
       <span className="v2-ls-hide-md v2-ls-clamp">{next}</span>
       <span className={`v2-ls-hide-sm${soon ? ' v2-ls-soon' : ''}`}>{when}</span>
       <div className="v2-ls-money v2-ls-hide-sm"><b>{money.v}</b>{money.sub && <small>{money.sub}</small>}</div>
-      <span className="v2-ls-sm-sub">{label} · {next}</span>
+      <span className="v2-ls-sm-sub">{next}</span>
       <div className="v2-ls-act">{action}</div>
     </div>
   );
@@ -325,21 +336,23 @@ function nextForNeed(n: CreatorNeed): string {
   }
 }
 
-function nextForStage(c: V2Collab, ask?: number, askedAt?: string): string {
+function nextForStage(c: V2Collab, brand: string, ask?: number, askedAt?: string): string {
   switch (c.stage) {
     case 'pitched':
       return `Your pitch${ask ? ` at ${dollars(ask)}` : ''}${askedAt ? ` · sent ${ago(askedAt)}` : ''}`;
     case 'negotiating':
-      return 'Your counter is with the brand.';
+      return `Your counter is with ${brand}.`;
     case 'invited':
-      return 'Invited · open it to pitch.';
+      return `${brand} invited you. Open it to pitch.`;
     case 'confirmed':
+      // Agreed, nothing uploaded yet (an upload need would be "your move").
+      return 'Agreed and held. Upload when it’s ready.';
     case 'submitted':
-      return 'Your content is with the brand for review.';
+      return `${brand} is reviewing your content.`;
     case 'approved':
-      return 'Live link sent · the brand confirms it, then releases.';
+      return `Live link sent. ${brand} confirms it, then that post’s share is released.`;
     case 'live':
-      return 'Live · the brand is releasing your payment.';
+      return `Live. ${brand} confirms each post, then releases its share.`;
     case 'paid':
       return 'Paid. Leave the brand a review if you haven’t.';
     case 'cancelled':

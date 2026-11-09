@@ -151,7 +151,7 @@ export function NewCampaignWizard({
         { platform: 'instagram', format: 'reel', count: 1 },
         { platform: 'instagram', format: 'story', count: 2 },
       ],
-    audienceCity: ['Karachi', 'Lahore'],
+    audienceCity: [],
     audienceGender: 'any',
     audienceAge: ['25-34', '18-24'],
     categories: initialCategory
@@ -358,7 +358,7 @@ function StepBrief({ draft, update }: { draft: Draft; update: (p: Partial<Draft>
           className="v2-input"
           value={draft.name}
           onChange={(e) => update({ name: e.target.value })}
-          placeholder="e.g. Eid Edit '26 — Sapphire"
+          placeholder="e.g. Spring launch '27"
         />
       </Field>
 
@@ -520,7 +520,15 @@ function PlacementsEditor({
 // =====================================================================
 
 function StepAudience({ draft, update }: { draft: Draft; update: (p: Partial<Draft>) => void }) {
-  const cities = ['Karachi', 'Lahore', 'Islamabad', 'Rawalpindi', 'Faisalabad', 'Multan', 'Peshawar'];
+  // Where the creators are, most first, plus anything already chosen. This
+  // was seven Pakistani cities from the first, Pakistan-only version.
+  const creators = useV2Creators();
+  const cities = useMemo(() => {
+    const n = new Map<string, number>();
+    for (const c of creators) if (c.city?.trim()) n.set(c.city.trim(), (n.get(c.city.trim()) ?? 0) + 1);
+    const top = [...n.entries()].sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0])).slice(0, 14).map(([c]) => c);
+    return [...new Set([...draft.audienceCity, ...top])];
+  }, [creators, draft.audienceCity]);
   const cats = ['Fashion', 'Lifestyle', 'Beauty', 'Food', 'Travel', 'Tech', 'Finance', 'Parenting', 'Fitness', 'B2B', 'Newsletter'];
   const ages = ['18-24', '25-34', '35-44', '45+'];
   return (

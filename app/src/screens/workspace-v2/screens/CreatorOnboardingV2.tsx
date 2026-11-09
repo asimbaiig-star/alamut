@@ -324,7 +324,7 @@ export function CreatorOnboardingV2({ onRoute }: Props) {
                 {askCountry ? (
                   <div className="v2-onboarding-row-2">
                     <Field label="Country" htmlFor="v2-onb-country">
-                      <input id="v2-onb-country" type="text" autoComplete="country-name" placeholder="Pakistan"
+                      <input id="v2-onb-country" type="text" autoComplete="country-name" placeholder="United States"
                         value={s.country} onChange={(e) => update({ country: e.target.value })} />
                     </Field>
                     <Field label="City" htmlFor="v2-onb-city">
@@ -360,7 +360,7 @@ export function CreatorOnboardingV2({ onRoute }: Props) {
                 <Field label="Bio" sub="One sentence brands will read first.">
                   <textarea
                     rows={3}
-                    placeholder="Lifestyle & fashion stories from Lahore. Soft-launching small Pakistani brands since 2022."
+                    placeholder="Slow fashion and home stories from Lisbon. Working with small independent brands since 2022."
                     value={s.bio}
                     onChange={(e) => update({ bio: e.target.value })}
                   />
@@ -433,7 +433,7 @@ export function CreatorOnboardingV2({ onRoute }: Props) {
                   fontSize: 12.5,
                   color: 'var(--v2-ink-2)',
                 }}>
-                  <strong>Heads up:</strong> Alamut takes 10% as platform fee. We auto-deduct 5% withholding tax for FBR. Net to you = rate − 15%.
+                  <strong>Heads up:</strong> Alamut takes 10% as platform fee. We hold back 5% as withholding tax. What you keep is the rate less 15%.
                 </div>
               </Card>
             )}
@@ -443,24 +443,16 @@ export function CreatorOnboardingV2({ onRoute }: Props) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <PayoutMethod
                     id="bank"
-                    name="Pakistani bank account"
-                    detail="Domestic bank transfer"
+                    name="Bank account"
+                    detail="A transfer to your bank, in your country"
                     icon={Icon.wallet}
                     selected={s.payoutMethod === 'bank'}
                     onSelect={() => update({ payoutMethod: 'bank' })}
                   />
                   <PayoutMethod
-                    id="jazzcash"
-                    name="JazzCash mobile wallet"
-                    detail="Mobile wallet transfer"
-                    icon={Icon.send}
-                    selected={s.payoutMethod === 'jazzcash'}
-                    onSelect={() => update({ payoutMethod: 'jazzcash' })}
-                  />
-                  <PayoutMethod
                     id="wire"
                     name="International wire"
-                    detail="USD, for creators outside Pakistan"
+                    detail="In USD, to a bank in another country"
                     icon={Icon.external}
                     selected={s.payoutMethod === 'wire'}
                     onSelect={() => update({ payoutMethod: 'wire' })}

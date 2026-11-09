@@ -26,10 +26,11 @@ interface Props {
   /** `creator-campaigns?status=Live`: BriefDetail sends creators here when
    *  the brief they opened isn't taking pitches, so they land among the
    *  ones that are. */
+  /** Kept for old deep links (`creator-campaigns?status=…`); only live briefs are listed. */
   initialStatus?: 'all' | 'Live' | 'Planned';
 }
 
-type View = 'all' | 'live' | 'fits' | 'saved' | 'closing' | 'soon';
+type View = 'all' | 'fits' | 'saved' | 'closing';
 type BudgetBand = 'any' | 'under5' | 'mid' | 'over15';
 type SortKey = 'fit' | 'newest' | 'budget' | 'deadline';
 
@@ -65,7 +66,7 @@ interface Scored {
   left: number;
 }
 
-export function BrowseBriefs({ onRoute, initialFilter, initialStatus }: Props) {
+export function BrowseBriefs({ onRoute, initialFilter }: Props) {
   const me = useV2CurrentCreator();
   const all = useV2AllCampaigns();
   const db = useStore((s) => s.db);
@@ -74,16 +75,19 @@ export function BrowseBriefs({ onRoute, initialFilter, initialStatus }: Props) {
 
   const [query, setQuery] = useState('');
   const [view, setView] = useState<View>(
-    initialFilter === 'saved' ? 'saved' : initialStatus === 'Live' ? 'live' : initialStatus === 'Planned' ? 'soon' : 'all',
+    initialFilter === 'saved' ? 'saved' : 'all',
   );
   const [category, setCategory] = useState('any');
   const [budget, setBudget] = useState<BudgetBand>('any');
   const [sort, setSort] = useState<SortKey>('fit');
   const [shown, setShown] = useState(PAGE);
 
-  // Score every open brief once.
+  // Score every open brief once. Live only: a draft is the brand's
+  // unpublished work (CampaignStage: "not visible to creators"), and the
+  // live database never sends one; listing them as "Opens soon" here showed
+  // other brands' drafts in demo mode.
   const open: Scored[] = useMemo(() => all
-    .filter((c) => c.status === 'Live' || c.status === 'Planned')
+    .filter((c) => c.status === 'Live')
     .map((c) => {
       const pay = perCreatorOf(c);
       const m = matchCreatorToCampaign(meRaw, db.campaigns.find((x) => x.id === c.id), db, pay);
@@ -98,21 +102,17 @@ export function BrowseBriefs({ onRoute, initialFilter, initialStatus }: Props) {
 
   const inView = (s: Scored, v: View) => {
     switch (v) {
-      case 'live': return s.c.status === 'Live';
-      case 'fits': return s.c.status === 'Live' && (s.score ?? 0) >= FIT_FLOOR;
+      case 'fits': return (s.score ?? 0) >= FIT_FLOOR;
       case 'saved': return saved.has(s.c.id);
-      case 'closing': return s.c.status === 'Live' && s.left >= 0 && s.left <= 7;
-      case 'soon': return s.c.status === 'Planned';
+      case 'closing': return s.left >= 0 && s.left <= 7;
       default: return true;
     }
   };
   const counts: Record<View, number> = {
     all: open.length,
-    live: open.filter((s) => inView(s, 'live')).length,
     fits: open.filter((s) => inView(s, 'fits')).length,
     saved: open.filter((s) => inView(s, 'saved')).length,
     closing: open.filter((s) => inView(s, 'closing')).length,
-    soon: open.filter((s) => inView(s, 'soon')).length,
   };
   const rankable = open.some((s) => s.score !== null);
 
@@ -138,7 +138,7 @@ export function BrowseBriefs({ onRoute, initialFilter, initialStatus }: Props) {
   const filtered = view !== 'all' || category !== 'any' || budget !== 'any' || query.trim() !== '';
   // The three best fits lead the page only on the unfiltered view.
   const best = !filtered && rankable
-    ? [...open].filter((s) => s.c.status === 'Live' && s.score !== null).sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).slice(0, 3)
+    ? [...open].filter((s) => s.score !== null).sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).slice(0, 3)
     : [];
   const bestIds = new Set(best.map((s) => s.c.id));
   const rows = list.filter((s) => !bestIds.has(s.c.id));
@@ -170,7 +170,7 @@ export function BrowseBriefs({ onRoute, initialFilter, initialStatus }: Props) {
       <div className="v2-ls-body">
         <div className="v2-ls-bar is-scroll" role="group" aria-label="Filter briefs">
           {([
-            ['all', 'All'], ['live', 'Open now'], ['fits', 'Fits you'], ['saved', 'Saved'], ['closing', 'Closing this week'], ['soon', 'Opens soon'],
+            ['all', 'All open'], ['fits', 'Fits you'], ['saved', 'Saved'], ['closing', 'Closing this week'],
           ] as [View, string][]).filter(([v]) => v === 'all' || counts[v] > 0 || v === view).map(([v, label]) => (
             <button key={v} type="button" className="v2-ls-chip" aria-pressed={view === v} onClick={() => change(setView)(v)}>
               {label} <b>{counts[v]}</b>
@@ -242,7 +242,6 @@ export function BrowseBriefs({ onRoute, initialFilter, initialStatus }: Props) {
 }
 
 function leftLabel(s: Scored): { text: string; soon: boolean } {
-  if (s.c.status === 'Planned') return { text: 'Opens soon', soon: false };
   if (s.left < 0) return { text: 'Closed', soon: false };
   if (s.left === 0) return { text: 'Closes today', soon: true };
   return { text: `${s.left} day${s.left === 1 ? '' : 's'}`, soon: s.left <= 7 };
