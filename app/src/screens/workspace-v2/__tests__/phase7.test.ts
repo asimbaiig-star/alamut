@@ -114,7 +114,7 @@ describe('controls do what their label says', () => {
     expect(src).toContain('canSubmitContent && nextSlot && (');
   });
 
-  it('the calendar never counts what it can't show: groups open, days narrow the list', () => {
+  it('the calendar never counts what it cannot show: groups open, days narrow the list', () => {
     // Was a "+N more" chip on the month grid; the agenda (Round 7) keeps the
     // promise: every group's "Show N more" opens it, and a picked day lists
     // everything due then.
