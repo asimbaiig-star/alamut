@@ -8,6 +8,7 @@
 // Everything is derived from the store. The pile comes from needsYou.ts,
 // which also feeds the sidebar badges, so the two always agree.
 
+import { perCreatorTarget } from '../campaignTarget';
 import { useMemo } from 'react';
 import {
   useV2AllCampaigns, useV2CreatorWallet, useV2CurrentCreator, useV2MyCollabs,
@@ -276,7 +277,7 @@ function BriefsThatFit({ creatorId, campaigns, collabs, onRoute }: {
     const scored = campaigns
       .filter((c) => c.status === 'Live' && !taken.has(c.id))
       .map((c) => {
-        const perCreator = Math.round(c.budget / Math.max(c.creators.length || 4, 1));
+        const perCreator = perCreatorTarget(c);
         const raw = db.campaigns.find((x) => x.id === c.id);
         return { c, perCreator, score: matchCreatorToCampaign(me, raw, db, perCreator).score };
       });

@@ -96,6 +96,8 @@ export interface V2Campaign {
    *  'Paused' added for the dedicated paused state. */
   status: 'Live' | 'Paused' | 'Planned' | 'Completed';
   budget: number;
+  /** The brand's own per-creator target, when the campaign stored one. */
+  perCreator?: number;
   spent: number;
   confirmed: number;
   live: number;

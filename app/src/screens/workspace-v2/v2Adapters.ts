@@ -274,6 +274,7 @@ export function campaignToV2(c: Campaign, db: Database): V2Campaign {
     brand: brand?.name ?? 'Unknown',
     status: STAGE_TO_V2_STATUS[c.stage],
     budget: c.budget,
+    perCreator: c.perCreator,
     spent: c.spent,
     confirmed: getAcceptedCreators(c.id, db).length,
     live: liveCount,

@@ -9,6 +9,7 @@
 // matcher scores the brief at FIT_FLOOR or more; it used to mean "briefs
 // you're already on", which is not what the chip said.
 
+import { perCreatorTarget } from '../campaignTarget';
 import { useMemo, useState } from 'react';
 import { Icon } from '../lib';
 import { type V2Campaign } from '../data';
@@ -53,7 +54,7 @@ const SORTS: { id: SortKey; label: string }[] = [
 
 /** Per-creator pay: the budget over the roster, at least four ways, so a
  *  brief with one confirmed creator doesn't look like it pays the lot. */
-export const perCreatorOf = (c: V2Campaign) => Math.round(c.budget / Math.max(c.creators.length, 4));
+export const perCreatorOf = (c: V2Campaign) => perCreatorTarget(c);
 const daysLeft = (c: V2Campaign) => Math.ceil((+new Date(c.deadline) - Date.now()) / DAY);
 
 interface Scored {

@@ -765,9 +765,10 @@ body:has([data-surface="v2"]) {
   [data-surface="v2"] .v2-appbar .v2-brand-name {
     font-size: 21px;
   }
-  [data-surface="v2"] .v2-appbar-me {
-    margin-left: auto;
-  }
+  [data-surface="v2"] .v2-appbar-bell { margin-left: auto; }
+  [data-surface="v2"] .v2-appbar .notif-bell { color: var(--v2-on-ground); }
+  [data-surface="v2"] .v2-appbar .notif-bell:hover,
+  [data-surface="v2"] .v2-appbar .notif-bell.is-open { background: color-mix(in srgb, var(--v2-on-ground) 14%, transparent); color: var(--v2-on-ground); }
   [data-surface="v2"] .v2-main {
     margin: 0;
     overflow: visible;

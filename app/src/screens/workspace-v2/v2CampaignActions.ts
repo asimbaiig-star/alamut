@@ -2305,7 +2305,18 @@ export function v2RejectApplication(applicationId: string): Application {
     const app = db.applications[idx];
     if (app.status === 'rejected') return app; // idempotent
     if (app.status === 'withdrawn') throw new Error('The creator already withdrew this application — nothing to reject.');
-    if (app.status === 'shortlisted') throw new Error("You've already shortlisted this creator — withdraw the offer first if you want to pass.");
+    // Shortlisted on its own is only interest. What blocks a pass is an
+    // offer still in play (sent, countered or accepted): that has to be
+    // withdrawn first, because an accepted one holds money. Sample data and
+    // older rows carry 'shortlisted' with no offer at all, and refusing those
+    // left a Pass button that did nothing but raise an error.
+    if (app.status === 'shortlisted') {
+      const live = db.offers.some(
+        (o) => o.campaignId === app.campaignId && o.creatorId === app.creatorId
+          && (o.status === 'pending' || o.status === 'countered' || o.status === 'accepted'),
+      );
+      if (live) throw new Error('You have an offer out to this creator. Withdraw it first if you want to pass.');
+    }
     db.applications[idx] = { ...app, status: 'rejected', decidedAt: nowIso() };
 
     const creator = db.creators.find((c) => c.id === app.creatorId);
@@ -3224,6 +3235,9 @@ export function v2SaveCampaignDraft(input: LaunchCampaignInput, existingId?: str
       category: input.categories[0] ?? 'Lifestyle',
       categories: input.categories,
       objective: input.objective,
+      // Kept, so every surface shows the target the brand set rather
+      // than an estimate (campaignTarget.ts).
+      perCreator: input.perCreator > 0 ? input.perCreator : undefined,
       audienceGender: input.audienceGender,
       audienceAge: input.audienceAge,
       placements: input.placements,
@@ -3268,6 +3282,9 @@ export function v2LaunchCampaign(input: LaunchCampaignInput): Campaign {
       // three fields were never read at all.
       categories: input.categories,
       objective: input.objective,
+      // Kept, so every surface shows the target the brand set rather
+      // than an estimate (campaignTarget.ts).
+      perCreator: input.perCreator > 0 ? input.perCreator : undefined,
       audienceGender: input.audienceGender,
       audienceAge: input.audienceAge,
       stage: 'live',

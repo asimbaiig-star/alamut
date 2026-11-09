@@ -11,6 +11,7 @@
 //      deliverables, and the campaign's usage rights when it has any.
 //   4. Sidebar rows lose the emoji icons in favor of clean key/value.
 
+import { perCreatorTarget } from '../campaignTarget';
 import { useEffect, useMemo, useState } from 'react';
 import { fmtUSD, Icon, Topbar } from '../lib';
 import { useV2CampaignById, useV2CurrentCreator } from '../v2Hooks';
@@ -117,7 +118,7 @@ export function BriefDetail({ campaignId, onRoute }: Props) {
     // Per-creator budget feeds the matcher's rate-fit facet. Same split the
     // payout column shows, so the two can't disagree.
     const perCreator = rawCampaign
-      ? Math.round(rawCampaign.budget / Math.max(4, getAcceptedCreators(rawCampaign.id, db).length || 4))
+      ? perCreatorTarget({ ...rawCampaign, creators: getAcceptedCreators(rawCampaign.id, db) })
       : 0;
     return matchCreatorToCampaign(me, rawCampaign, db, perCreator);
   }, [me, rawCampaign, db]);
@@ -132,7 +133,7 @@ export function BriefDetail({ campaignId, onRoute }: Props) {
   }
 
   const matchScore = match.score;
-  const suggested = Math.round(campaign.budget / Math.max(4, campaign.creators.length || 4));
+  const suggested = perCreatorTarget(campaign);
 
   const avail = me?.availability;
   const onVacation = !!avail?.vacationMode;

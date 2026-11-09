@@ -580,7 +580,27 @@
   }
   [data-surface="v2"] .v2-hm-sub { color: color-mix(in srgb, var(--v2-paper) 82%, transparent); font-size: 15px; }
   [data-surface="v2"] .v2-hm-head { align-items: flex-start; }
-  [data-surface="v2"] .v2-hm-head-actions { display: none; }
+  /* The page's own buttons stay on a phone, under the title; the bell
+     moves to the app bar. These used to be hidden, which took Pause,
+     Add creators, New campaign and Top up off phones altogether. */
+  [data-surface="v2"] .v2-hm-head { flex-direction: column; align-items: stretch; gap: 16px; }
+  [data-surface="v2"] .v2-hm-head-actions { flex-wrap: wrap; gap: 8px; }
+  [data-surface="v2"] .v2-hm-head-actions .notif-bell { display: none; }
+  [data-surface="v2"] .v2-hm-head-actions:not(:has(> :not(.notif-bell))) { display: none; }
+  [data-surface="v2"] .v2-hm-head-actions > * { flex: 1 1 auto; }
+  [data-surface="v2"] .v2-hm-ground .v2-hm-head-actions .v2-hm-btn,
+  [data-surface="v2"] .v2-hm-ground .v2-hm-head-actions .v2-btn {
+    min-height: 44px;
+    background: transparent;
+    color: var(--v2-paper);
+    border: 1px solid color-mix(in srgb, var(--v2-paper) 40%, transparent);
+  }
+  [data-surface="v2"] .v2-hm-ground .v2-hm-head-actions .v2-hm-btn.is-dark,
+  [data-surface="v2"] .v2-hm-ground .v2-hm-head-actions .v2-btn-primary {
+    background: var(--v2-paper);
+    color: var(--v2-ink);
+    border-color: var(--v2-paper);
+  }
   [data-surface="v2"] .v2-hm-money {
     padding: 0;
     border: 0;

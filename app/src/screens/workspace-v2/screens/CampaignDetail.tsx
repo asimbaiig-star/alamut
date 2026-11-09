@@ -20,13 +20,19 @@
 // into the creator profile.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { fmtUSD, fmtFollowers, Icon, StagePill, Topbar } from '../lib';
+import { fmtUSD, fmtUSDfull, fmtFollowers, Icon, StagePill, Topbar } from '../lib';
+import { HomeHead, Pile, dollars, ago } from './homeParts';
+import { BrandSheet } from './BrandHome';
+import { useBrandNeedsYou } from '../needsYou';
+import { brandAccent } from '../brandPalette';
+import { perCreatorTarget, campaignPlaces, hasOwnTarget } from '../campaignTarget';
+import { matchCreatorToCampaign } from '../matching';
 import {
   useV2CampaignById, useV2CollabsForCampaign, useV2Creators,
-  useV2CurrentBrand,
+  useV2CurrentBrand, useV2BrandShortlist,
   v2AddCampaignAsset, v2RemoveCampaignAsset,
 } from '../v2Hooks';
-import { V2_PIPELINE_STAGES, V2_STAGE_META, V2_BOARD_PHASES, isActiveCollab, furthestPipelineStage } from '../v2Adapters';
+import { V2_PIPELINE_STAGES, V2_STAGE_META, isActiveCollab, furthestPipelineStage } from '../v2Adapters';
 import { Avatar } from '@/components/ui/Avatar';
 import type {
   V2Campaign, V2Collab, V2Creator, V2Deliverable,
@@ -76,20 +82,11 @@ type TabId = 'pipeline' | 'brief' | 'content' | 'analytics' | 'settings';
 
 const VALID_TABS: TabId[] = ['pipeline', 'brief', 'content', 'analytics', 'settings'];
 
-/** A collab is awaiting review when any of its deliverables is in review.
- *  Defined once and shared by the Pipeline/Content-review tab counters and the
- *  "Needs you now" list, so a header can never disagree with the body it
- *  summarises — that divergence is what made Calendar report 288 overdue while
- *  its grid highlighted far fewer. */
-function hasDeliverableInReview(c: V2Collab): boolean {
-  return c.deliverables.some((d) => d.status === 'in_review');
-}
-
 /**
  * How many DELIVERABLES across these collabs are awaiting review.
  *
- * `hasDeliverableInReview` answers a different question — does this collab
- * have any — and the Content-review tab's grid is deliverable-level
+ * Counting collabs answers a different question — does this collab have
+ * any — and the Content-review tab's grid is deliverable-level
  * (`flatMap` over `c.deliverables`). Counting collabs while rendering
  * deliverables meant a collab with two items in review showed a badge of 1
  * above two cards.
@@ -114,6 +111,9 @@ export function CampaignDetail({
   const creators = useV2Creators();
   const db = useStore((s) => s.db);
   const session = useStore((s) => s.session);
+  // What waits on the brand, from the same list as the home and the sidebar.
+  const brandNeeds = useBrandNeedsYou();
+  const shortlist = useV2BrandShortlist();
   const currentBrand = useV2CurrentBrand();
   // Ownership gate — this surface mutates campaign state (pause/end,
   // accept-counter, mark-live, etc.). Only the brand that owns the
@@ -248,78 +248,124 @@ export function CampaignDetail({
   const daysLeft = Math.max(0, Math.ceil((+new Date(campaign.deadline) - Date.now()) / 86_400_000));
 
   const tabs: { id: TabId; label: string; count?: number }[] = [
-    { id: 'pipeline',    label: 'Pipeline',       count: activeCollabs.length },
+    // In the order the work happens: who's in, their content, how it
+    // did; then the brief and settings you set up once.
+    { id: 'pipeline',    label: 'Creators',       count: activeCollabs.length },
+    { id: 'content',     label: 'Content',        count: awaitingReview },
+    { id: 'analytics',   label: 'Results' },
     { id: 'brief',       label: 'Brief' },
-    { id: 'content',     label: 'Content review', count: awaitingReview },
-    { id: 'analytics', label: 'Analytics' },
     { id: 'settings',    label: 'Settings' },
   ];
 
   return (
     <>
-      <Topbar
-        title={campaign.name}
-        crumb={
-          <span>
-            <button
-              type="button"
-              className="v2-link-btn"
-              onClick={() => onRoute('campaigns')}
-            >Campaigns</button>
-            {' · '}
-            {campaign.brand}
-            {' · '}
-            <span className={`v2-pill ${campaign.status === 'Live' ? 'v2-pill-live' : 'v2-pill-moss'}`} style={{ fontSize: 10 }}>
-              {campaign.status}
-            </span>
-          </span>
-        }
-        actions={
-          <CampaignLifecycleActions
-            stage={rawCampaign?.stage}
-            campaignId={campaignId}
-            onAddCreators={() => setInviteOpen(true)}
-          />
-        }
-      />
-      <div className="v2-content">
-        {/* Cockpit hero — campaign card with pacing + lifecycle bar
-            on the left, "Needs you now" sidebar on the right. Replaces
-            the older 4-stat-card grid: a single dense surface that
-            answers "where am I, what's the spend look like, who's
-            blocking me right now?" without scanning four separate tiles. */}
-        <div className="v2-campaign-cockpit" style={{ marginBottom: 20 }}>
-          <CockpitHero
-            campaign={campaign}
-            collabs={collabs}
-            daysLeft={daysLeft}
-          />
-          <NeedsYouCard
-            collabs={activeCollabs}
-            creators={creators}
-            onJumpToContent={() => setTab('content')}
-          />
-        </div>
+      <div className="v2-hm v2-cd">
+      <div className="v2-hm-ground">
+        <HomeHead
+          crumb={<><button type="button" className="v2-hm-crumb-link" onClick={() => onRoute('campaigns')}>Campaigns</button> · {campaign.status === 'Planned' ? 'Draft' : campaign.status === 'Completed' ? 'Closed' : campaign.status}</>}
+          title={campaign.name}
+          sub={[campaign.placement, campaign.category, campaign.status === 'Live' ? `${daysLeft} day${daysLeft === 1 ? '' : 's'} left, ends ${new Date(campaign.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : null].filter(Boolean).join(' · ')}
+          actions={
+            <div className="v2-cd-actions">
+              <CampaignLifecycleActions
+                stage={rawCampaign?.stage}
+                campaignId={campaignId}
+                onAddCreators={() => setInviteOpen(true)}
+              />
+            </div>
+          }
+        />
+      </div>
+      <div className="v2-ls-body">
+        {(() => {
+          // Money across this campaign. Spend is what has left escrow to
+          // creators; held is what accepted offers have reserved.
+          const target = perCreatorTarget(campaign);
+          const places = campaignPlaces(campaign);
+          // Booked = an accepted offer. Pitches and invites have deliverables
+          // on paper but nothing to post yet, so they don't count as posts.
+          const bookedCollabs = activeCollabs.filter((c) => ['confirmed', 'submitted', 'approved', 'live', 'paid'].includes(c.stage));
+          const booked = bookedCollabs.length;
+          const pitches = brandNeeds.filter((n) => n.kind === 'pitch' && n.campaignId === campaignId).length;
+          const posts = bookedCollabs.reduce((n, c) => n + c.deliverables.length, 0);
+          const livePosts = bookedCollabs.reduce((n, c) => n + c.deliverables.filter((d) => d.status === 'live').length, 0);
+          const pct = campaign.budget > 0 ? Math.min(100, Math.round((campaign.spent / campaign.budget) * 100)) : 0;
+          return (
+            <section className="v2-cp-ledger" aria-label="This campaign's money">
+              <div><span>Budget</span><b>{dollars(campaign.budget)}</b><small>{hasOwnTarget(campaign) ? '' : 'about '}{dollars(target)} a creator, room for {places}</small></div>
+              <div><span>Held for creators</span><b>{dollars(campaign.escrowHeld)}</b><small>{booked} creator{booked === 1 ? '' : 's'} booked</small></div>
+              <div><span>Released</span><b>{dollars(campaign.spent)}</b><small>{posts ? `${livePosts} of ${posts} posts confirmed live` : 'nothing posted yet'}</small><i className="v2-cd-bar" role="presentation"><em style={{ width: `${pct}%` }} /></i></div>
+              <div data-tone={pitches ? 'hot' : undefined}><span>Places left</span><b>{Math.max(0, places - booked)}</b><small>{pitches ? `${pitches} pitch${pitches === 1 ? '' : 'es'} waiting` : 'no pitches waiting'}</small></div>
+            </section>
+          );
+        })()}
 
-        {/* Tabs */}
-        <div className="v2-tabs">
+        {/* Tabs, with the tab pattern's semantics and arrow keys, so a
+            screen reader hears "Creators, tab, 1 of 5, selected". */}
+        <div
+          className="v2-tabs"
+          role="tablist"
+          aria-label="This campaign"
+          onKeyDown={(e) => {
+            const i = tabs.findIndex((t) => t.id === tab);
+            const next =
+              e.key === 'ArrowRight' ? (i + 1) % tabs.length
+              : e.key === 'ArrowLeft' ? (i - 1 + tabs.length) % tabs.length
+              : e.key === 'Home' ? 0
+              : e.key === 'End' ? tabs.length - 1
+              : -1;
+            if (next < 0) return;
+            e.preventDefault();
+            setTab(tabs[next].id);
+            document.getElementById(`cd-tab-${tabs[next].id}`)?.focus();
+          }}
+        >
           {tabs.map((t) => (
             <button
               key={t.id}
+              id={`cd-tab-${t.id}`}
               type="button"
+              role="tab"
+              aria-selected={tab === t.id}
+              aria-controls="cd-panel"
+              tabIndex={tab === t.id ? 0 : -1}
               className={`v2-tab ${tab === t.id ? 'is-active' : ''}`}
               onClick={() => setTab(t.id)}
             >
               {t.label}
               {t.count !== undefined && t.count > 0 && (
-                <span className="v2-tab-count">{t.count}</span>
+                <span className="v2-tab-count"><span className="v2-sr-only">, </span>{t.count}</span>
               )}
             </button>
           ))}
         </div>
 
+        <div role="tabpanel" id="cd-panel" aria-labelledby={`cd-tab-${tab}`}>
         {tab === 'pipeline' && (
           <>
+          {(() => {
+            // Pitches are compared side by side in the table below, so the
+            // pile holds everything else (content, live posts, counters).
+            const mine = brandNeeds.filter((n) => n.campaignId === campaignId && n.kind !== 'pitch');
+            if (mine.length === 0) return null;
+            return (
+              <section aria-labelledby="cd-needs" className="v2-cd-needs">
+                <h2 className="v2-hm-h2" id="cd-needs">Needs you <span>{mine.length} on this campaign</span></h2>
+                <Pile
+                  items={mine.map((n) => ({ ...n, band: brandAccent(n.creatorName ?? n.title).bg, tag: n.kind === 'pitch' && n.rate ? dollars(n.rate) : undefined }))}
+                  label="Needs you on this campaign"
+                  renderTop={(it) => (
+                    <BrandSheet
+                      item={it}
+                      creator={creators.find((c) => c.id === it.creatorId)}
+                      saved={!!it.creatorId && shortlist.includes(it.creatorId)}
+                      onRoute={onRoute}
+                    />
+                  )}
+                />
+              </section>
+            );
+          })()}
           {/* WORKFLOW-GAPS F3 — open disputes, at the top of the pipeline
               because frozen escrow blocks everything below them.
 
@@ -411,7 +457,7 @@ export function CampaignDetail({
               if (!app) { pushToast('That pitch is no longer open — refresh and try again', 'bad'); return; }
               try {
                 v2AcceptPitch(app.id);
-                pushToast(`Accepted ${creator.name.split(' ')[0]}'s pitch at ${fmtUSD(rate)} — escrow reserved`, 'good');
+                pushToast(`Accepted ${creator.name.split(' ')[0]}'s pitch at ${fmtUSDfull(rate)}. It's held from your wallet until each post is confirmed live.`, 'good');
               } catch (err) {
                 pushToast(err instanceof Error ? err.message : 'Could not accept the pitch', 'bad');
               }
@@ -421,6 +467,7 @@ export function CampaignDetail({
               setCounterBack({ offerId, counterRate, creatorName })}
             onLeaveReview={(collab, creator) => setLeavingReview({ collab, creator })}
             campaignName={campaign.name}
+            campaign={campaign}
           />
           <NotProceedingGroup collabs={closedCollabs} creators={creators} onRoute={onRoute} />
           </>
@@ -446,6 +493,8 @@ export function CampaignDetail({
           />
         )}
         {tab === 'settings' && <SettingsTab campaign={campaign} onRoute={onRoute} />}
+        </div>
+      </div>
       </div>
 
       {reviewing && (
@@ -548,186 +597,6 @@ export function CampaignDetail({
 //      funnel over invented phase names; the comment outlived it.
 // =====================================================================
 
-function CockpitHero({
-  campaign, collabs, daysLeft,
-}: {
-  campaign: V2Campaign;
-  collabs: V2Collab[];
-  daysLeft: number;
-}) {
-  // Real campaign duration, not a fixed 30 days. The old `TOTAL_DAYS = 30`
-  // "demo assumption" made the time-elapsed marker and the ahead/behind-pace
-  // verdict wrong for every campaign that isn't exactly four weeks long: a
-  // 90-day campaign with 60 days left read as "100% time elapsed", and a
-  // 7-day one under-reported. The campaign knows when it was created and when
-  // it is due, so derive it.
-  const startMs = +new Date(campaign.createdAt);
-  const endMs = +new Date(campaign.deadline);
-  const totalDays = Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs
-    ? Math.max(1, Math.round((endMs - startMs) / 86_400_000))
-    : Math.max(1, daysLeft); // no usable start date — treat today as day one
-  const elapsed = Math.max(0, totalDays - daysLeft);
-  const timePct = Math.min(1, elapsed / totalDays);
-  const spendPct = campaign.budget > 0 ? Math.min(1, campaign.spent / campaign.budget) : 0;
-  const pacing = spendPct - timePct; // + = ahead, - = behind
-
-  const fillColor =
-    pacing > 0.10 ? 'var(--v2-gold)'
-    : pacing < -0.10 ? 'var(--v2-info)'
-    : 'var(--v2-moss)';
-
-  const pacingLabel =
-    Math.abs(pacing) < 0.10 ? 'On pace'
-    : pacing > 0 ? 'Ahead of pace'
-    : 'Behind pace';
-
-  return (
-    <div
-      className="v2-card"
-      style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
-    >
-      <div
-        style={{
-          padding: '22px 24px',
-          background: 'linear-gradient(135deg, var(--v2-paper) 0%, var(--v2-bg) 100%)',
-          borderBottom: '1px solid var(--v2-line)',
-        }}
-      >
-        <div
-          className="v2-row"
-          style={{
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
-            marginBottom: 14,
-            gap: 16,
-            flexWrap: 'wrap',
-          }}
-        >
-          <div style={{ minWidth: 0, flex: '1 1 280px' }}>
-            <div className="v2-row" style={{ gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-              <span
-                className={`v2-pill ${campaign.status === 'Live' ? 'v2-pill-live' : 'v2-pill-moss'}`}
-                style={{ fontSize: 10 }}
-              >
-                {campaign.status}
-              </span>
-              <span className="v2-muted" style={{ fontSize: 12 }}>·</span>
-              <span className="v2-muted" style={{ fontSize: 12 }}>
-                {campaign.placement || 'Awareness'}
-              </span>
-            </div>
-            <h2
-              style={{
-                fontFamily: 'var(--v2-font-display)',
-                fontSize: 26,
-                fontWeight: 500,
-                margin: 0,
-                letterSpacing: '-0.02em',
-                color: 'var(--v2-ink)',
-              }}
-            >
-              {campaign.name}
-            </h2>
-            <div className="v2-muted" style={{ fontSize: 13, marginTop: 4 }}>
-              {campaign.brand} · {daysLeft > 0 ? `${daysLeft} days left` : 'Deadline passed'}
-              {' · '}Deadline {new Date(campaign.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-            </div>
-          </div>
-          <div style={{ textAlign: 'right', flexShrink: 0, whiteSpace: 'nowrap' }}>
-            <div className="v2-eyebrow" style={{ marginBottom: 4 }}>Budget · spend</div>
-            <div
-              className="v2-tabular"
-              style={{
-                fontFamily: 'var(--v2-font-display)',
-                fontSize: 22,
-                fontWeight: 500,
-                letterSpacing: '-0.02em',
-              }}
-            >
-              {fmtUSD(campaign.spent)}
-              <span className="v2-muted" style={{ fontSize: 14, fontWeight: 400 }}>
-                {' '}/ {fmtUSD(campaign.budget)}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Pacing bar — fill = spend, marker = time elapsed. */}
-        <div style={{ position: 'relative', marginTop: 14 }}>
-          <div
-            style={{
-              height: 8,
-              background: 'var(--v2-bg-2)',
-              borderRadius: 4,
-              overflow: 'hidden',
-              position: 'relative',
-            }}
-          >
-            <div
-              style={{
-                width: `${spendPct * 100}%`,
-                height: '100%',
-                background: fillColor,
-                transition: 'width .3s',
-              }}
-            />
-            <div
-              aria-hidden="true"
-              title={`Time elapsed: ${Math.round(timePct * 100)}%`}
-              style={{
-                position: 'absolute',
-                left: `${timePct * 100}%`,
-                top: -3,
-                bottom: -3,
-                width: 2,
-                background: 'var(--v2-ink)',
-                borderRadius: 1,
-              }}
-            />
-          </div>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              marginTop: 6,
-              fontSize: 11,
-              gap: 12,
-              flexWrap: 'wrap',
-            }}
-          >
-            <span className="v2-muted" style={{ whiteSpace: 'nowrap' }}>
-              {Math.round(spendPct * 100)}% spent
-              {/* F29 — surface money already committed to escrow. Escrow is
-                  deducted from the wallet at confirm time but only counts as
-                  `spent` at approve time, so a campaign with a confirmed
-                  creator read "0% spent" while real funds were locked
-                  against it — the brand couldn't see where the money went. */}
-              {campaign.escrowHeld > 0 && (
-                <> · {fmtUSD(campaign.escrowHeld)} in escrow</>
-              )}
-              {' · '}{Math.round(timePct * 100)}% time elapsed
-            </span>
-            <span
-              style={{
-                color: Math.abs(pacing) < 0.10
-                  ? 'var(--v2-moss)'
-                  : pacing > 0 ? 'var(--v2-gold)' : 'var(--v2-info)',
-                fontWeight: 600,
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {pacingLabel}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ padding: '16px 24px' }}>
-        <RosterDistribution collabs={collabs} />
-      </div>
-    </div>
-  );
-}
 
 // =====================================================================
 // Roster distribution — where the roster actually is, right now
@@ -752,69 +621,6 @@ function CockpitHero({
 // cumulative reach means no off-by-one, no step can be pinned at 100%, and
 // the labels come from V2_STAGE_META so there is no vocabulary to invent.
 
-function RosterDistribution({ collabs }: { collabs: V2Collab[] }) {
-  const present = (Object.keys(V2_STAGE_META) as V2Collab['stage'][])
-    .filter((stage) => collabs.some((c) => c.stage === stage))
-    .sort((a, b) => V2_STAGE_META[a].order - V2_STAGE_META[b].order)
-    .map((stage) => ({
-      stage,
-      meta: V2_STAGE_META[stage],
-      count: collabs.filter((c) => c.stage === stage).length,
-    }));
-
-  if (collabs.length === 0) {
-    return (
-      <div>
-        <div className="v2-eyebrow" style={{ marginBottom: 8 }}>Where the roster is</div>
-        <p className="v2-muted" style={{ fontSize: 12.5, margin: 0 }}>
-          No creators on this campaign yet — invite someone or wait for pitches.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      <div className="v2-row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
-        <div className="v2-eyebrow">Where the roster is</div>
-        <div className="v2-muted" style={{ fontSize: 11 }}>
-          {collabs.length} {collabs.length === 1 ? 'creator' : 'creators'}
-        </div>
-      </div>
-
-      {/* One bar, segmented by the stage each creator is actually in. */}
-      <div
-        style={{ display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', background: 'var(--v2-bg-2)' }}
-        role="img"
-        aria-label={present.map((p) => `${p.count} ${p.meta.label}`).join(', ')}
-      >
-        {present.map((p) => (
-          <div
-            key={p.stage}
-            title={`${p.count} ${p.meta.label}`}
-            style={{
-              width: `${(p.count / collabs.length) * 100}%`,
-              background: p.meta.color,
-              transition: 'width .3s',
-            }}
-          />
-        ))}
-      </div>
-
-      <div className="v2-row" style={{ gap: 12, marginTop: 10, flexWrap: 'wrap' }}>
-        {present.map((p) => (
-          <div key={p.stage} className="v2-row" style={{ gap: 5, alignItems: 'center' }}>
-            <span style={{
-              width: 7, height: 7, borderRadius: 2, background: p.meta.color, flexShrink: 0,
-            }} />
-            <span style={{ fontSize: 11.5, color: 'var(--v2-ink-2)' }}>{p.meta.label}</span>
-            <span className="v2-tabular" style={{ fontSize: 11.5, color: 'var(--v2-ink-3)' }}>{p.count}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 // =====================================================================
 // Not proceeding — terminal collabs, shown rather than silently dropped
@@ -903,190 +709,6 @@ function NotProceedingGroup({ collabs, creators, onRoute }: {
 // overdue submissions (gold left border), live posts.
 // =====================================================================
 
-function NeedsYouCard({
-  collabs, creators, onJumpToContent,
-}: {
-  collabs: V2Collab[];
-  creators: V2Creator[];
-  onJumpToContent: () => void;
-}) {
-  // Same predicate as the Pipeline/Content-review counters — see
-  // hasDeliverableInReview. The card used to inline its own copy of this while
-  // the parent counted separately, which is the duplicated-predicate setup
-  // that let Calendar's header disagree with its own grid. One definition now.
-  const reviewItems = collabs.filter(hasDeliverableInReview);
-  const overdueItems = collabs.filter((c) =>
-    c.deliverables.some((d) => d.status === 'pending' && cv2DaysUntil(d.due) < 0),
-  );
-  const liveItems = collabs.filter((c) => c.deliverables.some((d) => d.status === 'live'));
-  const totalActions = reviewItems.length + overdueItems.length;
-
-  return (
-    <div
-      className="v2-card"
-      style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
-    >
-      <div
-        style={{
-          padding: '14px 18px',
-          background: totalActions > 0 ? 'var(--v2-accent)' : 'var(--v2-bg)',
-          color: totalActions > 0 ? 'var(--v2-paper)' : 'var(--v2-ink-2)',
-          borderBottom: '1px solid var(--v2-line)',
-        }}
-      >
-        <div className="v2-row" style={{ justifyContent: 'space-between' }}>
-          <div
-            className="v2-eyebrow"
-            style={{ color: 'inherit', opacity: totalActions > 0 ? 0.85 : 1 }}
-          >
-            Needs you now
-          </div>
-          {totalActions > 0 && (
-            <div
-              className="v2-tabular"
-              style={{ fontSize: 18, fontWeight: 700, fontFamily: 'var(--v2-font-display)' }}
-            >
-              {totalActions}
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div style={{ flex: 1, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {reviewItems.length > 0 && (
-          <button
-            type="button"
-            onClick={onJumpToContent}
-            style={{
-              textAlign: 'left',
-              padding: '10px 12px',
-              background: 'var(--v2-accent-soft)',
-              border: '1px solid var(--v2-accent-soft)',
-              borderRadius: 'var(--v2-r-md)',
-              cursor: 'pointer',
-              width: '100%',
-            }}
-          >
-            <div className="v2-row" style={{ justifyContent: 'space-between', marginBottom: 6 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--v2-accent)' }}>
-                ⊙ {reviewItems.length} content review{reviewItems.length === 1 ? '' : 's'} pending
-              </span>
-              <span className="v2-muted" style={{ fontSize: 11 }}>→</span>
-            </div>
-            <div className="v2-row" style={{ gap: -4 }}>
-              {reviewItems.slice(0, 4).map((x) => {
-                const cr = creators.find((c) => c.id === x.creatorId);
-                return cr ? (
-                  <div
-                    key={x.id}
-                    className="v2-avatar v2-avatar-xs"
-                    style={{
-                      backgroundImage: `url(${cr.avatar})`,
-                      marginLeft: -4,
-                      boxShadow: '0 0 0 2px var(--v2-accent-soft)',
-                    }}
-                    aria-label={cr.name}
-                  />
-                ) : null;
-              })}
-              {reviewItems.length > 4 && (
-                <span style={{
-                  fontSize: 11,
-                  color: 'var(--v2-accent)',
-                  marginLeft: 6,
-                  alignSelf: 'center',
-                }}>
-                  +{reviewItems.length - 4}
-                </span>
-              )}
-            </div>
-          </button>
-        )}
-
-        {overdueItems.length > 0 && (
-          <div
-            style={{
-              padding: '10px 12px',
-              border: '1px solid var(--v2-line)',
-              borderLeft: '3px solid var(--v2-gold)',
-              borderRadius: 'var(--v2-r-md)',
-            }}
-          >
-            <div className="v2-row" style={{ justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--v2-ink)' }}>
-                ⏱ {overdueItems.length} overdue submission{overdueItems.length === 1 ? '' : 's'}
-              </span>
-            </div>
-            <div className="v2-muted" style={{ fontSize: 11, marginTop: 3 }}>
-              Auto-nudge sent · Manual follow-up recommended
-            </div>
-          </div>
-        )}
-
-        {liveItems.length > 0 && (
-          <div
-            style={{
-              padding: '10px 12px',
-              border: '1px solid var(--v2-line)',
-              borderRadius: 'var(--v2-r-md)',
-            }}
-          >
-            <div className="v2-row" style={{ gap: 8 }}>
-              <span
-                aria-hidden="true"
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: '50%',
-                  background: 'var(--v2-moss)',
-                  boxShadow: '0 0 0 3px color-mix(in oklab, var(--v2-moss) 25%, transparent)',
-                }}
-              />
-              <span style={{ fontSize: 12, fontWeight: 600 }}>
-                {liveItems.length} post{liveItems.length === 1 ? '' : 's'} live
-              </span>
-            </div>
-          </div>
-        )}
-
-        {totalActions === 0 && liveItems.length === 0 && (
-          <div style={{ padding: '20px 8px', textAlign: 'center' }}>
-            <div style={{ fontSize: 24, marginBottom: 6 }}>✓</div>
-            <div className="v2-muted" style={{ fontSize: 12 }}>You're all caught up.</div>
-          </div>
-        )}
-
-        <div
-          style={{
-            marginTop: 'auto',
-            paddingTop: 10,
-            borderTop: '1px solid var(--v2-line)',
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: 8,
-          }}
-        >
-          <div>
-            <div className="v2-muted" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Avg approval time
-            </div>
-            <div className="v2-tabular" style={{ fontSize: 13, fontWeight: 600 }}>
-              1.4 days
-            </div>
-          </div>
-          <div>
-            <div className="v2-muted" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Reply within
-            </div>
-            <div className="v2-tabular" style={{ fontSize: 13, fontWeight: 600 }}>
-              3h target
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /** Days until a human-format `due` string ("May 18"). Returns negative
  *  numbers when the date has passed. We anchor the year to the current
@@ -1104,7 +726,7 @@ function cv2DaysUntil(due: string): number {
 // Pipeline Kanban (8 columns)
 // =====================================================================
 
-function PipelineKanban({ collabs, creators, onReview, onRoute, onSendOffer, onAcceptPitch, onMarkLive, onCounterBack, onLeaveReview, campaignName }: {
+function PipelineKanban({ collabs, creators, onReview, onRoute, onSendOffer, onAcceptPitch, onMarkLive, onCounterBack, onLeaveReview, campaignName, campaign }: {
   collabs: V2Collab[];
   creators: V2Creator[];
   onReview: (c: V2Collab) => void;
@@ -1115,61 +737,45 @@ function PipelineKanban({ collabs, creators, onReview, onRoute, onSendOffer, onA
   onCounterBack: (offerId: string, counterRate: number, creatorName: string) => void;
   onLeaveReview: (collab: V2Collab, creator: V2Creator) => void;
   campaignName: string;
+  campaign: V2Campaign;
 }) {
+  // One group per stage that has anyone in it, down the page. The eight
+  // columns ran off the right edge and were mostly empty.
+  const groups = V2_PIPELINE_STAGES
+    .map((stage) => ({ stage, items: collabs.filter((c) => c.stage === stage.id) }))
+    .filter((g) => g.items.length > 0);
+  // Pitches first: they're what the brand acts on most.
+  groups.sort((x, y) => (x.stage.id === 'pitched' ? -1 : y.stage.id === 'pitched' ? 1 : 0));
+  if (groups.length === 0) {
+    return (
+      <div className="v2-ls-empty">
+        <b>No creators yet.</b>
+        <p>Invite creators from Discover, or wait for pitches: they land here.</p>
+      </div>
+    );
+  }
   return (
-    <div className="v2-kanban">
-      {/* Phase headers occupy the grid's first row, each spanning its stages'
-          columns. The board is otherwise unchanged — same 8 columns, same
-          order, same cards — but "Sourcing" over Invited + Pitched stops the
-          board implying one leads to the other. */}
-      {V2_BOARD_PHASES.map((phase) => {
-        const inPhase = collabs.filter((c) => phase.stages.includes(c.stage)).length;
+    <div className="v2-cd-groups">
+      {groups.map(({ stage, items }) => {
+        // What's committed at this stage: the agreed rates.
+        const spend = items.reduce((s, c) => s + (c.price || 0), 0);
         return (
-          <div
-            key={phase.id}
-            className="v2-kanban-phase"
-            style={{ gridColumn: `span ${phase.stages.length}` }}
-          >
-            <div>
-              <span className="v2-kanban-phase-label">{phase.label}</span>
-              <span className="v2-kanban-phase-count">{inPhase}</span>
-            </div>
-            <p className="v2-kanban-phase-hint">{phase.hint}</p>
-          </div>
-        );
-      })}
-      {V2_PIPELINE_STAGES.map((stage) => {
-        const items = collabs.filter((c) => c.stage === stage.id);
-        // Per-column committed spend — sum of agreed rates for collabs
-        // currently in this stage. Helps the brand see at a glance how
-        // much escrow is parked in each phase of the pipeline.
-        const columnSpend = items.reduce((s, c) => s + (c.price || 0), 0);
-        return (
-          <div key={stage.id} className="v2-kanban-col">
-            <div className="v2-kanban-col-head">
-              <span className="v2-kanban-dot" style={{ background: stage.color }} />
-              <span className="v2-kanban-col-label">{stage.label}</span>
-              <span className="v2-kanban-col-count">{items.length}</span>
-              {columnSpend > 0 && (
-                <span
-                  className="v2-kanban-col-spend"
-                  title={`${fmtUSD(columnSpend)} committed across this column`}
-                >
-                  {fmtUSD(columnSpend)}
-                </span>
-              )}
-              {/* Phase 58 — bulk-decline on Pitched. Only the Pitched
-                  column has 1-click decline semantics (rejecting all
-                  pitches that the brand is passing on). Shown when
-                  there are ≥3 items so the brand doesn't accidentally
-                  nuke their roster on a small column. */}
+          <section key={stage.id} className="v2-cd-group" aria-label={stage.label}>
+            <h3 className="v2-hm-h2">
+              {stage.id === 'pitched' ? 'Pitches' : stage.label}
+              <span>
+                {stage.id === 'pitched'
+                  ? `${items.length} waiting · your target ${hasOwnTarget(campaign) ? '' : 'about '}${fmtUSDfull(perCreatorTarget(campaign))} a creator`
+                  : `${items.length}${spend > 0 ? ` · ${fmtUSDfull(spend)} agreed` : ''}`}
+              </span>
+              {/* Bulk decline, only on pitches and only once there are a
+                  few, so a small list isn't cleared by accident. */}
               {stage.id === 'pitched' && items.length >= 3 && (
                 <button
                   type="button"
-                  className="v2-btn v2-btn-sm v2-btn-ghost"
-                  style={{ marginLeft: 'auto', fontSize: 10 }}
+                  className="v2-hm-more"
                   onClick={() => {
-                    if (!window.confirm(`Decline all ${items.length} pitched applications? This can't be undone.`)) return;
+                    if (!window.confirm(`Pass on all ${items.length} pitches? This can't be undone.`)) return;
                     let n = 0;
                     const failures: string[] = [];
                     for (const c of items) {
@@ -1183,25 +789,31 @@ function PipelineKanban({ collabs, creators, onReview, onRoute, onSendOffer, onA
                         if (!failures.includes(msg)) failures.push(msg);
                       }
                     }
-                    if (failures.length === 0) {
-                      pushToast(`${n} application${n === 1 ? '' : 's'} declined`, 'good');
-                    } else {
-                      pushToast(`Declined ${n}, ${items.length - n} failed: ${failures[0]}`, 'bad');
-                    }
+                    if (failures.length === 0) pushToast(`Passed on ${n} pitch${n === 1 ? '' : 'es'}`, 'good');
+                    else pushToast(`Passed on ${n}, ${items.length - n} failed: ${failures[0]}`, 'bad');
                   }}
-                  title="Decline every applicant in this column"
                 >
-                  Decline all
+                  Pass on all {items.length}
                 </button>
               )}
-            </div>
-            <div className="v2-kanban-list">
+            </h3>
+            {stage.id === 'pitched' ? (
+              <PitchTable
+                items={items}
+                creators={creators}
+                campaign={campaign}
+                onRoute={onRoute}
+                onSendOffer={onSendOffer}
+                onAcceptPitch={onAcceptPitch}
+              />
+            ) : (
+            <ul className="v2-cd-rows">
               {items.map((collab) => {
                 const creator = creators.find((c) => c.id === collab.creatorId);
                 if (!creator) return null;
                 return (
+                  <li key={collab.id}>
                   <KanbanCollabCard
-                    key={collab.id}
                     collab={collab}
                     creator={creator}
                     campaignName={campaignName}
@@ -1213,13 +825,149 @@ function PipelineKanban({ collabs, creators, onReview, onRoute, onSendOffer, onA
                     onCounterBack={onCounterBack}
                     onLeaveReview={onLeaveReview}
                   />
+                  </li>
                 );
               })}
-              {items.length === 0 && <div className="v2-kanban-empty">Empty</div>}
-            </div>
-          </div>
+            </ul>
+            )}
+          </section>
         );
       })}
+    </div>
+  );
+}
+
+// =====================================================================
+// PitchTable — pitches side by side. Choosing between pitches is a
+// comparison (reach, engagement, fit, the ask against your target), which
+// a pile showing one at a time and cards hiding the numbers both made hard.
+// =====================================================================
+
+function PitchTable({ items, creators, campaign, onRoute, onSendOffer, onAcceptPitch }: {
+  items: V2Collab[];
+  creators: V2Creator[];
+  campaign: V2Campaign;
+  onRoute: (r: string) => void;
+  onSendOffer: (creator: V2Creator, defaultRate: number) => void;
+  onAcceptPitch: (collab: V2Collab, creator: V2Creator, rate: number) => void;
+}) {
+  const db = useStore((st) => st.db);
+  const canDecide = useCapability('application.decide');
+  const target = perCreatorTarget(campaign);
+  const raw = db.campaigns.find((c) => c.id === campaign.id);
+  const rows = items.flatMap((collab) => {
+    const creator = creators.find((c) => c.id === collab.creatorId);
+    if (!creator) return [];
+    const app = db.applications.find(
+      (a) => a.campaignId === collab.campaignId && a.creatorId === collab.creatorId
+        && (a.status === 'submitted' || a.status === 'shortlisted'),
+    );
+    const reach = creator.channels.reduce((n, ch) => n + ch.followers, 0);
+    const er = creator.channels.length
+      ? creator.channels.reduce((n, ch) => n + ch.engagement, 0) / creator.channels.length
+      : 0;
+    const fit = matchCreatorToCampaign(db.creators.find((x) => x.id === creator.id), raw, db, target).score;
+    return [{ collab, creator, app, reach, er, fit, ask: app?.proposedRate ?? 0 }];
+  });
+  // Best fit first; an unscorable profile goes last rather than being given
+  // a number. Ties go to the lower ask.
+  rows.sort((x, y) => (y.fit ?? -1) - (x.fit ?? -1) || x.ask - y.ask);
+
+  const pass = (appId: string, first: string) => {
+    try {
+      v2RejectApplication(appId);
+      pushToast(`Passed on ${first}'s pitch`, 'good');
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : 'Could not pass on that pitch', 'bad');
+    }
+  };
+
+  return (
+    <div className="v2-cd-ptab-wrap">
+      <table className="v2-cd-ptab">
+        <caption className="v2-sr-only">Pitches on {campaign.name}, best fit first</caption>
+        <thead>
+          <tr>
+            <th scope="col">Creator</th>
+            <th scope="col" className="is-num">Reach</th>
+            <th scope="col" className="is-num">Engagement</th>
+            <th scope="col">Fit</th>
+            <th scope="col" className="is-num">Their ask</th>
+            <th scope="col"><span className="v2-sr-only">Decide</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ collab, creator, app, reach, er, fit, ask }) => {
+            const first = creator.name.split(' ')[0];
+            const diff = ask - target;
+            return (
+              <tr key={collab.id}>
+                <th scope="row">
+                  <div className="v2-cd-who">
+                    <Avatar src={creator.avatar} name={creator.name} size={40} />
+                    <div>
+                      <button type="button" className="v2-cd-name" onClick={() => onRoute(`creator:${creator.id}`)}>
+                        {creator.name}
+                      </button>
+                      <small>{[creator.city, app?.submittedAt ? `pitched ${ago(app.submittedAt)}` : null].filter(Boolean).join(' · ')}</small>
+                      {app?.pitch && <p className="v2-cd-pitch" title={app.pitch}>{app.pitch}</p>}
+                    </div>
+                  </div>
+                </th>
+                <td className="is-num" data-label="Reach">{reach > 0 ? fmtFollowers(reach) : 'None linked'}</td>
+                <td className="is-num" data-label="Engagement">{er > 0 ? `${er.toFixed(1)}%` : '–'}</td>
+                <td data-label="Fit">
+                  {fit === null ? <span className="v2-muted">Not enough profile</span> : (
+                    <span className="v2-cd-fit">
+                      <i aria-hidden="true"><em style={{ width: `${fit}%` }} /></i>{fit}%
+                    </span>
+                  )}
+                </td>
+                <td className="is-num v2-cd-ask" data-label="Their ask">
+                  {ask > 0 ? (
+                    <>
+                      <b>{fmtUSDfull(ask)}</b>
+                      {target > 0 && (
+                        <small data-tone={diff > 0 ? 'over' : 'under'}>
+                          {diff === 0 ? 'on target' : `${fmtUSDfull(Math.abs(diff))} ${diff > 0 ? 'over' : 'under'} target`}
+                        </small>
+                      )}
+                    </>
+                  ) : <span className="v2-muted">No rate named</span>}
+                </td>
+                <td className="v2-cd-decide">
+                  {ask > 0 && (
+                    <button
+                      type="button"
+                      className="v2-hm-btn is-dark is-sm"
+                      onClick={() => onAcceptPitch(collab, creator, ask)}
+                      disabled={!canDecide}
+                      title={canDecide ? `Accept at ${fmtUSDfull(ask)}, the rate ${first} asked for` : 'Admin or ops only'}
+                      aria-label={`Accept ${first}'s pitch at ${fmtUSDfull(ask)}`}
+                    >Accept</button>
+                  )}
+                  <button
+                    type="button"
+                    className="v2-hm-btn is-sm"
+                    onClick={() => onSendOffer(creator, ask > 0 ? ask : target)}
+                    aria-label={`${ask > 0 ? 'Counter' : 'Send an offer to'} ${first}`}
+                  >{ask > 0 ? 'Counter' : 'Send offer'}</button>
+                  {app && (
+                    <button
+                      type="button"
+                      className="v2-hm-btn is-sm"
+                      onClick={() => pass(app.id, first)}
+                      disabled={!canDecide}
+                      title={canDecide ? undefined : 'Admin or ops only'}
+                      aria-label={`Pass on ${first}'s pitch`}
+                    >Pass</button>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -1278,7 +1026,7 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
   // Set AFTER the branch chain below when nothing matched — see the note at
   // the fallback. Declared here so the chain can stay a plain if/else.
   const fallbackLine = (text: string) => (
-    <div className="v2-muted" style={{ fontSize: 11, marginTop: 8, textAlign: 'center', fontStyle: 'italic' }}>
+    <div className="v2-cd-wait">
       {text}
     </div>
   );
@@ -1296,12 +1044,11 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
     const pitchRate = pitchApplication?.proposedRate ?? 0;
     const application = getApplicationFor(collab.campaignId, collab.creatorId);
     stageAction = (
-      <div className="v2-row" style={{ gap: 6, marginTop: 8 }}>
+      <div className="v2-cd-acts">
         {application && (
           <button
             type="button"
-            className="v2-btn v2-btn-sm v2-btn-ghost"
-            style={{ flex: 1, justifyContent: 'center', fontSize: 11 }}
+            className="v2-hm-btn is-sm"
             onClick={(e) => {
               stop(e);
               try {
@@ -1325,18 +1072,16 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
         {pitchRate > 0 && (
           <button
             type="button"
-            className="v2-btn v2-btn-sm v2-btn-primary"
-            style={{ flex: 2, justifyContent: 'center', fontSize: 11 }}
-            title={`Accept at ${fmtUSD(pitchRate)} — the rate ${creator.name.split(' ')[0]} asked for`}
+            className="v2-hm-btn is-dark is-sm"
+            title={`Accept at ${fmtUSDfull(pitchRate)} — the rate ${creator.name.split(' ')[0]} asked for`}
             onClick={(e) => { stop(e); onAcceptPitch(collab, creator, pitchRate); }}
           >
-            Accept {fmtUSD(pitchRate)}
+            Accept {fmtUSDfull(pitchRate)}
           </button>
         )}
         <button
           type="button"
-          className="v2-btn v2-btn-sm v2-btn-outline"
-          style={{ flex: 2, justifyContent: 'center', fontSize: 11 }}
+          className="v2-hm-btn is-sm"
           onClick={(e) => { stop(e); onSendOffer(creator, rate); }}
         >
           {pitchRate > 0 ? 'Counter' : 'Send offer'}
@@ -1368,27 +1113,16 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
 
     if (creatorCounteredPending && offer) {
       stageAction = (
-        <div style={{ marginTop: 8 }}>
-          <div
-            style={{
-              padding: '6px 8px',
-              background: 'var(--v2-accent-soft)',
-              borderRadius: 6,
-              fontSize: 11,
-              color: 'var(--v2-ink-2)',
-              marginBottom: 6,
-              lineHeight: 1.4,
-            }}
-          >
-            <strong style={{ color: 'var(--v2-accent)' }}>{creator.name.split(' ')[0]} countered</strong>
-            {' '}with <strong>{fmtUSD(counterRate)}</strong>
-            {lastRound?.message ? <span className="v2-muted"> — {String(lastRound.message).slice(0, 60)}{String(lastRound.message).length > 60 ? '…' : ''}</span> : null}
-          </div>
-          <div className="v2-row" style={{ gap: 6 }}>
+        <div className="v2-cd-countered">
+          <p>
+            <strong>{creator.name.split(' ')[0]} countered</strong>
+            {' '}with <strong>{fmtUSDfull(counterRate)}</strong>
+            {lastRound?.message ? <span className="v2-muted">: {String(lastRound.message).slice(0, 60)}{String(lastRound.message).length > 60 ? '…' : ''}</span> : null}
+          </p>
+          <div className="v2-cd-acts">
             <button
               type="button"
-              className="v2-btn v2-btn-sm v2-btn-ghost"
-              style={{ flex: 1, justifyContent: 'center', fontSize: 11 }}
+              className="v2-hm-btn is-sm"
               onClick={(e) => {
                 stop(e);
                 try {
@@ -1405,8 +1139,7 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
             </button>
             <button
               type="button"
-              className="v2-btn v2-btn-sm v2-btn-outline"
-              style={{ flex: 1, justifyContent: 'center', fontSize: 11 }}
+              className="v2-hm-btn is-sm"
               onClick={(e) => { stop(e); onCounterBack(offer.id, counterRate, creator.name); }}
               disabled={!canWithdraw}
               title={!canWithdraw ? 'Admin or ops only' : undefined}
@@ -1415,13 +1148,12 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
             </button>
             <button
               type="button"
-              className="v2-btn v2-btn-sm v2-btn-primary"
-              style={{ flex: 1.4, justifyContent: 'center', fontSize: 11 }}
+              className="v2-hm-btn is-dark is-sm"
               onClick={(e) => {
                 stop(e);
                 try {
                   v2AcceptCounter(offer.id);
-                  pushToast(`Accepted ${creator.name.split(' ')[0]}'s counter at ${fmtUSD(counterRate)}`, 'good');
+                  pushToast(`Accepted ${creator.name.split(' ')[0]}'s counter at ${fmtUSDfull(counterRate)}`, 'good');
                 } catch (err) {
                   pushToast(err instanceof Error ? err.message : 'Accept failed', 'bad');
                 }
@@ -1429,7 +1161,7 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
               disabled={!canWithdraw}
               title={!canWithdraw ? 'Admin or ops only' : undefined}
             >
-              Accept ({fmtUSD(counterRate)})
+              Accept ({fmtUSDfull(counterRate)})
             </button>
           </div>
         </div>
@@ -1456,8 +1188,8 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
           ? `Awaiting reply to your counter${waited}`
           : `Awaiting reply${waited}`;
       stageAction = (
-        <div className="v2-row" style={{ gap: 6, marginTop: 8, alignItems: 'center' }}>
-          <span className="v2-muted" style={{ fontSize: 11, flex: 1 }}>
+        <div className="v2-cd-acts">
+          <span className="v2-cd-wait">
             {awaitingCopy}
           </span>
           {!offer && (
@@ -1466,8 +1198,7 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
             // path as the `pitched` branch above.
             <button
               type="button"
-              className="v2-btn v2-btn-sm v2-btn-outline"
-              style={{ fontSize: 11 }}
+              className="v2-hm-btn is-sm"
               onClick={(e) => { stop(e); onSendOffer(creator, collab.price > 0 ? collab.price : creator.rate); }}
             >
               Send offer
@@ -1476,8 +1207,7 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
           {offer && (offer.status === 'pending' || offer.status === 'countered') && (
             <button
               type="button"
-              className="v2-btn v2-btn-sm v2-btn-ghost"
-              style={{ fontSize: 11 }}
+              className="v2-hm-btn is-sm"
               onClick={(e) => {
                 stop(e);
                 try {
@@ -1509,8 +1239,7 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
     stageAction = (
       <button
         type="button"
-        className="v2-btn v2-btn-sm v2-btn-primary"
-        style={{ width: '100%', justifyContent: 'center', marginTop: 8, fontSize: 11 }}
+        className="v2-hm-btn is-dark is-sm"
         onClick={(e) => { stop(e); onReview(collab); }}
       >
         Review submission
@@ -1528,8 +1257,7 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
       stageAction = (
         <button
           type="button"
-          className="v2-btn v2-btn-sm v2-btn-primary"
-          style={{ width: '100%', justifyContent: 'center', marginTop: 8, fontSize: 11 }}
+          className="v2-hm-btn is-dark is-sm"
           onClick={(e) => { stop(e); onMarkLive(latest.id, campaignName); }}
         >
           Mark as live
@@ -1540,14 +1268,14 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
     // `paid` requires the CAMPAIGN to be closed, and nothing said so — both
     // sides read "live" as finished and the deal sat there indefinitely.
     stageAction = (
-      <div className="v2-muted" style={{ fontSize: 11, marginTop: 8, textAlign: 'center', fontStyle: 'italic' }}>
+      <div className="v2-cd-wait">
         Live · end the campaign to settle this deal
       </div>
     );
   } else if (collab.stage === 'paid') {
     stageAction = (
-      <div className="v2-col" style={{ gap: 6, marginTop: 8 }}>
-        <div className="v2-muted" style={{ fontSize: 11, textAlign: 'center', fontStyle: 'italic' }}>
+      <div className="v2-cd-acts">
+        <div className="v2-cd-wait">
           Paid out · complete
         </div>
         {/* Brand-side Leave-review CTA. Pre-fix v2LeaveReview supported
@@ -1556,15 +1284,14 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
         {!alreadyReviewed && (
           <button
             type="button"
-            className="v2-btn v2-btn-sm v2-btn-outline"
-            style={{ width: '100%', justifyContent: 'center', fontSize: 11 }}
+            className="v2-hm-btn is-sm"
             onClick={(e) => { stop(e); onLeaveReview(collab, creator); }}
           >
             Leave review
           </button>
         )}
         {alreadyReviewed && (
-          <div className="v2-muted" style={{ fontSize: 11, textAlign: 'center' }}>
+          <div className="v2-cd-wait">
             ✓ Reviewed
           </div>
         )}
@@ -1572,8 +1299,8 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
     );
   } else if (collab.stage === 'confirmed') {
     stageAction = (
-      <div className="v2-col" style={{ gap: 4, marginTop: 8 }}>
-        <div className="v2-muted" style={{ fontSize: 11, textAlign: 'center', fontStyle: 'italic' }}>
+      <div className="v2-cd-acts">
+        <div className="v2-cd-wait">
           Awaiting upload
         </div>
         {/* CANCEL-COLLAB request — escape hatch for the brand when an
@@ -1602,54 +1329,45 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
     stageAction = fallbackLine(na.owner === 'brand' ? na.label : na.waitingLabel);
   }
 
+  // A row: who (opens their deal or the review), what was agreed, and the
+  // move that's due. The whole card used to be a role="button" holding
+  // more buttons, which a screen reader can't make sense of; now the name
+  // is the link and the actions sit beside it.
+  const sub = [
+    creator.city,
+    collab.deliverables.length > 0
+      ? `${collab.deliverables.filter((d) => d.status === 'live').length} of ${collab.deliverables.length} post${collab.deliverables.length === 1 ? '' : 's'} live`
+      : null,
+  ].filter(Boolean).join(' · ');
   return (
     <article
-      className={[
-        'v2-kanban-card',
-        hasReview ? 'is-review is-review-pending' : '',
-        isOverdue ? 'is-overdue' : '',
-      ].filter(Boolean).join(' ')}
-      onClick={handleCardClick}
-      // F26 — the card was a click-only <article>: mouse users could open
-      // a creator's collaboration, keyboard and screen-reader users could
-      // not reach it at all. Button semantics + Enter/Space make the whole
-      // pipeline navigable without a mouse.
-      role="button"
-      tabIndex={0}
-      aria-label={`Open ${creator.name}'s collaboration`}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          handleCardClick();
-        }
-      }}
+      className="v2-cd-row"
+      data-review={hasReview || undefined}
+      data-overdue={isOverdue || undefined}
     >
-      <div className="v2-row" style={{ gap: 8, marginBottom: 8 }}>
-        <div
-          className="v2-avatar v2-avatar-sm"
-          style={{ backgroundImage: `url(${creator.avatar})` }}
-          aria-hidden="true"
-        />
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div className="v2-kanban-card-name">{creator.name}</div>
-          <div className="v2-muted" style={{ fontSize: 11 }}>{creator.city}</div>
+      <div className="v2-cd-who">
+        <Avatar src={creator.avatar} name={creator.name} size={40} />
+        <div>
+          <button
+            type="button"
+            className="v2-cd-name"
+            onClick={handleCardClick}
+            aria-label={hasReview ? `Review ${creator.name}'s content` : `Open ${creator.name}'s storefront`}
+          >
+            {creator.name}
+          </button>
+          <small>{sub}</small>
+          {hasReview && <span className="v2-cd-flag">Content to review</span>}
+          {isOverdue && !hasReview && <span className="v2-cd-flag" data-tone="late">A post is overdue</span>}
         </div>
       </div>
-      {collab.price > 0 && (
-        <div className="v2-row" style={{ justifyContent: 'space-between', fontSize: 12 }}>
-          <span className="v2-muted">
-            {collab.deliverables.length} deliverable{collab.deliverables.length !== 1 ? 's' : ''}
-          </span>
-          <span className="v2-tabular" style={{ fontWeight: 550 }}>{fmtUSD(collab.price)}</span>
-        </div>
-      )}
-      {hasReview && <div className="v2-kanban-review-pill">Review pending</div>}
-      {stageAction}
-      {reviewLag && (
-        <div style={{ marginTop: 6, fontSize: 10.5, lineHeight: 1.45, color: 'var(--v2-accent)', fontWeight: 600 }}>
-          {reviewLag}
-        </div>
-      )}
+      <div className="v2-cd-ask">
+        {collab.price > 0 && <><b>{fmtUSDfull(collab.price)}</b><small>agreed</small></>}
+      </div>
+      <div className="v2-cd-move">
+        {stageAction}
+        {reviewLag && <p className="v2-cd-lag">{reviewLag}</p>}
+      </div>
     </article>
   );
 }
@@ -1680,8 +1398,7 @@ function CancelCollabButton({ collab }: { collab: V2Collab }) {
   return (
     <button
       type="button"
-      className="v2-btn v2-btn-sm v2-btn-outline"
-      style={{ width: '100%', justifyContent: 'center', fontSize: 11 }}
+      className="v2-hm-btn is-sm"
       disabled={!collabRow || !me || pending}
       onClick={(e) => {
         e.stopPropagation();
@@ -1730,28 +1447,10 @@ function BriefView({ campaign, onEditSettings }: { campaign: V2Campaign; onEditS
           {campaign.brief}
         </p>
 
-        <h4 style={{
-          fontFamily: 'var(--v2-font-display)',
-          fontSize: 16,
-          fontWeight: 500,
-          margin: '20px 0 10px',
-        }}>
-          Brand-safe checklist
-        </h4>
-        <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {[
-            'Show product clearly within first 3 seconds',
-            `Use the campaign hashtag in caption`,
-            `Tag the brand and disclose #ad`,
-            'No flashy hard-cuts; keep it daily-life',
-            'Avoid competitor brand mentions',
-          ].map((s) => (
-            <li key={s} className="v2-row" style={{ gap: 8, fontSize: 14 }}>
-              <span style={{ color: 'var(--v2-moss)', display: 'flex' }}>{Icon.check}</span>
-              {s}
-            </li>
-          ))}
-        </ul>
+        {/* A "Brand-safe checklist" sat here: five fixed clauses (product
+            in the first 3 seconds, campaign hashtag, no hard cuts…) shown on
+            every campaign as if the brand had written them. The brief wizard
+            has no field for them; the same list was taken off BriefDetail. */}
       </section>
 
       <aside className="v2-card v2-card-pad" style={{ flex: '1 1 280px' }}>

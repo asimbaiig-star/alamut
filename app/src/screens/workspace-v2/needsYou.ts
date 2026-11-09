@@ -8,6 +8,7 @@
 // Every item is something the viewer has to DO. Events (an offer accepted,
 // a payout cleared) belong in recent activity, not here.
 
+import { perCreatorTarget } from './campaignTarget';
 import { useMemo } from 'react';
 import { useStore } from '@/lib/api/store';
 import {
@@ -304,7 +305,7 @@ export function useBrandNeedsYou(): BrandNeed[] {
 
     // 3. Content to review, then 4. pitches to answer.
     for (const camp of campaigns) {
-      const target = Math.round(camp.budget / Math.max(camp.creators.length || 4, 1));
+      const target = perCreatorTarget(camp);
       for (const c of collabsForCampaign(camp.id, db)) {
         const who = nameOf(c.creatorId);
         if (!who) continue;

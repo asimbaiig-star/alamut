@@ -24,6 +24,7 @@ import { useAuth } from '@/lib/auth/useAuth';
 import { useScheduledNotifications } from '@/lib/api/useScheduledNotifications';
 import { api } from '@/lib/api/client';
 import { Avatar } from '@/components/ui/Avatar';
+import { NotificationsBell } from '@/components/layout/NotificationsBell';
 // F6 — chunk split. All 24 screens used to be static imports, so the
 // single Workspace chunk was ~571 KB (140 KB gzip) and every signin paid
 // for CampaignDetail (3,096 lines) and both onboarding wizards even
@@ -408,6 +409,9 @@ export function WorkspaceV2() {
             <div className="v2-brand-mark" aria-hidden="true"><BrandMarkSvg /></div>
             <div className="v2-brand-name">Alamut</div>
           </button>
+          {/* On a phone the page headers drop their bell (there's no room
+              beside the title), so it lives here, as on every phone app. */}
+          <span className="v2-appbar-bell"><NotificationsBell /></span>
           <span className="v2-appbar-me"><Avatar src={me.avatar} name={me.name} size={36} /></span>
         </header>
 

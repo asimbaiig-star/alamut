@@ -713,6 +713,9 @@ export interface Campaign {
    * work — until it lands, the wizard says they're recorded on the brief.
    */
   objective?: string;
+  /** What the brand means to pay one creator: the wizard's "Target price
+   *  per creator". Older campaigns don't have it; see campaignTarget.ts. */
+  perCreator?: number;
   audienceGender?: string;
   audienceAge?: string[];
   categories?: string[];

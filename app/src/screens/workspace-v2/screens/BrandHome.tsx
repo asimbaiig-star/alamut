@@ -114,7 +114,7 @@ export function BrandHome({ onRoute }: Props) {
 // The open sheet
 // =====================================================================
 
-function BrandSheet({ item, creator, saved, onRoute }: {
+export function BrandSheet({ item, creator, saved, onRoute }: {
   item: BrandNeed;
   creator?: V2Creator;
   saved: boolean;

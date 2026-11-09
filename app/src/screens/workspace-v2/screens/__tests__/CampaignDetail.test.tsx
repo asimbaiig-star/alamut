@@ -88,8 +88,21 @@ vi.mock('../../v2Hooks', () => ({
   useV2CollabsForCampaign: () => [],
   useV2Creators: () => [],
   useV2CurrentBrand: () => CURRENT_BRAND,
+  useV2BrandShortlist: () => [],
   v2AddCampaignAsset: vi.fn(),
   v2RemoveCampaignAsset: vi.fn(),
+}));
+
+// What waits on the brand comes from the one shared list (needsYou.ts).
+let NEEDS: Array<Record<string, unknown>> = [];
+vi.mock('../../needsYou', () => ({
+  useBrandNeedsYou: () => NEEDS,
+}));
+
+// The open sheet is the home's own component; its behaviour is pinned in
+// BrandHome.test.tsx, so here it only has to show which item is on top.
+vi.mock('../BrandHome', () => ({
+  BrandSheet: ({ item }: { item: { title: string } }) => <p>sheet: {item.title}</p>,
 }));
 
 vi.mock('@/lib/api/store', () => ({
@@ -167,6 +180,7 @@ afterEach(() => {
   cleanup();
   CURRENT_BRAND = ownerBrand;
   HAS_CAMPAIGN = true;
+  NEEDS = [];
 });
 
 describe('CampaignDetail (smoke)', () => {
@@ -198,6 +212,43 @@ describe('CampaignDetail (smoke)', () => {
     CURRENT_BRAND = null;
     renderWithRouter(<CampaignDetail campaignId="cmp_1" onRoute={() => undefined} />);
     expect(screen.getByText(/don't have access/i)).toBeInTheDocument();
+  });
+
+  it('the pile holds this campaign\'s non-pitch work; pitches go to the table', () => {
+    NEEDS = [
+      { id: 'n1', kind: 'review', campaignId: 'cmp_1', title: 'Sana sent her Reel for review', creatorName: 'Sana Miller' },
+      { id: 'n2', kind: 'pitch', campaignId: 'cmp_1', title: 'Noor Aziz pitched at $900', creatorName: 'Noor Aziz', rate: 900 },
+      { id: 'n3', kind: 'review', campaignId: 'cmp_other', title: 'Someone else sent a Story', creatorName: 'Someone' },
+    ];
+    renderWithRouter(<CampaignDetail campaignId="cmp_1" onRoute={() => undefined} />);
+    expect(screen.getByRole('heading', { name: /Needs you/i })).toHaveTextContent('1 on this campaign');
+    expect(screen.getByText('sheet: Sana sent her Reel for review')).toBeInTheDocument();
+    // Not duplicated in the pile: pitches are compared in the table.
+    expect(screen.queryByText(/sheet: Noor Aziz/)).toBeNull();
+    expect(screen.queryByText(/Someone else/)).toBeNull();
+    // The places-left cell still counts this campaign's pitches.
+    expect(screen.getByText('1 pitch waiting')).toBeInTheDocument();
+  });
+
+  it('has no needs-you section when nothing waits on this campaign', () => {
+    renderWithRouter(<CampaignDetail campaignId="cmp_1" onRoute={() => undefined} />);
+    expect(screen.queryByRole('heading', { name: /Needs you/i })).toBeNull();
+    expect(screen.getByText('no pitches waiting')).toBeInTheDocument();
+  });
+
+  it('tabs follow the tab pattern: one selected, arrow keys move it', () => {
+    renderWithRouter(<CampaignDetail campaignId="cmp_1" onRoute={() => undefined} />);
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs.map((t) => t.textContent)).toEqual(['Creators', 'Content', 'Results', 'Brief', 'Settings']);
+    expect(screen.getByRole('tab', { selected: true })).toHaveTextContent('Creators');
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', 'cd-tab-pipeline');
+    fireEvent.keyDown(screen.getByRole('tablist'), { key: 'ArrowRight' });
+    expect(screen.getByRole('tab', { selected: true })).toHaveTextContent('Content');
+    expect(document.activeElement).toBe(screen.getByRole('tab', { selected: true }));
+    fireEvent.keyDown(screen.getByRole('tablist'), { key: 'End' });
+    expect(screen.getByRole('tab', { selected: true })).toHaveTextContent('Settings');
+    fireEvent.keyDown(screen.getByRole('tablist'), { key: 'ArrowRight' });
+    expect(screen.getByRole('tab', { selected: true })).toHaveTextContent('Creators');
   });
 
   it('renders "not found" state when the campaign id does not resolve', () => {

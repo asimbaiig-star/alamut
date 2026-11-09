@@ -1129,7 +1129,9 @@ describe('the app shows only terms and claims someone actually made', () => {
   const brief = () => code('screens/workspace-v2/screens/BriefDetail.tsx');
 
   it('BriefDetail carries none of the clauses it used to invent', () => {
-    const src = brief();
+    // The brand's own campaign page showed the same list as "Brand-safe
+    // checklist"; it goes under the same rule.
+    const src = brief() + code('screens/workspace-v2/screens/CampaignDetail.tsx');
     for (const s of [
       /Must do/i, /Spark flagged/i, /clauses? to review/i, /first 3 seconds/i,
       /campaign hashtag/i, /AI-generated voiceover/i, /competing brands in the same/i,
