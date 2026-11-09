@@ -16,7 +16,7 @@ import {
   useV2CurrentCreator, useV2MyCollabs,
 } from './v2Hooks';
 import { collabsForCampaign, deliverableLabel, isActiveCollab } from './v2Adapters';
-import { deliverableIdForSubmission } from '@/lib/api/collabSync';
+import { deliverableIdForSubmission, slotReleaseGross } from '@/lib/api/collabSync';
 import type { Database, Submission } from '@/lib/api/types';
 import { buildSteps as buildKycSteps } from './screens/KycTax';
 
@@ -255,9 +255,12 @@ export interface BrandNeed {
  * post, latest round only (the rule computeSlotStatuses uses), each named
  * ("Reel", "Story 2") so two from one creator can be told apart. Every
  * approved submission used to count, and every row read "Confirm Sarah
- * Johnson's post is live".
+ * Johnson's post is live". `releases` is what confirming moves out of
+ * escrow, from slotReleaseGross, the sum the release itself uses.
  */
-export function postsToConfirm(db: Database, campIds: Set<string>): { sub: Submission; what: string }[] {
+export interface PostToConfirm { sub: Submission; what: string; releases: number | null }
+
+export function postsToConfirm(db: Database, campIds: Set<string>): PostToConfirm[] {
   const latest = new Map<string, Submission>();
   for (const s of db.submissions) {
     if (!campIds.has(s.campaignId)) continue;
@@ -265,13 +268,13 @@ export function postsToConfirm(db: Database, campIds: Set<string>): { sub: Submi
     const seen = latest.get(key);
     if (!seen || s.round > seen.round) latest.set(key, s);
   }
-  const out: { sub: Submission; what: string }[] = [];
+  const out: PostToConfirm[] = [];
   for (const s of latest.values()) {
     if (s.status !== 'approved' || !s.permalink) continue;
     if (s.feedback?.some((f) => f.text?.startsWith('LIVE: '))) continue;
     const delId = deliverableIdForSubmission(s, db);
     const del = delId ? db.deliverables.find((d) => d.id === delId) : undefined;
-    out.push({ sub: s, what: del ? deliverableLabel(del, db).split(' · ')[0] : 'post' });
+    out.push({ sub: s, what: del ? deliverableLabel(del, db).split(' · ')[0] : 'post', releases: slotReleaseGross(s, db) });
   }
   return out;
 }
@@ -290,7 +293,7 @@ export function useBrandNeedsYou(): BrandNeed[] {
 
     // 1. Posts the creator says are live: open the link, confirm, release.
     //    The creator is waiting on payment.
-    for (const { sub: s, what } of postsToConfirm(db, campIds)) {
+    for (const { sub: s, what, releases } of postsToConfirm(db, campIds)) {
       const camp = campOf(s.campaignId);
       const who = nameOf(s.creatorId);
       if (!camp || !who) continue;
@@ -304,6 +307,7 @@ export function useBrandNeedsYou(): BrandNeed[] {
         campaignName: camp.name,
         creatorId: s.creatorId,
         creatorName: who,
+        releases: releases ?? undefined,
       });
     }
 

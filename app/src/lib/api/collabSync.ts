@@ -32,6 +32,7 @@ import type {
 import {
   applicationIsDead, applicationIsLive, offerIsDead, offerIsLive,
 } from './collabLifecycle';
+import { slotGross } from './money';
 
 function newCollabId(campaignId: string, creatorId: string): string {
   const idHash = (campaignId + ':' + creatorId)
@@ -89,6 +90,67 @@ export function deliverableIdForSubmission(s: Submission, db: Database): string 
   return db.deliverables.find(
     (d) => d.campaignId === s.campaignId && d.index === slotIdx,
   )?.id;
+}
+
+/**
+ * What confirming this submission live releases from escrow, gross: the
+ * slot's share of the accepted offer, or 0 when an earlier round of the
+ * same slot was already confirmed (and paid). null when there's no
+ * accepted offer, which the release refuses.
+ *
+ * The one calculation: `releaseSlotEscrow` moves this amount and the
+ * brand's Today row shows it ("confirming releases $X").
+ */
+export function slotReleaseGross(sub: Submission, db: Database): number | null {
+  // Releasing without a matching accepted offer would drain escrow against
+  // an arbitrary share of budget — the pre-fix fallback this guard replaced
+  // did exactly that.
+  const acceptedOffer = db.offers
+    .filter((o) => o.campaignId === sub.campaignId && o.creatorId === sub.creatorId && o.status === 'accepted')
+    .sort((a, b) => new Date(b.respondedAt ?? b.sentAt).getTime() - new Date(a.respondedAt ?? a.sentAt).getTime())[0];
+  if (!acceptedOffer) return null;
+  // F30 — PER-DELIVERABLE RELEASE.
+  //
+  // The accepted offer's rate covers the WHOLE collab (e.g. "$1,650 flat
+  // for 1 IG post + 1 Reel"), but the release runs once per confirmed
+  // submission and used to release `acceptedOffer.rate` every time. Its
+  // only idempotency guard was per-submission, so an N-deliverable
+  // collab paid the creator N× the agreed rate and drove campaign.spent
+  // to N× budget (a 4-slot collab released $6,600 against a $1,650
+  // offer). Now each slot releases only its share.
+  //
+  // Shares are integer-split with the remainder landing on the
+  // last-indexed slot, so the shares sum to EXACTLY the agreed rate
+  // regardless of slot count — no drift, no over- or under-payment.
+  const slots = db.deliverables
+    .filter((d) => d.campaignId === sub.campaignId)
+    .sort((a, b) => a.index - b.index);
+  const slotCount = slots.length;
+
+  // Guard keyed on RELEASE, not approval. Money leaves at mark-live, so
+  // the question is whether another submission for this same slot has
+  // already been marked live in an earlier round — approving round 2 of a
+  // slot whose round 1 was already live-and-paid must not pay twice.
+  const thisDelId = deliverableIdForSubmission(sub, db);
+  const slotAlreadyPaid = thisDelId
+    ? db.submissions.some(
+        (other) =>
+          other.id !== sub.id &&
+          other.campaignId === sub.campaignId &&
+          other.creatorId === sub.creatorId &&
+          deliverableIdForSubmission(other, db) === thisDelId &&
+          (other.feedback ?? []).some((f) => f.text.startsWith('LIVE: ')),
+      )
+    : false;
+
+  if (slotAlreadyPaid) return 0;
+  // Single deliverable, or a legacy campaign with no structured deliverable
+  // rows: the whole rate belongs to this one.
+  if (slotCount <= 1) return acceptedOffer.rate;
+  const slotIdx = thisDelId ? slots.findIndex((d) => d.id === thisDelId) : -1;
+  // Slot share + rounding-remainder rules live in money.ts so the contract
+  // snapshot can sum the identical function.
+  return slotGross(acceptedOffer.rate, slotCount, slotIdx);
 }
 
 export type SlotStatus = 'pending' | 'in_review' | 'revision' | 'approved' | 'live' | 'rejected';

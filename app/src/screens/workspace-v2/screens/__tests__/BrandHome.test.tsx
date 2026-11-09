@@ -173,6 +173,20 @@ describe('BrandHome (smoke)', () => {
     expect(onRoute).toHaveBeenCalledWith('campaign:cmp_1?tab=pipeline');
   });
 
+  it('says what confirming a post releases, and to whom', () => {
+    const onRoute = vi.fn();
+    NEEDS = [
+      { id: 'verify_s1', kind: 'verify', title: 'Confirm Lena Ortiz’s Reel is live', sub: 'Spring serum launch · open the link, then confirm to release payment', route: 'campaign:cmp_1?action=verify-live&sub=s1', campaignId: 'cmp_1', campaignName: 'Spring serum launch', creatorName: 'Lena Ortiz', releases: 825 },
+      { id: 'verify_s2', kind: 'verify', title: 'Confirm Lena Ortiz’s Story is live', sub: 'Spring serum launch · open the link, then confirm to release payment', route: 'campaign:cmp_1?action=verify-live&sub=s2', campaignId: 'cmp_1', campaignName: 'Spring serum launch', creatorName: 'Lena Ortiz' },
+    ];
+    renderWithRouter(<BrandHome onRoute={onRoute} />);
+    expect(screen.getByText('Spring serum launch · confirming releases $825 to Lena')).toBeInTheDocument();
+    // No amount (already paid, or no accepted offer): the plain instruction.
+    expect(screen.getByText('Spring serum launch · open the link, then confirm to release payment')).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Check the post' })[0]);
+    expect(onRoute).toHaveBeenCalledWith('campaign:cmp_1?action=verify-live&sub=s1');
+  });
+
   it('lists live campaigns with what they have spent', () => {
     renderWithRouter(<BrandHome onRoute={() => undefined} />);
     expect(screen.getByText('Spring serum launch')).toBeInTheDocument();

@@ -33,7 +33,7 @@ import { getAcceptedCreators } from '@/lib/api/relations';
 // records, and appends a history entry if the stage changed. This is how we
 // keep Collaboration.stage in lockstep with the apps/offers/subs source of
 // truth without rewriting every mutation to dual-write.
-import { deliverablesFor, ensureCollabState, deliverableIdForSubmission } from '@/lib/api/collabSync';
+import { deliverablesFor, ensureCollabState, slotReleaseGross } from '@/lib/api/collabSync';
 // P1d §1.5 — net-new campaigns materialize structured Deliverable rows
 // from the wizard's free-form `placement` string at create-time, so
 // submissions can attach via Submission.deliverableId without waiting
@@ -66,7 +66,7 @@ import { requireCapability, getActorUserId } from '@/lib/permissions';
 // here and in four other files, with six UI sites hardcoding `* 0.85` as
 // the net multiplier — a different function from the release maths below,
 // which quoted creators a net they didn't receive. See lib/api/money.ts.
-import { PLATFORM_FEE, WHT, splitGross, slotGross, netOf } from '@/lib/api/money';
+import { PLATFORM_FEE, WHT, splitGross, netOf } from '@/lib/api/money';
 // Phase 2 / 3 — Supabase write path for brand + campaign updates.
 // Reads continue going through the local store (which is hydrated
 // from Supabase at boot in lib/api/store.ts). Writes mirror locally
@@ -1171,70 +1171,16 @@ function releaseSlotEscrow(
   creator: Database['creators'][number],
   brand: Database['brands'][number],
 ): number {
-  // Resolved here rather than passed in, so the one caller cannot hand this
-  // function a rate from somewhere else. Releasing without a matching
-  // accepted offer would drain escrow against an arbitrary share of budget —
-  // the pre-fix fallback this guard replaced did exactly that.
-  const acceptedOffer = db.offers
-    .filter((o) => o.campaignId === sub.campaignId && o.creatorId === sub.creatorId && o.status === 'accepted')
-    .sort((a, b) => new Date(b.respondedAt ?? b.sentAt).getTime() - new Date(a.respondedAt ?? a.sentAt).getTime())[0];
-  if (!acceptedOffer) {
+  // The amount lives in slotReleaseGross (collabSync.ts), so the brand's
+  // Today row can show what confirming releases before they confirm, from
+  // the same sum this moves. Resolved there rather than passed in, so the
+  // one caller cannot hand this function a rate from somewhere else.
+  const gross = slotReleaseGross(sub, db);
+  if (gross === null) {
     throw new Error("Can't release escrow — no accepted offer found for this creator on this campaign.");
   }
   const brandUser = findUserByBrand(db, brand.id);
   const creatorUser = findUserByCreator(db, creator.id);
-  // F30 — PER-DELIVERABLE RELEASE.
-  //
-  // The accepted offer's rate covers the WHOLE collab (e.g. "$1,650 flat
-  // for 1 IG post + 1 Reel"), but this function runs once per approved
-  // submission and used to release `acceptedOffer.rate` every time. Its
-  // only idempotency guard was per-submission, so an N-deliverable
-  // collab paid the creator N× the agreed rate and drove campaign.spent
-  // to N× budget (a 4-slot collab released $6,600 against a $1,650
-  // offer). Now each slot releases only its share.
-  //
-  // Shares are integer-split with the remainder landing on the
-  // last-indexed slot, so the shares sum to EXACTLY the agreed rate
-  // regardless of slot count — no drift, no over- or under-payment.
-  const slots = db.deliverables
-    .filter((d) => d.campaignId === sub.campaignId)
-    .sort((a, b) => a.index - b.index);
-  const slotCount = slots.length;
-
-  // Guard against a second release for the same slot: a deliverable can
-  // collect multiple submissions across revision rounds, and approving
-  // round 2 after round 1 was already approved must not pay twice.
-  const thisDelId = deliverableIdForSubmission(sub, db);
-  // Guard keyed on RELEASE, not approval. Money now leaves at mark-live,
-  // so the question is whether another submission for this same slot has
-  // already been marked live in an earlier round — approving round 2 of a
-  // slot whose round 1 was already live-and-paid must not pay twice.
-  const slotAlreadyPaid = thisDelId
-    ? db.submissions.some(
-        (other) =>
-          other.id !== sub.id &&
-          other.campaignId === sub.campaignId &&
-          other.creatorId === sub.creatorId &&
-          deliverableIdForSubmission(other, db) === thisDelId &&
-          (other.feedback ?? []).some((f) => f.text.startsWith('LIVE: ')),
-      )
-    : false;
-
-  let gross: number;
-  if (slotAlreadyPaid) {
-    // Slot's money already left escrow on an earlier round — approve the
-    // submission but move no funds.
-    gross = 0;
-  } else if (slotCount <= 1) {
-    // Single deliverable, or a legacy campaign with no structured
-    // deliverable rows: the whole rate belongs to this approval.
-    gross = acceptedOffer.rate;
-  } else {
-    const slotIdx = thisDelId ? slots.findIndex((d) => d.id === thisDelId) : -1;
-    // Slot share + rounding-remainder rules live in money.ts so the
-    // contract snapshot can sum the identical function.
-    gross = slotGross(acceptedOffer.rate, slotCount, slotIdx);
-  }
 
   const { fee, tax, net } = splitGross(gross);
 

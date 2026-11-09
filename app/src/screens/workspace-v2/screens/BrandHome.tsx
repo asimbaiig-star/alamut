@@ -236,7 +236,11 @@ function brandTask(it: PileEntry, ctx: {
   return {
     ...base,
     title: it.title,
-    sub: it.kind === 'verify' && it.releases ? `${it.campaignName ?? ''} · confirming releases ${dollars(it.releases)}` : it.sub,
+    // What confirming moves, so the brand knows what the click does. A slot
+    // already paid on an earlier round releases nothing and says nothing.
+    sub: it.kind === 'verify' && it.releases
+      ? `${it.campaignName ?? ''} · confirming releases ${dollars(it.releases)} to ${it.creatorName?.split(' ')[0] ?? 'them'}`
+      : it.sub,
     actions: <button type="button" className="v2-hm-btn is-sm is-dark" onClick={() => onRoute(it.route)}>{cta[it.kind] ?? 'Open'}</button>,
   };
 }
