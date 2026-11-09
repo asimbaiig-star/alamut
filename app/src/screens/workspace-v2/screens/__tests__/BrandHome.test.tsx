@@ -153,6 +153,28 @@ describe('BrandHome (smoke)', () => {
     expect(onRoute).toHaveBeenCalledWith('campaign:cmp_1?tab=pipeline');
   });
 
+  it("gathers a campaign's pitches into one sheet that opens the comparison", () => {
+    const onRoute = vi.fn();
+    NEEDS = [
+      { id: 'ctr', kind: 'counter', title: 'Lena countered at $2,200', sub: 'accept, counter back or decline', route: 'campaign:cmp_1?tab=pipeline', campaignId: 'cmp_1', campaignName: 'Spring serum launch', creatorName: 'Lena Ortiz', rate: 2200 },
+      { ...pitch, id: 'p1', rate: 1400 },
+      { ...pitch, id: 'p2', creatorName: 'Noor Aziz', rate: 1650 },
+      { ...pitch, id: 'p3', creatorName: 'Ziad Park', rate: 2600 },
+    ];
+    renderWithRouter(<BrandHome onRoute={onRoute} />);
+    // One thing plus three pitches, said as such, not "4 things need you".
+    expect(screen.getByText(/One thing needs you, and 3 pitches are waiting on 1 campaign\./)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Needs you/ })).toHaveTextContent('2,');
+    // The counter is on top; the pitch group is the band behind it.
+    fireEvent.click(screen.getByRole('button', { name: /3 pitches on Spring serum launch/ }));
+    expect(screen.getByText('3 creators pitched for Spring serum launch')).toBeInTheDocument();
+    // The asks, summarised for the decision.
+    expect(screen.getByText('Lowest ask').nextSibling).toHaveTextContent('$1,400');
+    expect(screen.getByText('Highest ask').nextSibling).toHaveTextContent('$2,600');
+    fireEvent.click(screen.getByRole('button', { name: 'Compare 3 pitches' }));
+    expect(onRoute).toHaveBeenCalledWith('campaign:cmp_1?tab=pipeline');
+  });
+
   it('lists live campaigns with what they have spent', () => {
     renderWithRouter(<BrandHome onRoute={() => undefined} />);
     expect(screen.getByText('Spring serum launch')).toBeInTheDocument();

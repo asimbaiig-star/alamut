@@ -22,6 +22,10 @@ import {
   HomeHead, Letterhead, MoneyStrip, Pile, Terms, ago, dollars, greeting,
 } from './homeParts';
 import { brandAccent } from '../brandPalette';
+import { perCreatorTarget } from '../campaignTarget';
+
+/** A pile entry: one need, or a campaign's pitches gathered into one. */
+type PileEntry = BrandNeed & { band: string; tag?: string; group?: BrandNeed[] };
 
 interface Props {
   onRoute: (r: string) => void;
@@ -36,19 +40,46 @@ export function BrandHome({ onRoute }: Props) {
   const needs = useBrandNeedsYou();
 
   const live = campaigns.filter((c) => c.status === 'Live');
-  const n = needs.length;
-  const summary = n === 0
-    ? `Nothing needs you right now${live.length ? `, with ${live.length} campaign${live.length === 1 ? '' : 's'} live` : ''}.`
-    : `${n === 1 ? 'One thing needs' : `${n} things need`} you${live.length ? ` across ${live.length} live campaign${live.length === 1 ? '' : 's'}` : ''}.`;
 
-  const pile = needs.map((it) => {
+  // A campaign's pitches are one decision (which of them), so they gather
+  // into one sheet that opens the comparison table. Before, 42 of 49 items
+  // on a busy home were single pitches, burying the counters and posts.
+  const pitchCount = new Map<string, number>();
+  for (const it of needs) if (it.kind === 'pitch' && it.campaignId) pitchCount.set(it.campaignId, (pitchCount.get(it.campaignId) ?? 0) + 1);
+  const pile: PileEntry[] = [];
+  const groupAt = new Map<string, number>();
+  for (const it of needs) {
     const camp = it.campaignId ? campaigns.find((c) => c.id === it.campaignId) : undefined;
-    return {
-      ...it,
-      band: camp ? brandAccent(camp.name).bg : 'var(--v2-band-ink)',
-      tag: it.campaignName,
-    };
-  });
+    const band = camp ? brandAccent(camp.name).bg : 'var(--v2-band-ink)';
+    const count = it.kind === 'pitch' && it.campaignId ? pitchCount.get(it.campaignId) ?? 0 : 0;
+    if (count >= 2 && it.campaignId) {
+      const at = groupAt.get(it.campaignId);
+      if (at !== undefined) { pile[at].group!.push(it); continue; }
+      groupAt.set(it.campaignId, pile.length);
+      pile.push({
+        ...it,
+        id: `pitches_${it.campaignId}`,
+        title: `${count} pitches on ${it.campaignName ?? 'a campaign'}`,
+        sub: 'Compare them side by side',
+        route: `campaign:${it.campaignId}?tab=pipeline`,
+        band,
+        tag: `${count} to compare`,
+        group: [it],
+      });
+      continue;
+    }
+    pile.push({ ...it, band, tag: it.campaignName });
+  }
+
+  const pitches = needs.filter((it) => it.kind === 'pitch').length;
+  const others = needs.length - pitches;
+  const summary = needs.length === 0
+    ? `Nothing needs you right now${live.length ? `, with ${live.length} campaign${live.length === 1 ? '' : 's'} live` : ''}.`
+    : [
+        others > 0 ? `${others === 1 ? 'One thing needs' : `${others} things need`} you` : null,
+        pitches > 0 ? `${pitches} pitch${pitches === 1 ? ' is' : 'es are'} waiting on ${pitchCount.size} campaign${pitchCount.size === 1 ? '' : 's'}` : null,
+      ].filter(Boolean).join(', and ') + '.';
+  const n = pile.length;
 
   return (
     <div className="v2-hm">
@@ -89,7 +120,14 @@ export function BrandHome({ onRoute }: Props) {
             <Pile
               items={pile}
               label="Needs you"
-              renderTop={(it) => (
+              renderTop={(it) => it.group ? (
+                <PitchGroupSheet
+                  group={it.group}
+                  campaign={campaigns.find((c) => c.id === it.campaignId)}
+                  creators={creators}
+                  onRoute={onRoute}
+                />
+              ) : (
                 <BrandSheet
                   item={it}
                   creator={creators.find((c) => c.id === it.creatorId)}
@@ -107,6 +145,62 @@ export function BrandHome({ onRoute }: Props) {
         </div>
       </div>
     </div>
+  );
+}
+
+// =====================================================================
+// A campaign's pitches, gathered: who asked what, against the target, and
+// the way into the comparison table on the campaign page.
+// =====================================================================
+
+function PitchGroupSheet({ group, campaign, creators, onRoute }: {
+  group: BrandNeed[];
+  campaign?: V2Campaign;
+  creators: V2Creator[];
+  onRoute: (r: string) => void;
+}) {
+  const name = group[0]?.campaignName ?? campaign?.name ?? 'This campaign';
+  const target = campaign ? perCreatorTarget(campaign) : group[0]?.target ?? 0;
+  const asks = group.map((g) => g.rate ?? 0).filter((r) => r > 0);
+  const low = asks.length ? Math.min(...asks) : 0;
+  const high = asks.length ? Math.max(...asks) : 0;
+  const near = target > 0 ? asks.filter((a) => a <= target * 1.1).length : 0;
+  const route = `campaign:${group[0]?.campaignId}?tab=pipeline`;
+  return (
+    <>
+      <Letterhead brand={name} kind={`${group.length} pitches`} aside={ago(group[0]?.at) ? `newest ${ago(group[0]?.at)}` : undefined} />
+      <div className="v2-hm-body">
+        <h3>{group.length} creators pitched for {name}</h3>
+        <ul className="v2-hm-faces-row" aria-label="Who pitched">
+          {group.slice(0, 5).map((g) => {
+            const c = creators.find((x) => x.id === g.creatorId);
+            return (
+              <li key={g.id}>
+                <Avatar src={c?.avatar} name={g.creatorName ?? 'Creator'} size={36} />
+                <span>{g.creatorName?.split(' ')[0]}</span>
+                {g.rate ? <b>{dollars(g.rate)}</b> : null}
+              </li>
+            );
+          })}
+          {group.length > 5 && <li className="is-more"><span>+{group.length - 5} more</span></li>}
+        </ul>
+        <Terms
+          cells={[
+            ...(target > 0 ? [{ label: 'Your target', value: target }] : []),
+            ...(low > 0 ? [{ label: 'Lowest ask', value: low }] : []),
+            ...(high > 0 ? [{ label: 'Highest ask', value: high }] : []),
+          ]}
+        />
+        {target > 0 && (
+          <p className="v2-hm-note">
+            {near === 0 ? 'Every ask is more than 10% over your target.' : `${near} of ${group.length} ask${near === 1 ? 's' : ''} within 10% of your target.`}
+          </p>
+        )}
+        <div className="v2-hm-acts">
+          <button type="button" className="v2-hm-btn is-dark" onClick={() => onRoute(route)}>Compare {group.length} pitches</button>
+        </div>
+      </div>
+    </>
   );
 }
 
