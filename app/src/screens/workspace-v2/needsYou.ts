@@ -15,7 +15,9 @@ import {
   useV2AllCampaigns, useV2BrandWallet, useV2Campaigns, useV2Creators,
   useV2CurrentCreator, useV2MyCollabs,
 } from './v2Hooks';
-import { collabsForCampaign, isActiveCollab } from './v2Adapters';
+import { collabsForCampaign, deliverableLabel, isActiveCollab } from './v2Adapters';
+import { deliverableIdForSubmission } from '@/lib/api/collabSync';
+import type { Database, Submission } from '@/lib/api/types';
 import { buildSteps as buildKycSteps } from './screens/KycTax';
 
 // ---------------------------------------------------------------------
@@ -248,6 +250,32 @@ export interface BrandNeed {
   releases?: number;
 }
 
+/**
+ * Posts a creator says are live that the brand hasn't confirmed: one per
+ * post, latest round only (the rule computeSlotStatuses uses), each named
+ * ("Reel", "Story 2") so two from one creator can be told apart. Every
+ * approved submission used to count, and every row read "Confirm Sarah
+ * Johnson's post is live".
+ */
+export function postsToConfirm(db: Database, campIds: Set<string>): { sub: Submission; what: string }[] {
+  const latest = new Map<string, Submission>();
+  for (const s of db.submissions) {
+    if (!campIds.has(s.campaignId)) continue;
+    const key = `${s.campaignId}|${s.creatorId}|${deliverableIdForSubmission(s, db) ?? s.id}`;
+    const seen = latest.get(key);
+    if (!seen || s.round > seen.round) latest.set(key, s);
+  }
+  const out: { sub: Submission; what: string }[] = [];
+  for (const s of latest.values()) {
+    if (s.status !== 'approved' || !s.permalink) continue;
+    if (s.feedback?.some((f) => f.text?.startsWith('LIVE: '))) continue;
+    const delId = deliverableIdForSubmission(s, db);
+    const del = delId ? db.deliverables.find((d) => d.id === delId) : undefined;
+    out.push({ sub: s, what: del ? deliverableLabel(del, db).split(' · ')[0] : 'post' });
+  }
+  return out;
+}
+
 export function useBrandNeedsYou(): BrandNeed[] {
   const campaigns = useV2Campaigns();
   const creators = useV2Creators();
@@ -262,16 +290,14 @@ export function useBrandNeedsYou(): BrandNeed[] {
 
     // 1. Posts the creator says are live: open the link, confirm, release.
     //    The creator is waiting on payment.
-    for (const s of db.submissions) {
-      if (!campIds.has(s.campaignId) || s.status !== 'approved' || !s.permalink) continue;
-      if (s.feedback?.some((f) => f.text?.startsWith('LIVE: '))) continue;
+    for (const { sub: s, what } of postsToConfirm(db, campIds)) {
       const camp = campOf(s.campaignId);
       const who = nameOf(s.creatorId);
       if (!camp || !who) continue;
       items.push({
         id: `verify_${s.id}`,
         kind: 'verify',
-        title: `Confirm ${who}’s post is live`,
+        title: `Confirm ${who}’s ${what} is live`,
         sub: `${camp.name} · open the link, then confirm to release payment`,
         route: `campaign:${camp.id}?action=verify-live&sub=${s.id}`,
         campaignId: camp.id,
