@@ -1165,9 +1165,11 @@ describe('the app shows only terms and claims someone actually made', () => {
   });
 
   it('shows the brief the brand wrote, not the first 200 characters of it', () => {
-    // The v2 adapter's `brief` is `pitch || brief`, and launch saves `pitch`
-    // as `brief.slice(0, 200)`, so every long brief was cut off mid-word.
-    expect(code('screens/workspace-v2/v2Adapters.ts')).toMatch(/brief:\s*c\.pitch \|\| c\.brief/);
+    // Launch saves `pitch` as `brief.slice(0, 200)`, and the v2 adapter's
+    // `brief` was `pitch || brief`, so every long brief was cut off
+    // mid-word. This guard used to pin that order (and BriefDetail worked
+    // around it); the adapter now puts the full brief first, everywhere.
+    expect(code('screens/workspace-v2/v2Adapters.ts')).toMatch(/brief:\s*c\.brief \|\| c\.pitch/);
     expect(brief()).toMatch(/rawCampaign\?\.brief/);
   });
 

@@ -146,7 +146,9 @@ export const useStore = create<StoreState>()(
       //
       // v19 — sample creators' portraits match their names, and the
       // non-faces (a road, a flat-lay, broken images) are gone.
-      version: 19,
+      //
+      // v20 — generated briefs rewritten to fit their category.
+      version: 20,
       // Forward-only data migrations layered on top of Zustand's persist
       // versioning. After rehydration, walk `db.migrationVersion + 1` to
       // CURRENT_MIGRATION_VERSION and run each migrator. Idempotent;

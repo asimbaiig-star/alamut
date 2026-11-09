@@ -448,13 +448,32 @@ const CAMPAIGN_TEMPLATES: Record<string, string[]> = {
   Interiors:     ['Small Flats', 'Older Homes', 'Light & Air', 'Considered Rooms'],
 };
 
+// Five shapes of brief, each with a line on the angle that fits the
+// category. Every one used to say "Authentic morning routines preferred",
+// on tech and finance briefs too, and "1 creators" when n was one.
 const BRIEF_TEMPLATES = [
-  'We\'re looking for {n} {category} creators to feature {pkg} through {deliv}. Soft, natural light. Authentic morning routines preferred.',
-  'A {n}-creator campaign for {pkg}. Brand mention in caption only — no hashtags forced. Looking for {category} creators with strong visual style.',
-  'Looking for one creator to anchor a {category} feature for {pkg}. {deliv}. Long-form storytelling preferred over flashy.',
-  'Studio shots and lifestyle context for {pkg}. {deliv}. Quiet palette, no neon, no maximalism.',
-  'For our {pkg} launch we want {n} {category} creators. {deliv}. Authentic use over polished review.',
+  "We're looking for {ncreators} to feature {pkg} through {deliv}. {angle} Brand handle and #ad in the caption.",
+  'A campaign for {pkg}: {deliv}. {angle} Brand mention in the caption; no forced hashtags.',
+  'Creators to anchor a {category} feature for {pkg}. {deliv}. {angle} Long-form storytelling over flashy edits.',
+  'Lifestyle context for {pkg}. {deliv}. {angle} Quiet palette: no neon, no maximalism.',
+  'For the {pkg} launch we want {ncreators}. {deliv}. {angle} Real use over a polished review.',
 ];
+const BRIEF_ANGLES: Record<string, string> = {
+  beauty: 'Show the texture and the routine, in daylight.',
+  fashion: 'Styled from your own wardrobe, not head to toe in ours.',
+  food: 'Cook with it; the making matters more than the plated dish.',
+  wellness: 'Calm pacing and real routines; no before-and-after claims.',
+  design: 'In your own space, as you actually live in it.',
+  interiors: 'In your own space, as you actually live in it.',
+  home: 'In your own space, as you actually live in it.',
+  tech: 'Show it solving a real problem in your day.',
+  travel: 'On the road, in real conditions, not a studio.',
+  fitness: 'In a real session; no transformation claims.',
+  finance: 'Plain explanations; no promises of returns.',
+  parenting: 'Real family moments, nothing staged.',
+  b2b: 'Your own workflow, with numbers you are comfortable sharing.',
+};
+
 
 // ============ HAND-CURATED DEMO ACCOUNTS ============
 const DEMO_USERS: User[] = [
@@ -975,11 +994,13 @@ const MESSAGE_TEMPLATES = [
 ];
 
 function templateBrief(category: string, brandName: string, deliv: string, n: number): string {
+  const cat = category.toLowerCase();
   return pick(BRIEF_TEMPLATES)
-    .replace('{n}', String(n))
-    .replace('{category}', category.toLowerCase())
-    .replace('{pkg}', `the new ${brandName} ${category.toLowerCase()} line`)
-    .replace('{deliv}', deliv);
+    .replace('{ncreators}', n === 1 ? `one ${cat} creator` : `${n} ${cat} creators`)
+    .replace('{category}', cat)
+    .replace('{pkg}', `the new ${brandName} ${cat} line`)
+    .replace('{deliv}', deliv)
+    .replace('{angle}', BRIEF_ANGLES[cat] ?? 'Your everyday, with the product in it.');
 }
 
 const allBrands = [...DEMO_BRANDS, ...generatedBrands.map((b) => b.brand)];

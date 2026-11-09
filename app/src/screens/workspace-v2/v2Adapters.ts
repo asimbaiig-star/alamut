@@ -283,7 +283,11 @@ export function campaignToV2(c: Campaign, db: Database): V2Campaign {
     creators: getAcceptedCreators(c.id, db),
     placement: c.deliverablesText,
     deadline: c.deadline,
-    brief: c.pitch || c.brief,
+    // The full brief, then the short pitch if there is no brief. The other
+    // way round showed generated campaigns' one-line summary ("A wellness
+    // campaign with 1 creator.") on the brief tab and the deal page, while
+    // the real brief sat unread; a wizard pitch is just its brief's start.
+    brief: c.brief || c.pitch,
     category: c.category,
     createdAt: c.createdAt,
     brandVerified: brand?.verified ?? false,
