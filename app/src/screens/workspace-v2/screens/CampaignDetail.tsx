@@ -28,6 +28,7 @@ import { brandAccent } from '../brandPalette';
 import { perCreatorTarget, campaignPlaces, hasOwnTarget } from '../campaignTarget';
 import { matchCreatorToCampaign } from '../matching';
 import { avgEngagement } from '../channels';
+import { DealConversation } from './dealConversation';
 import {
   useV2CampaignById, useV2CollabsForCampaign, useV2Creators,
   useV2CurrentBrand, useV2BrandShortlist,
@@ -740,6 +741,10 @@ function PipelineKanban({ collabs, creators, onReview, onRoute, onSendOffer, onA
   campaignName: string;
   campaign: V2Campaign;
 }) {
+  // The creator open in the panel beside the table (Round 8, B): their
+  // pitch or deal, and your conversation, without leaving the campaign.
+  const [opened, setOpened] = useState<{ collab: V2Collab; creator: V2Creator } | null>(null);
+  const openCreator = (collab: V2Collab, creator: V2Creator) => setOpened({ collab, creator });
   // One group per stage that has anyone in it, down the page. The eight
   // columns ran off the right edge and were mostly empty.
   const groups = V2_PIPELINE_STAGES
@@ -806,6 +811,7 @@ function PipelineKanban({ collabs, creators, onReview, onRoute, onSendOffer, onA
                 onRoute={onRoute}
                 onSendOffer={onSendOffer}
                 onAcceptPitch={onAcceptPitch}
+                onOpen={openCreator}
               />
             ) : (
             <ul className="v2-cd-rows">
@@ -825,6 +831,7 @@ function PipelineKanban({ collabs, creators, onReview, onRoute, onSendOffer, onA
                     onMarkLive={onMarkLive}
                     onCounterBack={onCounterBack}
                     onLeaveReview={onLeaveReview}
+                    onOpen={openCreator}
                   />
                   </li>
                 );
@@ -834,7 +841,122 @@ function PipelineKanban({ collabs, creators, onReview, onRoute, onSendOffer, onA
           </section>
         );
       })}
+      {opened && (
+        <CreatorPanel
+          collab={opened.collab}
+          creator={opened.creator}
+          campaign={campaign}
+          onClose={() => setOpened(null)}
+          onRoute={onRoute}
+          onSendOffer={onSendOffer}
+          onAcceptPitch={onAcceptPitch}
+          onReview={onReview}
+        />
+      )}
     </div>
+  );
+}
+
+// =====================================================================
+// CreatorPanel — one creator on this campaign, beside the table: their
+// pitch or where the deal stands, the decision, and your conversation.
+// Deciding on a pitch used to mean the table, then the storefront, then
+// Inbox to ask a question.
+// =====================================================================
+
+function CreatorPanel({ collab, creator, campaign, onClose, onRoute, onSendOffer, onAcceptPitch, onReview }: {
+  collab: V2Collab;
+  creator: V2Creator;
+  campaign: V2Campaign;
+  onClose: () => void;
+  onRoute: (r: string) => void;
+  onSendOffer: (creator: V2Creator, defaultRate: number) => void;
+  onAcceptPitch: (collab: V2Collab, creator: V2Creator, rate: number) => void;
+  onReview: (c: V2Collab) => void;
+}) {
+  const db = useStore((st) => st.db);
+  const canDecide = useCapability('application.decide');
+  const panelRef = useRef<HTMLElement>(null);
+  const app = db.applications.find(
+    (a) => a.campaignId === collab.campaignId && a.creatorId === collab.creatorId
+      && (a.status === 'submitted' || a.status === 'shortlisted'),
+  );
+  const ask = app?.proposedRate ?? 0;
+  const target = perCreatorTarget(campaign);
+  const first = creator.name.split(' ')[0];
+  const reach = creator.channels.reduce((n, ch) => n + ch.followers, 0);
+  const er = avgEngagement(creator.channels);
+  const pitched = collab.stage === 'pitched';
+  const hasReview = collab.deliverables.some((d) => d.status === 'in_review');
+
+  // Focus the panel, close on Escape, give focus back on close.
+  useEffect(() => {
+    const before = document.activeElement as HTMLElement | null;
+    panelRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('keydown', onKey); before?.focus?.(); };
+  }, [onClose]);
+
+  const pass = () => {
+    if (!app) return;
+    try { v2RejectApplication(app.id); pushToast(`Passed on ${first}'s pitch`, 'good'); onClose(); }
+    catch (err) { pushToast(err instanceof Error ? err.message : 'Could not pass on that pitch', 'bad'); }
+  };
+
+  return (
+    <>
+      <div className="v2-cp-backdrop" aria-hidden="true" onClick={onClose} />
+      <aside className="v2-cp-panel" role="dialog" aria-modal="true" aria-label={`${creator.name} on ${campaign.name}`} ref={panelRef} tabIndex={-1}>
+        <header className="v2-cp-head">
+          <Avatar src={creator.avatar} name={creator.name} size={52} />
+          <div>
+            <h2>{creator.name}</h2>
+            <small>{[creator.city, reach > 0 ? `${fmtFollowers(reach)} followers` : null, er > 0 ? `${er.toFixed(1)}% engagement` : null].filter(Boolean).join(' · ')}</small>
+          </div>
+          <button type="button" className="v2-cp-close" onClick={onClose} aria-label="Close">×</button>
+        </header>
+
+        {pitched ? (
+          <section className="v2-cp-pitch" aria-label="Their pitch">
+            {app?.pitch && <p className="v2-td-quote">{app.pitch}</p>}
+            <div className="v2-td-terms">
+              {ask > 0 && <div><span>{first}’s ask</span><b>{fmtUSDfull(ask)}</b></div>}
+              {target > 0 && <div><span>Your target</span><b>{fmtUSDfull(target)}</b></div>}
+            </div>
+            <div className="v2-cp-acts">
+              {ask > 0 && (
+                <button type="button" className="v2-hm-btn is-dark" disabled={!canDecide} onClick={() => { onAcceptPitch(collab, creator, ask); onClose(); }}>
+                  Accept {fmtUSDfull(ask)}
+                </button>
+              )}
+              <button type="button" className="v2-hm-btn" onClick={() => onSendOffer(creator, ask > 0 ? ask : target)}>{ask > 0 ? 'Counter' : 'Send offer'}</button>
+              {app && <button type="button" className="v2-hm-btn" disabled={!canDecide} onClick={pass}>Pass</button>}
+            </div>
+          </section>
+        ) : (
+          <section className="v2-cp-pitch" aria-label="Where the deal stands">
+            <p className="v2-cp-stage"><span className="v2-ls-dot">{V2_STAGE_META[collab.stage].label}</span>{collab.price > 0 ? ` · ${fmtUSDfull(collab.price)} agreed` : ''}</p>
+            {hasReview && (
+              <div className="v2-cp-acts">
+                <button type="button" className="v2-hm-btn is-dark" onClick={() => { onReview(collab); onClose(); }}>Review their content</button>
+              </div>
+            )}
+          </section>
+        )}
+
+        <DealConversation
+          campaignId={collab.campaignId}
+          creatorId={collab.creatorId}
+          persona="brand"
+          name={creator.name}
+          avatar={creator.avatar}
+          onRoute={onRoute}
+          title="Conversation"
+        />
+        <button type="button" className="v2-hm-link" onClick={() => onRoute(`creator:${creator.id}`)}>Open {first}’s storefront</button>
+      </aside>
+    </>
   );
 }
 
@@ -844,14 +966,16 @@ function PipelineKanban({ collabs, creators, onReview, onRoute, onSendOffer, onA
 // a pile showing one at a time and cards hiding the numbers both made hard.
 // =====================================================================
 
-function PitchTable({ items, creators, campaign, onRoute, onSendOffer, onAcceptPitch }: {
+function PitchTable({ items, creators, campaign, onRoute, onSendOffer, onAcceptPitch, onOpen }: {
   items: V2Collab[];
   creators: V2Creator[];
   campaign: V2Campaign;
   onRoute: (r: string) => void;
   onSendOffer: (creator: V2Creator, defaultRate: number) => void;
   onAcceptPitch: (collab: V2Collab, creator: V2Creator, rate: number) => void;
+  onOpen: (collab: V2Collab, creator: V2Creator) => void;
 }) {
+  void onRoute;
   const db = useStore((st) => st.db);
   const canDecide = useCapability('application.decide');
   const target = perCreatorTarget(campaign);
@@ -905,7 +1029,7 @@ function PitchTable({ items, creators, campaign, onRoute, onSendOffer, onAcceptP
                   <div className="v2-cd-who">
                     <Avatar src={creator.avatar} name={creator.name} size={40} />
                     <div>
-                      <button type="button" className="v2-cd-name" onClick={() => onRoute(`creator:${creator.id}`)}>
+                      <button type="button" className="v2-cd-name" onClick={() => onOpen(collab, creator)} aria-haspopup="dialog">
                         {creator.name}
                       </button>
                       <small>{[creator.city, app?.submittedAt ? `pitched ${ago(app.submittedAt)}` : null].filter(Boolean).join(' · ')}</small>
@@ -975,7 +1099,7 @@ function PitchTable({ items, creators, campaign, onRoute, onSendOffer, onAcceptP
 // KanbanCollabCard — stage-appropriate inline actions
 // =====================================================================
 
-function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, onSendOffer, onAcceptPitch, onMarkLive, onCounterBack, onLeaveReview }: {
+function KanbanCollabCard({ collab, creator, campaignName, onReview, onSendOffer, onAcceptPitch, onMarkLive, onCounterBack, onLeaveReview, onOpen }: {
   collab: V2Collab;
   creator: V2Creator;
   campaignName: string;
@@ -986,6 +1110,7 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
   onMarkLive: (submissionId: string, campaignName: string) => void;
   onCounterBack: (offerId: string, counterRate: number, creatorName: string) => void;
   onLeaveReview: (collab: V2Collab, creator: V2Creator) => void;
+  onOpen: (collab: V2Collab, creator: V2Creator) => void;
 }) {
   // Has the current brand already reviewed this creator on this
   // collab? Suppresses the Leave-review CTA on cards where the brand
@@ -1012,10 +1137,6 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
   const isOverdue = collab.deliverables.some(
     (d) => d.status === 'pending' && cv2DaysUntil(d.due) < 0,
   );
-  const handleCardClick = () => {
-    if (hasReview) onReview(collab);
-    else onRoute(`creator:${creator.id}`);
-  };
 
   // Per-stage inline action button
   let stageAction: React.ReactNode = null;
@@ -1350,8 +1471,8 @@ function KanbanCollabCard({ collab, creator, campaignName, onReview, onRoute, on
           <button
             type="button"
             className="v2-cd-name"
-            onClick={handleCardClick}
-            aria-label={hasReview ? `Review ${creator.name}'s content` : `Open ${creator.name}'s storefront`}
+            onClick={() => onOpen(collab, creator)}
+            aria-haspopup="dialog"
           >
             {creator.name}
           </button>

@@ -11,7 +11,7 @@ import { useV2Conversations, v2EnsureThreadFor, v2MarkThreadRead, v2SendMessage 
 import { brandAccent } from '../brandPalette';
 import { Avatar } from '@/components/ui/Avatar';
 
-export function DealConversation({ campaignId, creatorId, persona, name, avatar, onRoute }: {
+export function DealConversation({ campaignId, creatorId, persona, name, avatar, onRoute, title }: {
   campaignId: string;
   creatorId: string;
   /** Who is reading: their own messages sit on the right. */
@@ -20,6 +20,9 @@ export function DealConversation({ campaignId, creatorId, persona, name, avatar,
   name: string;
   avatar?: string;
   onRoute: (r: string) => void;
+  /** A plain heading instead of the other party's face and name, where the
+   *  page around it already shows them (the campaign's creator panel). */
+  title?: string;
 }) {
   const conv = useV2Conversations().find((c) => c.campaignId === campaignId && c.creatorId === creatorId);
   const [draft, setDraft] = useState('');
@@ -47,10 +50,10 @@ export function DealConversation({ campaignId, creatorId, persona, name, avatar,
   return (
     <section className="v2-dc" aria-label={`Conversation with ${name}`}>
       <header className="v2-dc-head">
-        {persona === 'creator'
+        {title ? null : persona === 'creator'
           ? <span className="v2-dc-mark" style={{ background: brandAccent(name).bg }} aria-hidden="true">{name[0]?.toUpperCase()}</span>
           : <Avatar src={avatar} name={name} size={36} />}
-        <div><b>{name}</b><small>{conv ? `${conv.messages.length} message${conv.messages.length === 1 ? '' : 's'}` : 'No messages yet'}</small></div>
+        <div><b>{title ?? name}</b><small>{conv ? `${conv.messages.length} message${conv.messages.length === 1 ? '' : 's'}` : 'No messages yet'}</small></div>
         {conv && (
           <button type="button" className="v2-hm-more" onClick={() => onRoute(`deal:${conv.id}`)}>In Inbox</button>
         )}

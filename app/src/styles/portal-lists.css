@@ -1486,3 +1486,41 @@
   color: var(--v2-ink);
   resize: vertical;
 }
+
+/* ---- Campaign room: one creator beside the table (Round 8, B) ----------- */
+[data-surface="v2"] .v2-cp-backdrop { position: fixed; inset: 0; z-index: 60; background: color-mix(in srgb, var(--v2-ink) 28%, transparent); }
+[data-surface="v2"] .v2-cp-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 61;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: min(460px, 100vw);
+  padding: calc(22px + env(safe-area-inset-top, 0px)) 22px 22px;
+  overflow-y: auto;
+  background: var(--v2-paper);
+  box-shadow: -24px 0 48px -24px color-mix(in srgb, var(--v2-ink) 45%, transparent);
+  outline: none;
+}
+[data-surface="v2"] .v2-cp-head { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+[data-surface="v2"] .v2-cp-head h2 { margin: 0; font: 500 22px var(--v2-font-display); color: var(--v2-ink); }
+[data-surface="v2"] .v2-cp-head small { font-size: 13px; color: var(--v2-ink-3); }
+[data-surface="v2"] .v2-cp-close {
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--v2-line-2);
+  border-radius: 50%;
+  background: var(--v2-paper);
+  font-size: 22px;
+  line-height: 1;
+  color: var(--v2-ink);
+  cursor: pointer;
+}
+[data-surface="v2"] .v2-cp-pitch { display: grid; gap: 14px; padding: 16px; border-radius: 16px; background: var(--v2-bg); }
+[data-surface="v2"] .v2-cp-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+[data-surface="v2"] .v2-cp-stage { margin: 0; font-size: 14px; color: var(--v2-ink-2); }
+[data-surface="v2"] .v2-cp-panel .v2-dc-msgs { max-height: 300px; }
+[data-surface="v2"] .v2-cp-panel > .v2-hm-link { align-self: flex-start; }
