@@ -716,9 +716,14 @@ function deliverableFromSubmission(
   campaignDeadline: string,
   /** Same date, unformatted — see V2Deliverable.dueAt. */
   campaignDeadlineIso: string,
+  /** The creator's user id, so their own replies aren't shown as feedback. */
+  creatorUserId?: string,
 ): V2Deliverable {
-  // The latest brand feedback note (for revision display)
-  const lastFeedback = s.feedback?.[s.feedback.length - 1]?.text;
+  // The latest note from the brand's side (for revision display). This took
+  // the last entry of any kind, so a creator's "Got it, re-cutting tonight"
+  // showed under "Brand feedback". Same rule as needsYou's revision note.
+  const lastFeedback = [...(s.feedback ?? [])].reverse()
+    .find((f) => f.from !== creatorUserId && !f.text.startsWith('LIVE: '))?.text;
   // Pull the live URL from the dedicated field; fall back to scanning the
   // feedback log for the legacy "LIVE: <url>" entries that pre-s18 data
   // still carries. Either way the creator + brand UI surface the same value.
@@ -856,6 +861,7 @@ export function deriveCollab(campaignId: string, creatorId: string, db: Database
       deliverables.push(deliverableFromSubmission(
         slot.latestSubmission, slot.status, label, slot.deliverable.id,
         fmtDateShort(camp.deadline), camp.deadline,
+        db.creators.find((c) => c.id === creatorId)?.userId,
       ));
     } else if (accepted || (stage !== 'invited' && (stage as string) !== 'cancelled')) {
       // Synthetic pending row so accepted/engaged collabs show every
