@@ -5,7 +5,8 @@
 // Steps: Brief → Audience → Budget & timeline → Invite creators → Review.
 
 import { useMemo, useState } from 'react';
-import { fmtUSD, Icon, Topbar } from '../lib';
+import { fmtUSDfull, Icon, Topbar } from '../lib';
+import { splitGross, PLATFORM_FEE_LABEL, WHT_LABEL } from '@/lib/api/money';
 import { useV2BrandWallet, useV2Creators, useV2CurrentBrand } from '../v2Hooks';
 import { v2LaunchCampaign, v2SaveCampaignDraft } from '../v2CampaignActions';
 import type { LaunchCampaignInput } from '../v2CampaignActions';
@@ -138,7 +139,8 @@ export function NewCampaignWizard({
     audienceAge: savedDraft.audienceAge ?? [],
     categories: savedDraft.categories?.length ? savedDraft.categories : [savedDraft.category],
     budget: savedDraft.budget,
-    perCreator: initialPerCreator ?? 350,
+    // The draft's own target, now that drafts keep it; it used to reset to $350.
+    perCreator: initialPerCreator ?? savedDraft.perCreator ?? Math.round(savedDraft.budget / 4),
     deadline: savedDraft.deadline,
     invitedCreators: [],
   } : {
@@ -157,8 +159,10 @@ export function NewCampaignWizard({
     categories: initialCategory
       ? [initialCategory, ...(brand?.preferredCategories?.slice(0, 1) ?? [])]
       : (brand?.preferredCategories?.slice(0, 2) ?? ['Fashion', 'Lifestyle']),
-    budget: initialBudget ?? 15000,
-    perCreator: initialPerCreator ?? (landingBrief?.perCreator || 350),
+    // Four creators at a typical rate for this roster. $15,000 at $350
+    // (42 creators) was the first, Pakistan-only version's pricing.
+    budget: initialBudget ?? 10000,
+    perCreator: initialPerCreator ?? (landingBrief?.perCreator || 2500),
     // Was hardcoded '2026-06-30', which quietly went stale — a fresh wizard
     // opened with a deadline already in the past. Default to 30 days out.
     deadline: initialDeadline ?? defaultDeadline(),
@@ -605,7 +609,7 @@ function StepBudget({ draft, update }: { draft: Draft; update: (p: Partial<Draft
               type="button"
               className="v2-btn v2-btn-sm v2-btn-outline"
               onClick={() => update({ budget: n })}
-            >{fmtUSD(n)}</button>
+            >{fmtUSDfull(n)}</button>
           ))}
         </div>
       </Field>
@@ -640,12 +644,20 @@ function StepBudget({ draft, update }: { draft: Draft; update: (p: Partial<Draft
         background: 'var(--v2-bg-1)',
         borderRadius: 'var(--v2-r-md)',
       }}>
-        <div className="v2-eyebrow" style={{ marginBottom: 8 }}>Estimated breakdown</div>
-        <KvRow k="Creator payouts (gross)" v={fmtUSD(Math.round(draft.budget * 0.87))} />
-        <KvRow k="Platform fee (10%)" v={fmtUSD(Math.round(draft.budget * 0.087))} />
-        <KvRow k="Withholding (5%)" v={fmtUSD(Math.round(draft.budget * 0.044))} />
+        {/* This said 87% of the budget reached creators and 13% went on
+            fees, with the whole budget "reserved from wallet". The brand
+            pays each creator their rate; the platform fee and withholding
+            come off the creator's side (money.ts); nothing is held until a
+            creator accepts. */}
+        <div className="v2-eyebrow" style={{ marginBottom: 8 }}>How the money moves</div>
+        <KvRow k="Creators this budget covers" v={draft.perCreator > 0 ? String(Math.floor(draft.budget / draft.perCreator)) : '—'} />
+        <KvRow k="You pay each creator" v={fmtUSDfull(draft.perCreator)} />
+        <KvRow k={`They keep, after the ${PLATFORM_FEE_LABEL} fee and ${WHT_LABEL} withholding`} v={fmtUSDfull(splitGross(draft.perCreator).net)} wrap />
         <hr style={{ border: 0, borderTop: '1px solid var(--v2-line)', margin: '8px 0' }} />
-        <KvRow k="Total reserved from wallet" v={fmtUSD(draft.budget)} bold />
+        <KvRow k="Held from your wallet today" v="Nothing" bold />
+        <p className="v2-muted" style={{ margin: '6px 0 0', fontSize: 12.5, lineHeight: 1.5 }}>
+          Each creator’s amount is held when they accept, and released post by post as you confirm each one is live.
+        </p>
       </div>
     </>
   );
@@ -710,7 +722,7 @@ function StepInvite({ draft, update, creators, onRoute }: {
                   @{c.handle} · {c.city} · {top ? `${(top.followers / 1000).toFixed(0)}K on ${top.platform}` : 'no channels'}
                 </div>
               </div>
-              <span className="v2-tabular" style={{ fontWeight: 550, fontSize: 14 }}>{fmtUSD(c.rate)}</span>
+              <span className="v2-tabular" style={{ fontWeight: 550, fontSize: 14 }}>{fmtUSDfull(c.rate)}</span>
               <span className={`v2-invite-toggle ${invited ? 'is-on' : ''}`}>
                 {invited ? Icon.check : Icon.plus}
               </span>
@@ -763,8 +775,8 @@ function StepReview({ draft, creators }: {
       </ReviewSection>
 
       <ReviewSection title="Budget">
-        <KvRow k="Total" v={fmtUSD(draft.budget)} />
-        <KvRow k="Per creator" v={fmtUSD(draft.perCreator)} />
+        <KvRow k="Total" v={fmtUSDfull(draft.budget)} />
+        <KvRow k="Per creator" v={fmtUSDfull(draft.perCreator)} />
         <KvRow k="Deadline" v={draft.deadline} />
       </ReviewSection>
 
@@ -783,7 +795,7 @@ function StepReview({ draft, creators }: {
                 aria-hidden="true"
               />
               <span style={{ flex: 1, fontSize: 13.5 }}>{c.name}</span>
-              <span className="v2-tabular v2-muted" style={{ fontSize: 13 }}>{fmtUSD(c.rate)}</span>
+              <span className="v2-tabular v2-muted" style={{ fontSize: 13 }}>{fmtUSDfull(c.rate)}</span>
             </div>
           ))}
         </div>
@@ -826,15 +838,15 @@ function WizardSidebar({ draft, brandName, walletAvailable }: {
       />
       <KvRow k="Categories" v={draft.categories.length > 0 ? `${draft.categories.length} selected` : '—'} />
       <hr style={{ border: 0, borderTop: '1px solid var(--v2-line)', margin: '12px 0' }} />
-      <KvRow k="Budget" v={fmtUSD(draft.budget)} bold />
-      <KvRow k="Per creator" v={fmtUSD(draft.perCreator)} />
+      <KvRow k="Budget" v={fmtUSDfull(draft.budget)} bold />
+      <KvRow k="Per creator" v={fmtUSDfull(draft.perCreator)} />
       <KvRow k="Deadline" v={draft.deadline} />
       <hr style={{ border: 0, borderTop: '1px solid var(--v2-line)', margin: '12px 0' }} />
       <KvRow k="Invited" v={`${draft.invitedCreators.length} creators`} />
       {/* Was "Wallet after launch", computing `available - budget` — a
           figure for an event that never happens. Launch moves no money, so
           the honest number is simply what's in the wallet now. */}
-      <KvRow k="Wallet available" v={fmtUSD(walletAvailable)} />
+      <KvRow k="Wallet available" v={fmtUSDfull(walletAvailable)} />
       {draft.budget > walletAvailable && (
         <div className="v2-muted" style={{ fontSize: 11, marginTop: 6, lineHeight: 1.4 }}>
           Budget exceeds your balance. You can still launch — escrow is only
@@ -872,7 +884,7 @@ function Field({ label, htmlFor, children }: {
 }) {
   return (
     <div style={{ marginBottom: 18 }}>
-      <label className="v2-eyebrow" htmlFor={htmlFor} style={{ display: 'block', marginBottom: 6 }}>{label}</label>
+      <label className="v2-field-label" htmlFor={htmlFor}>{label}</label>
       {children}
     </div>
   );

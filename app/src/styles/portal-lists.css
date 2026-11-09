@@ -1393,3 +1393,20 @@
   [data-surface="v2"] .v2-inbox-thread-head-who { flex-basis: calc(100% - 120px) !important; }
   [data-surface="v2"] .v2-inbox-thread-head-who ~ .v2-btn:first-of-type { margin-left: 92px; }
 }
+
+/* ---- Forms on the older screens: labels in sentence case ----------------- */
+[data-surface="v2"] .v2-field-label {
+  display: block;
+  margin-bottom: 6px;
+  font: 500 14px var(--v2-font-sans);
+  color: var(--v2-ink-2);
+}
+/* A crumb's link on the persona's ground reads in the ground's text. */
+[data-surface="v2"] .v2-hm-crumb .v2-link-btn { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+@media (max-width: 880px) {
+  [data-surface="v2"] .v2-hm-ground .v2-hm-crumb { color: color-mix(in srgb, var(--v2-paper) 80%, transparent); }
+  /* Wizard steps: numbers in a row, only the current step named. Five
+     named steps took a whole phone screen. */
+  [data-surface="v2"] .v2-wizard-stepper { grid-template-columns: repeat(5, auto) !important; justify-content: start; gap: 6px !important; }
+  [data-surface="v2"] .v2-wizard-step:not(.is-current) .v2-eyebrow { display: none; }
+}

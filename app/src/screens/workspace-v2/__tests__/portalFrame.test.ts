@@ -9,7 +9,7 @@
 //      restyled the other.
 
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const V2 = join(__dirname, '..');
@@ -57,9 +57,13 @@ describe('the portal frame', () => {
   it('screens never work out the fee or withholding themselves', () => {
     // money.ts rounds per deliverable; a screen's own `price * 0.10` can
     // disagree with what the ledger pays (the deal page did exactly that).
-    for (const f of ['screens/CollabDetail.tsx', 'screens/StageActionBanner.tsx', 'screens/CreatorWallet.tsx', 'screens/BrandWallet.tsx', 'screens/Inbox.tsx']) {
+    // Every screen, and any fraction of a budget (the wizard's breakdown
+    // used budget * 0.87 / 0.087 / 0.044 and was wrong three ways).
+    const screens = readdirSync(join(V2, 'screens')).filter((f) => f.endsWith('.tsx')).map((f) => `screens/${f}`);
+    for (const f of screens) {
       const src = stripComments(read(join(V2, f)));
       expect(src, f).not.toMatch(/\*\s*0\.(10|1|05|85)\b/);
+      expect(src, f).not.toMatch(/budget\s*\*\s*0\.\d/);
     }
   });
 
