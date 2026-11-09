@@ -10,7 +10,7 @@
 // outcomes) and primary CTAs in the topbar.
 
 import { useMemo, useState } from 'react';
-import { fmtUSD, fmtFollowers, Icon, PLATFORM_META, ScoreBadge, Topbar } from '../lib';
+import { fmtUSD, fmtUSDfull, fmtFollowers, Icon, PLATFORM_META, ScoreBadge, Topbar } from '../lib';
 import { useV2AllCampaigns, useV2Creators, useV2BrandShortlist, useV2CurrentCreator, v2ToggleSavedCreator } from '../v2Hooks';
 import { useStore } from '@/lib/api/store';
 import { SendBriefModal } from './WorkflowModals';
@@ -75,7 +75,11 @@ export function CreatorProfile({ creatorId, onRoute }: Props) {
   const totalFollowers = creator.channels.reduce((s, ch) => s + ch.followers, 0);
   // Guard the divide: a creator with no connected channels rendered "NaN%".
   const avgEngagement = creator.channels.length > 0
-    ? (creator.channels.reduce((s, ch) => s + ch.engagement, 0) / creator.channels.length).toFixed(1)
+    // Weighted by followers, as on the creator's own analytics: a plain
+    // average let a newsletter's open rate swamp the social channels.
+    ? (totalFollowers > 0
+      ? creator.channels.reduce((s, ch) => s + ch.engagement * ch.followers, 0) / totalFollowers
+      : creator.channels.reduce((s, ch) => s + ch.engagement, 0) / creator.channels.length).toFixed(1)
     : null;
 
   // Response time — average gap between the brand's last message and
@@ -132,7 +136,7 @@ export function CreatorProfile({ creatorId, onRoute }: Props) {
     <>
       <Topbar
         title={creator.name}
-        crumb={`Discover → ${creator.handle} · profile`}
+        crumb={<><button type="button" className="v2-link-btn" onClick={() => onRoute('discover')}>Discover</button> · {creator.handle.startsWith('@') ? creator.handle : `@${creator.handle}`}</>}
         actions={
           <>
             <button className="v2-btn v2-btn-outline" type="button" onClick={() => onRoute('discover')}>
@@ -220,14 +224,14 @@ export function CreatorProfile({ creatorId, onRoute }: Props) {
               background: 'var(--v2-bg-1)',
             }}
           >
-            <KpiInline label="Total reach" value={fmtFollowers(totalFollowers)} sub="across all channels" />
+            <KpiInline label="Followers" value={fmtFollowers(totalFollowers)} sub="across all channels" />
             <KpiInline
-              label="Avg engagement"
+              label="Engagement"
               value={avgEngagement !== null ? `${avgEngagement}%` : '—'}
-              sub={avgEngagement !== null ? 'across connected channels' : 'no channels connected'}
+              sub={avgEngagement !== null ? 'weighted by followers' : 'no channels connected'}
             />
-            <KpiInline label="Response time" value={responseTimeCopy} sub="message threads" />
-            <KpiInline label="Going rate" value={fmtUSD(creator.rate)} sub="per Reel + Stories" />
+            <KpiInline label="Response time" value={responseTimeCopy} sub="average, in messages" />
+            <KpiInline label="Going rate" value={fmtUSDfull(creator.rate)} sub="per Reel + Stories" />
             <KpiInline label="Past brands" value={String(creator.pastBrands.length + pastCollabs.length)} sub={creator.pastBrands.slice(0, 2).join(', ')} />
           </div>
         </section>
@@ -412,10 +416,11 @@ export function CreatorProfile({ creatorId, onRoute }: Props) {
                   holds the real figure — a fabricated stat with the truth
                   sitting one field away. Reads the field now, and says nothing
                   when it's absent rather than inventing a number. */}
+              {/* The same response time as the figure above. This read the
+                  seed's responseHrs ("within 3h") while the stats, from real
+                  messages, said ~3.9 days: one label, two quantities. */}
               Spark drafts the brief for you and routes it through Inbox.
-              {creator.responseHrs
-                ? ` ${creator.name.split(' ')[0]} usually replies within ${creator.responseHrs}h.`
-                : ''}
+              {` ${creator.name.split(' ')[0]} replies in ${responseTimeCopy.replace(/^~/, 'about ')} on average.`}
             </div>
           </div>
           <div className="v2-row" style={{ gap: 10 }}>

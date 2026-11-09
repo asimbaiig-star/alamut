@@ -136,10 +136,13 @@ export function ScoreBadge({ score }: { score: number | null }) {
   return (
     <div
       className={`v2-score ${tier === 'good' ? 'v2-score-good' : tier === 'mid' ? 'v2-score-mid' : ''}`}
+      // Shown as the rating it is. "● 91" was a review average out of 5
+      // scaled to 100, explained only in a tooltip.
+      aria-label={`Average review ${(score / 20).toFixed(1)} out of 5`}
       title={`Average review rating: ${(score / 20).toFixed(1)} / 5`}
     >
-      <span className="v2-score-dot">●</span>
-      {score}
+      <span className="v2-score-dot" aria-hidden="true">★</span>
+      {(score / 20).toFixed(1)}
     </div>
   );
 }
