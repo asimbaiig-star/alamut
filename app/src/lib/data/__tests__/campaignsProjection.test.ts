@@ -117,3 +117,16 @@ function toFull(over: Record<string, unknown> = {}): Campaign {
     milestones: r.milestones, autoShortlist: r.auto_shortlist,
   } as unknown as Campaign;
 }
+
+describe('per-creator target (043)', () => {
+  it('a row read before 043 leaves the local target alone', () => {
+    // toCampaign used to set perCreator: undefined, and the spread wiped
+    // the brand's own target on every read.
+    const [c] = mergeHydratedCampaigns([localCampaign({ perCreator: 2250 })], [toPub()], []);
+    expect(c.perCreator).toBe(2250);
+  });
+  it('a row read after 043 carries the target, public read included', () => {
+    const [c] = mergeHydratedCampaigns([localCampaign()], [toPub({ per_creator: 1800 })], []);
+    expect(c.perCreator).toBe(1800);
+  });
+});

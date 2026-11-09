@@ -3506,7 +3506,9 @@ export async function v2UpdateCampaign(
     const idx = db.campaigns.findIndex((c) => c.id === campaignId);
     if (idx === -1) return null;
     const current = db.campaigns[idx];
-    const next: Campaign = serverResult ?? { ...current, ...patch };
+    // Over the local copy, not instead of it: the server row lacks what has
+    // no column (or none yet), like the per-creator target before 043.
+    const next: Campaign = serverResult ? { ...current, ...serverResult } : { ...current, ...patch };
     db.campaigns[idx] = next;
     return next;
   });

@@ -41,6 +41,8 @@ type Row = {
   kind: Campaign['kind'] | null;
   editors_pick: boolean | null;
   assets: CampaignAsset[] | null;
+  /** 043. Absent from rows read before the migration runs. */
+  per_creator?: number | null;
   version: number;
   created_at: string;
   updated_at: string;
@@ -51,6 +53,36 @@ const COLUMNS =
   'region, category, stage, deliverables_text, deliverable_ids, deadline, ' +
   'posted_at, reach, engagement, history, milestones, applications, offers, ' +
   'rights, auto_shortlist, kind, editors_pick, assets, version, created_at, updated_at';
+
+// ---- Columns added by later migrations -------------------------------------
+// Asked for when the database has them, left out when it doesn't, so the app
+// works whether or not the migration has been run yet. Unknown until the
+// first read answers; a "column does not exist" error settles it to false.
+// (Selecting a missing column fails the whole read, which would empty the
+// marketplace; that's what this guards.)
+const EXTRA_COLUMNS = ', per_creator';
+let extrasInDb: boolean | null = null;
+export function isMissingColumn(e: { code?: string; message?: string } | null | undefined): boolean {
+  if (!e) return false;
+  return e.code === '42703' || e.code === 'PGRST204'
+    || /column .* does not exist|could not find the .* column/i.test(e.message ?? '');
+}
+/** Run a query with the extra columns, or without them if the database
+ *  doesn't have them yet. */
+async function withExtras<T extends { error: { code?: string; message?: string } | null }>(
+  run: (extra: string) => PromiseLike<T>,
+): Promise<T> {
+  if (extrasInDb === false) return run('');
+  const first = await run(EXTRA_COLUMNS);
+  if (first.error && isMissingColumn(first.error)) {
+    extrasInDb = false;
+    return run('');
+  }
+  if (!first.error) extrasInDb = true;
+  return first;
+}
+/** For tests. */
+export function resetExtraColumnsProbe(v: boolean | null = null): void { extrasInDb = v; }
 
 // Fields only a campaign's own parties may read. Migration 039 limits the
 // raw table to the brand that owns the campaign and creators with an
@@ -104,6 +136,10 @@ export function toCampaign(row: Row): Campaign {
     kind: row.kind ?? undefined,
     editorsPick: row.editors_pick ?? undefined,
     assets: row.assets ?? [],
+    // Only when the row carried the column: a key set to undefined would
+    // overwrite the local value in mergeHydratedCampaigns' spread, wiping a
+    // target the brand just set, on every read before 043 runs.
+    ...(row.per_creator !== undefined ? { perCreator: row.per_creator ?? undefined } : {}),
     version: row.version,
   };
 }
@@ -195,6 +231,7 @@ function toInsertRow(c: Campaign): Record<string, unknown> {
     kind: c.kind ?? 'one_off',
     editors_pick: c.editorsPick ?? false,
     created_at: c.createdAt,
+    per_creator: c.perCreator ?? null,
   };
 }
 
@@ -304,7 +341,7 @@ const isMissingRelation = (e: { code?: string }) => e.code === 'PGRST205' || e.c
 export async function readCampaignsInFull(): Promise<CampaignRead<Campaign>> {
   if (!isSupabaseConfigured()) return { rows: [], status: 'failed' };
   const sb = getSupabase();
-  const { data, error } = await sb.from('campaigns').select(COLUMNS);
+  const { data, error } = await withExtras((x) => sb.from('campaigns').select(COLUMNS + x));
   if (error) {
     // eslint-disable-next-line no-console
     console.warn('[campaignsRepo] read in full failed:', error.message);
@@ -324,7 +361,7 @@ export async function fetchAllCampaignsFromSupabase(): Promise<Campaign[]> {
 export async function readPublicCampaigns(): Promise<CampaignRead<PublicCampaign>> {
   if (!isSupabaseConfigured()) return { rows: [], status: 'failed' };
   const sb = getSupabase();
-  const { data, error } = await sb.from('campaigns_public').select(PUBLIC_COLUMNS);
+  const { data, error } = await withExtras((x) => sb.from('campaigns_public').select(PUBLIC_COLUMNS + x));
   if (error) {
     if (isMissingRelation(error)) return { rows: [], status: 'missing' };
     // eslint-disable-next-line no-console
@@ -361,11 +398,13 @@ export function campaignIdsForRegistry(
 export async function insertCampaignInSupabase(c: Campaign): Promise<Campaign> {
   if (!isSupabaseConfigured()) throw new Error('Supabase not configured');
   const sb = getSupabase();
-  const { data, error } = await sb
-    .from('campaigns')
-    .insert(toInsertRow(c))
-    .select(COLUMNS)
-    .single();
+  // Without per_creator when the column isn't there yet: an unknown column
+  // in an insert fails the insert, and the campaign would never be saved.
+  const { data, error } = await withExtras((x) => {
+    const row = toInsertRow(c);
+    if (!x) delete row.per_creator;
+    return sb.from('campaigns').insert(row).select(COLUMNS + x).single();
+  });
   if (error) throw new Error(error.message);
   if (!data) throw new Error('Insert returned no row');
   return toCampaign(data as unknown as Row);
@@ -392,7 +431,7 @@ export async function updateCampaignInSupabase(
   const sb = getSupabase();
   const rowPatch = toUpdateRowPatch(patch);
   if (Object.keys(rowPatch).length === 0) {
-    const { data, error } = await sb.from('campaigns').select(COLUMNS).eq('id', campaignId).single();
+    const { data, error } = await withExtras((x) => sb.from('campaigns').select(COLUMNS + x).eq('id', campaignId).single());
     if (error) throw new Error(error.message);
     return toCampaign(data as unknown as Row);
   }
@@ -407,7 +446,7 @@ export async function updateCampaignInSupabase(
     q = q.eq('version', expectedVersion);
   }
   try {
-    const { data, error } = await q.select(COLUMNS).single();
+    const { data, error } = await q.select(COLUMNS + (extrasInDb ? EXTRA_COLUMNS : '')).single();
     if (error) {
       // PostgREST returns "no rows" when the version-eq predicate
       // doesn't match. Translate to a typed error so callers can
