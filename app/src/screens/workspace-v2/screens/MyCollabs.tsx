@@ -94,7 +94,13 @@ export function MyCollabs({ onRoute }: Props) {
           sub={live.length === 0
             ? 'No deals yet. Pitch a brief, or let brands find your storefront.'
             : `${yourMove === 0 ? 'Nothing needs you right now' : `${yourMove} need${yourMove === 1 ? 's' : ''} you`}.${onWay > 0 ? ` ${dollars(onWay)} is on its way to you as posts go live.` : ''}`}
-          actions={<button type="button" className="v2-hm-btn is-dark" onClick={() => onRoute('creator-campaigns')}>Find briefs</button>}
+          actions={
+            <>
+              {/* Calendar is a view of your deals now, not a menu item. */}
+              <button type="button" className="v2-hm-btn" onClick={() => onRoute('creator-calendar')}>Calendar</button>
+              <button type="button" className="v2-hm-btn is-dark" onClick={() => onRoute('creator-campaigns')}>Find briefs</button>
+            </>
+          }
         />
       </div>
 

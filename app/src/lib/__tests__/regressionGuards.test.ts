@@ -635,8 +635,11 @@ describe('marketing copy does not outrun the product', () => {
     // Both homes show money with Withdraw / Top up beside it; the strip they
     // share says how payments run, right there.
     expect(code('screens/workspace-v2/screens/homeParts.tsx'), 'the home money strip stopped saying it').toMatch(/payments run in test mode/);
-    expect(code('screens/workspace-v2/screens/CreatorHome.tsx'), 'the creator home dropped the money strip').toMatch(/<MoneyStrip/);
-    expect(code('screens/workspace-v2/screens/BrandHome.tsx'), 'the brand home dropped the money strip').toMatch(/<MoneyStrip/);
+    // Today (Round 8) shows money as a card with Withdraw / Top up; the card
+    // carries the same line.
+    expect(code('screens/workspace-v2/screens/todayParts.tsx'), 'the Today money card stopped saying it').toMatch(/payments run in test mode/);
+    expect(code('screens/workspace-v2/screens/CreatorHome.tsx'), 'the creator Today dropped the money card').toMatch(/<MoneyCard/);
+    expect(code('screens/workspace-v2/screens/BrandHome.tsx'), 'the brand Today dropped the money card').toMatch(/<MoneyCard/);
   });
 
   it('does not promise attribution the dashboard does not do', () => {

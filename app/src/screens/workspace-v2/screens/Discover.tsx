@@ -321,7 +321,7 @@ export function Discover({ onRoute }: Props) {
     <div className="v2-hm">
       <div className="v2-hm-ground">
         <HomeHead
-          title="Discover"
+          title="Creators"
           sub={`${allCreators.length} creators with published rates. Brief one directly, or save them for later.`}
           actions={<button type="button" className="v2-hm-btn is-dark" onClick={() => onRoute('campaign-new')}>New campaign</button>}
         />

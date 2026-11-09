@@ -23,7 +23,7 @@ function Stars({ count }: { count: number }) {
 
 export const CREATOR_DEAL: WorkspaceScreen = {
   persona: 'creator',
-  nav: ['Home', 'Storefront', 'Deals', 'Briefs', 'Inbox', 'Calendar', 'Wallet'],
+  nav: ['Today', 'Deals', 'Briefs', 'Inbox', 'Wallet'],
   active: 'Deals',
   crumb: `Deals · ${BRIEFS[0]!.brand}`,
   title: 'Skincare launch',

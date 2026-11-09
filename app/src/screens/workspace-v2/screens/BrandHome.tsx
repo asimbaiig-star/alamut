@@ -1,16 +1,23 @@
-// BrandHome.tsx — the brand's home (portal canvas, Round 2).
+// BrandHome.tsx — the brand's Today (portal canvas, Round 8, B).
 //
-// One sheet, four things: the money held for creators, what needs you as a
-// pile (a pitch open on top, to accept or pass in place), live campaigns
-// with their spend, and the creators you've saved. Spark has its own place
-// in the sidebar; it no longer takes the top of the home.
+// Every need is a row you can act on where it stands: a campaign's pitches
+// gathered into one "compare" row, a counter to answer, content to review,
+// a post to confirm. The most urgent is open first; unread messages on a
+// creator's deal sit beside its row. Then what creators owe this week.
+// Money is a small card on the right with the live campaigns. (It was a
+// pile showing one need at a time, with the held balance in 96px type.)
 //
-// The pile comes from needsYou.ts, which also feeds the sidebar badges.
+// The list comes from needsYou.ts, which also feeds the menu's badges.
 
 import {
-  useV2BrandShortlist, useV2BrandWallet, useV2Campaigns, useV2Creators,
+  useV2BrandWallet, useV2Campaigns, useV2Conversations, useV2Creators,
   useV2CurrentBrand, v2ToggleSavedCreator,
 } from '../v2Hooks';
+import { useStore } from '@/lib/api/store';
+import type { Database } from '@/lib/api/types';
+import { collabsForCampaign } from '../v2Adapters';
+import { TaskList, DueSoon, MoneyCard, type TaskItem, type DueItem } from './todayParts';
+import { TODAY, daysBetween, parseDue } from '../dueDates';
 import { v2AcceptPitch, v2RejectApplication } from '../v2CampaignActions';
 import { useCapability } from '@/lib/permissions';
 import { pushToast } from '@/lib/utils/toast';
@@ -19,7 +26,7 @@ import { fmtFollowers } from '../lib';
 import type { V2Campaign, V2Creator } from '../data';
 import { useBrandNeedsYou, type BrandNeed } from '../needsYou';
 import {
-  HomeHead, Letterhead, MoneyStrip, Pile, Terms, ago, dollars, greeting,
+  HomeHead, Letterhead, Terms, ago, dollars, greeting,
 } from './homeParts';
 import { brandAccent } from '../brandPalette';
 import { perCreatorTarget } from '../campaignTarget';
@@ -37,8 +44,10 @@ export function BrandHome({ onRoute }: Props) {
   const wallet = useV2BrandWallet();
   const campaigns = useV2Campaigns();
   const creators = useV2Creators();
-  const shortlist = useV2BrandShortlist();
   const needs = useBrandNeedsYou();
+  const conversations = useV2Conversations();
+  const db = useStore((st) => st.db);
+  const canDecide = useCapability('application.decide');
 
   const live = campaigns.filter((c) => c.status === 'Live');
 
@@ -82,67 +91,62 @@ export function BrandHome({ onRoute }: Props) {
       ].filter(Boolean).join(', and ') + '.';
   const n = pile.length;
 
+  const tasks = pile.map((it) => brandTask(it, {
+    creators, campaigns, onRoute, canDecide,
+    unread: it.creatorId && it.campaignId
+      ? conversations.filter((c) => c.campaignId === it.campaignId && c.creatorId === it.creatorId).reduce((n, c) => n + c.unread, 0)
+      : 0,
+  }));
+  const due = brandDue(live, db);
+
   return (
-    <div className="v2-hm">
+    <div className="v2-hm v2-td">
       <div className="v2-hm-ground">
         <HomeHead
           title={`${greeting()}${brand ? `, ${brand.name}` : ''}.`}
           sub={summary}
           actions={
             <>
-              <button type="button" className="v2-hm-btn" onClick={() => onRoute('discover')}>Discover creators</button>
+              <button type="button" className="v2-hm-btn" onClick={() => onRoute('discover')}>Find creators</button>
               <button type="button" className="v2-hm-btn is-dark" onClick={() => onRoute('campaign-new')}>New campaign</button>
             </>
-          }
-        />
-        <MoneyStrip
-          label="Held for your creators"
-          figure={wallet.reserved}
-          rows={[
-            { label: 'Available to spend', value: wallet.available },
-            { label: 'Released this month', value: wallet.thisMonth.released },
-          ]}
-          action={
-            <button type="button" className="v2-hm-btn" onClick={() => onRoute('wallet?action=topup')}>Top up</button>
           }
         />
       </div>
 
       <div className="v2-hm-cols">
-        <section aria-labelledby="hm-needs">
-          <h2 className="v2-hm-h2" id="hm-needs">Needs you {n > 0 && <span>{n}, most urgent on top</span>}</h2>
-          {n === 0 ? (
-            <div className="v2-hm-clear">
-              <b>You’re all caught up.</b>
-              <p>Pitches, counters and posts to confirm will land here first.</p>
-              <button type="button" className="v2-hm-btn is-dark" onClick={() => onRoute('campaign-new')}>New campaign</button>
-            </div>
-          ) : (
-            <Pile
-              items={pile}
-              label="Needs you"
-              renderTop={(it) => it.group ? (
-                <PitchGroupSheet
-                  group={it.group}
-                  campaign={campaigns.find((c) => c.id === it.campaignId)}
-                  creators={creators}
-                  onRoute={onRoute}
-                />
-              ) : (
-                <BrandSheet
-                  item={it}
-                  creator={creators.find((c) => c.id === it.creatorId)}
-                  saved={!!it.creatorId && shortlist.includes(it.creatorId)}
-                  onRoute={onRoute}
-                />
-              )}
-            />
-          )}
-        </section>
+        <div className="v2-td-main">
+          <section aria-labelledby="hm-needs">
+            <h2 className="v2-hm-h2" id="hm-needs">Needs you {n > 0 && <span>{n}</span>}</h2>
+            {n === 0 ? (
+              <div className="v2-hm-clear">
+                <b>You’re all caught up.</b>
+                <p>Pitches, counters and posts to confirm will land here first.</p>
+                <button type="button" className="v2-hm-btn is-dark" onClick={() => onRoute('campaign-new')}>New campaign</button>
+              </div>
+            ) : (
+              <TaskList items={tasks} label="Needs you" onRoute={onRoute} />
+            )}
+          </section>
+          <DueSoon
+            items={due}
+            onRoute={onRoute}
+            calendarRoute="calendar"
+            empty="No creator content due in the next seven days."
+          />
+        </div>
 
         <div className="v2-hm-right">
+          <MoneyCard
+            title="Money"
+            rows={[
+              { label: 'Held for your creators', value: wallet.reserved, strong: true },
+              { label: 'Available to spend', value: wallet.available },
+              { label: 'Released this month', value: wallet.thisMonth.released },
+            ]}
+            action={<button type="button" className="v2-hm-btn is-sm" onClick={() => onRoute('wallet?action=topup')}>Top up</button>}
+          />
           <LiveCampaigns campaigns={live} onRoute={onRoute} />
-          <Shortlist ids={shortlist} creators={creators} onRoute={onRoute} />
         </div>
       </div>
     </div>
@@ -150,31 +154,43 @@ export function BrandHome({ onRoute }: Props) {
 }
 
 // =====================================================================
-// A campaign's pitches, gathered: who asked what, against the target, and
-// the way into the comparison table on the campaign page.
+// A need (or a campaign's gathered pitches), as a row with its buttons.
 // =====================================================================
 
-function PitchGroupSheet({ group, campaign, creators, onRoute }: {
-  group: BrandNeed[];
-  campaign?: V2Campaign;
+function brandTask(it: PileEntry, ctx: {
   creators: V2Creator[];
+  campaigns: V2Campaign[];
   onRoute: (r: string) => void;
-}) {
-  const name = group[0]?.campaignName ?? campaign?.name ?? 'This campaign';
-  const target = campaign ? perCreatorTarget(campaign) : group[0]?.target ?? 0;
-  const asks = group.map((g) => g.rate ?? 0).filter((r) => r > 0);
-  const low = asks.length ? Math.min(...asks) : 0;
-  const high = asks.length ? Math.max(...asks) : 0;
-  const near = target > 0 ? asks.filter((a) => a <= target * 1.1).length : 0;
-  const route = `campaign:${group[0]?.campaignId}?tab=pipeline`;
-  return (
-    <>
-      <Letterhead brand={name} kind={`${group.length} pitches`} aside={ago(group[0]?.at) ? `newest ${ago(group[0]?.at)}` : undefined} />
-      <div className="v2-hm-body">
-        <h3>{group.length} creators pitched for {name}</h3>
-        <ul className="v2-hm-faces-row" aria-label="Who pitched">
-          {group.slice(0, 5).map((g) => {
-            const c = creators.find((x) => x.id === g.creatorId);
+  canDecide: boolean;
+  unread: number;
+}): TaskItem {
+  const { onRoute } = ctx;
+  const creator = it.creatorId ? ctx.creators.find((c) => c.id === it.creatorId) : undefined;
+  const base = {
+    id: it.id,
+    stripe: it.band,
+    mark: creator?.avatar || (it.campaignName ?? 'A')[0]!.toUpperCase(),
+    route: it.route,
+    unread: ctx.unread,
+  };
+  const locked = ctx.canDecide ? undefined : 'Admin or ops only';
+
+  if (it.group) {
+    const camp = ctx.campaigns.find((c) => c.id === it.campaignId);
+    const target = camp ? perCreatorTarget(camp) : it.target ?? 0;
+    const asks = it.group.map((g) => g.rate ?? 0).filter((r) => r > 0);
+    return {
+      ...base,
+      mark: (it.campaignName ?? 'C')[0]!.toUpperCase(),
+      title: `${it.group.length} pitches on ${it.campaignName ?? 'a campaign'}`,
+      sub: asks.length
+        ? `Asks from ${dollars(Math.min(...asks))} to ${dollars(Math.max(...asks))} · your target ${dollars(target)}`
+        : 'Compare them side by side',
+      actions: <button type="button" className="v2-hm-btn is-sm is-dark" onClick={() => onRoute(it.route)}>Compare {it.group.length}</button>,
+      detail: (
+        <ul className="v2-td-faces" aria-label="Who pitched">
+          {it.group.slice(0, 6).map((g) => {
+            const c = ctx.creators.find((x) => x.id === g.creatorId);
             return (
               <li key={g.id}>
                 <Avatar src={c?.avatar} name={g.creatorName ?? 'Creator'} size={36} />
@@ -183,26 +199,72 @@ function PitchGroupSheet({ group, campaign, creators, onRoute }: {
               </li>
             );
           })}
-          {group.length > 5 && <li className="is-more"><span>+{group.length - 5} more</span></li>}
         </ul>
-        <Terms
-          cells={[
-            ...(target > 0 ? [{ label: 'Your target', value: target }] : []),
-            ...(low > 0 ? [{ label: 'Lowest ask', value: low }] : []),
-            ...(high > 0 ? [{ label: 'Highest ask', value: high }] : []),
-          ]}
-        />
-        {target > 0 && (
-          <p className="v2-hm-note">
-            {near === 0 ? 'Every ask is more than 10% over your target.' : `${near} of ${group.length} ask${near === 1 ? 's' : ''} within 10% of your target.`}
-          </p>
-        )}
-        <div className="v2-hm-acts">
-          <button type="button" className="v2-hm-btn is-dark" onClick={() => onRoute(route)}>Compare {group.length} pitches</button>
-        </div>
-      </div>
-    </>
-  );
+      ),
+    };
+  }
+  if (it.kind === 'pitch') {
+    const accept = () => {
+      if (!it.applicationId) return;
+      try { v2AcceptPitch(it.applicationId); pushToast(`Accepted ${it.creatorName?.split(' ')[0] ?? 'the'} pitch. It's held from your wallet.`, 'good'); }
+      catch (err) { pushToast(err instanceof Error ? err.message : 'Could not accept the pitch', 'bad'); }
+    };
+    const pass = () => {
+      if (!it.applicationId) return;
+      try { v2RejectApplication(it.applicationId); pushToast(`Passed on ${it.creatorName?.split(' ')[0] ?? 'the'} pitch`, 'good'); }
+      catch (err) { pushToast(err instanceof Error ? err.message : 'Could not pass on the pitch', 'bad'); }
+    };
+    return {
+      ...base,
+      title: it.title,
+      sub: it.sub,
+      actions: (
+        <>
+          {it.applicationId && <button type="button" className="v2-hm-btn is-sm" onClick={pass} disabled={!ctx.canDecide} title={locked}>Pass</button>}
+          {it.applicationId && it.rate
+            ? <button type="button" className="v2-hm-btn is-sm is-dark" onClick={accept} disabled={!ctx.canDecide} title={locked}>Accept {dollars(it.rate)}</button>
+            : <button type="button" className="v2-hm-btn is-sm is-dark" onClick={() => onRoute(it.route)}>Open</button>}
+        </>
+      ),
+      detail: it.pitch ? <p className="v2-td-quote">{it.pitch}</p> : undefined,
+    };
+  }
+  const cta: Record<string, string> = { verify: 'Check the post', counter: 'Answer', review: 'Review', topup: 'Top up' };
+  return {
+    ...base,
+    title: it.title,
+    sub: it.kind === 'verify' && it.releases ? `${it.campaignName ?? ''} · confirming releases ${dollars(it.releases)}` : it.sub,
+    actions: <button type="button" className="v2-hm-btn is-sm is-dark" onClick={() => onRoute(it.route)}>{cta[it.kind] ?? 'Open'}</button>,
+  };
+}
+
+// What creators owe this week, overdue first.
+function brandDue(campaigns: V2Campaign[], db: Database): DueItem[] {
+  const out: DueItem[] = [];
+  for (const camp of campaigns) {
+    for (const c of collabsForCampaign(camp.id, db)) {
+      if (!['confirmed', 'submitted', 'approved', 'live'].includes(c.stage)) continue;
+      const who = db.creators.find((x) => x.id === c.creatorId)?.name ?? 'Creator';
+      for (const d of c.deliverables) {
+        if (d.status === 'live' || d.status === 'approved') continue;
+        const date = parseDue(d);
+        if (!date) continue;
+        const days = daysBetween(TODAY, date);
+        if (days > 6) continue;
+        out.push({
+          id: `${c.id}-${d.id}`,
+          date,
+          what: `${who} · ${d.label}`,
+          sub: camp.name,
+          late: days < 0,
+          route: d.status === 'in_review' ? `campaign:${camp.id}?tab=content` : `campaign:${camp.id}?tab=pipeline`,
+          action: d.status === 'in_review' ? 'Review' : 'Open',
+        });
+      }
+    }
+  }
+  out.sort((x, y) => +x.date - +y.date);
+  return out.slice(0, 5);
 }
 
 // =====================================================================
@@ -354,40 +416,6 @@ function LiveCampaigns({ campaigns, onRoute }: { campaigns: V2Campaign[]; onRout
           </button>
         );
       })}
-    </section>
-  );
-}
-
-function Shortlist({ ids, creators, onRoute }: {
-  ids: string[];
-  creators: V2Creator[];
-  onRoute: (r: string) => void;
-}) {
-  const saved = ids
-    .map((id) => creators.find((c) => c.id === id))
-    .filter((c): c is V2Creator => !!c);
-  return (
-    <section aria-labelledby="hm-saved">
-      <h2 className="v2-hm-h2" id="hm-saved">
-        Saved creators {saved.length > 0 && <span>{saved.length}</span>}
-        <button type="button" className="v2-hm-more" onClick={() => onRoute('discover')}>Discover</button>
-      </h2>
-      {saved.length === 0 ? (
-        <p className="v2-hm-empty">Save creators from Discover or a pitch, and they’ll wait for you here.</p>
-      ) : (
-        <div className="v2-hm-faces">
-          {saved.slice(0, 8).map((c) => (
-            <button key={c.id} type="button" onClick={() => onRoute(`creator:${c.id}`)} aria-label={c.name} title={c.name}>
-              <Avatar src={c.avatar} name={c.name} size={52} />
-            </button>
-          ))}
-          {saved.length > 8 && (
-            <button type="button" className="v2-hm-faces-more" onClick={() => onRoute('discover')} aria-label={`${saved.length - 8} more saved creators`}>
-              +{saved.length - 8}
-            </button>
-          )}
-        </div>
-      )}
     </section>
   );
 }

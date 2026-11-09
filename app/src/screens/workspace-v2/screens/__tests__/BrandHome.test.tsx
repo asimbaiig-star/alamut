@@ -1,15 +1,15 @@
 // @vitest-environment jsdom
 //
-// Component smoke test — BrandHome (portal canvas, Round 2).
+// Component smoke test — BrandHome, the brand's Today (Round 8, B).
 //
 // The hooks are mocked to controlled shapes; real-store behaviour is
 // covered by the v2 mutation tests. What we pin:
 //   - the greeting names the brand, and "New campaign" routes to the wizard
-//   - the money strip shows what's held, with the test-mode line beside it
-//   - a pitch on top of the pile is answered in place: Accept calls
-//     v2AcceptPitch with its application, Pass calls v2RejectApplication,
-//     Save toggles the creator, and Counter opens the pipeline
-//   - an empty pile says so instead of rendering an empty card
+//   - the money card shows what's held, with the test-mode line beside it
+//   - a single pitch is a row answered in place: Accept calls v2AcceptPitch
+//     with its application, Pass calls v2RejectApplication
+//   - a campaign's pitches gather into one row that opens the comparison
+//   - nothing waiting says so instead of rendering an empty list
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
@@ -58,7 +58,7 @@ vi.mock('../../v2Hooks', () => ({
   useV2Campaigns: () => [mockCampaign],
   useV2Creators: () => [mockCreator],
   useV2CurrentBrand: () => mockBrand,
-  useV2BrandShortlist: () => [],
+  useV2Conversations: () => [],
   v2ToggleSavedCreator: vi.fn(),
 }));
 
@@ -78,7 +78,7 @@ vi.mock('@/lib/permissions', () => ({
 vi.mock('@/lib/api/store', () => ({
   useStore: Object.assign(
     (selector?: (s: { db: Record<string, unknown[]>; session: null }) => unknown) => {
-      const state = { db: { notifications: [], users: [] }, session: null };
+      const state = { db: { notifications: [], users: [], campaigns: [], collaborations: [], applications: [], offers: [], submissions: [], deliverables: [], creators: [], brands: [], transactions: [], reviews: [], disputes: [] }, session: null };
       return selector ? selector(state) : state;
     },
     { getState: () => ({ db: { notifications: [], users: [] }, session: null }) },
@@ -88,7 +88,6 @@ vi.mock('@/lib/api/store', () => ({
 
 import { BrandHome } from '../BrandHome';
 import { v2AcceptPitch, v2RejectApplication } from '../../v2CampaignActions';
-import { v2ToggleSavedCreator } from '../../v2Hooks';
 
 const pitch = {
   id: 'pitch_x',
@@ -135,7 +134,7 @@ describe('BrandHome (smoke)', () => {
     expect(screen.getByText(/all caught up/i)).toBeInTheDocument();
   });
 
-  it('answers a pitch in place: accept, pass, save and counter', () => {
+  it('answers a single pitch in its row: accept and pass', () => {
     NEEDS = [pitch];
     const onRoute = vi.fn();
     renderWithRouter(<BrandHome onRoute={onRoute} />);
@@ -146,14 +145,13 @@ describe('BrandHome (smoke)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Pass' }));
     expect(v2RejectApplication).toHaveBeenCalledWith('app_1');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save creator' }));
-    expect(v2ToggleSavedCreator).toHaveBeenCalledWith('c_ana');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Counter' }));
+    // The pitch itself, open as the most urgent row.
+    expect(screen.getByText('Two Reels built around a morning routine.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: pitch.title }));
     expect(onRoute).toHaveBeenCalledWith('campaign:cmp_1?tab=pipeline');
   });
 
-  it("gathers a campaign's pitches into one sheet that opens the comparison", () => {
+  it("gathers a campaign's pitches into one row that opens the comparison", () => {
     const onRoute = vi.fn();
     NEEDS = [
       { id: 'ctr', kind: 'counter', title: 'Lena countered at $2,200', sub: 'accept, counter back or decline', route: 'campaign:cmp_1?tab=pipeline', campaignId: 'cmp_1', campaignName: 'Spring serum launch', creatorName: 'Lena Ortiz', rate: 2200 },
@@ -164,14 +162,13 @@ describe('BrandHome (smoke)', () => {
     renderWithRouter(<BrandHome onRoute={onRoute} />);
     // One thing plus three pitches, said as such, not "4 things need you".
     expect(screen.getByText(/One thing needs you, and 3 pitches are waiting on 1 campaign\./)).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /Needs you/ })).toHaveTextContent('2,');
-    // The counter is on top; the pitch group is the band behind it.
-    fireEvent.click(screen.getByRole('button', { name: /3 pitches on Spring serum launch/ }));
-    expect(screen.getByText('3 creators pitched for Spring serum launch')).toBeInTheDocument();
-    // The asks, summarised for the decision.
-    expect(screen.getByText('Lowest ask').nextSibling).toHaveTextContent('$1,400');
-    expect(screen.getByText('Highest ask').nextSibling).toHaveTextContent('$2,600');
-    fireEvent.click(screen.getByRole('button', { name: 'Compare 3 pitches' }));
+    expect(screen.getByRole('heading', { name: /Needs you/ })).toHaveTextContent('2');
+    // The asks, summarised on the row.
+    expect(screen.getByText(/Asks from \$1,400 to \$2,600/)).toBeInTheDocument();
+    // Who pitched, on request.
+    fireEvent.click(screen.getByRole('button', { name: /Show details: 3 pitches on Spring serum launch/ }));
+    expect(screen.getByRole('list', { name: 'Who pitched' })).toHaveTextContent('Noor');
+    fireEvent.click(screen.getByRole('button', { name: 'Compare 3' }));
     expect(onRoute).toHaveBeenCalledWith('campaign:cmp_1?tab=pipeline');
   });
 

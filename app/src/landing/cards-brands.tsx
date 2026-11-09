@@ -20,7 +20,7 @@ const need = (what: string, action: string) => (
 /** What needs you across campaigns, as BrandHome lists it. */
 export const BRAND_DEAL: WorkspaceScreen = {
   persona: 'brand',
-  nav: ['Home', 'Discover', 'Campaigns', 'Inbox', 'Calendar', 'Wallet', 'Brand profile'],
+  nav: ['Today', 'Campaigns', 'Creators', 'Inbox', 'Wallet'],
   active: 'Home',
   crumb: 'Home',
   title: 'Needs you',

@@ -96,7 +96,8 @@ export function Campaigns({ onRoute }: Props) {
             : ' Nothing is waiting on you.'}`}
           actions={
             <>
-              <button type="button" className="v2-hm-btn" onClick={() => onRoute('wallet')}>View ledger</button>
+              {/* Calendar is a view of your campaigns now, not a menu item. */}
+              <button type="button" className="v2-hm-btn" onClick={() => onRoute('calendar')}>Calendar</button>
               <button type="button" className="v2-hm-btn is-dark" onClick={() => onRoute('campaign-new')}>New campaign</button>
             </>
           }

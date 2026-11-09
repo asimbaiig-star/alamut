@@ -5,7 +5,7 @@
 // under one URL today; we can promote nested URLs later when the
 // surface is ready to be promoted out of preview.
 
-import { useEffect, useRef, useState, lazy, Suspense } from 'react';
+import { Fragment, useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import '@/styles/workspace-v2.css';
 import '@/styles/workspace-v2-campaign-mgmt.css';
@@ -72,30 +72,33 @@ type Persona = 'brand' | 'creator';
 // so the badge tracks real unread state instead of a hardcoded literal.
 // Portal canvas Round 2: short names, the work first, Spark moved off the
 // home and down the list.
+// Round 8: five places for daily and weekly work, and the rest in a quieter
+// group below. Nine equal items gave Calendar and Analytics the weight of
+// Campaigns. Calendar is a view of Campaigns now (its button there).
 const BRAND_ROUTES = [
-  { id: 'home', label: 'Home', icon: Icon.home },
-  { id: 'discover', label: 'Discover', icon: Icon.search },
+  { id: 'home', label: 'Today', icon: Icon.home },
   { id: 'campaigns', label: 'Campaigns', icon: Icon.campaign },
+  { id: 'discover', label: 'Creators', icon: Icon.search },
   { id: 'inbox', label: 'Inbox', icon: Icon.inbox },
-  { id: 'calendar', label: 'Calendar', icon: Icon.calendar },
-  { id: 'brand-analytics', label: 'Analytics', icon: Icon.chart },
   { id: 'wallet', label: 'Wallet', icon: Icon.wallet },
-  { id: 'brand-profile', label: 'Brand profile', icon: Icon.shield },
-  { id: 'spark', label: 'Spark', icon: Icon.spark, badge: 'AI' },
+  { id: 'brand-analytics', label: 'Analytics', icon: Icon.chart, secondary: true },
+  { id: 'brand-profile', label: 'Brand profile', icon: Icon.shield, secondary: true },
+  { id: 'spark', label: 'Spark', icon: Icon.spark, badge: 'AI', secondary: true },
 ] as const;
 
 // Creator-side routes (per design's CREATOR_ROUTES). Same live-count
 // treatment for `creator-inbox` as above.
+// Same shape: the daily five, then your storefront, analytics and tax.
+// Calendar is a view of Deals (its button there).
 const CREATOR_ROUTES = [
-  { id: 'creator-home', label: 'Home', icon: Icon.home },
-  { id: 'storefront', label: 'Storefront', icon: Icon.store },
+  { id: 'creator-home', label: 'Today', icon: Icon.home },
   { id: 'creator-collabs', label: 'Deals', icon: Icon.campaign },
   { id: 'creator-campaigns', label: 'Briefs', icon: Icon.search },
   { id: 'creator-inbox', label: 'Inbox', icon: Icon.inbox },
-  { id: 'creator-calendar', label: 'Calendar', icon: Icon.calendar },
-  { id: 'analytics', label: 'Analytics', icon: Icon.chart },
   { id: 'creator-wallet', label: 'Wallet', icon: Icon.wallet },
-  { id: 'kyc', label: 'KYC & Tax', icon: Icon.shield },
+  { id: 'storefront', label: 'Storefront', icon: Icon.store, secondary: true },
+  { id: 'analytics', label: 'Analytics', icon: Icon.chart, secondary: true },
+  { id: 'kyc', label: 'KYC & Tax', icon: Icon.shield, secondary: true },
 ] as const;
 
 const PERSONA_KEY = 'alamut.v2.persona';
@@ -510,15 +513,15 @@ function useViewer(persona: Persona): { name: string; sub: string; avatar: strin
 // =====================================================================
 
 const CREATOR_TABS = [
-  { id: 'creator-home', label: 'Home', icon: Icon.home },
+  { id: 'creator-home', label: 'Today', icon: Icon.home },
   { id: 'creator-collabs', label: 'Deals', icon: Icon.campaign },
   { id: 'creator-campaigns', label: 'Briefs', icon: Icon.search },
   { id: 'creator-inbox', label: 'Inbox', icon: Icon.inbox },
 ] as const;
 const BRAND_TABS = [
-  { id: 'home', label: 'Home', icon: Icon.home },
+  { id: 'home', label: 'Today', icon: Icon.home },
   { id: 'campaigns', label: 'Campaigns', icon: Icon.campaign },
-  { id: 'discover', label: 'Discover', icon: Icon.search },
+  { id: 'discover', label: 'Creators', icon: Icon.search },
   { id: 'inbox', label: 'Inbox', icon: Icon.inbox },
 ] as const;
 
@@ -783,16 +786,20 @@ function Sidebar({ persona, route, onRoute, isMobileOpen, counts, me }: SidebarP
       </button>
 
       <nav className="v2-nav" aria-label="Primary">
-        {routes.map((r) => {
+        {routes.map((r, i) => {
+          const secondary = 'secondary' in r && r.secondary;
+          const prev = i > 0 ? routes[i - 1] : undefined;
+          const firstSecondary = secondary && !(prev && 'secondary' in prev && prev.secondary);
           // Live counts only: what is waiting on you, from the same list
           // the home's pile shows (needsYou.ts), plus unread messages.
           const n = countFor(r.id, counts);
           const active = routeBase(route) === r.id;
           return (
+            <Fragment key={r.id}>
+            {firstSecondary && <span className="v2-nav-sep" aria-hidden="true" />}
             <button
-              key={r.id}
               type="button"
-              className={`v2-nav-item ${active ? 'is-active' : ''}`}
+              className={`v2-nav-item ${active ? 'is-active' : ''}${secondary ? ' is-quiet' : ''}`}
               aria-current={active ? 'page' : undefined}
               onClick={() => onRoute(r.id)}
             >
@@ -803,6 +810,7 @@ function Sidebar({ persona, route, onRoute, isMobileOpen, counts, me }: SidebarP
                 <span className="v2-nav-count" aria-label={`${n} waiting`}>{n}</span>
               )}
             </button>
+            </Fragment>
           );
         })}
       </nav>

@@ -1,18 +1,19 @@
-// CreatorHome.tsx — the creator's home (portal canvas, Round 2).
+// CreatorHome.tsx — the creator's Today (portal canvas, Round 8, B).
 //
-// One sheet: the greeting, the money (one figure, a short ledger and the
-// test-mode line beside Withdraw), then what needs you as a pile of
-// letterheads with the most urgent one open to answer in place. On the
-// right: deals in motion by stage, and the open briefs that fit best.
+// Every need is a row you can act on where it stands: accept an offer,
+// resubmit, paste the live link. The most urgent is open first, with its
+// terms; unread messages on a deal sit beside its row. Then what's due this
+// week, from the same deadlines as the calendar. Money is a small card on
+// the right, with the briefs that fit best. (It was a pile: one need open,
+// three clipped bands, the rest behind "See all"; and the balance in 96px
+// type above the tasks it's checked far less often than.)
 //
-// Everything is derived from the store. The pile comes from needsYou.ts,
-// which also feeds the sidebar badges, so the two always agree.
+// The list comes from needsYou.ts, which also feeds the menu's badges.
 
 import { perCreatorTarget } from '../campaignTarget';
-import { DealPipeline } from './dealPipeline';
 import { useMemo } from 'react';
 import {
-  useV2AllCampaigns, useV2CreatorWallet, useV2CurrentCreator, useV2MyCollabs,
+  useV2AllCampaigns, useV2Conversations, useV2CreatorWallet, useV2CurrentCreator, useV2MyCollabs,
 } from '../v2Hooks';
 import { useStore } from '@/lib/api/store';
 import { matchCreatorToCampaign } from '../matching';
@@ -21,9 +22,10 @@ import { splitAcrossSlots } from '@/lib/api/money';
 import { pushToast } from '@/lib/utils/toast';
 import type { V2Campaign, V2Collab } from '../data';
 import { useCreatorNeedsYou, type CreatorNeed } from '../needsYou';
-import {
-  HomeHead, Letterhead, MoneyStrip, Pile, Terms, bandFor, dollars, greeting,
-} from './homeParts';
+import { HomeHead, bandFor, dollars, greeting } from './homeParts';
+import { TaskList, TaskTerms, DueSoon, MoneyCard, type TaskItem, type DueItem } from './todayParts';
+import { TODAY, daysBetween, parseDue } from '../dueDates';
+import { stageTotals } from './dealPipeline';
 import { brandAccent } from '../brandPalette';
 
 interface Props {
@@ -36,6 +38,8 @@ export function CreatorHome({ onRoute }: Props) {
   const campaigns = useV2AllCampaigns();
   const myCollabs = useV2MyCollabs();
   const needs = useCreatorNeedsYou();
+  const conversations = useV2Conversations();
+  const db = useStore((st) => st.db);
 
   if (!creator) {
     return (
@@ -48,69 +52,72 @@ export function CreatorHome({ onRoute }: Props) {
   }
 
   const first = creator.name.split(/\s+/)[0] ?? creator.name;
+  const live = myCollabs.filter((c) => c.stage !== 'cancelled');
+  const totals = stageTotals(live, db);
+  const onWay = totals.filter((t) => t.id === 'working' || t.id === 'releasing').reduce((n, t) => n + t.amount, 0);
   const n = needs.length;
   const summary = n === 0
-    ? 'Nothing needs you right now.'
-    : `${n === 1 ? 'One thing needs' : `${n} things need`} you, the most urgent on top.`;
+    ? `Nothing needs you right now.${onWay > 0 ? ` ${dollars(onWay)} is on its way to you.` : ''}`
+    : `${n} need${n === 1 ? 's' : ''} you, the most urgent first.${onWay > 0 ? ` ${dollars(onWay)} is on its way to you.` : ''}`;
 
-  const pile = needs.map((it) => ({
-    ...it,
-    band: bandFor(it.brand),
-    tag: it.due ? `Due ${it.due}` : it.kind === 'offer' && it.rate ? dollars(it.rate) : undefined,
-  }));
+  // Unread messages on the deal a need belongs to.
+  const unreadFor = (need: CreatorNeed) => {
+    const collab = need.collabId ? live.find((c) => c.id === need.collabId) : undefined;
+    if (!collab) return 0;
+    return conversations.filter((c) => c.campaignId === collab.campaignId && c.creatorId === collab.creatorId)
+      .reduce((s, c) => s + c.unread, 0);
+  };
+  const tasks = needs.map((need) => creatorTask(need, unreadFor(need), onRoute));
+  const due = dueThisWeek(live, campaigns);
 
   return (
-    <div className="v2-hm">
+    <div className="v2-hm v2-td">
       <div className="v2-hm-ground">
         <HomeHead
           title={`${greeting()}, ${first}.`}
           sub={summary}
-          actions={
-            <>
-              <button type="button" className="v2-hm-btn" onClick={() => onRoute('storefront')}>Your storefront</button>
-              <button type="button" className="v2-hm-btn is-dark" onClick={() => onRoute('creator-campaigns')}>Find briefs</button>
-            </>
-          }
-        />
-        <MoneyStrip
-          label="Ready to withdraw"
-          figure={wallet.available}
-          tone="moss"
-          rows={[
-            { label: 'Held in escrow for your deals', value: wallet.pending },
-            { label: 'Earned so far, before fees', value: wallet.lifetime },
-          ]}
-          action={
-            <button
-              type="button"
-              className="v2-hm-btn is-fill"
-              onClick={() => onRoute('creator-wallet?action=withdraw')}
-              disabled={wallet.available <= 0}
-            >Withdraw</button>
-          }
+          actions={<button type="button" className="v2-hm-btn is-dark" onClick={() => onRoute('creator-campaigns')}>Find briefs</button>}
         />
       </div>
 
       <div className="v2-hm-cols">
-        <section aria-labelledby="hm-needs">
-          <h2 className="v2-hm-h2" id="hm-needs">Needs you {n > 0 && <span>{n}</span>}</h2>
-          {n === 0 ? (
-            <div className="v2-hm-clear">
-              <b>You’re all caught up.</b>
-              <p>New offers, changes and payouts will land here first.</p>
-              <button type="button" className="v2-hm-btn is-dark" onClick={() => onRoute('creator-campaigns')}>Find briefs</button>
-            </div>
-          ) : (
-            <Pile
-              items={pile}
-              label="Needs you"
-              renderTop={(it) => <CreatorSheet item={it} onRoute={onRoute} />}
-            />
-          )}
-        </section>
+        <div className="v2-td-main">
+          <section aria-labelledby="hm-needs">
+            <h2 className="v2-hm-h2" id="hm-needs">Needs you {n > 0 && <span>{n}</span>}</h2>
+            {n === 0 ? (
+              <div className="v2-hm-clear">
+                <b>You’re all caught up.</b>
+                <p>New offers, changes and payouts will land here first.</p>
+                <button type="button" className="v2-hm-btn is-dark" onClick={() => onRoute('creator-campaigns')}>Find briefs</button>
+              </div>
+            ) : (
+              <TaskList items={tasks} label="Needs you" onRoute={onRoute} />
+            )}
+          </section>
+          <DueSoon
+            items={due}
+            onRoute={onRoute}
+            calendarRoute="creator-calendar"
+            empty="Nothing due in the next seven days."
+          />
+        </div>
 
         <div className="v2-hm-right">
-          <DealsInMotion collabs={myCollabs} onRoute={onRoute} />
+          <MoneyCard
+            title="Money"
+            rows={[
+              { label: 'Ready to withdraw', value: wallet.available, strong: true },
+              { label: 'Held for your deals', value: wallet.pending },
+            ]}
+            action={
+              <button
+                type="button"
+                className="v2-hm-btn is-sm"
+                onClick={() => onRoute('creator-wallet?action=withdraw')}
+                disabled={wallet.available <= 0}
+              >Withdraw</button>
+            }
+          />
           <BriefsThatFit creatorId={creator.id} campaigns={campaigns} collabs={myCollabs} onRoute={onRoute} />
         </div>
       </div>
@@ -119,127 +126,122 @@ export function CreatorHome({ onRoute }: Props) {
 }
 
 // =====================================================================
-// The open sheet: each kind of item, answerable from here.
+// A need, as a row with its own buttons.
 // =====================================================================
 
-function CreatorSheet({ item, onRoute }: { item: CreatorNeed; onRoute: (r: string) => void }) {
-  const open = (route: string) => () => onRoute(route);
+function creatorTask(item: CreatorNeed, unread: number, onRoute: (r: string) => void): TaskItem {
+  const brand = item.brand ?? 'Alamut';
+  const base = {
+    id: item.id,
+    stripe: item.brand ? bandFor(item.brand) : 'var(--v2-band-ink)',
+    mark: brand[0]?.toUpperCase() ?? 'A',
+    route: item.collabId ? `collab:${item.collabId}` : item.route,
+    unread,
+  };
   const keep = item.rate ? splitAcrossSlots(item.rate, item.slots ?? 1).net : 0;
+  const due = item.due ? ` · due ${item.due}` : '';
 
-  if (item.kind === 'offer') {
+  if (item.kind === 'offer' && item.offerId && item.rate) {
     const accept = () => {
-      if (!item.offerId) return;
       try {
-        v2AcceptOffer(item.offerId);
-        pushToast(`Offer accepted. ${item.brand} has been told.`, 'good');
+        v2AcceptOffer(item.offerId!);
+        pushToast(`Offer accepted. ${brand} has been told, and the full amount is held for you.`, 'good');
       } catch (err) {
         pushToast(err instanceof Error ? err.message : 'Couldn’t accept the offer', 'bad');
       }
     };
-    return (
-      <>
-        <Letterhead brand={item.brand ?? 'Brand'} kind={item.offerId ? 'offer' : 'invitation'} />
-        <div className="v2-hm-body">
-          <h3>{item.campaignName}</h3>
-          <p>
-            {item.offerId
-              ? `${item.title}${item.deliverable ? ` for ${item.deliverable}` : ''}. Accept it here, or counter with your price.`
-              : `They’d like you on this brief${item.deliverable ? ` (${item.deliverable})` : ''}. Open it to pitch your rate.`}
-          </p>
-          {item.offerId && item.rate ? (
-            <Terms
-              cells={[
-                { label: 'They offer', value: item.rate },
-                ...(item.asked ? [{ label: 'You asked', value: item.asked }] : []),
-                { label: 'You’d keep', value: keep, tone: 'moss' as const },
-              ]}
-            />
-          ) : null}
-          <div className="v2-hm-acts">
-            {item.offerId && item.rate ? (
-              <>
-                <button type="button" className="v2-hm-btn is-dark" onClick={accept}>Accept {dollars(item.rate)}</button>
-                <button type="button" className="v2-hm-btn" onClick={open(`${item.route}?action=counter`)}>Counter</button>
-                <button type="button" className="v2-hm-btn" onClick={open(item.route)}>Open the deal</button>
-              </>
-            ) : (
-              <button type="button" className="v2-hm-btn is-dark" onClick={open(item.route)}>Open the invitation</button>
-            )}
-          </div>
-        </div>
-      </>
-    );
+    return {
+      ...base,
+      title: `${brand} offered ${dollars(item.rate)} for ${item.campaignName ?? 'a deal'}`,
+      sub: `${item.deliverable ?? 'Deal'}${due}`,
+      actions: (
+        <>
+          <button type="button" className="v2-hm-btn is-sm" onClick={() => onRoute(`${item.route}?action=counter`)}>Counter</button>
+          <button type="button" className="v2-hm-btn is-sm is-dark" onClick={accept}>Accept {dollars(item.rate)}</button>
+        </>
+      ),
+      detail: (
+        <TaskTerms cells={[
+          { label: 'They offer', value: dollars(item.rate) },
+          ...(item.asked ? [{ label: 'You asked', value: dollars(item.asked) }] : []),
+          { label: 'You’d keep', value: dollars(keep), tone: 'moss' as const },
+        ]} />
+      ),
+    };
   }
-
-  if (item.kind === 'revision' || item.kind === 'upload' || item.kind === 'live') {
-    const verb = item.kind === 'revision' ? 'changes asked' : item.kind === 'upload' ? 'to submit' : 'approved';
-    return (
-      <>
-        <Letterhead brand={item.brand ?? 'Brand'} kind={verb} />
-        <div className="v2-hm-body">
-          <h3>{item.title}</h3>
-          {item.kind === 'revision' && item.note
-            ? <p className="v2-hm-quote">{item.note}</p>
-            : <p>{item.kind === 'live'
-                ? 'Post it on your channel, then paste the link here. The brand confirms it and your payment for this post is released.'
-                : item.sub}</p>}
-          {item.rate ? (
-            <Terms
-              cells={[
-                { label: 'Deal', value: item.rate },
-                { label: 'You keep in all', value: keep, tone: 'moss' as const },
-              ]}
-            />
-          ) : null}
-          <div className="v2-hm-acts">
-            <button type="button" className="v2-hm-btn is-dark" onClick={open(item.route)}>
-              {item.kind === 'revision' ? `Resubmit your ${item.deliverable ?? 'content'}`
-                : item.kind === 'upload' ? `Upload your ${item.deliverable ?? 'content'}`
-                : 'Paste the live link'}
-            </button>
-            {item.collabId && (
-              <button type="button" className="v2-hm-btn" onClick={open(`collab:${item.collabId}`)}>Open the deal</button>
-            )}
-          </div>
-        </div>
-      </>
-    );
+  if (item.kind === 'offer') {
+    return {
+      ...base,
+      title: `${brand} invited you to ${item.campaignName ?? 'a brief'}`,
+      sub: `Pitch your rate${item.deliverable ? ` for ${item.deliverable}` : ''}${due}`,
+      actions: <button type="button" className="v2-hm-btn is-sm is-dark" onClick={() => onRoute(item.route)}>Pitch</button>,
+    };
   }
-
-  // Account housekeeping: verification, storefront gaps.
-  return (
-    <>
-      <Letterhead brand="Alamut" kind={item.kind === 'kyc' ? 'verification' : 'storefront'} />
-      <div className="v2-hm-body">
-        <h3>{item.title}</h3>
-        <p>{item.sub}</p>
-        <div className="v2-hm-acts">
-          <button type="button" className="v2-hm-btn is-dark" onClick={open(item.route)}>
-            {item.kind === 'kyc' ? 'Finish verification' : 'Edit your storefront'}
-          </button>
-        </div>
-      </div>
-    </>
-  );
+  if (item.kind === 'revision') {
+    return {
+      ...base,
+      title: `${brand} asked for changes`,
+      sub: `${item.campaignName ?? ''}${item.deliverable ? ` · ${item.deliverable}` : ''}${due}`,
+      actions: <button type="button" className="v2-hm-btn is-sm is-dark" onClick={() => onRoute(item.route)}>Resubmit</button>,
+      detail: item.note ? <p className="v2-td-quote">{item.note}</p> : undefined,
+    };
+  }
+  if (item.kind === 'upload') {
+    return {
+      ...base,
+      title: `Submit your ${item.deliverable ?? 'content'}`,
+      sub: `${item.campaignName ?? ''} · ${brand}${due}`,
+      actions: <button type="button" className="v2-hm-btn is-sm is-dark" onClick={() => onRoute(item.route)}>Upload</button>,
+    };
+  }
+  if (item.kind === 'live') {
+    return {
+      ...base,
+      title: `Post ${item.campaignName ?? 'it'}`,
+      sub: `${brand} approved it · paste the live link and that post’s share is released${keep ? ` (you keep ${dollars(keep)} in all)` : ''}`,
+      actions: <button type="button" className="v2-hm-btn is-sm" onClick={() => onRoute(item.route)}>Paste link</button>,
+    };
+  }
+  return {
+    ...base,
+    title: item.title,
+    sub: item.sub,
+    actions: (
+      <button type="button" className="v2-hm-btn is-sm is-dark" onClick={() => onRoute(item.route)}>
+        {item.kind === 'kyc' ? 'Finish verification' : 'Edit your storefront'}
+      </button>
+    ),
+  };
 }
 
 // =====================================================================
-// Deals in motion: where the money is, stage by stage (dealPipeline.tsx,
-// the same strip the Deals page filters with).
+// Due this week: overdue first, then the next seven days.
 // =====================================================================
 
-function DealsInMotion({ collabs, onRoute }: { collabs: V2Collab[]; onRoute: (r: string) => void }) {
-  const db = useStore((s) => s.db);
-  const live = collabs.filter((c) => c.stage !== 'cancelled');
-  return (
-    <section aria-labelledby="hm-motion">
-      <h2 className="v2-hm-h2" id="hm-motion">
-        Deals in motion {live.length > 0 && <span>{live.length}</span>}
-        <button type="button" className="v2-hm-more" onClick={() => onRoute('creator-collabs')}>All deals</button>
-      </h2>
-      <DealPipeline collabs={live} db={db} list onOpen={() => onRoute('creator-collabs')} />
-    </section>
-  );
+function dueThisWeek(collabs: V2Collab[], campaigns: V2Campaign[]): DueItem[] {
+  const out: DueItem[] = [];
+  for (const c of collabs) {
+    if (c.stage === 'paid' || c.stage === 'cancelled' || c.stage === 'pitched' || c.stage === 'invited') continue;
+    const camp = campaigns.find((x) => x.id === c.campaignId);
+    for (const d of c.deliverables) {
+      if (d.status === 'live' || d.status === 'approved') continue;
+      const date = parseDue(d);
+      if (!date) continue;
+      const days = daysBetween(TODAY, date);
+      if (days > 6) continue;
+      out.push({
+        id: `${c.id}-${d.id}`,
+        date,
+        what: d.label,
+        sub: `${camp?.name ?? 'Deal'} · ${camp?.brand ?? ''}`,
+        late: days < 0,
+        route: `collab:${c.id}${d.status === 'pending' || d.status === 'revision' ? '?action=upload' : ''}`,
+        action: d.status === 'in_review' ? 'Open' : d.status === 'revision' ? 'Resubmit' : 'Upload',
+      });
+    }
+  }
+  out.sort((x, y) => +x.date - +y.date);
+  return out.slice(0, 5);
 }
 
 // =====================================================================

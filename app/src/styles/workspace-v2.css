@@ -2864,3 +2864,8 @@ body:has([data-surface="v2"]) {
     height: auto;
   }
 }
+
+/* Round 8: the quieter group under the daily five. */
+[data-surface="v2"] .v2-nav-sep { display: block; height: 1px; margin: 14px 12px; background: color-mix(in srgb, var(--v2-on-ground) 16%, transparent); }
+[data-surface="v2"] .v2-nav-item.is-quiet { min-height: 38px; font-size: 14px; color: color-mix(in srgb, var(--v2-on-ground) 72%, transparent); }
+[data-surface="v2"] .v2-nav-item.is-quiet.is-active { color: var(--v2-ink); }
