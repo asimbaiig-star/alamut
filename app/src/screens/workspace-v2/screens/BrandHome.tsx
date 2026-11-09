@@ -23,6 +23,7 @@ import {
 } from './homeParts';
 import { brandAccent } from '../brandPalette';
 import { perCreatorTarget } from '../campaignTarget';
+import { avgEngagement } from '../channels';
 
 /** A pile entry: one need, or a campaign's pitches gathered into one. */
 type PileEntry = BrandNeed & { band: string; tag?: string; group?: BrandNeed[] };
@@ -220,9 +221,7 @@ export function BrandSheet({ item, creator, saved, onRoute }: {
 
   if (item.kind === 'pitch' && creator) {
     const reach = creator.channels.reduce((s, ch) => s + ch.followers, 0);
-    const er = creator.channels.length
-      ? creator.channels.reduce((s, ch) => s + ch.engagement, 0) / creator.channels.length
-      : 0;
+    const er = avgEngagement(creator.channels);
     const accept = () => {
       if (!item.applicationId) return;
       try {

@@ -10,6 +10,7 @@
 // outcomes) and primary CTAs in the topbar.
 
 import { useMemo, useState } from 'react';
+import { avgEngagement as avgEngagementOf } from '../channels';
 import { fmtUSD, fmtUSDfull, fmtFollowers, Icon, PLATFORM_META, ScoreBadge, Topbar } from '../lib';
 import { useV2AllCampaigns, useV2Creators, useV2BrandShortlist, useV2CurrentCreator, v2ToggleSavedCreator } from '../v2Hooks';
 import { useStore } from '@/lib/api/store';
@@ -74,13 +75,8 @@ export function CreatorProfile({ creatorId, onRoute }: Props) {
   }
   const totalFollowers = creator.channels.reduce((s, ch) => s + ch.followers, 0);
   // Guard the divide: a creator with no connected channels rendered "NaN%".
-  const avgEngagement = creator.channels.length > 0
-    // Weighted by followers, as on the creator's own analytics: a plain
-    // average let a newsletter's open rate swamp the social channels.
-    ? (totalFollowers > 0
-      ? creator.channels.reduce((s, ch) => s + ch.engagement * ch.followers, 0) / totalFollowers
-      : creator.channels.reduce((s, ch) => s + ch.engagement, 0) / creator.channels.length).toFixed(1)
-    : null;
+  // Weighted by followers, as everywhere (channels.ts).
+  const avgEngagement = creator.channels.length > 0 ? avgEngagementOf(creator.channels).toFixed(1) : null;
 
   // Response time — average gap between the brand's last message and
   // this creator's reply, across every thread they share. Falls back

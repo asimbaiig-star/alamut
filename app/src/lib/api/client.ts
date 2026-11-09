@@ -1207,7 +1207,10 @@ async function connectPlatform(input: {
     }
     // Recompute aggregate reach + engagement
     c.reach = c.platforms.reduce((s, p) => s + p.followers, 0);
-    c.engagement = +(c.platforms.reduce((s, p) => s + p.engagement, 0) / c.platforms.length).toFixed(1);
+    // Weighted by followers, as the portal shows it (channels.ts).
+    c.engagement = c.reach > 0
+      ? +(c.platforms.reduce((s, p) => s + p.engagement * p.followers, 0) / c.reach).toFixed(1)
+      : +(c.platforms.reduce((s, p) => s + p.engagement, 0) / c.platforms.length).toFixed(1);
     return newP;
   });
 }

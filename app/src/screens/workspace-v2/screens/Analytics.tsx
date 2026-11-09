@@ -14,6 +14,7 @@ import {
   useV2Creators, useV2CurrentCreator, useV2MyCollabs, useV2AllCampaigns,
 } from '../v2Hooks';
 import { creatorToV2 } from '../v2Adapters';
+import { avgEngagement } from '../channels';
 import { splitAcrossSlots } from '@/lib/api/money';
 import { useStore } from '@/lib/api/store';
 
@@ -57,9 +58,7 @@ export function Analytics({ onRoute }: Props) {
   const totalReach = me.channels.reduce((s, ch) => s + ch.followers, 0);
   // Weighted by followers. A plain average let a small newsletter's open
   // rate (42%) count as much as a 142K Instagram's 5.2%, and read 18.1%.
-  const avgER = totalReach > 0
-    ? (me.channels.reduce((s, ch) => s + ch.engagement * ch.followers, 0) / totalReach).toFixed(1)
-    : '0.0';
+  const avgER = avgEngagement(me.channels).toFixed(1);
 
   // ─── Earnings within the selected window ───
   const windowStart = Date.now() - RANGE_DAYS[range] * 86_400_000;

@@ -27,6 +27,7 @@ import { useBrandNeedsYou } from '../needsYou';
 import { brandAccent } from '../brandPalette';
 import { perCreatorTarget, campaignPlaces, hasOwnTarget } from '../campaignTarget';
 import { matchCreatorToCampaign } from '../matching';
+import { avgEngagement } from '../channels';
 import {
   useV2CampaignById, useV2CollabsForCampaign, useV2Creators,
   useV2CurrentBrand, useV2BrandShortlist,
@@ -863,9 +864,7 @@ function PitchTable({ items, creators, campaign, onRoute, onSendOffer, onAcceptP
         && (a.status === 'submitted' || a.status === 'shortlisted'),
     );
     const reach = creator.channels.reduce((n, ch) => n + ch.followers, 0);
-    const er = creator.channels.length
-      ? creator.channels.reduce((n, ch) => n + ch.engagement, 0) / creator.channels.length
-      : 0;
+    const er = avgEngagement(creator.channels);
     const fit = matchCreatorToCampaign(db.creators.find((x) => x.id === creator.id), raw, db, target).score;
     return [{ collab, creator, app, reach, er, fit, ask: app?.proposedRate ?? 0 }];
   });

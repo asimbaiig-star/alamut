@@ -20,7 +20,7 @@ import { type V2Creator } from '../data';
 import { useV2Campaigns, useV2Creators, useV2BrandShortlist, v2ToggleSavedCreator } from '../v2Hooks';
 import { useStore } from '@/lib/api/store';
 import { SendBriefModal } from './WorkflowModals';
-import { bestEngagement, topChannel } from '../channels';
+import { avgEngagement, topChannel } from '../channels';
 import { matchCreatorToCampaign } from '../matching';
 import { brandAccent } from '../brandPalette';
 import { HomeHead, dollars } from './homeParts';
@@ -218,7 +218,7 @@ export function Discover({ onRoute }: Props) {
     if (filters.audienceGender === 'male')   r = r.filter((c) => (c.audience?.male   ?? 0) >= 60);
     if (filters.verified) r = r.filter((c) => c.verified);
     if (filters.minER > 0) {
-      r = r.filter((c) => bestEngagement(c.channels) >= filters.minER);
+      r = r.filter((c) => avgEngagement(c.channels) >= filters.minER);
     }
     if (filters.priceMax < 1_000_000) r = r.filter((c) => c.rate <= filters.priceMax);
     // Open for briefs: not booked up and not away.
@@ -236,7 +236,7 @@ export function Discover({ onRoute }: Props) {
       );
     } else if (sort === 'er') {
       r.sort((a, b) =>
-        bestEngagement(b.channels) - bestEngagement(a.channels),
+        avgEngagement(b.channels) - avgEngagement(a.channels),
       );
     } else if (sort === 'price-low')  r.sort((a, b) => a.rate - b.rate);
     else if (sort === 'price-high')   r.sort((a, b) => b.rate - a.rate);
@@ -835,7 +835,7 @@ function CreatorCard({ creator, saved, fit, onRoute }: {
 }) {
   const [briefOpen, setBriefOpen] = useState(false);
   const channels = [...creator.channels].sort((a, b) => b.followers - a.followers).slice(0, 2);
-  const er = bestEngagement(creator.channels);
+  const er = avgEngagement(creator.channels);
   const photo = creator.avatar || creator.cover;
   const open = () => onRoute(`creator:${creator.id}`);
   const away = creator.availability?.vacationMode || creator.availability?.status === 'booked';

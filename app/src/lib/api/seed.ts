@@ -799,7 +799,9 @@ function genCreator(idx: number, name: string, tier: 'Rising' | 'Specialist' | '
   const langs = [...LANGUAGES_POOL].sort(() => rng() - 0.5).slice(0, range(1, 3));
   const platforms = genPlatforms(tier, country);
   const reach = platforms.reduce((s, p) => s + p.followers, 0);
-  const engagement = +(platforms.reduce((s, p) => s + p.engagement, 0) / platforms.length).toFixed(1);
+  const engagement = reach > 0
+    ? +(platforms.reduce((s, p) => s + p.engagement * p.followers, 0) / reach).toFixed(1)
+    : +(platforms.reduce((s, p) => s + p.engagement, 0) / platforms.length).toFixed(1);
   const portrait = upx(portraitFor(name, idx), 600, 750);
   const workCount = tier === 'Rising' ? range(1, 3) : tier === 'Specialist' ? range(3, 5) : range(4, 6);
   const work = Array.from({ length: workCount }, (_, i) => upx(COVERS[(idx + i) % COVERS.length], 600, 600));

@@ -46,3 +46,26 @@ describe('screens summarise channels through the safe helpers', () => {
     }
   });
 });
+
+describe('avgEngagement is weighted by followers', () => {
+  it('a small newsletter does not swamp a large social channel', () => {
+    // 142K at 5.2%, 58K at 7.1%, 8.4K at 42%: the plain mean said 18.1%.
+    const chans = [
+      { engagement: 5.2, followers: 142_000 },
+      { engagement: 7.1, followers: 58_000 },
+      { engagement: 42, followers: 8_400 },
+    ];
+    expect(+avgEngagement(chans as never).toFixed(1)).toBe(7.2);
+  });
+
+  it('is the one way engagement is averaged: no screen does its own mean', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { readdirSync, readFileSync } = require('node:fs') as typeof import('node:fs');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { join } = require('node:path') as typeof import('node:path');
+    const dir = join(__dirname, '..', 'screens');
+    for (const f of readdirSync(dir).filter((x: string) => x.endsWith('.tsx'))) {
+      expect(readFileSync(join(dir, f), 'utf8'), f).not.toMatch(/\.engagement,\s*0\)\s*\//);
+    }
+  });
+});
