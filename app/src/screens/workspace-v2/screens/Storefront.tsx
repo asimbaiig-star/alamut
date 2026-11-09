@@ -65,6 +65,18 @@ export function Storefront({ onRoute }: Props) {
     );
   }
   const me = creatorToV2(creator, db);
+  const checks: { id: string; label: string; ok: boolean; todo: string }[] = [
+    { id: 'identity', label: 'Cover and bio', ok: !!creator.cover && (creator.bio ?? '').trim().length >= 40, todo: creator.cover ? 'write a fuller bio' : 'replace the sample cover with yours' },
+    { id: 'channels', label: 'Channels', ok: creator.platforms.length > 0, todo: 'add where you post' },
+    { id: 'packages', label: 'Rates', ok: (creator.rateCards?.length ?? 0) > 0, todo: 'set your prices' },
+    { id: 'work', label: 'Work samples', ok: creator.work.length >= 3, todo: creator.work.length ? `add ${3 - creator.work.length} more` : 'add three or more' },
+    { id: 'brands', label: 'Past brands', ok: creator.pastClients.length > 0, todo: 'list who you’ve worked with' },
+    { id: 'press', label: 'Press', ok: creator.pressMentions.length > 0, todo: 'optional' },
+    { id: 'reviews', label: 'Featured reviews', ok: (creator.featuredReviewIds?.length ?? 0) > 0, todo: 'pin your best' },
+    { id: 'availability', label: 'Availability', ok: !!creator.availability, todo: 'say when you’re free' },
+    { id: 'audience', label: 'Audience', ok: !!me.audience, todo: 'comes from your channels' },
+  ];
+  const done = checks.filter((c) => c.ok).length;
   // Past collabs — campaigns where this creator is in acceptedCreators and stage=closed
   const pastCollabs = allCampaigns.filter(
     (c) => c.creators.includes(me.id) && c.status === 'Completed',
@@ -101,7 +113,26 @@ export function Storefront({ onRoute }: Props) {
           </>
         }
       />
-      <div className="v2-content" style={{ maxWidth: 980 }}>
+      <div className="v2-content v2-sf">
+        {/* What's on your storefront, what's missing, and a way to each.
+            Nine stacked sections had no overview: an empty portfolio sat
+            five screens down. */}
+        <nav className="v2-sf-nav" aria-label="Storefront sections">
+          <p className="v2-sf-score"><b>{done} of {checks.length}</b> sections filled in</p>
+          <ol>
+            {checks.map((c) => (
+              <li key={c.id}>
+                <a href={`#sf-${c.id}`} onClick={(e) => { e.preventDefault(); document.getElementById(`sf-${c.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>
+                  <i data-done={c.ok || undefined} aria-hidden="true">{c.ok ? Icon.check : null}</i>
+                  <span>{c.label}</span>
+                  {!c.ok && <small>{c.todo}</small>}
+                </a>
+              </li>
+            ))}
+          </ol>
+        </nav>
+        <div className="v2-sf-main">
+        <section id="sf-identity" className="v2-sf-sec">
         {/* Cover + identity */}
         <IdentityBlock
           creator={creator}
@@ -110,7 +141,9 @@ export function Storefront({ onRoute }: Props) {
           onEdit={() => setEditing('identity')}
           onClose={() => setEditing(null)}
         />
+        </section>
 
+        <section id="sf-channels" className="v2-sf-sec">
         {/* Channels */}
         <ChannelsBlock
           creator={creator}
@@ -118,7 +151,9 @@ export function Storefront({ onRoute }: Props) {
           onEdit={() => setEditing('channels')}
           onClose={() => setEditing(null)}
         />
+        </section>
 
+        <section id="sf-packages" className="v2-sf-sec">
         {/* Packages / rate card */}
         <PackagesBlock
           creator={creator}
@@ -127,7 +162,9 @@ export function Storefront({ onRoute }: Props) {
           onEdit={() => setEditing('packages')}
           onClose={() => setEditing(null)}
         />
+        </section>
 
+        <section id="sf-work" className="v2-sf-sec">
         {/* Work portfolio — gallery of past work images */}
         <WorkBlock
           creator={creator}
@@ -135,7 +172,9 @@ export function Storefront({ onRoute }: Props) {
           onEdit={() => setEditing('work')}
           onClose={() => setEditing(null)}
         />
+        </section>
 
+        <section id="sf-brands" className="v2-sf-sec">
         {/* Past brands */}
         <BrandsBlock
           creator={creator}
@@ -144,7 +183,9 @@ export function Storefront({ onRoute }: Props) {
           onEdit={() => setEditing('brands')}
           onClose={() => setEditing(null)}
         />
+        </section>
 
+        <section id="sf-press" className="v2-sf-sec">
         {/* Press mentions */}
         <PressBlock
           creator={creator}
@@ -152,7 +193,9 @@ export function Storefront({ onRoute }: Props) {
           onEdit={() => setEditing('press')}
           onClose={() => setEditing(null)}
         />
+        </section>
 
+        <section id="sf-reviews" className="v2-sf-sec">
         {/* Featured reviews — pin testimonials to the public storefront */}
         <ReviewsBlock
           creator={creator}
@@ -160,7 +203,9 @@ export function Storefront({ onRoute }: Props) {
           onEdit={() => setEditing('reviews')}
           onClose={() => setEditing(null)}
         />
+        </section>
 
+        <section id="sf-availability" className="v2-sf-sec">
         {/* Availability */}
         <AvailabilityBlock
           creator={creator}
@@ -168,7 +213,9 @@ export function Storefront({ onRoute }: Props) {
           onEdit={() => setEditing('availability')}
           onClose={() => setEditing(null)}
         />
+        </section>
 
+        <section id="sf-audience" className="v2-sf-sec">
         {/* Audience snapshot — read-only. Honest framing: this is
             derived from the platforms you've added; refresh by
             re-verifying each channel. Pre-fix the tip didn't
@@ -197,6 +244,8 @@ export function Storefront({ onRoute }: Props) {
             </p>
           )}
         </Block>
+        </section>
+        </div>
       </div>
     </>
   );
