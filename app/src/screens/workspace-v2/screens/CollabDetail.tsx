@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import { fmtUSD, Icon, Topbar } from '../lib';
-import { useV2AllCampaigns, useV2CollabById, useV2CurrentCreator, v2EnsureThreadFor } from '../v2Hooks';
+import { useV2AllCampaigns, useV2CollabById, useV2Conversations, useV2CurrentCreator, v2EnsureThreadFor } from '../v2Hooks';
 import { V2_STAGE_META } from '../v2Adapters';
 import type { V2Collab, V2CollabStage, V2Deliverable } from '../data';
 import { DealConversation } from './dealConversation';
@@ -77,6 +77,8 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
     const threadId = v2EnsureThreadFor(collab.campaignId, collab.creatorId);
     if (!threadId) { onRoute('creator-inbox'); return; }
     // The conversation is on this page now (Round 8): go to it, not away.
+    // On a phone it's behind the Messages switch, so show that first.
+    setPhoneTab('messages');
     setTimeout(() => {
       const box = document.querySelector<HTMLTextAreaElement>('.v2-dc textarea');
       if (box) { box.scrollIntoView({ block: 'center', behavior: 'smooth' }); box.focus({ preventScroll: true }); }
@@ -88,6 +90,11 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
   // adapter from platform/format and passed through for the modal title.
   const [uploadSlot, setUploadSlot] = useState<{ deliverableId: string; label: string; isResubmit: boolean } | null>(null);
   const [counterOpen, setCounterOpen] = useState(false);
+  // Phones (Round 8, B): one of the deal's three parts at a time, so the
+  // conversation isn't a long scroll below the next step. Desktop shows
+  // all three; the switch is hidden there.
+  const [phoneTab, setPhoneTab] = useState<'move' | 'messages' | 'money'>('move');
+  const allConversations = useV2Conversations();
   // Paid-stage review modal. Pre-fix the "Leave review" button in the
   // banner just opened the inbox (v2LeaveReview existed but wasn't
   // reachable from any v2 surface). Now wired through this state.
@@ -400,7 +407,19 @@ export function CollabDetail({ collabId, onRoute, initialAction }: Props) {
             </div>
           </div>
         )}
-        <div className="v2-dl-cols">
+        {(() => {
+          const unread = collab
+            ? allConversations.filter((c) => c.campaignId === collab.campaignId && c.creatorId === collab.creatorId).reduce((n, c) => n + c.unread, 0)
+            : 0;
+          return (
+            <div className="v2-dl-seg" role="group" aria-label="Show">
+              {([['move', 'Next step'], ['messages', unread ? `Messages ${unread}` : 'Messages'], ['money', 'Money']] as const).map(([id, label]) => (
+                <button key={id} type="button" aria-pressed={phoneTab === id} onClick={() => setPhoneTab(id)}>{label}</button>
+              ))}
+            </div>
+          );
+        })()}
+        <div className="v2-dl-cols" data-tab={phoneTab}>
           <div className="v2-dl-main">
             {/* What's next: the open sheet. The stage track sits in the header. */}
             <section className="v2-dl-next">

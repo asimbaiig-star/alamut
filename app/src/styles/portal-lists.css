@@ -1524,3 +1524,36 @@
 [data-surface="v2"] .v2-cp-stage { margin: 0; font-size: 14px; color: var(--v2-ink-2); }
 [data-surface="v2"] .v2-cp-panel .v2-dc-msgs { max-height: 300px; }
 [data-surface="v2"] .v2-cp-panel > .v2-hm-link { align-self: flex-start; }
+
+/* ---- The deal room on a phone: one part at a time (Round 8, B) ---------- */
+[data-surface="v2"] .v2-dl-seg { display: none; }
+@media (max-width: 880px) {
+  [data-surface="v2"] .v2-dl-seg {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+    margin-bottom: 16px;
+    padding: 4px;
+    border-radius: var(--v2-r-pill);
+    background: var(--v2-bg-2);
+  }
+  [data-surface="v2"] .v2-dl-seg button {
+    min-height: 40px;
+    border: 0;
+    border-radius: var(--v2-r-pill);
+    background: none;
+    font: 600 14px var(--v2-font-sans);
+    color: var(--v2-ink-2);
+    cursor: pointer;
+  }
+  [data-surface="v2"] .v2-dl-seg button[aria-pressed="true"] { background: var(--v2-paper); color: var(--v2-ink); box-shadow: 0 2px 6px color-mix(in srgb, var(--v2-ink) 10%, transparent); }
+  [data-surface="v2"] .v2-dl-cols[data-tab="move"] .v2-dl-side { display: none; }
+  [data-surface="v2"] .v2-dl-cols[data-tab="messages"] .v2-dl-main,
+  [data-surface="v2"] .v2-dl-cols[data-tab="money"] .v2-dl-main { display: none; }
+  [data-surface="v2"] .v2-dl-cols[data-tab="messages"] .v2-dl-side > :not(.v2-dc) { display: none; }
+  [data-surface="v2"] .v2-dl-cols[data-tab="money"] .v2-dl-side > .v2-dc { display: none; }
+  [data-surface="v2"] .v2-dl-cols[data-tab="messages"] .v2-dc-msgs { max-height: 55vh; }
+}
